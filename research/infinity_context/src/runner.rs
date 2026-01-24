@@ -248,6 +248,28 @@ async fn run_single_scenario(
         return create_dry_run_result(scenario, capability, &prepared, will_exceed);
     }
 
+    // Fail immediately if context would be exceeded (simulates API rejection)
+    if will_exceed {
+        return ScenarioResult {
+            scenario_name: scenario.name.clone(),
+            strategy_name: capability.name().to_string(),
+            success: false,
+            response: String::new(),
+            metrics: EvalMetrics {
+                context_exceeded: true,
+                messages_in_context: prepared.messages.len(),
+                messages_excluded: prepared.excluded.len(),
+                total_tokens: prepared.estimated_tokens,
+                latency_ms: start.elapsed().as_millis() as u64,
+                ..Default::default()
+            },
+            error: Some(format!(
+                "Context exceeded: {} tokens > {} limit",
+                prepared.estimated_tokens, config.context_window
+            )),
+        };
+    }
+
     let messages_in_context = prepared.messages.len();
     let messages_excluded = prepared.excluded.len();
 
