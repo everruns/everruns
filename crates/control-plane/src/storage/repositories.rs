@@ -576,7 +576,7 @@ impl Database {
                 FROM sessions
                 WHERE org_id = $1
                 ORDER BY created_at DESC
-                LIMIT $3 OFFSET $4
+                LIMIT $2 OFFSET $3
                 "#,
             )
             .bind(org_id)
