@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, Boxes, MessageSquare } from "lucide-react";
+import { Plus, MessageSquare } from "lucide-react";
 import type { Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 export default function DashboardPage() {
@@ -122,11 +122,11 @@ export default function DashboardPage() {
                   Create New Agent
                 </Button>
               </Link>
-              <Link href="/agents" className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  <Boxes className="h-4 w-4 mr-2" />
-                  Browse All Agents
-                </Button>
+              <Link
+                href="/agents"
+                className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              >
+                View all agents →
               </Link>
             </CardContent>
           </Card>
