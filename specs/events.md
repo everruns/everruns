@@ -4,6 +4,18 @@
 
 Events are the core communication protocol in Everruns. They provide observability into session execution, enable SSE streaming, and serve as the source of truth for conversation data. All events follow a standard schema and are persisted to the events table.
 
+## Public Contract
+
+Events are a **public API contract**. See [specs/events-contract.md](events-contract.md) for:
+- Forward compatibility guarantees (what changes are breaking vs non-breaking)
+- Consumer guidelines for handling events
+- Server responsibilities for filtering unsupported events
+
+**Key points:**
+- Unknown event types are handled internally as `EventData::Unsupported` and filtered before API responses
+- New optional fields may be added to events without breaking consumers
+- New event types may be added without breaking consumers
+
 ## Standard Event Schema
 
 Every event MUST conform to this schema:
