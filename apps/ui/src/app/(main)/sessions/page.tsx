@@ -96,13 +96,8 @@ export default function SessionsPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Sessions</h1>
-          <p className="text-muted-foreground">
-            {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Sessions</h1>
         <Button
           variant="accent"
           onClick={handleOpenNewSessionDialog}
@@ -115,11 +110,16 @@ export default function SessionsPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>
-            {selectedAgentId
-              ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
-              : "All Sessions"}
-          </CardTitle>
+          <div>
+            <CardTitle>
+              {selectedAgentId
+                ? agentMap.get(selectedAgentId)?.name || "Agent"
+                : "All Agents"}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {totalSessions} session{totalSessions !== 1 ? "s" : ""}
+            </p>
+          </div>
           <AgentFilterMenu
             value={selectedAgentId}
             onValueChange={handleAgentFilterChange}
