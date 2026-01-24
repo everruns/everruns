@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { SessionCard } from "@/components/session/session-card";
 import { AgentSelect } from "@/components/agent/agent-select";
+import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import {
   Plus,
   ChevronLeft,
@@ -119,11 +120,9 @@ export default function SessionsPage() {
               ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
               : "All Sessions"}
           </CardTitle>
-          <AgentSelect
+          <AgentFilterMenu
             value={selectedAgentId}
             onValueChange={handleAgentFilterChange}
-            includeAll
-            className="w-[180px]"
           />
         </CardHeader>
         <CardContent>
