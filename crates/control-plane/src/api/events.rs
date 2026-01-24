@@ -81,10 +81,7 @@ impl FromRef<AppState> for AuthState {
 /// Create event routes (nested under sessions, org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/sse",
-            get(stream_sse),
-        )
+        .route("/v1/orgs/:org/sessions/:session_id/sse", get(stream_sse))
         .route(
             "/v1/orgs/:org/sessions/:session_id/events",
             get(list_events),

@@ -98,7 +98,8 @@ pub async fn run(
         let url = match &last_event_id {
             Some(id) => format!(
                 "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events?since_id={}",
-                session_id.as_hyphenated(), id
+                session_id.as_hyphenated(),
+                id
             ),
             None => format!(
                 "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events",

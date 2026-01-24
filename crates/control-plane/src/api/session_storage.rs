@@ -94,9 +94,7 @@ pub async fn list_keys(
     State(state): State<AppState>,
     Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
-    let session_id: SessionId = session_id
-        .parse()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get all keys with their values
     let keys = state
@@ -147,9 +145,7 @@ pub async fn list_secrets(
     State(state): State<AppState>,
     Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
-    let session_id: SessionId = session_id
-        .parse()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let secrets = state
         .db
