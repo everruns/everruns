@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useAgents, useSessions, useCreateSession, useLlmModels, useDeleteSession } from "@/hooks";
+import { useAgents, useSessions, useCreateSession, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +26,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Trash2,
 } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 
@@ -47,7 +46,6 @@ export default function SessionsPage() {
   );
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
-  const deleteSession = useDeleteSession();
 
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
@@ -85,19 +83,6 @@ export default function SessionsPage() {
       router.push(`/sessions/${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
-    }
-  };
-
-  const handleDeleteSession = async (sessionId: string, sessionTitle: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${sessionTitle}"? This action cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    try {
-      await deleteSession.mutateAsync({ sessionId });
-    } catch (error) {
-      console.error("Failed to delete session:", error);
     }
   };
 
@@ -175,28 +160,12 @@ export default function SessionsPage() {
               {sessions.map((session) => {
                 const agent = agentMap.get(session.agent_id);
                 return (
-                  <div key={session.id} className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <SessionCard
-                        session={session}
-                        agentName={!selectedAgentId ? agent?.name : undefined}
-                        model={session.model_id ? modelMap.get(session.model_id) : undefined}
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                      onClick={() =>
-                        handleDeleteSession(
-                          session.id,
-                          session.title || `Session ${session.id.slice(0, 8)}`
-                        )
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    agentName={!selectedAgentId ? agent?.name : undefined}
+                    model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                  />
                 );
               })}
             </div>
