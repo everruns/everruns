@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useAgents, useCapabilities, useSessions, useLlmModels, useCreateSession } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
@@ -21,7 +21,6 @@ import { AgentSelect } from "@/components/agent/agent-select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import type { Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -33,17 +32,6 @@ export default function DashboardPage() {
 
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
-
-  // Create a map of agent_id -> agent for quick lookups
-  const agentMap = useMemo(() => {
-    return new Map<string, Agent>(agents.map((a) => [a.id, a]));
-  }, [agents]);
-
-  // Create a map of model_id -> model for quick lookups
-  const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, LlmModelWithProvider>();
-    return new Map(llmModels.map((m) => [m.id, m]));
-  }, [llmModels]);
 
   const handleOpenNewSessionDialog = () => {
     setNewSessionAgentId(agents[0]?.id || "");
