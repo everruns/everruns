@@ -4704,10 +4704,10 @@ async fn test_events_api_contract() {
 
     let session: Session = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
+            "{}/v1/orgs/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG
         ))
-        .json(&json!({}))
+        .json(&json!({"agent_id": agent.id, "title": "Events Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")
@@ -4720,8 +4720,8 @@ async fn test_events_api_contract() {
     // Step 2: Send a message to generate events
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "content": "Hello"
@@ -4850,10 +4850,10 @@ async fn test_events_sse_contract() {
 
     let session: Session = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
+            "{}/v1/orgs/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG
         ))
-        .json(&json!({}))
+        .json(&json!({"agent_id": agent.id, "title": "SSE Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")
