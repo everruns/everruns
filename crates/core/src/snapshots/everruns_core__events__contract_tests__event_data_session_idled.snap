@@ -1,0 +1,12 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "turn_id": "turn_00000000000000000000000000000002",
+  "iterations": 3,
+  "usage": {
+    "input_tokens": 500,
+    "output_tokens": 200
+  }
+}

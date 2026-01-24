@@ -191,106 +191,16 @@ pub fn json_to_proto_struct(value: &serde_json::Value) -> Struct {
 
 /// Deserialize event data from JSON based on event_type
 ///
-/// Maps event_type string to the appropriate EventData variant and deserializes
-/// the data payload accordingly.
-fn deserialize_event_data(
-    event_type: &str,
-    data: serde_json::Value,
-) -> Result<everruns_core::EventData, ConversionError> {
-    use everruns_core::EventData;
-    use everruns_core::events::*;
-
-    Ok(match event_type {
-        INPUT_MESSAGE => {
-            let typed: InputMessageData = serde_json::from_value(data)?;
-            EventData::InputMessage(typed)
-        }
-        OUTPUT_MESSAGE_STARTED => {
-            let typed: OutputMessageStartedData = serde_json::from_value(data)?;
-            EventData::OutputMessageStarted(typed)
-        }
-        OUTPUT_MESSAGE_DELTA => {
-            let typed: OutputMessageDeltaData = serde_json::from_value(data)?;
-            EventData::OutputMessageDelta(typed)
-        }
-        OUTPUT_MESSAGE_COMPLETED => {
-            let typed: OutputMessageCompletedData = serde_json::from_value(data)?;
-            EventData::OutputMessageCompleted(typed)
-        }
-        TURN_STARTED => {
-            let typed: TurnStartedData = serde_json::from_value(data)?;
-            EventData::TurnStarted(typed)
-        }
-        TURN_COMPLETED => {
-            let typed: TurnCompletedData = serde_json::from_value(data)?;
-            EventData::TurnCompleted(typed)
-        }
-        TURN_FAILED => {
-            let typed: TurnFailedData = serde_json::from_value(data)?;
-            EventData::TurnFailed(typed)
-        }
-        REASON_STARTED => {
-            let typed: ReasonStartedData = serde_json::from_value(data)?;
-            EventData::ReasonStarted(typed)
-        }
-        REASON_COMPLETED => {
-            let typed: ReasonCompletedData = serde_json::from_value(data)?;
-            EventData::ReasonCompleted(typed)
-        }
-        ACT_STARTED => {
-            let typed: ActStartedData = serde_json::from_value(data)?;
-            EventData::ActStarted(typed)
-        }
-        ACT_COMPLETED => {
-            let typed: ActCompletedData = serde_json::from_value(data)?;
-            EventData::ActCompleted(typed)
-        }
-        TOOL_STARTED => {
-            let typed: ToolStartedData = serde_json::from_value(data)?;
-            EventData::ToolStarted(typed)
-        }
-        TOOL_COMPLETED => {
-            let typed: ToolCompletedData = serde_json::from_value(data)?;
-            EventData::ToolCompleted(typed)
-        }
-        LLM_GENERATION => {
-            let typed: LlmGenerationData = serde_json::from_value(data)?;
-            EventData::LlmGeneration(typed)
-        }
-        REASON_THINKING_STARTED => {
-            let typed: ReasonThinkingStartedData = serde_json::from_value(data)?;
-            EventData::ReasonThinkingStarted(typed)
-        }
-        REASON_THINKING_DELTA => {
-            let typed: ReasonThinkingDeltaData = serde_json::from_value(data)?;
-            EventData::ReasonThinkingDelta(typed)
-        }
-        REASON_THINKING_COMPLETED => {
-            let typed: ReasonThinkingCompletedData = serde_json::from_value(data)?;
-            EventData::ReasonThinkingCompleted(typed)
-        }
-        SESSION_STARTED => {
-            let typed: SessionStartedData = serde_json::from_value(data)?;
-            EventData::SessionStarted(typed)
-        }
-        SESSION_ACTIVATED => {
-            let typed: SessionActivatedData = serde_json::from_value(data)?;
-            EventData::SessionActivated(typed)
-        }
-        SESSION_IDLED => {
-            let typed: SessionIdledData = serde_json::from_value(data)?;
-            EventData::SessionIdled(typed)
-        }
-        _ => {
-            // Unknown event type - store as raw JSON
-            EventData::Raw(data)
-        }
-    })
+/// Uses the core library's deserialize_event_data function which handles
+/// type-directed deserialization and returns Unsupported for unknown types.
+fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> everruns_core::EventData {
+    everruns_core::events::deserialize_event_data(event_type, data)
 }
 
 /// Serialize EventData to JSON Value
 ///
 /// Converts the typed EventData variant to its JSON representation.
+/// Note: Unsupported events should not reach serialization - they are filtered earlier.
 fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
     use everruns_core::EventData;
 
@@ -316,7 +226,10 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::Raw(v) => v.clone(),
+        EventData::Unsupported { data, .. } => {
+            // Should not happen in production - unsupported events are filtered before reaching here
+            data.clone()
+        }
     }
 }
 
@@ -573,7 +486,7 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
         .as_ref()
         .ok_or(ConversionError::MissingField("data"))?;
     let data_json = proto_struct_to_json(data_struct);
-    let data = deserialize_event_data(&value.event_type, data_json)?;
+    let data = deserialize_event_data(&value.event_type, data_json);
 
     // Convert optional metadata from prost Struct
     let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
@@ -685,7 +598,7 @@ pub fn proto_event_request_to_schema(
         .as_ref()
         .ok_or(ConversionError::MissingField("data"))?;
     let data_json = proto_struct_to_json(data_struct);
-    let data = deserialize_event_data(&value.event_type, data_json)?;
+    let data = deserialize_event_data(&value.event_type, data_json);
 
     // Convert optional metadata from prost Struct
     let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);

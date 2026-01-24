@@ -82,6 +82,8 @@ wiremock = "0.6"
 # Provider crates for examples (dev-only, not a runtime dependency)
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
+# Snapshot testing for contract tests
+insta = { version = "1.40", features = ["json", "redactions"] }
 
 [[example]]
 name = "turn_based_execution"

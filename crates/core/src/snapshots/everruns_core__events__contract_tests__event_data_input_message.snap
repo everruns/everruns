@@ -1,0 +1,17 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "message": {
+    "id": "[MESSAGE_ID]",
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Hello, world!"
+      }
+    ],
+    "created_at": "[TIMESTAMP]"
+  }
+}

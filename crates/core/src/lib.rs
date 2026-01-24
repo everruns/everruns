@@ -160,7 +160,7 @@ pub use events::{
     SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_COMPLETED, TOOL_STARTED,
     TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallSummary,
     ToolCompletedData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnStartedData, UNKNOWN,
+    TurnStartedData,
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{

@@ -1,0 +1,7 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "agent_id": "agent_00000000000000000000000000000004"
+}

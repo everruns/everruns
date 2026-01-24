@@ -16,7 +16,7 @@
 use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
 use anyhow::{Result, bail};
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
+use everruns_core::{Event, EventListener, EventRequest};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -79,14 +79,14 @@ impl EventService {
     }
 
     /// Validate that event_type matches the data type.
-    /// Raw/unknown events are exempt from this check.
+    /// Unsupported events are rejected - they should not be emitted via this service.
     fn validate_event_type_consistency(request: &EventRequest) -> Result<()> {
-        let data_event_type = request.data.event_type();
-
-        // Raw/unknown events are exempt - they're used for legacy/external events
-        if data_event_type == UNKNOWN {
-            return Ok(());
+        // Reject unsupported events - they should never be created, only encountered during read
+        if request.data.is_unsupported() {
+            bail!("cannot emit unsupported event type");
         }
+
+        let data_event_type = request.data.event_type();
 
         // Validate consistency between declared type and data type
         if request.event_type != data_event_type {
@@ -197,6 +197,8 @@ impl EventService {
         Ok(event)
     }
 
+    /// List events for a session, filtering out unsupported events.
+    /// Unsupported events are internal and never exposed via API.
     pub async fn list(
         &self,
         session_id: Uuid,
@@ -213,24 +215,32 @@ impl EventService {
                 exclude_types,
             )
             .await?;
-        Ok(rows.into_iter().map(Self::row_to_event).collect())
+        Ok(rows
+            .into_iter()
+            .map(Self::row_to_event)
+            .filter(|e| !e.is_unsupported())
+            .collect())
     }
 
     /// List events that represent messages (user, agent, tool results)
     /// Used by gRPC service to load conversation history for workers.
+    /// Filters out unsupported events.
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<Event>> {
         let rows = self
             .db
             .list_message_events(SessionId::from_uuid(session_id))
             .await?;
-        Ok(rows.into_iter().map(Self::row_to_event).collect())
+        Ok(rows
+            .into_iter()
+            .map(Self::row_to_event)
+            .filter(|e| !e.is_unsupported())
+            .collect())
     }
 
     fn row_to_event(row: EventRow) -> Event {
         // Direct mapping from row columns to Event fields
-        // Use event_type to deserialize data to the correct typed variant
-        let data = Self::deserialize_event_data(&row.event_type, row.data.clone())
-            .unwrap_or_else(|_| EventData::raw(row.data));
+        // Use the core library's deserialize_event_data for proper type handling
+        let data = everruns_core::events::deserialize_event_data(&row.event_type, row.data);
         Event {
             id: row.id,
             event_type: row.event_type,
@@ -242,45 +252,5 @@ impl EventService {
             tags: row.tags,
             sequence: Some(row.sequence),
         }
-    }
-
-    /// Deserialize event data based on event_type string.
-    /// This avoids issues with untagged enum deserialization where variants
-    /// with fewer required fields can match before the correct variant.
-    fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Result<EventData> {
-        use everruns_core::events::*;
-
-        Ok(match event_type {
-            INPUT_MESSAGE => EventData::InputMessage(serde_json::from_value(data)?),
-            OUTPUT_MESSAGE_STARTED => {
-                EventData::OutputMessageStarted(serde_json::from_value(data)?)
-            }
-            OUTPUT_MESSAGE_DELTA => EventData::OutputMessageDelta(serde_json::from_value(data)?),
-            OUTPUT_MESSAGE_COMPLETED => {
-                EventData::OutputMessageCompleted(serde_json::from_value(data)?)
-            }
-            TURN_STARTED => EventData::TurnStarted(serde_json::from_value(data)?),
-            TURN_COMPLETED => EventData::TurnCompleted(serde_json::from_value(data)?),
-            TURN_FAILED => EventData::TurnFailed(serde_json::from_value(data)?),
-            TURN_CANCELLED => EventData::TurnCancelled(serde_json::from_value(data)?),
-            REASON_STARTED => EventData::ReasonStarted(serde_json::from_value(data)?),
-            REASON_COMPLETED => EventData::ReasonCompleted(serde_json::from_value(data)?),
-            ACT_STARTED => EventData::ActStarted(serde_json::from_value(data)?),
-            ACT_COMPLETED => EventData::ActCompleted(serde_json::from_value(data)?),
-            TOOL_STARTED => EventData::ToolStarted(serde_json::from_value(data)?),
-            TOOL_COMPLETED => EventData::ToolCompleted(serde_json::from_value(data)?),
-            LLM_GENERATION => EventData::LlmGeneration(serde_json::from_value(data)?),
-            REASON_THINKING_STARTED => {
-                EventData::ReasonThinkingStarted(serde_json::from_value(data)?)
-            }
-            REASON_THINKING_DELTA => EventData::ReasonThinkingDelta(serde_json::from_value(data)?),
-            REASON_THINKING_COMPLETED => {
-                EventData::ReasonThinkingCompleted(serde_json::from_value(data)?)
-            }
-            SESSION_STARTED => EventData::SessionStarted(serde_json::from_value(data)?),
-            SESSION_ACTIVATED => EventData::SessionActivated(serde_json::from_value(data)?),
-            SESSION_IDLED => EventData::SessionIdled(serde_json::from_value(data)?),
-            _ => EventData::raw(data),
-        })
     }
 }

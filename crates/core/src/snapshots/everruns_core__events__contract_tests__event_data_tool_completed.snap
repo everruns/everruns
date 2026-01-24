@@ -1,0 +1,17 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "tool_call_id": "tc_1",
+  "tool_name": "get_weather",
+  "success": true,
+  "status": "success",
+  "result": [
+    {
+      "type": "text",
+      "text": "Sunny, 22°C"
+    }
+  ],
+  "duration_ms": 250
+}

@@ -1,6 +1,19 @@
-// Event Protocol
+// ==========================================================================
+// PUBLIC CONTRACT - Event Protocol
+// ==========================================================================
 //
-// This module defines the standard event schema used throughout Everruns.
+// This module defines the Everruns event protocol - a PUBLIC API CONTRACT.
+// Changes must follow the compatibility guidelines in specs/events-contract.md.
+//
+// STABILITY: Stable (v1)
+// - Event structure (id, type, ts, session_id, context, data) is frozen
+// - New event types are additive (non-breaking)
+// - New optional fields are non-breaking
+// - Unsupported events are filtered before API responses
+//
+// See: specs/events-contract.md for full contract specification.
+// ==========================================================================
+//
 // All events follow a consistent structure: id, type, ts, context, data.
 // Events are the source of truth for conversation data and provide
 // observability into session execution.
@@ -297,6 +310,12 @@ impl Event {
     /// Check if this is a session lifecycle event
     pub fn is_session_event(&self) -> bool {
         self.event_type.starts_with("session.")
+    }
+
+    /// Check if this event has unsupported data.
+    /// Unsupported events should be filtered before API responses.
+    pub fn is_unsupported(&self) -> bool {
+        self.data.is_unsupported()
     }
 }
 
@@ -1158,16 +1177,21 @@ pub enum EventData {
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
 
-    /// Raw data for backward compatibility with legacy events
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
-    Raw(serde_json::Value),
+    /// Internal-only variant for unknown event types.
+    /// Never serialized to API responses - filtered out before transmission.
+    /// Logs a warning when created to alert developers of unknown types.
+    #[serde(skip)]
+    Unsupported {
+        /// The unknown event type string
+        event_type: String,
+        /// The raw JSON data
+        data: serde_json::Value,
+    },
 }
 
-/// Unknown event type for raw/legacy events
-pub const UNKNOWN: &str = "unknown";
-
 impl EventData {
-    /// Get the event type constant for this data
+    /// Get the event type constant for this data.
+    /// For Unsupported events, returns "unsupported" (internal use only).
     pub fn event_type(&self) -> &'static str {
         match self {
             EventData::InputMessage(_) => INPUT_MESSAGE,
@@ -1191,13 +1215,24 @@ impl EventData {
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
-            EventData::Raw(_) => UNKNOWN,
+            EventData::Unsupported { .. } => "unsupported",
         }
     }
 
-    /// Create a raw event data from JSON value
-    pub fn raw(value: serde_json::Value) -> Self {
-        EventData::Raw(value)
+    /// Check if this is an unsupported event type.
+    /// Unsupported events should be filtered before API responses.
+    pub fn is_unsupported(&self) -> bool {
+        matches!(self, EventData::Unsupported { .. })
+    }
+
+    /// Create an unsupported event data with warning log.
+    /// This is used when deserializing unknown event types.
+    pub fn unsupported(event_type: String, data: serde_json::Value) -> Self {
+        tracing::warn!(
+            event_type = %event_type,
+            "Encountered unsupported event type - will be filtered from API responses"
+        );
+        EventData::Unsupported { event_type, data }
     }
 }
 
@@ -1212,7 +1247,8 @@ impl EventData {
 /// * `data` - The JSON value to deserialize
 ///
 /// # Returns
-/// The deserialized EventData variant, or EventData::Raw if the type is unknown.
+/// The deserialized EventData variant, or EventData::Unsupported if the type is unknown.
+/// Unsupported events log a warning and should be filtered before API responses.
 pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> EventData {
     let result =
         match event_type {
@@ -1273,13 +1309,23 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             SESSION_IDLED => serde_json::from_value::<SessionIdledData>(data.clone())
                 .map(EventData::SessionIdled),
             _ => {
-                // Unknown event type - return as raw
-                return EventData::Raw(data);
+                // Unknown event type - return as unsupported with warning
+                return EventData::unsupported(event_type.to_string(), data);
             }
         };
 
-    // If deserialization fails, return as raw data
-    result.unwrap_or(EventData::Raw(data))
+    // If deserialization fails, return as unsupported
+    result.unwrap_or_else(|e| {
+        tracing::warn!(
+            event_type = %event_type,
+            error = %e,
+            "Failed to deserialize known event type - treating as unsupported"
+        );
+        EventData::Unsupported {
+            event_type: event_type.to_string(),
+            data,
+        }
+    })
 }
 
 /// Macro to generate From implementations for EventData variants.
@@ -1320,7 +1366,6 @@ impl_from_event_data! {
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
-    serde_json::Value => Raw,
 }
 
 // ============================================================================
@@ -1941,5 +1986,625 @@ mod tests {
         // Should not appear in JSON when None
         let json = serde_json::to_string(&data).unwrap();
         assert!(!json.contains("time_to_first_token_ms"));
+    }
+}
+
+// ============================================================================
+// Contract Tests
+// ============================================================================
+//
+// These tests validate the event protocol contract defined in specs/events-contract.md.
+// Snapshot tests ensure JSON structure doesn't change accidentally.
+// Forward compatibility tests verify unknown fields are handled correctly.
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use insta::{assert_json_snapshot, with_settings};
+
+    /// Helper to create deterministic test IDs for snapshot stability
+    fn test_session_id() -> SessionId {
+        SessionId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0001,
+        ))
+    }
+
+    fn test_turn_id() -> TurnId {
+        TurnId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0002,
+        ))
+    }
+
+    fn test_message_id() -> MessageId {
+        MessageId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0003,
+        ))
+    }
+
+    fn test_agent_id() -> AgentId {
+        AgentId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0004,
+        ))
+    }
+
+    // ========================================================================
+    // Serialization Snapshot Tests
+    // ========================================================================
+    // These tests capture the canonical JSON representation of each event type.
+    // Changes to these snapshots indicate a potential breaking change.
+
+    #[test]
+    fn snapshot_input_message() {
+        let data = InputMessageData::new(Message::user("Hello, world!"));
+        with_settings!({
+            sort_maps => true,
+        }, {
+            // Redact volatile fields (id, created_at) to ensure snapshot stability
+            assert_json_snapshot!("event_data_input_message", data, {
+                ".message.id" => "[MESSAGE_ID]",
+                ".message.created_at" => "[TIMESTAMP]"
+            });
+        });
+    }
+
+    #[test]
+    fn snapshot_output_message_started() {
+        let data = OutputMessageStartedData {
+            turn_id: test_turn_id(),
+            model: Some("gpt-4o".to_string()),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_output_message_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_output_message_delta() {
+        let data = OutputMessageDeltaData {
+            turn_id: test_turn_id(),
+            delta: "Hello".to_string(),
+            accumulated: "Hello".to_string(),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_output_message_delta", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_output_message_completed() {
+        let data = OutputMessageCompletedData::new(Message::assistant("Hello!"));
+        with_settings!({
+            sort_maps => true,
+        }, {
+            // Redact volatile fields (id, created_at) to ensure snapshot stability
+            assert_json_snapshot!("event_data_output_message_completed", data, {
+                ".message.id" => "[MESSAGE_ID]",
+                ".message.created_at" => "[TIMESTAMP]"
+            });
+        });
+    }
+
+    #[test]
+    fn snapshot_turn_started() {
+        let data = TurnStartedData {
+            turn_id: test_turn_id(),
+            input_message_id: test_message_id(),
+            input_content: Some("Hello".to_string()),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_turn_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_turn_completed() {
+        let data = TurnCompletedData {
+            turn_id: test_turn_id(),
+            iterations: 3,
+            duration_ms: Some(1500),
+            usage: Some(TokenUsage::new(100, 50)),
+            input_content: None,
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_turn_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_turn_failed() {
+        let data = TurnFailedData {
+            turn_id: test_turn_id(),
+            error: "Rate limit exceeded".to_string(),
+            error_code: Some("RATE_LIMIT".to_string()),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_turn_failed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_turn_cancelled() {
+        let data = TurnCancelledData {
+            turn_id: test_turn_id(),
+            reason: Some("User requested".to_string()),
+            usage: Some(TokenUsage::new(50, 25)),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_turn_cancelled", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_started() {
+        let data = ReasonStartedData {
+            agent_id: test_agent_id(),
+            metadata: Some(ModelMetadata {
+                model: "gpt-4o".to_string(),
+                model_id: None,
+                provider_id: None,
+            }),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_completed() {
+        let data = ReasonCompletedData::success(
+            "Hello world",
+            true,
+            2,
+            Some(1000),
+            Some(TokenUsage::new(100, 50)),
+        );
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_act_started() {
+        let data = ActStartedData {
+            tool_calls: vec![ToolCallSummary {
+                id: "tc_1".to_string(),
+                name: "get_weather".to_string(),
+            }],
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_act_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_act_completed() {
+        let data = ActCompletedData {
+            completed: true,
+            success_count: 2,
+            error_count: 0,
+            duration_ms: Some(500),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_act_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_tool_started() {
+        let data = ToolStartedData {
+            tool_call: ToolCall {
+                id: "tc_1".to_string(),
+                name: "get_weather".to_string(),
+                arguments: serde_json::json!({"city": "London"}),
+            },
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_tool_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_tool_completed() {
+        let data = ToolCompletedData::success(
+            "tc_1".to_string(),
+            "get_weather".to_string(),
+            vec![crate::message::ContentPart::text("Sunny, 22°C")],
+            Some(250),
+        );
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_tool_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_llm_generation() {
+        let data = LlmGenerationData::success(
+            vec![Message::user("Hello")],
+            vec![ToolDefinitionSummary {
+                name: "tool1".to_string(),
+                description: "A tool".to_string(),
+            }],
+            Some("Hi there!".to_string()),
+            vec![],
+            "gpt-4o".to_string(),
+            Some("openai".to_string()),
+            Some(TokenUsage::new(10, 5)),
+            Some(100),
+            Some(25),
+        );
+        with_settings!({
+            sort_maps => true,
+        }, {
+            // Redact volatile fields (id, created_at) in messages array
+            assert_json_snapshot!("event_data_llm_generation", data, {
+                ".messages[].id" => "[MESSAGE_ID]",
+                ".messages[].created_at" => "[TIMESTAMP]"
+            });
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_thinking_started() {
+        let data = ReasonThinkingStartedData {
+            turn_id: test_turn_id(),
+            model: Some("claude-4-opus".to_string()),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_thinking_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_thinking_delta() {
+        let data = ReasonThinkingDeltaData {
+            turn_id: test_turn_id(),
+            delta: "Let me think...".to_string(),
+            accumulated: "Let me think...".to_string(),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_thinking_delta", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_thinking_completed() {
+        let data = ReasonThinkingCompletedData {
+            turn_id: test_turn_id(),
+            thinking: "I need to consider...".to_string(),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_thinking_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_session_started() {
+        let data = SessionStartedData {
+            agent_id: test_agent_id(),
+            model_id: None,
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_session_started", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_session_activated() {
+        let data = SessionActivatedData {
+            turn_id: test_turn_id(),
+            input_message_id: test_message_id(),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_session_activated", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_session_idled() {
+        let data = SessionIdledData {
+            turn_id: test_turn_id(),
+            iterations: Some(3),
+            usage: Some(TokenUsage::new(500, 200)),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_session_idled", data);
+        });
+    }
+
+    // ========================================================================
+    // Forward Compatibility Tests
+    // ========================================================================
+    // These tests verify that unknown fields and types are handled correctly
+    // per the contract specification.
+
+    #[test]
+    fn forward_compat_unknown_fields_ignored() {
+        // Unknown fields should be silently ignored during deserialization
+        let json = r#"{
+            "turn_id": "turn_00000000000000000000000000000002",
+            "iterations": 3,
+            "duration_ms": 1500,
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+            "future_field": "should be ignored",
+            "another_new_field": 42
+        }"#;
+
+        let data: TurnCompletedData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.iterations, 3);
+        assert_eq!(data.duration_ms, Some(1500));
+    }
+
+    #[test]
+    fn forward_compat_unknown_event_type_becomes_unsupported() {
+        // Unknown event types should deserialize to Unsupported
+        let json = serde_json::json!({"some_field": "value"});
+        let data = deserialize_event_data("future.event.type", json);
+
+        assert!(data.is_unsupported());
+        assert_eq!(data.event_type(), "unsupported");
+    }
+
+    #[test]
+    fn forward_compat_unsupported_preserves_data() {
+        // Unsupported events should preserve the original data for debugging
+        let original = serde_json::json!({"key": "value", "nested": {"a": 1}});
+        let data = deserialize_event_data("unknown.event", original.clone());
+
+        match data {
+            EventData::Unsupported { event_type, data } => {
+                assert_eq!(event_type, "unknown.event");
+                assert_eq!(data, original);
+            }
+            _ => panic!("Expected Unsupported variant"),
+        }
+    }
+
+    #[test]
+    fn forward_compat_optional_fields_absent() {
+        // Optional fields can be absent without causing errors
+        let json = r#"{
+            "turn_id": "turn_00000000000000000000000000000002",
+            "iterations": 3
+        }"#;
+
+        let data: TurnCompletedData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.iterations, 3);
+        assert!(data.duration_ms.is_none());
+        assert!(data.usage.is_none());
+        assert!(data.input_content.is_none());
+    }
+
+    // ========================================================================
+    // Round-Trip Serialization Tests
+    // ========================================================================
+    // These tests verify that events survive serialization/deserialization.
+
+    #[test]
+    fn round_trip_all_event_data_types() {
+        // Test that all event data types can be serialized and deserialized
+        let test_cases: Vec<(&str, EventData)> = vec![
+            (
+                INPUT_MESSAGE,
+                InputMessageData::new(Message::user("test")).into(),
+            ),
+            (
+                OUTPUT_MESSAGE_STARTED,
+                OutputMessageStartedData {
+                    turn_id: test_turn_id(),
+                    model: None,
+                }
+                .into(),
+            ),
+            (
+                OUTPUT_MESSAGE_DELTA,
+                OutputMessageDeltaData {
+                    turn_id: test_turn_id(),
+                    delta: "x".to_string(),
+                    accumulated: "x".to_string(),
+                }
+                .into(),
+            ),
+            (
+                OUTPUT_MESSAGE_COMPLETED,
+                OutputMessageCompletedData::new(Message::assistant("hi")).into(),
+            ),
+            (
+                TURN_STARTED,
+                TurnStartedData {
+                    turn_id: test_turn_id(),
+                    input_message_id: test_message_id(),
+                    input_content: None,
+                }
+                .into(),
+            ),
+            (
+                TURN_COMPLETED,
+                TurnCompletedData {
+                    turn_id: test_turn_id(),
+                    iterations: 1,
+                    duration_ms: None,
+                    usage: None,
+                    input_content: None,
+                }
+                .into(),
+            ),
+            (
+                TURN_FAILED,
+                TurnFailedData {
+                    turn_id: test_turn_id(),
+                    error: "err".to_string(),
+                    error_code: None,
+                }
+                .into(),
+            ),
+            (
+                TURN_CANCELLED,
+                TurnCancelledData {
+                    turn_id: test_turn_id(),
+                    reason: None,
+                    usage: None,
+                }
+                .into(),
+            ),
+            (
+                REASON_STARTED,
+                ReasonStartedData {
+                    agent_id: test_agent_id(),
+                    metadata: None,
+                }
+                .into(),
+            ),
+            (
+                REASON_COMPLETED,
+                ReasonCompletedData::success("", false, 0, None, None).into(),
+            ),
+            (ACT_STARTED, ActStartedData { tool_calls: vec![] }.into()),
+            (
+                ACT_COMPLETED,
+                ActCompletedData {
+                    completed: true,
+                    success_count: 0,
+                    error_count: 0,
+                    duration_ms: None,
+                }
+                .into(),
+            ),
+            (
+                SESSION_STARTED,
+                SessionStartedData {
+                    agent_id: test_agent_id(),
+                    model_id: None,
+                }
+                .into(),
+            ),
+            (
+                SESSION_ACTIVATED,
+                SessionActivatedData {
+                    turn_id: test_turn_id(),
+                    input_message_id: test_message_id(),
+                }
+                .into(),
+            ),
+            (
+                SESSION_IDLED,
+                SessionIdledData {
+                    turn_id: test_turn_id(),
+                    iterations: None,
+                    usage: None,
+                }
+                .into(),
+            ),
+        ];
+
+        for (event_type, original) in test_cases {
+            // Serialize
+            let json = serde_json::to_value(&original).unwrap();
+            // Deserialize using type-directed function
+            let deserialized = deserialize_event_data(event_type, json);
+            // Verify same event type
+            assert_eq!(
+                original.event_type(),
+                deserialized.event_type(),
+                "Event type mismatch for {}",
+                event_type
+            );
+        }
+    }
+
+    // ========================================================================
+    // Event Structure Tests
+    // ========================================================================
+    // Tests for the Event container structure
+
+    #[test]
+    fn event_structure_has_required_fields() {
+        let session_id = test_session_id();
+        let context = EventContext::turn(test_turn_id(), test_message_id());
+        let event = Event::new(
+            session_id,
+            context,
+            InputMessageData::new(Message::user("test")),
+        );
+
+        // Verify all required fields are present
+        let json = serde_json::to_value(&event).unwrap();
+        assert!(json.get("id").is_some(), "Missing id field");
+        assert!(json.get("type").is_some(), "Missing type field");
+        assert!(json.get("ts").is_some(), "Missing ts field");
+        assert!(json.get("session_id").is_some(), "Missing session_id field");
+        assert!(json.get("context").is_some(), "Missing context field");
+        assert!(json.get("data").is_some(), "Missing data field");
+    }
+
+    #[test]
+    fn event_context_span_fields() {
+        let context = EventContext::empty().with_span(
+            "trace123".to_string(),
+            "span456".to_string(),
+            Some("parent789".to_string()),
+        );
+
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(
+            json.get("trace_id").and_then(|v| v.as_str()),
+            Some("trace123")
+        );
+        assert_eq!(
+            json.get("span_id").and_then(|v| v.as_str()),
+            Some("span456")
+        );
+        assert_eq!(
+            json.get("parent_span_id").and_then(|v| v.as_str()),
+            Some("parent789")
+        );
+    }
+
+    #[test]
+    fn is_unsupported_returns_false_for_known_types() {
+        let data = InputMessageData::new(Message::user("test"));
+        let event_data: EventData = data.into();
+        assert!(!event_data.is_unsupported());
+    }
+
+    #[test]
+    fn is_unsupported_returns_true_for_unsupported() {
+        let data = deserialize_event_data("unknown.type", serde_json::json!({}));
+        assert!(data.is_unsupported());
     }
 }
