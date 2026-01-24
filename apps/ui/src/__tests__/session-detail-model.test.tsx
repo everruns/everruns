@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { SessionCard } from "@/components/session/session-card";
 import type { Session, LlmModelWithProvider } from "@/lib/api/types";
 

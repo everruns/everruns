@@ -235,39 +235,34 @@ export default function DevSessionCardPage() {
               <ShowcaseItem label="Running Session">
                 <SessionCard
                   session={sampleSessions.running}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="Idle Session">
                 <SessionCard
                   session={sampleSessions.idle}
-                  agentId="agent-123"
-                  model={sampleModels.openai}
+                                    model={sampleModels.openai}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="New Session (No Title or Preview)">
                 <SessionCard
                   session={sampleSessions.new}
-                  agentId="agent-123"
-                />
+                                  />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Preview Only (No Title)">
                 <SessionCard
                   session={sampleSessions.withPreviewOnly}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Title and Preview">
                 <SessionCard
                   session={sampleSessions.longSummary}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
             </ShowcaseSection>
@@ -281,18 +276,15 @@ export default function DevSessionCardPage() {
                 <div className="space-y-2">
                   <SessionCard
                     session={sampleSessions.running}
-                    agentId="agent-123"
-                    model={sampleModels.anthropic}
+                                        model={sampleModels.anthropic}
                   />
                   <SessionCard
                     session={sampleSessions.idle}
-                    agentId="agent-123"
-                    model={sampleModels.openai}
+                                        model={sampleModels.openai}
                   />
                   <SessionCard
                     session={sampleSessions.new}
-                    agentId="agent-123"
-                  />
+                                      />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>
@@ -307,8 +299,7 @@ export default function DevSessionCardPage() {
                   <div className="flex-1">
                     <SessionCard
                       session={sampleSessions.running}
-                      agentId="agent-123"
-                      model={sampleModels.anthropic}
+                                            model={sampleModels.anthropic}
                     />
                   </div>
                   <button
