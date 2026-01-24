@@ -13,6 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SessionCard } from "@/components/session/session-card";
 import {
   Plus,
@@ -28,6 +36,8 @@ export default function SessionsPage() {
   const router = useRouter();
   const [page, setPage] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
+  const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
   const { data: agents, isLoading: agentsLoading } = useAgents();
@@ -55,18 +65,22 @@ export default function SessionsPage() {
     return new Map(agents.map((a) => [a.id, a]));
   }, [agents]);
 
-  const handleNewSession = async () => {
-    // If an agent is selected, create session for that agent
-    // Otherwise, show the first available agent
-    const targetAgentId = selectedAgentId || agents?.[0]?.id;
-    if (!targetAgentId) {
-      console.error("No agent available to create session");
+  const handleOpenNewSessionDialog = () => {
+    // Pre-select the filtered agent if one is selected, otherwise first agent
+    setNewSessionAgentId(selectedAgentId || agents?.[0]?.id || "");
+    setNewSessionDialogOpen(true);
+  };
+
+  const handleCreateSession = async () => {
+    if (!newSessionAgentId) {
+      console.error("No agent selected");
       return;
     }
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: targetAgentId },
+        request: { agent_id: newSessionAgentId },
       });
+      setNewSessionDialogOpen(false);
       // Use org-level session URL
       router.push(`/sessions/${session.id}`);
     } catch (error) {
@@ -127,11 +141,11 @@ export default function SessionsPage() {
             </SelectContent>
           </Select>
           <Button
-            onClick={handleNewSession}
-            disabled={createSession.isPending || !agents?.length}
+            onClick={handleOpenNewSessionDialog}
+            disabled={!agents?.length}
           >
             <Plus className="w-4 h-4 mr-2" />
-            {createSession.isPending ? "Creating..." : "New Session"}
+            New Session
           </Button>
         </div>
       </div>
@@ -221,6 +235,49 @@ export default function SessionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* New Session Dialog */}
+      <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Session</DialogTitle>
+            <DialogDescription>
+              Select an agent to start a new conversation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Select
+              value={newSessionAgentId}
+              onValueChange={setNewSessionAgentId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents?.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setNewSessionDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSession}
+              disabled={!newSessionAgentId || createSession.isPending}
+            >
+              {createSession.isPending ? "Creating..." : "Create Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
