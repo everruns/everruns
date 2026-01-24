@@ -3449,9 +3449,6 @@
             "$ref": "#/components/schemas/TurnFailedData"
           },
           {
-            "$ref": "#/components/schemas/TurnCancelledData"
-          },
-          {
             "$ref": "#/components/schemas/ReasonStartedData"
           },
           {
@@ -3480,6 +3477,9 @@
           },
           {
             "$ref": "#/components/schemas/ReasonThinkingCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnCancelledData"
           },
           {
             "$ref": "#/components/schemas/SessionStartedData"
