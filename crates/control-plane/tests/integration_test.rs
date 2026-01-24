@@ -4703,10 +4703,7 @@ async fn test_events_api_contract() {
         .expect("Failed to parse agent");
 
     let session: Session = client
-        .post(format!(
-            "{}/v1/orgs/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({"agent_id": agent.id, "title": "Events Contract Test"}))
         .send()
         .await
@@ -4849,10 +4846,7 @@ async fn test_events_sse_contract() {
         .expect("Failed to parse agent");
 
     let session: Session = client
-        .post(format!(
-            "{}/v1/orgs/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({"agent_id": agent.id, "title": "SSE Contract Test"}))
         .send()
         .await
