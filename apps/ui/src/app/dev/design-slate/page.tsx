@@ -12,7 +12,7 @@ const isDev = process.env.NODE_ENV === "development";
  *
  * Philosophy:
  * - Light mode with dotted background (navy dots per brand)
- * - Subtle corners (4px)
+ * - Sharp corners (0px)
  * - Grayscale dominant UI
  * - Gold accent (#D4A43A) for interactive elements
  * - Original everruns logo (navy to gold)
@@ -71,7 +71,7 @@ function SlateButton({
         sizes[size],
         className
       )}
-      style={{ borderRadius: '4px', ...accentStyles }}
+      style={{ borderRadius: '0px', ...accentStyles }}
     >
       {children}
     </button>
@@ -86,7 +86,7 @@ function SlateCard({ children, className = "" }: { children: React.ReactNode; cl
         "border border-[hsl(0_0%_88%)] bg-white",
         className
       )}
-      style={{ borderRadius: '4px' }}
+      style={{ borderRadius: '0px' }}
     >
       {children}
     </div>
@@ -105,7 +105,7 @@ function SlateInput({ placeholder, className = "" }: { placeholder?: string; cla
         "focus:outline-none focus:border-[#D4A43A] focus:ring-1 focus:ring-[#D4A43A40]",
         className
       )}
-      style={{ borderRadius: '4px' }}
+      style={{ borderRadius: '0px' }}
     />
   );
 }
@@ -131,7 +131,7 @@ function SlateBadge({
         "inline-flex items-center px-2 py-0.5 text-xs font-medium border",
         variants[variant]
       )}
-      style={{ borderRadius: '4px' }}
+      style={{ borderRadius: '0px' }}
     >
       {children}
     </span>
@@ -144,7 +144,7 @@ function SlateUserMessage({ content }: { content: string }) {
     <div className="flex justify-end">
       <div
         className="max-w-[85%] bg-[#0A1636] text-white px-3 py-2"
-        style={{ borderRadius: '6px' }}
+        style={{ borderRadius: '0px' }}
       >
         <p className="text-sm">{content}</p>
       </div>
@@ -157,7 +157,7 @@ function SlateAgentMessage({ content }: { content: string }) {
     <div className="flex gap-2">
       <div
         className="w-5 h-5 bg-[hsl(0_0%_94%)] border border-[hsl(0_0%_85%)] flex items-center justify-center flex-shrink-0 mt-0.5"
-        style={{ borderRadius: '4px' }}
+        style={{ borderRadius: '0px' }}
       >
         <Terminal className="w-3 h-3 text-[hsl(0_0%_40%)]" />
       </div>
@@ -198,7 +198,7 @@ function NavItem({ icon: Icon, label, active = false }: { icon: React.ElementTyp
           ? "bg-[#D4A43A18] text-[#9A7420]"
           : "text-[hsl(0_0%_45%)] hover:text-[hsl(0_0%_15%)] hover:bg-[hsl(0_0%_94%)]"
       )}
-      style={{ borderRadius: '4px' }}
+      style={{ borderRadius: '0px' }}
     >
       <Icon className="w-4 h-4" />
       <span>{label}</span>
@@ -272,10 +272,10 @@ export default function DesignSlatePage() {
             <h1 className="text-2xl font-bold">Design Concept: Slate</h1>
           </div>
           <p className="text-[hsl(0_0%_45%)]">
-            Light mode with navy dots, 4px corners, gold accent from brand
+            Light mode with navy dots, sharp corners, gold accent from brand
           </p>
           <div className="flex gap-2 mt-3">
-            <SlateBadge variant="accent">4px Corners</SlateBadge>
+            <SlateBadge variant="accent">Sharp Corners</SlateBadge>
             <SlateBadge>Light + Dots</SlateBadge>
             <SlateBadge>Gold Accent</SlateBadge>
           </div>
@@ -300,7 +300,7 @@ export default function DesignSlatePage() {
               <div key={c.name} className="text-center">
                 <div
                   className={cn("w-full h-16 mb-2", c.border && "border border-[hsl(0_0%_85%)]")}
-                  style={{ backgroundColor: c.color, borderRadius: '4px' }}
+                  style={{ backgroundColor: c.color, borderRadius: '0px' }}
                 />
                 <div className="text-xs font-medium">{c.name}</div>
                 <div className="text-xs text-[hsl(0_0%_55%)]">{c.label}</div>
@@ -326,7 +326,7 @@ export default function DesignSlatePage() {
               </div>
               <div>
                 <div className="text-[hsl(0_0%_55%)] mb-2">Active nav item</div>
-                <div className="bg-[#D4A43A18] text-[#9A7420] px-3 py-2 text-sm" style={{ borderRadius: '4px' }}>
+                <div className="bg-[#D4A43A18] text-[#9A7420] px-3 py-2 text-sm" style={{ borderRadius: '0px' }}>
                   Agents
                 </div>
               </div>
@@ -341,7 +341,7 @@ export default function DesignSlatePage() {
                 <div className="text-[hsl(0_0%_55%)] mb-2">Focus ring</div>
                 <input
                   className="w-full border-2 border-[#D4A43A] bg-white px-3 py-2 text-sm text-[hsl(0_0%_10%)]"
-                  style={{ borderRadius: '4px' }}
+                  style={{ borderRadius: '0px' }}
                   defaultValue="Focused"
                   readOnly
                 />
@@ -553,7 +553,7 @@ export default function DesignSlatePage() {
               <div>
                 <h3 className="font-medium text-[hsl(0_0%_20%)] mb-2">UI Refinements</h3>
                 <ul className="space-y-1 text-[hsl(0_0%_45%)]">
-                  <li>- 4px border radius (subtle corners)</li>
+                  <li>- 0px border radius (sharp corners)</li>
                   <li>- Grayscale dominant, accents sparingly</li>
                   <li>- Gold for running/active states</li>
                   <li>- Clean hierarchy, minimal chrome</li>
