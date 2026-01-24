@@ -123,8 +123,8 @@ pub async fn run(
             last_event_id = Some(event.id.clone());
 
             if output.is_text() {
-                // Handle message.agent events
-                if event.event_type == "message.agent" {
+                // Handle output.message.completed events
+                if event.event_type == "output.message.completed" {
                     // Content may be at data.content or data.message.content
                     let content = event
                         .data

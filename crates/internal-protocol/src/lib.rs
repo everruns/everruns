@@ -201,13 +201,21 @@ fn deserialize_event_data(
     use everruns_core::events::*;
 
     Ok(match event_type {
-        MESSAGE_USER => {
-            let typed: MessageUserData = serde_json::from_value(data)?;
-            EventData::MessageUser(typed)
+        INPUT_MESSAGE => {
+            let typed: InputMessageData = serde_json::from_value(data)?;
+            EventData::InputMessage(typed)
         }
-        MESSAGE_AGENT => {
-            let typed: MessageAgentData = serde_json::from_value(data)?;
-            EventData::MessageAgent(typed)
+        OUTPUT_MESSAGE_STARTED => {
+            let typed: OutputMessageStartedData = serde_json::from_value(data)?;
+            EventData::OutputMessageStarted(typed)
+        }
+        OUTPUT_MESSAGE_DELTA => {
+            let typed: OutputMessageDeltaData = serde_json::from_value(data)?;
+            EventData::OutputMessageDelta(typed)
+        }
+        OUTPUT_MESSAGE_COMPLETED => {
+            let typed: OutputMessageCompletedData = serde_json::from_value(data)?;
+            EventData::OutputMessageCompleted(typed)
         }
         TURN_STARTED => {
             let typed: TurnStartedData = serde_json::from_value(data)?;
@@ -220,10 +228,6 @@ fn deserialize_event_data(
         TURN_FAILED => {
             let typed: TurnFailedData = serde_json::from_value(data)?;
             EventData::TurnFailed(typed)
-        }
-        INPUT_RECEIVED => {
-            let typed: InputReceivedData = serde_json::from_value(data)?;
-            EventData::InputReceived(typed)
         }
         REASON_STARTED => {
             let typed: ReasonStartedData = serde_json::from_value(data)?;
@@ -241,13 +245,13 @@ fn deserialize_event_data(
             let typed: ActCompletedData = serde_json::from_value(data)?;
             EventData::ActCompleted(typed)
         }
-        TOOL_CALL_STARTED => {
-            let typed: ToolCallStartedData = serde_json::from_value(data)?;
-            EventData::ToolCallStarted(typed)
+        TOOL_STARTED => {
+            let typed: ToolStartedData = serde_json::from_value(data)?;
+            EventData::ToolStarted(typed)
         }
-        TOOL_CALL_COMPLETED => {
-            let typed: ToolCallCompletedData = serde_json::from_value(data)?;
-            EventData::ToolCallCompleted(typed)
+        TOOL_COMPLETED => {
+            let typed: ToolCompletedData = serde_json::from_value(data)?;
+            EventData::ToolCompleted(typed)
         }
         LLM_GENERATION => {
             let typed: LlmGenerationData = serde_json::from_value(data)?;
@@ -264,10 +268,6 @@ fn deserialize_event_data(
         REASON_THINKING_COMPLETED => {
             let typed: ReasonThinkingCompletedData = serde_json::from_value(data)?;
             EventData::ReasonThinkingCompleted(typed)
-        }
-        TEXT_DELTA => {
-            let typed: TextDeltaData = serde_json::from_value(data)?;
-            EventData::TextDelta(typed)
         }
         SESSION_STARTED => {
             let typed: SessionStartedData = serde_json::from_value(data)?;
@@ -295,24 +295,24 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
     use everruns_core::EventData;
 
     match data {
-        EventData::MessageUser(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::MessageAgent(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::InputMessage(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::OutputMessageStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::OutputMessageDelta(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::OutputMessageCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TurnStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TurnCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TurnFailed(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TurnCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::InputReceived(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolCallStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolCallCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ToolStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ToolCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TextDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),

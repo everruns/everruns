@@ -22,7 +22,7 @@
 // - reason.started/reason.completed - LLM reasoning phase within turn (type: "task")
 // - act.started/act.completed - Tool execution phase within turn (type: "task")
 // - llm.generation - LLM API calls (type: "llm")
-// - tool.call_started/tool.call_completed - Tool executions (type: "tool")
+// - tool.started/tool.completed - Tool executions (type: "tool")
 //
 // Parent-child relationships use OTel-style trace_id/span_id/parent_span_id fields.
 // trace_id groups all spans in a turn, span_id identifies each span, parent_span_id links to parent.
@@ -38,9 +38,8 @@ use crate::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
     REASON_THINKING_STARTED, ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingStartedData, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED,
-    TURN_COMPLETED, TURN_FAILED, TURN_STARTED, ToolCallStartedData, TurnCancelledData,
-    TurnFailedData,
+    ReasonThinkingStartedData, TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_STARTED, ToolStartedData, TurnCancelledData, TurnFailedData,
 };
 
 /// Configuration for Braintrust integration
@@ -558,12 +557,12 @@ impl BraintrustListener {
         }
     }
 
-    /// Convert a tool.call_completed event to Braintrust format (child span)
+    /// Convert a tool.completed event to Braintrust format (child span)
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_tool_call_completed(
         &self,
         event: &Event,
-        data: &crate::ToolCallCompletedData,
+        data: &crate::ToolCompletedData,
     ) -> BraintrustLogEvent {
         let input = serde_json::json!({
             "tool_call_id": data.tool_call_id,
@@ -1113,12 +1112,12 @@ impl BraintrustListener {
         }
     }
 
-    /// Convert a tool.call_started event to Braintrust format (child tool span)
+    /// Convert a tool.started event to Braintrust format (child tool span)
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_tool_call_started(
         &self,
         event: &Event,
-        data: &ToolCallStartedData,
+        data: &ToolStartedData,
     ) -> BraintrustLogEvent {
         let input = serde_json::json!({
             "tool_call_id": data.tool_call.id,
@@ -1248,19 +1247,19 @@ impl EventListener for BraintrustListener {
             }
 
             // Tool events
-            EventData::ToolCallStarted(data) => {
+            EventData::ToolStarted(data) => {
                 debug!(
                     tool_name = %data.tool_call.name,
                     tool_call_id = %data.tool_call.id,
-                    "Processing tool.call_started for Braintrust"
+                    "Processing tool.started for Braintrust"
                 );
                 self.convert_tool_call_started(event, data)
             }
-            EventData::ToolCallCompleted(data) => {
+            EventData::ToolCompleted(data) => {
                 debug!(
                     tool_name = %data.tool_name,
                     tool_call_id = %data.tool_call_id,
-                    "Processing tool.call_completed for Braintrust"
+                    "Processing tool.completed for Braintrust"
                 );
                 self.convert_tool_call_completed(event, data)
             }
@@ -1297,8 +1296,8 @@ impl EventListener for BraintrustListener {
             // LLM generation
             LLM_GENERATION,
             // Tool execution
-            TOOL_CALL_STARTED,
-            TOOL_CALL_COMPLETED,
+            TOOL_STARTED,
+            TOOL_COMPLETED,
         ])
     }
 
@@ -1316,7 +1315,7 @@ mod tests {
     use super::*;
     use crate::events::{
         EventContext, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
-        ReasonCompletedData, TokenUsage, ToolCallCompletedData, TurnCompletedData, TurnStartedData,
+        ReasonCompletedData, TokenUsage, ToolCompletedData, TurnCompletedData, TurnStartedData,
     };
     use crate::message::Message;
     use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
@@ -1358,8 +1357,8 @@ mod tests {
         // LLM
         assert!(types.contains(&LLM_GENERATION));
         // Tool
-        assert!(types.contains(&TOOL_CALL_STARTED));
-        assert!(types.contains(&TOOL_CALL_COMPLETED));
+        assert!(types.contains(&TOOL_STARTED));
+        assert!(types.contains(&TOOL_COMPLETED));
     }
 
     #[test]
@@ -1726,7 +1725,7 @@ mod tests {
         context.span_id = Some(tool_span_id.clone());
         context.parent_span_id = Some(act_span_id.clone());
 
-        let data = ToolCallCompletedData {
+        let data = ToolCompletedData {
             tool_call_id: "call_123".to_string(),
             tool_name: "search".to_string(),
             success: true,
@@ -1738,7 +1737,7 @@ mod tests {
         let event = Event::new(
             SessionId::new(),
             context,
-            EventData::ToolCallCompleted(data.clone()),
+            EventData::ToolCompleted(data.clone()),
         );
 
         let bt_event = listener.convert_tool_call_completed(&event, &data);
@@ -1936,7 +1935,7 @@ mod tests {
         tool_ctx.trace_id = Some(turn_id.to_string());
         tool_ctx.span_id = Some(tool_span_id);
         tool_ctx.parent_span_id = Some(act_span_id);
-        let tool_data = ToolCallCompletedData {
+        let tool_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
             success: true,
@@ -1948,7 +1947,7 @@ mod tests {
         let tool_event = Event::new(
             SessionId::new(),
             tool_ctx,
-            EventData::ToolCallCompleted(tool_data.clone()),
+            EventData::ToolCompleted(tool_data.clone()),
         );
         let bt_tool = listener.convert_tool_call_completed(&tool_event, &tool_data);
         assert_eq!(
@@ -2160,8 +2159,8 @@ mod tests {
         context.span_id = Some(tool_span_id.clone());
         context.parent_span_id = Some(act_span_id.clone());
 
-        // tool.call_started - should NOT have _is_merge
-        let started_data = ToolCallStartedData {
+        // tool.started - should NOT have _is_merge
+        let started_data = ToolStartedData {
             tool_call: ToolCall {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
@@ -2171,18 +2170,18 @@ mod tests {
         let started_event = Event::new(
             SessionId::new(),
             context.clone(),
-            EventData::ToolCallStarted(started_data.clone()),
+            EventData::ToolStarted(started_data.clone()),
         );
         let bt_started = listener.convert_tool_call_started(&started_event, &started_data);
         let started_json = serde_json::to_string(&bt_started).unwrap();
         assert!(
             !started_json.contains("_is_merge"),
-            "tool.call_started should not have _is_merge: {}",
+            "tool.started should not have _is_merge: {}",
             started_json
         );
 
-        // tool.call_completed - should have _is_merge: true
-        let completed_data = ToolCallCompletedData {
+        // tool.completed - should have _is_merge: true
+        let completed_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
             success: true,
@@ -2194,13 +2193,13 @@ mod tests {
         let completed_event = Event::new(
             SessionId::new(),
             context.clone(),
-            EventData::ToolCallCompleted(completed_data.clone()),
+            EventData::ToolCompleted(completed_data.clone()),
         );
         let bt_completed = listener.convert_tool_call_completed(&completed_event, &completed_data);
         let completed_json = serde_json::to_string(&bt_completed).unwrap();
         assert!(
             completed_json.contains("\"_is_merge\":true"),
-            "tool.call_completed should have _is_merge:true: {}",
+            "tool.completed should have _is_merge:true: {}",
             completed_json
         );
     }

@@ -43,8 +43,8 @@ The integration traces the full agentic loop with the following event types:
 | `act.started` | `task` | Child span - Tool execution phase begins |
 | `act.completed` | `task` | Child span - Tool execution phase ends |
 | `llm.generation` | `llm` | Child span - LLM API call |
-| `tool.call_started` | `tool` | Child span - Tool invocation begins |
-| `tool.call_completed` | `tool` | Child span - Tool invocation completes |
+| `tool.started` | `tool` | Child span - Tool invocation begins |
+| `tool.completed` | `tool` | Child span - Tool invocation completes |
 
 ### Span Hierarchy
 
@@ -80,7 +80,7 @@ agent turn (root)
 | `reason.thinking.started/completed` | thinking_span_id | turn_id | `[reason_span_id]` |
 | `llm.generation` | llm_span_id | turn_id | `[reason_span_id]` |
 | `act.started/completed` | act_span_id | turn_id | `[turn_id]` |
-| `tool.call_started/completed` | tool_span_id | turn_id | `[act_span_id]` |
+| `tool.started/completed` | tool_span_id | turn_id | `[act_span_id]` |
 
 ### Trace Correlation Requirements
 
@@ -101,7 +101,7 @@ Events that have both started and completed phases share the same `span_id` so B
 |---------------|-----------------|----------------|
 | `reason.started` | `reason.completed` | `reason_span_id` |
 | `act.started` | `act.completed` | `act_span_id` |
-| `tool.call_started` | `tool.call_completed` | `tool_span_id` |
+| `tool.started` | `tool.completed` | `tool_span_id` |
 
 The `turn.started` and `turn.completed` events both use `turn_id` as their log ID to merge into a single root span.
 

@@ -11,7 +11,9 @@ use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
-use everruns_core::events::{EventContext, EventRequest, MessageUserData};
+use everruns_core::events::{
+    EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+};
 use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
@@ -86,7 +88,7 @@ impl MessageService {
             .emit(EventRequest::new(
                 session_id_typed,
                 EventContext::empty(),
-                MessageUserData::new(core_message),
+                InputMessageData::new(core_message),
             ))
             .await?;
 
@@ -156,7 +158,7 @@ impl MessageService {
     ///
     /// Handles two formats:
     /// - Legacy format: full Event struct with id, type, data, etc.
-    /// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
+    /// - New format: EventData directly (InputMessageData, OutputMessageCompletedData, etc.)
     fn event_to_message(
         session_id: Uuid,
         data: &serde_json::Value,
@@ -167,18 +169,21 @@ impl MessageService {
         let convert =
             |event_data: everruns_core::EventData| -> std::result::Result<Message, String> {
                 let core_message = match &event_data {
-                    everruns_core::EventData::MessageUser(data) => &data.message,
-                    everruns_core::EventData::MessageAgent(data) => &data.message,
-                    everruns_core::EventData::ToolCallCompleted(data) => {
+                    everruns_core::EventData::InputMessage(data) => &data.message,
+                    everruns_core::EventData::OutputMessageCompleted(data) => &data.message,
+                    everruns_core::EventData::ToolCompleted(data) => {
                         // Convert tool result to message
-                        let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
-                            if parts.len() == 1
-                                && let everruns_core::ContentPart::Text(t) = &parts[0]
-                            {
-                                return serde_json::Value::String(t.text.clone());
-                            }
-                            serde_json::to_value(parts).unwrap_or_default()
-                        });
+                        let result: Option<serde_json::Value> =
+                            data.result
+                                .as_ref()
+                                .map(|parts: &Vec<everruns_core::ContentPart>| {
+                                    if parts.len() == 1
+                                        && let everruns_core::ContentPart::Text(t) = &parts[0]
+                                    {
+                                        return serde_json::Value::String(t.text.clone());
+                                    }
+                                    serde_json::to_value(parts).unwrap_or_default()
+                                });
                         let msg = everruns_core::Message::tool_result(
                             &data.tool_call_id,
                             result,
@@ -219,23 +224,20 @@ impl MessageService {
         // Fallback: try to parse as specific EventData type directly (new format)
         // We use the event_type hint since EventData's Raw variant catches everything
         match event_type {
-            "message.user" => {
-                let d: everruns_core::events::MessageUserData =
-                    serde_json::from_value(data.clone())
-                        .map_err(|e| format!("invalid message.user data: {}", e))?;
-                convert(everruns_core::EventData::MessageUser(d))
+            "input.message" => {
+                let d: InputMessageData = serde_json::from_value(data.clone())
+                    .map_err(|e| format!("invalid input.message data: {}", e))?;
+                convert(everruns_core::EventData::InputMessage(d))
             }
-            "message.agent" => {
-                let d: everruns_core::events::MessageAgentData =
-                    serde_json::from_value(data.clone())
-                        .map_err(|e| format!("invalid message.agent data: {}", e))?;
-                convert(everruns_core::EventData::MessageAgent(d))
+            "output.message.completed" => {
+                let d: OutputMessageCompletedData = serde_json::from_value(data.clone())
+                    .map_err(|e| format!("invalid output.message.completed data: {}", e))?;
+                convert(everruns_core::EventData::OutputMessageCompleted(d))
             }
-            "tool.call_completed" => {
-                let d: everruns_core::events::ToolCallCompletedData =
-                    serde_json::from_value(data.clone())
-                        .map_err(|e| format!("invalid tool.call_completed data: {}", e))?;
-                convert(everruns_core::EventData::ToolCallCompleted(d))
+            "tool.completed" => {
+                let d: ToolCompletedData = serde_json::from_value(data.clone())
+                    .map_err(|e| format!("invalid tool.completed data: {}", e))?;
+                convert(everruns_core::EventData::ToolCompleted(d))
             }
             _ => Err(format!("unexpected event type for message: {}", event_type)),
         }

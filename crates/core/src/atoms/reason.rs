@@ -28,9 +28,10 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, OutputMessageCompletedData,
+    OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -370,8 +371,8 @@ where
                 // Create error message for the user to see
                 let error_message = Message::assistant(&user_error_text);
 
-                // Emit message.agent event (stores message as event with proper turn context)
-                // message.agent is child of reason span
+                // Emit output.message.completed event (stores message as event with proper turn context)
+                // output.message.completed is child of reason span
                 let error_msg_context = EventContext::from_atom_context(&context).with_span(
                     trace_id.clone(),
                     Uuid::now_v7().to_string(),   // Own span_id
@@ -382,14 +383,14 @@ where
                     .emit(EventRequest::new(
                         context.session_id,
                         error_msg_context,
-                        MessageAgentData::new(error_message),
+                        OutputMessageCompletedData::new(error_message),
                     ))
                     .await
                 {
                     tracing::warn!(
                         session_id = %context.session_id,
                         error = %emit_err,
-                        "ReasonAtom: failed to emit message.agent event for error"
+                        "ReasonAtom: failed to emit output.message.completed event for error"
                     );
                 }
 
@@ -576,9 +577,39 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit reason.thinking.started event BEFORE starting LLM call (only if thinking enabled)
+        // 13. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            "ReasonAtom: emitting output.message.started event"
+        );
+        if let Err(e) = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                streaming_event_context.clone(),
+                OutputMessageStartedData {
+                    turn_id: context.turn_id,
+                    model: Some(runtime_agent.model.clone()),
+                },
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit output.message.started event"
+            );
+        } else {
+            tracing::info!(
+                session_id = %session_id,
+                "ReasonAtom: output.message.started event emitted successfully"
+            );
+        }
+
+        // Also emit reason.thinking.started if extended thinking is enabled
         let thinking_enabled = reasoning_effort.is_some();
         if thinking_enabled {
             tracing::info!(
@@ -618,7 +649,7 @@ where
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
-        // 14. Process stream with batched text.delta emissions
+        // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
@@ -657,7 +688,7 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                TextDeltaData {
+                                OutputMessageDeltaData {
                                     turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
@@ -668,7 +699,7 @@ where
                             tracing::warn!(
                                 session_id = %session_id,
                                 error = %e,
-                                "ReasonAtom: failed to emit text.delta event"
+                                "ReasonAtom: failed to emit output.message.delta event"
                             );
                         }
                         pending_delta.clear();
@@ -734,7 +765,7 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                TextDeltaData {
+                                OutputMessageDeltaData {
                                     turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
@@ -745,7 +776,7 @@ where
                         tracing::warn!(
                             session_id = %session_id,
                             error = %e,
-                            "ReasonAtom: failed to emit final text.delta event"
+                            "ReasonAtom: failed to emit final output.message.delta event"
                         );
                     }
 
@@ -895,7 +926,7 @@ where
             );
         }
 
-        // 18. Store and emit message.agent event with metadata and usage
+        // 18. Store and emit output.message.completed event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -910,22 +941,22 @@ where
             assistant_message.thinking_signature = thinking_signature.clone();
         }
 
-        // Emit message.agent event (this stores the message as an event with proper turn context)
+        // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
         let message_event_context = EventContext::from_atom_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
             Some(reason_span_id.to_string()),
         );
-        let mut message_agent_data = MessageAgentData::new(assistant_message);
+        let mut output_message_data = OutputMessageCompletedData::new(assistant_message);
         if let Some(ref u) = usage {
-            message_agent_data = message_agent_data.with_usage(u.clone());
+            output_message_data = output_message_data.with_usage(u.clone());
         }
         self.event_emitter
             .emit(EventRequest::new(
                 session_id,
                 message_event_context,
-                message_agent_data,
+                output_message_data,
             ))
             .await?;
 

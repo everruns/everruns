@@ -435,7 +435,7 @@ pub trait EventListener: Send + Sync {
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
-- `tool.call_started/completed` → `execute_tool {name}` span
+- `tool.started/completed` → `execute_tool {name}` span
 - `turn.started/completed` → `invoke_agent {turn_id}` span
 
 **Benefits of event-listener architecture**:

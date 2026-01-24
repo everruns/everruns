@@ -47,12 +47,12 @@ pub enum MessageFilter {
     /// Filter by event types (whitelist)
     ///
     /// Maps to: `WHERE event_type = ANY($types)`
-    /// Default types if not specified: message.user, message.agent, tool.call_completed
+    /// Default types if not specified: input.message, output.message.completed, tool.completed
     EventTypes(Vec<String>),
 
     /// Filter tool results by tool name
     ///
-    /// Maps to: `WHERE event_type = 'tool.call_completed' AND data->>'tool_name' = $name`
+    /// Maps to: `WHERE event_type = 'tool.completed' AND data->>'tool_name' = $name`
     ToolName(String),
 
     /// Full-text search in message content
@@ -388,7 +388,7 @@ mod tests {
     fn test_message_query_builder() {
         let session_id: SessionId = Uuid::now_v7().into();
         let query = MessageQuery::new(session_id)
-            .with_filter(MessageFilter::EventTypes(vec!["message.user".to_string()]))
+            .with_filter(MessageFilter::EventTypes(vec!["input.message".to_string()]))
             .with_limit(50)
             .with_offset(10);
 
@@ -509,7 +509,7 @@ mod tests {
     fn test_with_filters_multiple() {
         let session_id: SessionId = Uuid::now_v7().into();
         let query = MessageQuery::new(session_id).with_filters([
-            MessageFilter::EventTypes(vec!["message.user".to_string()]),
+            MessageFilter::EventTypes(vec!["input.message".to_string()]),
             MessageFilter::Search("hello".to_string()),
         ]);
 

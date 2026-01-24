@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
-import type { Controls, MessageUserData, MessageAgentData, ContentPart } from "@/lib/api/types";
+import type { Controls, InputMessageData, OutputMessageCompletedData, ContentPart } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -241,15 +241,15 @@ export default function ChatPage() {
           </div>
         ) : (
           chatEvents.map((event) => {
-            // Skip tool.call_completed - rendered inline with agent messages
-            if (event.type === "tool.call_completed") {
+            // Skip tool.completed - rendered inline with agent messages
+            if (event.type === "tool.completed") {
               return null;
             }
 
-            const isUser = event.type === "message.user";
-            const data = event.data as MessageUserData | MessageAgentData;
+            const isUser = event.type === "input.message";
+            const data = event.data as InputMessageData | OutputMessageCompletedData;
             const textContent = getMessageText(data);
-            const toolCalls = isUser ? [] : getToolCalls(data as MessageAgentData);
+            const toolCalls = isUser ? [] : getToolCalls(data as OutputMessageCompletedData);
             const images = data.message?.content ? getMessageImages(data.message.content) : [];
 
             return (

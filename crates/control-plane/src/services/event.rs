@@ -15,9 +15,8 @@
 
 use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
 use anyhow::{Result, bail};
-use everruns_core::events::deserialize_event_data;
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest, UNKNOWN};
+use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -118,8 +117,8 @@ impl EventService {
         Self::validate_event_type_consistency(&request)?;
 
         // Log streaming/generation events at info level (temporary for debugging)
-        if request.event_type == "agent.thinking"
-            || request.event_type == "text.delta"
+        if request.event_type == "output.message.started"
+            || request.event_type == "output.message.delta"
             || request.event_type == "llm.generation"
         {
             tracing::info!(
@@ -226,10 +225,10 @@ impl EventService {
     }
 
     fn row_to_event(row: EventRow) -> Event {
-        // Use event_type to correctly deserialize EventData.
-        // This avoids issues with serde's untagged enum deserialization where
-        // simpler types might incorrectly match before more complex ones.
-        let data = deserialize_event_data(&row.event_type, row.data);
+        // Direct mapping from row columns to Event fields
+        // Use event_type to deserialize data to the correct typed variant
+        let data = Self::deserialize_event_data(&row.event_type, row.data.clone())
+            .unwrap_or_else(|_| EventData::raw(row.data));
         Event {
             id: row.id,
             event_type: row.event_type,
@@ -241,5 +240,45 @@ impl EventService {
             tags: row.tags,
             sequence: Some(row.sequence),
         }
+    }
+
+    /// Deserialize event data based on event_type string.
+    /// This avoids issues with untagged enum deserialization where variants
+    /// with fewer required fields can match before the correct variant.
+    fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Result<EventData> {
+        use everruns_core::events::*;
+
+        Ok(match event_type {
+            INPUT_MESSAGE => EventData::InputMessage(serde_json::from_value(data)?),
+            OUTPUT_MESSAGE_STARTED => {
+                EventData::OutputMessageStarted(serde_json::from_value(data)?)
+            }
+            OUTPUT_MESSAGE_DELTA => EventData::OutputMessageDelta(serde_json::from_value(data)?),
+            OUTPUT_MESSAGE_COMPLETED => {
+                EventData::OutputMessageCompleted(serde_json::from_value(data)?)
+            }
+            TURN_STARTED => EventData::TurnStarted(serde_json::from_value(data)?),
+            TURN_COMPLETED => EventData::TurnCompleted(serde_json::from_value(data)?),
+            TURN_FAILED => EventData::TurnFailed(serde_json::from_value(data)?),
+            TURN_CANCELLED => EventData::TurnCancelled(serde_json::from_value(data)?),
+            REASON_STARTED => EventData::ReasonStarted(serde_json::from_value(data)?),
+            REASON_COMPLETED => EventData::ReasonCompleted(serde_json::from_value(data)?),
+            ACT_STARTED => EventData::ActStarted(serde_json::from_value(data)?),
+            ACT_COMPLETED => EventData::ActCompleted(serde_json::from_value(data)?),
+            TOOL_STARTED => EventData::ToolStarted(serde_json::from_value(data)?),
+            TOOL_COMPLETED => EventData::ToolCompleted(serde_json::from_value(data)?),
+            LLM_GENERATION => EventData::LlmGeneration(serde_json::from_value(data)?),
+            REASON_THINKING_STARTED => {
+                EventData::ReasonThinkingStarted(serde_json::from_value(data)?)
+            }
+            REASON_THINKING_DELTA => EventData::ReasonThinkingDelta(serde_json::from_value(data)?),
+            REASON_THINKING_COMPLETED => {
+                EventData::ReasonThinkingCompleted(serde_json::from_value(data)?)
+            }
+            SESSION_STARTED => EventData::SessionStarted(serde_json::from_value(data)?),
+            SESSION_ACTIVATED => EventData::SessionActivated(serde_json::from_value(data)?),
+            SESSION_IDLED => EventData::SessionIdled(serde_json::from_value(data)?),
+            _ => EventData::raw(data),
+        })
     }
 }

@@ -1402,7 +1402,7 @@ async fn test_no_duplicate_tool_calls() {
                     *tool_call_ids.entry(id.to_string()).or_insert(0) += 1;
                 }
 
-                // Check for tool_result content parts (from tool.call_completed events)
+                // Check for tool_result content parts (from tool.completed events)
                 if let Some(tool_result) = part.get("tool_result") {
                     let id = tool_result["id"].as_str().unwrap_or("unknown");
                     let name = tool_result["name"].as_str().unwrap_or("unknown");
@@ -3529,8 +3529,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 /// Test that streaming events are emitted during LLM generation.
 ///
 /// This test verifies that:
-/// 1. `reason.thinking.started` event is emitted when LLM starts generating
-/// 2. `text.delta` events are emitted with delta and accumulated fields
+/// 1. `output.message.started` event is emitted when LLM starts generating
+/// 2. `output.message.delta` events are emitted with delta and accumulated fields
 /// 3. `llm.generation` event includes time_to_first_token_ms
 ///
 /// Note: This test uses LlmSim which simulates streaming but does not produce
@@ -3717,6 +3717,31 @@ async fn test_streaming_events_emitted() {
         .as_array()
         .expect("Expected events array");
 
+    // Check for output.message.started event
+    let started_events: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "output.message.started")
+        .collect();
+    println!(
+        "Found {} output.message.started events",
+        started_events.len()
+    );
+    assert!(
+        !started_events.is_empty(),
+        "Expected at least one output.message.started event"
+    );
+
+    // Verify output.message.started has turn_id
+    let started_event = &started_events[0];
+    assert!(
+        started_event["data"]["turn_id"].is_string(),
+        "output.message.started should have turn_id"
+    );
+    println!(
+        "output.message.started event: turn_id={}, model={:?}",
+        started_event["data"]["turn_id"], started_event["data"]["model"]
+    );
+
     // Note: reason.thinking.started events are only emitted when reasoning_effort is set
     // LLMSim doesn't support extended thinking, so we don't expect thinking events here.
     let thinking_events: Vec<_> = events
@@ -3728,33 +3753,33 @@ async fn test_streaming_events_emitted() {
         thinking_events.len()
     );
 
-    // Check for text.delta events
+    // Check for output.message.delta events
     let delta_events: Vec<_> = events
         .iter()
-        .filter(|e| e["type"] == "text.delta")
+        .filter(|e| e["type"] == "output.message.delta")
         .collect();
-    println!("Found {} text.delta events", delta_events.len());
+    println!("Found {} output.message.delta events", delta_events.len());
     assert!(
         !delta_events.is_empty(),
-        "Expected at least one text.delta event"
+        "Expected at least one output.message.delta event"
     );
 
-    // Verify text.delta has required fields (turn_id, delta, accumulated)
+    // Verify output.message.delta has required fields (turn_id, delta, accumulated)
     let delta_event = &delta_events[0];
     assert!(
         delta_event["data"]["turn_id"].is_string(),
-        "text.delta should have turn_id"
+        "output.message.delta should have turn_id"
     );
     assert!(
         delta_event["data"]["delta"].is_string(),
-        "text.delta should have delta field"
+        "output.message.delta should have delta field"
     );
     assert!(
         delta_event["data"]["accumulated"].is_string(),
-        "text.delta should have accumulated field"
+        "output.message.delta should have accumulated field"
     );
     println!(
-        "text.delta event: delta='{}', accumulated='{}'",
+        "output.message.delta event: delta='{}', accumulated='{}'",
         delta_event["data"]["delta"].as_str().unwrap_or(""),
         delta_event["data"]["accumulated"].as_str().unwrap_or("")
     );

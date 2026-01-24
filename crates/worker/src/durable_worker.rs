@@ -5,7 +5,9 @@
 use anyhow::Result;
 use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
-use everruns_core::events::{EventContext, EventRequest, MessageAgentData, SessionIdledData};
+use everruns_core::events::{
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
+};
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use std::sync::Arc;
@@ -68,7 +70,7 @@ async fn emit_cancellation_events(
     let message_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
-        MessageAgentData::new(cancel_message),
+        OutputMessageCompletedData::new(cancel_message),
     );
     if let Err(e) = event_emitter.emit(message_event).await {
         warn!(session_id = %session_id, error = %e, "Failed to emit cancellation message");

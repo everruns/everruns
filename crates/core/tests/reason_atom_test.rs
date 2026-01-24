@@ -581,11 +581,13 @@ async fn test_reason_atom_handles_llm_error() {
     let events = event_emitter.events().await;
     assert!(!events.is_empty(), "Events should have been emitted");
 
-    // Check for message.agent event (error message for user)
-    let has_message_agent = events.iter().any(|e| e.event_type == "message.agent");
+    // Check for output.message.completed event (error message for user)
+    let has_output_message = events
+        .iter()
+        .any(|e| e.event_type == "output.message.completed");
     assert!(
-        has_message_agent,
-        "Should emit message.agent event for error"
+        has_output_message,
+        "Should emit output.message.completed event for error"
     );
 
     // Check for reason.completed event with success=false

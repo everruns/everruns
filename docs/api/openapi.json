@@ -3314,7 +3314,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"input.message\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
         "required": [
           "id",
           "type",
@@ -3428,10 +3428,16 @@
       "EventData": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/MessageUserData"
+            "$ref": "#/components/schemas/InputMessageData"
           },
           {
-            "$ref": "#/components/schemas/MessageAgentData"
+            "$ref": "#/components/schemas/OutputMessageDeltaData"
+          },
+          {
+            "$ref": "#/components/schemas/OutputMessageStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/OutputMessageCompletedData"
           },
           {
             "$ref": "#/components/schemas/TurnStartedData"
@@ -3441,9 +3447,6 @@
           },
           {
             "$ref": "#/components/schemas/TurnFailedData"
-          },
-          {
-            "$ref": "#/components/schemas/InputReceivedData"
           },
           {
             "$ref": "#/components/schemas/ReasonStartedData"
@@ -3458,16 +3461,13 @@
             "$ref": "#/components/schemas/ActCompletedData"
           },
           {
-            "$ref": "#/components/schemas/ToolCallStartedData"
+            "$ref": "#/components/schemas/ToolStartedData"
           },
           {
-            "$ref": "#/components/schemas/ToolCallCompletedData"
+            "$ref": "#/components/schemas/ToolCompletedData"
           },
           {
             "$ref": "#/components/schemas/LlmGenerationData"
-          },
-          {
-            "$ref": "#/components/schemas/TextDeltaData"
           },
           {
             "$ref": "#/components/schemas/ReasonThinkingDeltaData"
@@ -3813,16 +3813,16 @@
           }
         }
       },
-      "InputReceivedData": {
+      "InputMessageData": {
         "type": "object",
-        "description": "Data for input.received event",
+        "description": "Data for input.message event",
         "required": [
           "message"
         ],
         "properties": {
           "message": {
             "$ref": "#/components/schemas/Message",
-            "description": "The user message that was received"
+            "description": "The user message"
           }
         }
       },
@@ -4011,7 +4011,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"input.message\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
               "required": [
                 "id",
                 "type",
@@ -5327,41 +5327,6 @@
           }
         }
       },
-      "MessageAgentData": {
-        "type": "object",
-        "description": "Data for message.agent event",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "message": {
-            "$ref": "#/components/schemas/Message",
-            "description": "The agent message"
-          },
-          "metadata": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ModelMetadata",
-                "description": "Metadata about the model used"
-              }
-            ]
-          },
-          "usage": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TokenUsage",
-                "description": "Token usage"
-              }
-            ]
-          }
-        }
-      },
       "MessageRole": {
         "type": "string",
         "description": "Message role in the conversation",
@@ -5371,19 +5336,6 @@
           "agent",
           "tool_result"
         ]
-      },
-      "MessageUserData": {
-        "type": "object",
-        "description": "Data for message.user event",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "message": {
-            "$ref": "#/components/schemas/Message",
-            "description": "The user message"
-          }
-        }
       },
       "Modality": {
         "type": "string",
@@ -5439,6 +5391,86 @@
           "src_path": {
             "type": "string",
             "description": "Source path"
+          }
+        }
+      },
+      "OutputMessageCompletedData": {
+        "type": "object",
+        "description": "Data for output.message.completed event",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The agent message"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelMetadata",
+                "description": "Metadata about the model used"
+              }
+            ]
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage"
+              }
+            ]
+          }
+        }
+      },
+      "OutputMessageDeltaData": {
+        "type": "object",
+        "description": "Data for output.message.delta event\n\nIncremental text update during LLM generation. Events are batched (~100ms)\nto reduce volume while providing real-time feedback.",
+        "required": [
+          "turn_id",
+          "delta",
+          "accumulated"
+        ],
+        "properties": {
+          "accumulated": {
+            "type": "string",
+            "description": "Accumulated text so far"
+          },
+          "delta": {
+            "type": "string",
+            "description": "The new text chunk"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this delta belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "OutputMessageStartedData": {
+        "type": "object",
+        "description": "Data for output.message.started event\n\nEmitted when the LLM starts generating a response. UI can show a\n\"thinking\" indicator until output.message.delta or output.message.completed events arrive.",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional model name being used"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this output belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6057,30 +6089,6 @@
           }
         }
       },
-      "TextDeltaData": {
-        "type": "object",
-        "description": "Data for text.delta event\n\nEmitted during LLM streaming to provide incremental text updates.\nThese events are batched (typically ~100ms) to reduce event volume.\nUI should accumulate deltas until message.agent arrives with final text.",
-        "required": [
-          "turn_id",
-          "delta",
-          "accumulated"
-        ],
-        "properties": {
-          "accumulated": {
-            "type": "string",
-            "description": "Accumulated text so far (convenience for UI)"
-          },
-          "delta": {
-            "type": "string",
-            "description": "The text delta (new text since last delta)"
-          },
-          "turn_id": {
-            "type": "string",
-            "description": "Turn ID this delta belongs to (for correlation)",
-            "example": "turn_01933b5a00007000800000000000001"
-          }
-        }
-      },
       "TokenUsage": {
         "type": "object",
         "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost optimization.\nCache tokens are provider-specific:\n- OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens\n- Anthropic: `cache_read_tokens` from cache_read_input_tokens,\n  `cache_creation_tokens` from cache_creation_input_tokens",
@@ -6144,9 +6152,43 @@
           }
         }
       },
-      "ToolCallCompletedData": {
+      "ToolCallContentPart": {
         "type": "object",
-        "description": "Data for tool.call_completed event",
+        "description": "Tool call content part (assistant requesting tool execution)",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {},
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolCallSummary": {
+        "type": "object",
+        "description": "Summary of a tool call (compact form without arguments)",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolCompletedData": {
+        "type": "object",
+        "description": "Data for tool.completed event",
         "required": [
           "tool_call_id",
           "tool_name",
@@ -6198,53 +6240,6 @@
           }
         }
       },
-      "ToolCallContentPart": {
-        "type": "object",
-        "description": "Tool call content part (assistant requesting tool execution)",
-        "required": [
-          "id",
-          "name",
-          "arguments"
-        ],
-        "properties": {
-          "arguments": {},
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        }
-      },
-      "ToolCallStartedData": {
-        "type": "object",
-        "description": "Data for tool.call_started event",
-        "required": [
-          "tool_call"
-        ],
-        "properties": {
-          "tool_call": {
-            "$ref": "#/components/schemas/ToolCall",
-            "description": "The tool call being executed"
-          }
-        }
-      },
-      "ToolCallSummary": {
-        "type": "object",
-        "description": "Summary of a tool call (compact form without arguments)",
-        "required": [
-          "id",
-          "name"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        }
-      },
       "ToolDefinitionSummary": {
         "type": "object",
         "description": "Summary of a tool definition (compact form for events)",
@@ -6280,6 +6275,19 @@
           "tool_call_id": {
             "type": "string",
             "description": "ID of the tool call this result corresponds to"
+          }
+        }
+      },
+      "ToolStartedData": {
+        "type": "object",
+        "description": "Data for tool.started event",
+        "required": [
+          "tool_call"
+        ],
+        "properties": {
+          "tool_call": {
+            "$ref": "#/components/schemas/ToolCall",
+            "description": "The tool call being executed"
           }
         }
       },

@@ -106,7 +106,7 @@ Browse and manage files associated with the session's sandboxed environment.
 View raw session events for debugging:
 
 - Sequence number
-- Event type (message.user, message.agent, tool.call_completed, etc.)
+- Event type (input.message, output.message.completed, tool.completed, etc.)
 - Timestamp
 - JSON data payload
 

@@ -54,7 +54,7 @@ pub trait EventListener: Send + Sync {
     /// Optional: Filter which event types this listener cares about.
     ///
     /// Return `None` to receive all events (default).
-    /// Return `Some(vec!["llm.generation", "tool.call_completed"])` to filter.
+    /// Return `Some(vec!["llm.generation", "tool.completed"])` to filter.
     fn event_types(&self) -> Option<Vec<&'static str>> {
         None // Receive all events by default
     }
@@ -170,7 +170,7 @@ impl EventListener for CompositeEventListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{EventContext, EventData, MessageUserData};
+    use crate::events::{EventContext, EventData, InputMessageData};
     use crate::message::Message;
     use crate::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -210,7 +210,7 @@ mod tests {
             async fn on_event(&self, _event: &Event) {}
 
             fn event_types(&self) -> Option<Vec<&'static str>> {
-                Some(vec!["message.user", "llm.generation"])
+                Some(vec!["input.message", "llm.generation"])
             }
 
             fn name(&self) -> &'static str {
@@ -221,7 +221,7 @@ mod tests {
         let listener = FilteredListener;
         let types = listener.event_types().unwrap();
         assert_eq!(types.len(), 2);
-        assert!(types.contains(&"message.user"));
+        assert!(types.contains(&"input.message"));
         assert!(types.contains(&"llm.generation"));
         assert_eq!(listener.name(), "FilteredListener");
     }
@@ -301,10 +301,10 @@ mod tests {
         let count1 = Arc::new(AtomicU32::new(0));
         let count2 = Arc::new(AtomicU32::new(0));
 
-        // Listener 1 wants message.user events
+        // Listener 1 wants input.message events
         let listener1 = Arc::new(SelectiveListener {
             count: count1.clone(),
-            filter: vec!["message.user"],
+            filter: vec!["input.message"],
         });
 
         // Listener 2 wants llm.generation events (won't match our test event)
@@ -315,7 +315,7 @@ mod tests {
 
         let composite = CompositeEventListener::new(vec![listener1, listener2]);
 
-        // Send a message.user event
+        // Send a input.message event
         let event = create_test_event();
         composite.on_event(&event).await;
 
@@ -340,7 +340,7 @@ mod tests {
         Event::new(
             SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
-            EventData::MessageUser(MessageUserData {
+            EventData::InputMessage(InputMessageData {
                 message: Message::user("Hello"),
             }),
         )

@@ -76,7 +76,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time (from event.created_at) |
 
-**Note:** Messages are stored as events with types `message.user`, `message.agent`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results are stored as `tool.call_completed` events. System messages are handled internally and not persisted to events.
+**Note:** Messages are stored as events with types `input.message`, `output.message.completed`. Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results are stored as `tool.completed` events. System messages are handled internally and not persisted to events.
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -182,7 +182,7 @@ Tool calls and tool results are system-generated and cannot be created via the A
 Messages are stored in the `events` table with the full content in the `data` JSONB field:
 
 ```json
-// Event for a user message (event_type: "message.user")
+// Event for a user message (event_type: "input.message")
 {
   "message_id": "01234567-89ab-cdef-0123-456789abcdef",
   "role": "user",
@@ -192,7 +192,7 @@ Messages are stored in the `events` table with the full content in the `data` JS
   "tags": []
 }
 
-// Event for an agent message with tool calls (event_type: "message.agent")
+// Event for an agent message with tool calls (event_type: "output.message.completed")
 {
   "message_id": "...",
   "role": "assistant",
@@ -320,25 +320,28 @@ This convention ensures consistent, predictable event type names across the syst
 
 **Event Types:**
 
-1. **Message Events** - Primary conversation data (stored in `data` field)
-   - `message.user` - User message
-   - `message.agent` - Agent response (from LLM, may contain tool calls in content)
+1. **Input Events** - User input data
+   - `input.message` - User message
 
-2. **Turn Events** - Turn lifecycle notifications
+2. **Output Events** - Agent output lifecycle
+   - `output.message.started` - LLM started generating (UI can show "thinking" indicator)
+   - `output.message.delta` - Streaming text delta (batched ~100ms)
+   - `output.message.completed` - Agent response complete (may contain tool calls in content)
+
+3. **Turn Events** - Turn lifecycle notifications
    - `turn.started` - Turn execution started
    - `turn.completed` - Turn completed successfully
    - `turn.failed` - Turn failed
 
-3. **Atom Events** - Atom lifecycle notifications
-   - `input.received` - User input received
+4. **Atom Events** - Atom lifecycle notifications
    - `reason.started` - ReasonAtom started (LLM inference began)
    - `reason.completed` - ReasonAtom completed (LLM response received)
    - `act.started` - ActAtom started (tool batch execution)
    - `act.completed` - ActAtom completed
 
-4. **Tool Events** - Individual tool execution
-   - `tool.call_started` - Tool execution began
-   - `tool.call_completed` - Tool execution finished (includes result, used for message reconstruction)
+5. **Tool Events** - Individual tool execution
+   - `tool.started` - Tool execution began
+   - `tool.completed` - Tool execution finished (includes result, used for message reconstruction)
 
 5. **LLM Events** - LLM API visibility
    - `llm.generation` - Full LLM API call with messages and response
@@ -350,7 +353,7 @@ This convention ensures consistent, predictable event type names across the syst
 
 **Message Reconstruction:**
 
-Messages are reconstructed from events with types: `message.user`, `message.agent`, `tool.call_completed`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results come from `tool.call_completed` events.
+Messages are reconstructed from events with types: `input.message`, `output.message.completed`, `tool.completed`. Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events.
 
 ## Flow Example
 
@@ -359,7 +362,7 @@ User sends: "How much is 2+2?"
 
 1. POST /v1/agents/{id}/sessions/{id}/messages
    → Creates Message(role=user, content: { text: "How much is 2+2?" })
-   → Emits Event(message.user)
+   → Emits Event(input.message)
    → Triggers session workflow
 
 2. Workflow starts
@@ -368,15 +371,16 @@ User sends: "How much is 2+2?"
 
 3. Turn starts
    → Emits Event(turn.started)
-   → Emits Event(input.received)
 
 4. LLM call (ReasonAtom)
    → Emits Event(reason.started)
-   → LLM responds
+   → Emits Event(output.message.started)
+   → LLM streams response
+   → Emits Event(output.message.delta) (batched)
    → Creates Message(role=assistant, content: { text: "The answer is 4" })
    → Emits Event(reason.completed)
    → Emits Event(llm.generation)
-   → Emits Event(message.agent)
+   → Emits Event(output.message.completed)
 
 5. Turn complete
    → Emits Event(turn.completed)
@@ -601,8 +605,8 @@ Automatic discovery of available models from provider APIs.
 |----------|----------|
 | What stores conversation? | **Events** table with `event_type` = `message.*` |
 | What are Events for? | Primary data store for messages AND SSE notifications |
-| Where are tool calls stored? | In `message.agent` events as `ContentPart::ToolCall` |
-| Where are tool results stored? | Events with `event_type` = `tool.call_completed` |
+| Where are tool calls stored? | In `output.message.completed` events as `ContentPart::ToolCall` |
+| Where are tool results stored? | Events with `event_type` = `tool.completed` |
 | Session status? | Explicit status field (pending, running, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |

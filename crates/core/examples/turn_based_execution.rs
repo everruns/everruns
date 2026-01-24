@@ -180,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
     // Use InMemoryEventEmitter to track events emitted by atoms
     let event_emitter = InMemoryEventEmitter::new();
 
-    let input_atom = InputAtom::new(message_retriever.clone(), event_emitter.clone());
+    let input_atom = InputAtom::new(message_retriever.clone());
     let reason_atom = ReasonAtom::new(
         agent_store.clone(),
         session_store,

@@ -7,7 +7,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Event, MessageAgentData, TokenUsage } from "@/lib/api/types";
+import type { Event, OutputMessageCompletedData, TokenUsage } from "@/lib/api/types";
 
 interface MessageInfoIconProps {
   /** The event containing message data */
@@ -21,8 +21,8 @@ interface MessageInfoIconProps {
  * Shows: message ID, model, reasoning effort, timestamp, and token usage.
  */
 export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
-  const isAgentMessage = event.type === "message.agent";
-  const agentData = isAgentMessage ? (event.data as MessageAgentData) : null;
+  const isAgentMessage = event.type === "output.message.completed";
+  const agentData = isAgentMessage ? (event.data as OutputMessageCompletedData) : null;
 
   // Model and reasoning are stored on message.metadata (set by ReasonAtom)
   // Fallback to agentData.metadata for backward compatibility
@@ -30,7 +30,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
   const model = (messageMetadata?.model as string) ?? agentData?.metadata?.model;
   const reasoningEffort = messageMetadata?.reasoning_effort as string | undefined;
 
-  // Token usage from MessageAgentData (if populated)
+  // Token usage from OutputMessageCompletedData (if populated)
   const usage: TokenUsage | undefined = agentData?.usage;
 
   // Format timestamp

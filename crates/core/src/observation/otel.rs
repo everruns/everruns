@@ -5,7 +5,7 @@
 //
 // The listener reacts to events and creates spans:
 // - llm.generation → gen_ai.chat span with model, tokens, messages
-// - tool.call_started/completed → gen_ai.execute_tool span
+// - tool.started/completed → gen_ai.execute_tool span
 // - turn.started/completed → gen_ai.invoke_agent span
 // - reason.started/completed → nested chat spans within invoke_agent
 //
@@ -19,8 +19,8 @@ use uuid::Uuid;
 
 use crate::event_listeners::EventListener;
 use crate::events::{
-    Event, EventData, LLM_GENERATION, LlmGenerationData, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
-    TURN_COMPLETED, TURN_STARTED, ToolCallCompletedData, ToolCallStartedData, TurnCompletedData,
+    Event, EventData, LLM_GENERATION, LlmGenerationData, TOOL_COMPLETED, TOOL_STARTED,
+    TURN_COMPLETED, TURN_STARTED, ToolCompletedData, ToolStartedData, TurnCompletedData,
     TurnStartedData,
 };
 use crate::telemetry::gen_ai;
@@ -52,7 +52,7 @@ struct TurnSpanInfo {
 ///
 /// This listener creates spans from events:
 /// - `llm.generation` → `chat {model}` span
-/// - `tool.call_started/completed` → `execute_tool {name}` span
+/// - `tool.started/completed` → `execute_tool {name}` span
 /// - `turn.started/completed` → `invoke_agent {agent_id}` span
 ///
 /// Spans are created synchronously when events are received.
@@ -148,8 +148,8 @@ impl OtelEventListener {
         );
     }
 
-    /// Handle tool.call_started event - record start time for duration calculation
-    fn handle_tool_call_started(&self, _event: &Event, data: &ToolCallStartedData) {
+    /// Handle tool.started event - record start time for duration calculation
+    fn handle_tool_started(&self, _event: &Event, data: &ToolStartedData) {
         let mut spans = self.tool_call_spans.lock().unwrap();
         spans.insert(
             data.tool_call.id.clone(),
@@ -160,8 +160,8 @@ impl OtelEventListener {
         );
     }
 
-    /// Handle tool.call_completed event - create execute_tool span
-    fn handle_tool_call_completed(&self, event: &Event, data: &ToolCallCompletedData) {
+    /// Handle tool.completed event - create execute_tool span
+    fn handle_tool_completed(&self, event: &Event, data: &ToolCompletedData) {
         // Get start info if available
         let start_info = {
             let mut spans = self.tool_call_spans.lock().unwrap();
@@ -292,11 +292,11 @@ impl EventListener for OtelEventListener {
                 tracing::debug!("Creating OTel span for llm.generation event");
                 self.handle_llm_generation(event, data);
             }
-            EventData::ToolCallStarted(data) => {
-                self.handle_tool_call_started(event, data);
+            EventData::ToolStarted(data) => {
+                self.handle_tool_started(event, data);
             }
-            EventData::ToolCallCompleted(data) => {
-                self.handle_tool_call_completed(event, data);
+            EventData::ToolCompleted(data) => {
+                self.handle_tool_completed(event, data);
             }
             EventData::TurnStarted(data) => {
                 tracing::debug!("Creating OTel span for turn.started event");
@@ -321,8 +321,8 @@ impl EventListener for OtelEventListener {
         // Only listen to events we generate spans for
         Some(vec![
             LLM_GENERATION,
-            TOOL_CALL_STARTED,
-            TOOL_CALL_COMPLETED,
+            TOOL_STARTED,
+            TOOL_COMPLETED,
             TURN_STARTED,
             TURN_COMPLETED,
         ])
@@ -365,8 +365,8 @@ mod tests {
         let types = listener.event_types().unwrap();
         assert_eq!(types.len(), 5);
         assert!(types.contains(&LLM_GENERATION));
-        assert!(types.contains(&TOOL_CALL_STARTED));
-        assert!(types.contains(&TOOL_CALL_COMPLETED));
+        assert!(types.contains(&TOOL_STARTED));
+        assert!(types.contains(&TOOL_COMPLETED));
         assert!(types.contains(&TURN_STARTED));
         assert!(types.contains(&TURN_COMPLETED));
     }
@@ -489,11 +489,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_tool_call_lifecycle() {
+    async fn test_handle_tool_lifecycle() {
         let listener = OtelEventListener::new();
 
         // Start a tool call
-        let started_data = ToolCallStartedData {
+        let started_data = ToolStartedData {
             tool_call: ToolCall {
                 id: "call_abc".to_string(),
                 name: "calculate".to_string(),
@@ -504,14 +504,14 @@ mod tests {
         let start_event = Event::new(
             SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
-            EventData::ToolCallStarted(started_data),
+            EventData::ToolStarted(started_data),
         );
 
         listener.on_event(&start_event).await;
         assert_eq!(listener.pending_tool_calls(), 1);
 
         // Complete the tool call
-        let completed_data = ToolCallCompletedData {
+        let completed_data = ToolCompletedData {
             tool_call_id: "call_abc".to_string(),
             tool_name: "calculate".to_string(),
             success: true,
@@ -524,7 +524,7 @@ mod tests {
         let complete_event = Event::new(
             SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
-            EventData::ToolCallCompleted(completed_data),
+            EventData::ToolCompleted(completed_data),
         );
 
         listener.on_event(&complete_event).await;
@@ -532,11 +532,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_tool_call_completed_without_start() {
+    async fn test_handle_tool_completed_without_start() {
         let listener = OtelEventListener::new();
 
         // Complete a tool call that was never started (e.g., after restart)
-        let completed_data = ToolCallCompletedData {
+        let completed_data = ToolCompletedData {
             tool_call_id: "orphan_call".to_string(),
             tool_name: "unknown_tool".to_string(),
             success: false,
@@ -549,7 +549,7 @@ mod tests {
         let event = Event::new(
             SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
-            EventData::ToolCallCompleted(completed_data),
+            EventData::ToolCompleted(completed_data),
         );
 
         // Should not panic
@@ -622,7 +622,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unhandled_event_types() {
-        use crate::events::MessageUserData;
+        use crate::events::InputMessageData;
 
         let listener = OtelEventListener::new();
 
@@ -630,7 +630,7 @@ mod tests {
         let event = Event::new(
             SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
-            EventData::MessageUser(MessageUserData {
+            EventData::InputMessage(InputMessageData {
                 message: Message::user("Hello"),
             }),
         );
@@ -645,7 +645,7 @@ mod tests {
 
         // Start multiple tool calls
         for i in 0..3 {
-            let started_data = ToolCallStartedData {
+            let started_data = ToolStartedData {
                 tool_call: ToolCall {
                     id: format!("call_{}", i),
                     name: format!("tool_{}", i),
@@ -656,7 +656,7 @@ mod tests {
             let event = Event::new(
                 SessionId::from_uuid(Uuid::now_v7()),
                 EventContext::empty(),
-                EventData::ToolCallStarted(started_data),
+                EventData::ToolStarted(started_data),
             );
 
             listener.on_event(&event).await;
@@ -666,7 +666,7 @@ mod tests {
 
         // Complete them in different order
         for i in [2, 0, 1] {
-            let completed_data = ToolCallCompletedData {
+            let completed_data = ToolCompletedData {
                 tool_call_id: format!("call_{}", i),
                 tool_name: format!("tool_{}", i),
                 success: true,
@@ -679,7 +679,7 @@ mod tests {
             let event = Event::new(
                 SessionId::from_uuid(Uuid::now_v7()),
                 EventContext::empty(),
-                EventData::ToolCallCompleted(completed_data),
+                EventData::ToolCompleted(completed_data),
             );
 
             listener.on_event(&event).await;

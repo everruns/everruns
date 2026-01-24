@@ -702,17 +702,17 @@ impl Database {
 
     /// List only message events for a session (for MessageStore implementation)
     ///
-    /// Returns events with types: message.user, message.agent, tool.call_completed
+    /// Returns events with types: input.message, output.message.completed, tool.completed
     /// Ordered by sequence for conversation reconstruction.
-    /// Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall.
-    /// Note: Tool results come from tool.call_completed events (not message.tool_result).
+    /// Note: Tool calls are embedded in output.message.completed events via ContentPart::ToolCall.
+    /// Note: Tool results come from tool.completed events (not message.tool_result).
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         let rows = sqlx::query_as::<_, EventRow>(
             r#"
             SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
             FROM events
             WHERE session_id = $1
-              AND event_type IN ('message.user', 'message.agent', 'tool.call_completed')
+              AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
             ORDER BY sequence ASC
             "#,
         )
@@ -762,9 +762,9 @@ impl Database {
         // Default event types if not specified
         let types = event_types.unwrap_or_else(|| {
             vec![
-                "message.user".to_string(),
-                "message.agent".to_string(),
-                "tool.call_completed".to_string(),
+                "input.message".to_string(),
+                "output.message.completed".to_string(),
+                "tool.completed".to_string(),
             ]
         });
         sql.push_str(" AND event_type = ANY($2)");
@@ -792,7 +792,7 @@ impl Database {
                 }
                 MessageFilter::ToolName(name) => {
                     sql.push_str(&format!(
-                        " AND (event_type = 'tool.call_completed' AND data->>'tool_name' = ${})",
+                        " AND (event_type = 'tool.completed' AND data->>'tool_name' = ${})",
                         param_idx
                     ));
                     tool_name = Some(name.clone());
@@ -886,7 +886,7 @@ impl Database {
                     data
                 FROM events
                 WHERE session_id = ANY($1)
-                  AND event_type = 'message.user'
+                  AND event_type = 'input.message'
                 ORDER BY session_id, sequence ASC
             )
             SELECT
@@ -935,7 +935,7 @@ impl Database {
                     data
                 FROM events
                 WHERE session_id = ANY($1)
-                  AND event_type = 'message.agent'
+                  AND event_type = 'output.message.completed'
                 ORDER BY session_id, sequence DESC
             )
             SELECT

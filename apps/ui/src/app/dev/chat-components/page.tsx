@@ -342,7 +342,7 @@ const samplePendingImages: PendingImage[] = [
 const sampleEvents = {
   userMessage: {
     id: "evt-user-123e4567-e89b-12d3-a456-426614174000",
-    type: "message.user",
+    type: "input.message",
     ts: new Date().toISOString(),
     session_id: "session-1",
     context: { turn_id: "turn-1" },
@@ -360,7 +360,7 @@ const sampleEvents = {
   } satisfies Event,
   agentMessage: {
     id: "evt-agent-987fcdeb-51a2-4bc3-8def-012345678901",
-    type: "message.agent",
+    type: "output.message.completed",
     ts: new Date().toISOString(),
     session_id: "session-1",
     context: { turn_id: "turn-1" },

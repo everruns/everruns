@@ -225,17 +225,18 @@ fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Messa
     use everruns_core::{ContentPart, EventData, Message};
 
     match &event.data {
-        EventData::MessageUser(d) => Some(d.message.clone()),
-        EventData::MessageAgent(d) => Some(d.message.clone()),
-        EventData::ToolCallCompleted(d) => {
-            let result: Option<serde_json::Value> = d.result.as_ref().map(|parts| {
-                if parts.len() == 1
-                    && let ContentPart::Text(t) = &parts[0]
-                {
-                    return serde_json::Value::String(t.text.clone());
-                }
-                serde_json::to_value(parts).unwrap_or_default()
-            });
+        EventData::InputMessage(d) => Some(d.message.clone()),
+        EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
+        EventData::ToolCompleted(d) => {
+            let result: Option<serde_json::Value> =
+                d.result.as_ref().map(|parts: &Vec<ContentPart>| {
+                    if parts.len() == 1
+                        && let ContentPart::Text(t) = &parts[0]
+                    {
+                        return serde_json::Value::String(t.text.clone());
+                    }
+                    serde_json::to_value(parts).unwrap_or_default()
+                });
             Some(Message::tool_result(
                 &d.tool_call_id,
                 result,
@@ -601,8 +602,8 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<AddMessageResponse>, Status> {
         use chrono::Utc;
         use everruns_core::{
-            ContentPart, Controls, EventContext, EventRequest, Message, MessageAgentData,
-            MessageRole, MessageUserData,
+            ContentPart, Controls, EventContext, EventRequest, Message, MessageRole,
+            events::{InputMessageData, OutputMessageCompletedData},
         };
         use everruns_internal_protocol::{
             datetime_to_proto_timestamp, json_to_proto_list, json_to_proto_struct,
@@ -657,12 +658,12 @@ impl WorkerService for WorkerServiceImpl {
             MessageRole::User => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
-                MessageUserData::new(message.clone()),
+                InputMessageData::new(message.clone()),
             ),
             MessageRole::Assistant => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
-                MessageAgentData::new(message.clone()),
+                OutputMessageCompletedData::new(message.clone()),
             ),
             MessageRole::System | MessageRole::ToolResult => {
                 // System and tool messages are typically stored via emit_event

@@ -39,7 +39,7 @@ pub use everruns_core::atoms::{
 /// This activity:
 /// 1. Sets session status to "active" and emits session.activated event
 /// 2. Emits turn.started event
-/// 3. Retrieves the user message from the message store (emits input.received event)
+/// 3. Retrieves the user message from the message store
 /// 4. Returns the message for downstream processing
 pub async fn input_activity(
     grpc_client: GrpcClient,
@@ -115,7 +115,7 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to emit turn.started event");
     }
 
-    let atom = InputAtom::new(message_retriever, event_emitter);
+    let atom = InputAtom::new(message_retriever);
 
     atom.execute(input)
         .await
@@ -267,7 +267,7 @@ pub async fn reason_activity(
 ///
 /// This activity:
 /// 1. Emits act.started event
-/// 2. Executes all tool calls in parallel (emitting tool.call_started/completed for each)
+/// 2. Executes all tool calls in parallel (emitting tool.started/completed for each)
 /// 3. Handles errors, timeouts, and cancellations gracefully
 /// 4. Stores tool result messages
 /// 5. Emits act.completed event

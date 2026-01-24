@@ -201,25 +201,26 @@ async fn listen_to_sse(url: &str) -> Result<String, Box<dyn std::error::Error + 
 
                     if let Ok(event) = serde_json::from_str::<Event>(data) {
                         match current_event_type.as_str() {
-                            "message.user" => {
+                            "input.message" => {
                                 println!("   [User Message] Received");
                             }
-                            "tool.call" => {
-                                if let Some(name) = event.data.get("name").and_then(|n| n.as_str())
+                            "tool.started" => {
+                                if let Some(name) =
+                                    event.data.get("tool_name").and_then(|n| n.as_str())
                                 {
-                                    println!("   [Tool Call] {}", name);
+                                    println!("   [Tool Started] {}", name);
                                     seen_tool_call = true;
                                 }
                             }
-                            "tool.result" => {
+                            "tool.completed" => {
                                 if let Some(result) =
-                                    event.data.get("result").and_then(|r| r.as_str())
+                                    event.data.get("result").and_then(|r| r.as_array())
                                 {
-                                    println!("   [Tool Result] {}", result);
+                                    println!("   [Tool Completed] {:?}", result);
                                     seen_tool_result = true;
                                 }
                             }
-                            "message.agent" => {
+                            "output.message.completed" => {
                                 // Parse the agent's response
                                 if let Ok(msg_data) =
                                     serde_json::from_value::<MessageData>(event.data.clone())

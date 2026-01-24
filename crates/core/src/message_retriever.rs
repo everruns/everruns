@@ -1,7 +1,7 @@
 // MessageRetriever - Retrieval-only trait for conversation messages
 //
 // Design decision: MessageRetriever is retrieval-only.
-// Messages are stored via EventEmitter (message.user, message.agent events).
+// Messages are stored via EventEmitter (input.message, output.message.completed events).
 // This trait provides read access for building LLM context.
 
 use async_trait::async_trait;
@@ -68,7 +68,7 @@ impl InputMessage {
 ///
 /// This trait provides read-only access to conversation history for building
 /// LLM context. Message storage is handled separately via EventEmitter
-/// (messages are stored as events: message.user, message.agent).
+/// (messages are stored as events: input.message, output.message.completed).
 ///
 /// Implementations can:
 /// - Load messages from a database (reconstructing from events)

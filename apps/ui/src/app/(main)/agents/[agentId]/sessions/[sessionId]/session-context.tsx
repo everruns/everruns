@@ -13,16 +13,17 @@ import type {
   LlmModelWithProvider,
   Controls,
   ReasoningEffort,
-  ToolCallCompletedData,
-  MessageUserData,
-  MessageAgentData,
+  ToolCompletedData,
+  InputMessageData,
+  OutputMessageCompletedData,
   Message,
   TokenUsage,
   SessionIdledData,
   LlmGenerationData,
+  OutputMessageStartedData,
+  OutputMessageDeltaData,
   ReasonThinkingStartedData,
   ReasonThinkingDeltaData,
-  TextDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -37,7 +38,7 @@ interface SessionContextValue {
   events: Event[] | undefined;
   llmModel: LlmModelWithProvider | undefined;
   chatEvents: Event[];
-  toolResultsMap: Map<string, ToolCallCompletedData>;
+  toolResultsMap: Map<string, ToolCompletedData>;
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
@@ -70,8 +71,8 @@ interface SessionContextValue {
   // Turn cancellation
   cancelCurrentTurn: UseMutationResult<void, Error, void, unknown>;
   // Utility functions
-  getMessageText: (data: MessageUserData | MessageAgentData) => string;
-  getToolCalls: (data: MessageAgentData) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  getMessageText: (data: InputMessageData | OutputMessageCompletedData) => string;
+  getToolCalls: (data: OutputMessageCompletedData) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -132,7 +133,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       const optimisticId = `optimistic-${Date.now()}`;
       const optimisticEvent: Event = {
         id: optimisticId,
-        type: "message.user",
+        type: "input.message",
         ts: new Date().toISOString(),
         session_id: sessionId,
         context: {},
@@ -217,7 +218,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     }
   }, [events]);
 
-  // Update streaming state from SSE events (reason.thinking.*, text.delta, message.agent)
+  // Update streaming state from SSE events (output.message.*, reason.thinking.*)
   // This provides real-time feedback while the LLM generates text
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -226,8 +227,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i];
 
-      // message.agent finalizes the response - stop streaming
-      if (event.type === "message.agent") {
+      // output.message.completed finalizes the response - stop streaming
+      if (event.type === "output.message.completed") {
         const turnId = event.context?.turn_id;
         // Only clear streaming if this message is for the current streaming turn
         if (!streamingTurnId || turnId === streamingTurnId) {
@@ -239,9 +240,9 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         break;
       }
 
-      // text.delta provides incremental text updates
-      if (event.type === "text.delta") {
-        const data = event.data as TextDeltaData;
+      // output.message.delta provides incremental text updates
+      if (event.type === "output.message.delta") {
+        const data = event.data as OutputMessageDeltaData;
         setIsThinking(false); // No longer just thinking, now we have text
         setStreamingText(data.accumulated);
         setStreamingTurnId(data.turn_id);
@@ -253,13 +254,13 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         const data = event.data as ReasonThinkingDeltaData;
         setStreamingThinking(data.accumulated);
         setStreamingTurnId(data.turn_id);
-        // Continue looking for text.delta (don't break) - thinking comes before text
+        // Continue looking for output.message.delta (don't break) - thinking comes before text
         continue;
       }
 
-      // reason.thinking.started indicates LLM is generating (before first text)
-      if (event.type === "reason.thinking.started") {
-        const data = event.data as ReasonThinkingStartedData;
+      // output.message.started indicates LLM is generating (before first text)
+      if (event.type === "output.message.started") {
+        const data = event.data as OutputMessageStartedData;
         // Only set thinking if we don't already have streaming text for this turn
         if (!streamingText || streamingTurnId !== data.turn_id) {
           setIsThinking(true);
@@ -298,15 +299,15 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
     // Get text content from real user messages
     const realUserMessages = events
-      .filter((e) => e.type === "message.user")
+      .filter((e) => e.type === "input.message")
       .map((e) => {
-        const data = e.data as MessageUserData;
+        const data = e.data as InputMessageData;
         return getTextFromContent(data.message?.content || []);
       });
 
     // Remove optimistic events that have matching real events
     const optimisticToRemove = optimisticEvents.filter((optEvent) => {
-      const data = optEvent.data as MessageUserData;
+      const data = optEvent.data as InputMessageData;
       const optText = getTextFromContent(data.message?.content || []);
       return realUserMessages.includes(optText);
     });
@@ -323,26 +324,26 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     const realChatEvents = events
       ? events.filter(
           (e) =>
-            e.type === "message.user" ||
-            e.type === "message.agent" ||
-            e.type === "tool.call_completed"
+            e.type === "input.message" ||
+            e.type === "output.message.completed" ||
+            e.type === "tool.completed"
         )
       : [];
 
     // Get text content from real user messages for deduplication
     const realUserTexts = new Set(
       realChatEvents
-        .filter((e) => e.type === "message.user")
+        .filter((e) => e.type === "input.message")
         .map((e) => {
-          const data = e.data as MessageUserData;
+          const data = e.data as InputMessageData;
           return getTextFromContent(data.message?.content || []);
         })
     );
 
     // Filter out optimistic events that already have a real counterpart
     const pendingOptimisticEvents = optimisticEvents.filter((optEvent) => {
-      if (optEvent.type !== "message.user") return true;
-      const data = optEvent.data as MessageUserData;
+      if (optEvent.type !== "input.message") return true;
+      const data = optEvent.data as InputMessageData;
       const optText = getTextFromContent(data.message?.content || []);
       return !realUserTexts.has(optText);
     });
@@ -352,11 +353,11 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   // Build tool result lookup by tool_call_id
   const toolResultsMap = useMemo(() => {
-    const map = new Map<string, ToolCallCompletedData>();
+    const map = new Map<string, ToolCompletedData>();
     if (!events) return map;
     for (const event of events) {
-      if (event.type === "tool.call_completed") {
-        const data = event.data as ToolCallCompletedData;
+      if (event.type === "tool.completed") {
+        const data = event.data as ToolCompletedData;
         map.set(data.tool_call_id, data);
       }
     }
@@ -436,7 +437,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     : "Medium";
 
   // Extract text from message event data
-  const getMessageText = (data: MessageUserData | MessageAgentData): string => {
+  const getMessageText = (data: InputMessageData | OutputMessageCompletedData): string => {
     const content = data.message?.content;
     if (!content) return "";
     return getTextFromContent(content);
@@ -444,7 +445,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   // Get tool calls from message event data
   const getToolCalls = (
-    data: MessageAgentData
+    data: OutputMessageCompletedData
   ): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
     const content = data.message?.content;
     if (!content) return [];
