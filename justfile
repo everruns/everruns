@@ -5,6 +5,7 @@
 mod ui
 mod docs
 mod durable
+mod example
 
 # Default recipe: show available commands
 default:
