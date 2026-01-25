@@ -119,13 +119,6 @@ pub struct EvalResultRecord {
     pub metrics: ResultMetrics,
 }
 
-impl EvalResultRecord {
-    /// Returns true if aggregate score >= 0.5
-    pub fn passed(&self) -> bool {
-        self.score >= 0.5
-    }
-}
-
 /// Metrics for a single evaluation result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResultMetrics {
@@ -269,38 +262,6 @@ pub fn write_results(
 
     writer.flush()?;
     Ok(())
-}
-
-/// Read evaluation results from JSONL file
-pub fn read_results(path: &Path) -> Result<(RunMetadata, Vec<EvalResultRecord>)> {
-    let file = std::fs::File::open(path).context("Failed to open results file")?;
-    let reader = BufReader::new(file);
-
-    let mut metadata: Option<RunMetadata> = None;
-    let mut results = Vec::new();
-
-    for (line_num, line) in reader.lines().enumerate() {
-        let line = line.context("Failed to read line")?;
-        let line = line.trim();
-
-        if line.is_empty() {
-            continue;
-        }
-
-        // Check for metadata line
-        let value: serde_json::Value = serde_json::from_str(line)
-            .with_context(|| format!("Failed to parse line {}", line_num + 1))?;
-
-        if value.get("_meta").is_some() {
-            metadata = Some(serde_json::from_value(value["_meta"].clone())?);
-        } else {
-            let result: EvalResultRecord = serde_json::from_value(value)?;
-            results.push(result);
-        }
-    }
-
-    let metadata = metadata.ok_or_else(|| anyhow::anyhow!("No metadata found in results file"))?;
-    Ok((metadata, results))
 }
 
 // ============================================================================

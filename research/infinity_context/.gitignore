@@ -1,7 +1,5 @@
-# Generated eval datasets and results
-datasets/
-results/*.jsonl
-results/*.md
+# Results (not tracked)
+results/
 
 # Build artifacts
 target/

@@ -7,8 +7,7 @@
 //!
 //! Usage:
 //!   eval generate -o datasets/v1.jsonl     # Generate dataset
-//!   eval run -d datasets/v1.jsonl          # Run evaluation
-//!   eval results -i results/run.jsonl      # View results
+//!   eval run -d datasets/v1.jsonl --save   # Run and save results
 
 pub mod capabilities;
 mod dataset;
@@ -56,10 +55,6 @@ enum Commands {
         #[arg(short, long)]
         dataset: PathBuf,
 
-        /// Output results file (JSONL format)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
         /// Run a specific scenario by name
         #[arg(short, long)]
         scenario: Option<String>,
@@ -91,17 +86,14 @@ enum Commands {
         /// Delay in milliseconds between LLM calls within a scenario (for tool loops)
         #[arg(long, default_value = "0")]
         inter_call_delay_ms: u64,
-    },
 
-    /// View evaluation results
-    Results {
-        /// Input results file (JSONL format)
-        #[arg(short, long)]
-        input: PathBuf,
+        /// Save results to results/ directory
+        #[arg(long)]
+        save: bool,
 
-        /// Output format (text, json, markdown)
-        #[arg(long, default_value = "text")]
-        format: String,
+        /// Custom moniker for result file naming (e.g., "baseline-run", "after-fix")
+        #[arg(long)]
+        moniker: Option<String>,
     },
 }
 
@@ -125,7 +117,6 @@ async fn main() -> Result<()> {
         Commands::Generate { output } => cmd_generate(output).await,
         Commands::Run {
             dataset,
-            output,
             scenario,
             capability,
             model,
@@ -134,10 +125,11 @@ async fn main() -> Result<()> {
             dry_run,
             delay_ms,
             inter_call_delay_ms,
+            save,
+            moniker,
         } => {
             cmd_run(
                 dataset,
-                output,
                 scenario,
                 capability,
                 model,
@@ -146,10 +138,11 @@ async fn main() -> Result<()> {
                 dry_run,
                 delay_ms,
                 inter_call_delay_ms,
+                save,
+                moniker,
             )
             .await
         }
-        Commands::Results { input, format } => cmd_results(input, format).await,
     }
 }
 
@@ -212,11 +205,38 @@ async fn cmd_generate(output: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Generate a short moniker from model name
+/// "claude-sonnet-4-20250514" -> "sonnet-4"
+/// "gpt-5.2-turbo" -> "gpt-5.2-turbo"
+fn generate_moniker(model: &str) -> String {
+    // Handle Claude models
+    if model.contains("claude") {
+        // claude-sonnet-4-20250514 -> sonnet-4
+        // claude-opus-4-5-20251101 -> opus-4.5
+        let parts: Vec<&str> = model.split('-').collect();
+        if parts.len() >= 3 {
+            let variant = parts[1]; // sonnet, opus, haiku
+            let version = if parts.len() >= 4 && parts[3].chars().all(|c| c.is_numeric()) {
+                // Has sub-version like opus-4-5
+                format!("{}.{}", parts[2], parts[3])
+            } else {
+                parts[2].to_string()
+            };
+            return format!("{}-{}", variant, version);
+        }
+    }
+    // For other models, use as-is but remove date suffixes
+    model
+        .split('-')
+        .take_while(|p| !p.chars().all(|c| c.is_numeric()) || p.len() < 8)
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 /// Run evaluation against dataset
 #[allow(clippy::too_many_arguments)]
 async fn cmd_run(
     dataset_path: PathBuf,
-    output: Option<PathBuf>,
     scenario_filter: Option<String>,
     capability_filter: Option<String>,
     model: String,
@@ -225,6 +245,8 @@ async fn cmd_run(
     dry_run: bool,
     delay_ms: u64,
     inter_call_delay_ms: u64,
+    save: bool,
+    moniker: Option<String>,
 ) -> Result<()> {
     println!(
         "{} Loading dataset from: {}\n",
@@ -314,216 +336,61 @@ async fn cmd_run(
     let report = report::generate(&results, &config);
     println!("{}", report);
 
-    // Save results as JSONL
-    let output_path = output.unwrap_or_else(|| {
-        PathBuf::from(format!(
-            "results/eval_{}_{}.jsonl",
-            Utc::now().format("%Y%m%d_%H%M%S"),
-            model.replace('/', "_")
-        ))
-    });
+    // Save results if requested
+    if save {
+        // Build filename: YYYYMMDD_HHMMSS__moniker.jsonl
+        // Moniker defaults to model name (e.g., "sonnet-4.5", "gpt-5.2")
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let moniker = moniker.unwrap_or_else(|| generate_moniker(&model));
+        let filename = format!("{}__{}.jsonl", timestamp, moniker);
+        let output_path = PathBuf::from("results").join(&filename);
 
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+        std::fs::create_dir_all("results")?;
 
-    // Convert results to JSONL records
-    let mut result_records = Vec::new();
-    for strategy_result in &results.strategy_results {
-        for scenario_result in &strategy_result.scenario_results {
-            result_records.push(EvalResultRecord {
-                id: scenario_result.scenario_name.clone(),
-                capability: scenario_result.strategy_name.clone(),
-                score: scenario_result.score,
-                scores: scenario_result.scores.clone(),
-                response: scenario_result.response.clone(),
-                error: scenario_result.error.clone(),
-                metrics: scenario_result.metrics.clone().into(),
-            });
-        }
-    }
-
-    let metadata = RunMetadata {
-        timestamp: results.timestamp,
-        model,
-        context_window,
-        budget_percent,
-        dataset: dataset_path.display().to_string(),
-        scenario_count: scenarios.len(),
-        capability_count: capabilities.len(),
-        capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
-    };
-
-    dataset::write_results(&output_path, &metadata, &result_records)?;
-
-    println!(
-        "\n{} Results saved to: {}",
-        "✓".bright_green(),
-        output_path.display().to_string().bright_yellow()
-    );
-
-    // Also save markdown report
-    let md_path = output_path.with_extension("md");
-    std::fs::write(&md_path, &report)?;
-    println!(
-        "{} Report saved to: {}",
-        "✓".bright_green(),
-        md_path.display().to_string().bright_yellow()
-    );
-
-    Ok(())
-}
-
-/// View evaluation results
-async fn cmd_results(input: PathBuf, format: String) -> Result<()> {
-    println!(
-        "{} Loading results from: {}\n",
-        "→".bright_blue(),
-        input.display().to_string().bright_yellow()
-    );
-
-    let (metadata, results) = dataset::read_results(&input)?;
-
-    match format.as_str() {
-        "json" => {
-            let output = serde_json::json!({
-                "metadata": metadata,
-                "results": results
-            });
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        }
-        "markdown" | "md" => {
-            print_results_markdown(&metadata, &results);
-        }
-        _ => {
-            print_results_text(&metadata, &results);
-        }
-    }
-
-    Ok(())
-}
-
-fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
-    println!("{}", "Run Metadata:".bold());
-    println!("  Timestamp: {}", metadata.timestamp);
-    println!("  Model: {}", metadata.model.bright_yellow());
-    println!("  Dataset: {}", metadata.dataset);
-    println!(
-        "  Context: {} tokens @ {}%",
-        metadata.context_window,
-        metadata.budget_percent * 100.0
-    );
-    println!();
-
-    // Group by capability
-    let mut by_capability: std::collections::HashMap<String, Vec<&EvalResultRecord>> =
-        std::collections::HashMap::new();
-    for r in results {
-        by_capability
-            .entry(r.capability.clone())
-            .or_default()
-            .push(r);
-    }
-
-    for (capability, cap_results) in &by_capability {
-        let avg_score: f64 =
-            cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len() as f64;
-        let passed_count = cap_results.iter().filter(|r| r.passed()).count();
-        let total = cap_results.len();
-
-        println!(
-            "{}: {:.1}% avg ({}/{} passed)",
-            capability.bright_cyan(),
-            avg_score * 100.0,
-            passed_count,
-            total
-        );
-
-        for r in cap_results {
-            let status = if r.score >= 0.8 {
-                "✓".bright_green()
-            } else if r.score >= 0.5 {
-                "◐".bright_yellow()
-            } else {
-                "✗".bright_red()
-            };
-            println!(
-                "  {} {} (score: {:.2}, {}ms, {} queries)",
-                status, r.id, r.score, r.metrics.latency_ms, r.metrics.history_queries
-            );
-            // Show individual scorer results
-            for s in &r.scores {
-                let score_status = if s.value >= 0.5 { "✓" } else { "✗" };
-                println!(
-                    "      {} {}: {:.2}",
-                    score_status.dimmed(),
-                    s.name.dimmed(),
-                    s.value
-                );
-            }
-            if let Some(ref err) = r.error {
-                println!("    Error: {}", err.dimmed());
+        // Convert results to JSONL records
+        let mut result_records = Vec::new();
+        for strategy_result in &results.strategy_results {
+            for scenario_result in &strategy_result.scenario_results {
+                result_records.push(EvalResultRecord {
+                    id: scenario_result.scenario_name.clone(),
+                    capability: scenario_result.strategy_name.clone(),
+                    score: scenario_result.score,
+                    scores: scenario_result.scores.clone(),
+                    response: scenario_result.response.clone(),
+                    error: scenario_result.error.clone(),
+                    metrics: scenario_result.metrics.clone().into(),
+                });
             }
         }
-        println!();
-    }
-}
 
-fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) {
-    println!("# Evaluation Results\n");
-    println!("**Timestamp:** {}  ", metadata.timestamp);
-    println!("**Model:** {}  ", metadata.model);
-    println!("**Dataset:** {}  ", metadata.dataset);
-    println!(
-        "**Context:** {} tokens @ {:.0}%\n",
-        metadata.context_window,
-        metadata.budget_percent * 100.0
-    );
-
-    // Summary table
-    println!("## Summary\n");
-    println!("| Capability | Avg Score | Passed | Failed |");
-    println!("|------------|-----------|--------|--------|");
-
-    let mut by_capability: std::collections::HashMap<String, Vec<&EvalResultRecord>> =
-        std::collections::HashMap::new();
-    for r in results {
-        by_capability
-            .entry(r.capability.clone())
-            .or_default()
-            .push(r);
-    }
-
-    for (capability, cap_results) in &by_capability {
-        let avg_score: f64 =
-            cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len().max(1) as f64;
-        let passed_count = cap_results.iter().filter(|r| r.passed()).count();
-        let fail_count = cap_results.len() - passed_count;
-        println!(
-            "| {} | {:.1}% | {} | {} |",
-            capability,
-            avg_score * 100.0,
-            passed_count,
-            fail_count
-        );
-    }
-
-    println!("\n## Detailed Results\n");
-    for r in results {
-        let status = if r.score >= 0.8 {
-            "✅"
-        } else if r.score >= 0.5 {
-            "⚠️"
-        } else {
-            "❌"
+        let metadata = RunMetadata {
+            timestamp: results.timestamp,
+            model,
+            context_window,
+            budget_percent,
+            dataset: dataset_path.display().to_string(),
+            scenario_count: scenarios.len(),
+            capability_count: capabilities.len(),
+            capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
         };
+
+        dataset::write_results(&output_path, &metadata, &result_records)?;
+
         println!(
-            "- {} **{}** / {} - score: {:.2}, {}ms, {} queries",
-            status, r.id, r.capability, r.score, r.metrics.latency_ms, r.metrics.history_queries
+            "\n{} Results saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_yellow()
         );
-        // Show individual scores
-        for s in &r.scores {
-            println!("  - {}: {:.2}", s.name, s.value);
-        }
+
+        // Also save markdown report
+        let md_path = output_path.with_extension("md");
+        std::fs::write(&md_path, &report)?;
+        println!(
+            "{} Report saved to: {}",
+            "✓".bright_green(),
+            md_path.display().to_string().bright_yellow()
+        );
     }
+
+    Ok(())
 }
