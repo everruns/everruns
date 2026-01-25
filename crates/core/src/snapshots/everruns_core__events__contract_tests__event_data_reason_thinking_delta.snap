@@ -1,0 +1,9 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "turn_id": "turn_00000000000000000000000000000002",
+  "delta": "Let me think...",
+  "accumulated": "Let me think..."
+}

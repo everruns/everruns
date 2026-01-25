@@ -117,3 +117,131 @@ fn test_tool_call_completed_error_serialization() {
     assert_eq!(data["success"], false);
     assert_eq!(data["error"], "File not found");
 }
+
+// ============================================================================
+// Events API Contract Tests
+// ============================================================================
+
+/// Verify that unsupported events cannot be serialized (serde skip)
+/// This ensures they can never leak to API responses.
+#[test]
+fn test_unsupported_event_cannot_serialize() {
+    use everruns_core::events::deserialize_event_data;
+
+    // Create an unsupported event by deserializing unknown type
+    let data = deserialize_event_data("future.unknown.event", serde_json::json!({"foo": "bar"}));
+
+    // Verify it's unsupported
+    assert!(data.is_unsupported(), "Should be unsupported event");
+
+    // Verify event type is "unsupported"
+    assert_eq!(data.event_type(), "unsupported");
+
+    // Create event with unsupported data
+    let session_id = SessionId::new();
+    let event = Event::new(session_id, EventContext::empty(), data);
+
+    // Serialization SHOULD FAIL - this is the contract guarantee
+    // Unsupported events must be filtered before serialization
+    let result = serde_json::to_value(&event);
+    assert!(
+        result.is_err(),
+        "Unsupported events should fail serialization to prevent API leakage"
+    );
+
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("cannot be serialized"),
+        "Error should indicate serialization is not allowed: {}",
+        err
+    );
+
+    println!(
+        "Correctly prevented serialization of unsupported event: {}",
+        err
+    );
+}
+
+/// Verify Event structure matches API contract
+#[test]
+fn test_event_api_contract_structure() {
+    let session_id = SessionId::new();
+    let event = Event::new(
+        session_id,
+        EventContext::empty(),
+        InputMessageData::new(Message::user("test")),
+    );
+
+    let json = serde_json::to_value(&event).unwrap();
+
+    // Verify required fields per specs/events-contract.md
+    assert!(json["id"].is_string(), "Event must have 'id' field");
+    assert!(json["type"].is_string(), "Event must have 'type' field");
+    assert!(json["ts"].is_string(), "Event must have 'ts' field");
+    assert!(
+        json["session_id"].is_string(),
+        "Event must have 'session_id' field"
+    );
+    assert!(
+        json["context"].is_object(),
+        "Event must have 'context' field"
+    );
+    assert!(json["data"].is_object(), "Event must have 'data' field");
+
+    // Verify ID format
+    let id = json["id"].as_str().unwrap();
+    assert!(
+        id.starts_with("event_"),
+        "Event ID should have 'event_' prefix"
+    );
+
+    // Verify session_id format
+    let sid = json["session_id"].as_str().unwrap();
+    assert!(
+        sid.starts_with("session_"),
+        "Session ID should have 'session_' prefix"
+    );
+
+    // Verify type is dot-notation
+    let event_type = json["type"].as_str().unwrap();
+    assert!(
+        event_type.contains('.'),
+        "Event type should use dot notation"
+    );
+}
+
+/// Verify EventContext structure matches API contract
+#[test]
+fn test_event_context_api_contract() {
+    use everruns_core::typed_id::{MessageId, TurnId};
+
+    let turn_id = TurnId::new();
+    let message_id = MessageId::new();
+    let context = EventContext::turn(turn_id, message_id).with_span(
+        "trace123".to_string(),
+        "span456".to_string(),
+        Some("parent789".to_string()),
+    );
+
+    let json = serde_json::to_value(&context).unwrap();
+
+    // Verify optional fields are present when set
+    assert!(json["turn_id"].is_string());
+    assert!(json["input_message_id"].is_string());
+    assert!(json["trace_id"].is_string());
+    assert!(json["span_id"].is_string());
+    assert!(json["parent_span_id"].is_string());
+
+    // Verify ID prefixes
+    let tid = json["turn_id"].as_str().unwrap();
+    assert!(
+        tid.starts_with("turn_"),
+        "Turn ID should have 'turn_' prefix"
+    );
+
+    let mid = json["input_message_id"].as_str().unwrap();
+    assert!(
+        mid.starts_with("message_"),
+        "Message ID should have 'message_' prefix"
+    );
+}

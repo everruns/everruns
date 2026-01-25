@@ -1,0 +1,12 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "tool_calls": [
+    {
+      "id": "tc_1",
+      "name": "get_weather"
+    }
+  ]
+}

@@ -4675,3 +4675,214 @@ async fn test_anthropic_extended_thinking_with_tools() {
 
     println!("Anthropic extended thinking with tools test passed!");
 }
+
+// ============================================================================
+// Events API Contract Tests
+// ============================================================================
+// These tests verify that the events API responses match the public contract.
+
+/// Test events list endpoint returns correct JSON structure
+#[tokio::test]
+async fn test_events_api_contract() {
+    let client = reqwest::Client::new();
+
+    println!("Testing events API contract...");
+
+    // Step 1: Create agent and session
+    let agent: Agent = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Events Contract Test Agent",
+            "system_prompt": "You are helpful"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent")
+        .json()
+        .await
+        .expect("Failed to parse agent");
+
+    let session: Session = client
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Events Contract Test"}))
+        .send()
+        .await
+        .expect("Failed to create session")
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    println!("Created session: {}", session.id);
+
+    // Step 2: List events and verify contract structure (may be empty for new session)
+    println!("\nVerifying events list API contract...");
+    let events_response = client
+        .get(format!(
+            "{}/v1/orgs/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list events");
+
+    assert_eq!(events_response.status(), 200);
+
+    let events_json: Value = events_response
+        .json()
+        .await
+        .expect("Failed to parse events");
+
+    // Verify response structure has 'data' array (may be empty)
+    assert!(
+        events_json["data"].is_array(),
+        "Response should have 'data' array"
+    );
+    let events = events_json["data"].as_array().unwrap();
+    println!("Found {} events", events.len());
+
+    // If there are events, verify each has required contract fields
+    for event in events {
+        // Required fields per specs/events-contract.md
+        assert!(event["id"].is_string(), "Event must have 'id' string");
+        assert!(event["type"].is_string(), "Event must have 'type' string");
+        assert!(event["ts"].is_string(), "Event must have 'ts' string");
+        assert!(
+            event["session_id"].is_string(),
+            "Event must have 'session_id' string"
+        );
+        assert!(
+            event["context"].is_object(),
+            "Event must have 'context' object"
+        );
+        assert!(event["data"].is_object(), "Event must have 'data' object");
+
+        // Verify ID format (event_ prefix)
+        let id = event["id"].as_str().unwrap();
+        assert!(
+            id.starts_with("event_"),
+            "Event ID should have 'event_' prefix, got: {}",
+            id
+        );
+
+        // Verify session_id format (session_ prefix)
+        let sid = event["session_id"].as_str().unwrap();
+        assert!(
+            sid.starts_with("session_"),
+            "Session ID should have 'session_' prefix, got: {}",
+            sid
+        );
+
+        // Verify type is known (not "unsupported")
+        let event_type = event["type"].as_str().unwrap();
+        assert_ne!(
+            event_type, "unsupported",
+            "Unsupported events should be filtered"
+        );
+    }
+
+    // Cleanup
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Events API contract test passed!");
+}
+
+/// Test SSE streaming endpoint returns correct headers
+#[tokio::test]
+async fn test_events_sse_contract() {
+    use futures::StreamExt;
+
+    let client = reqwest::Client::new();
+
+    println!("Testing SSE events contract...");
+
+    // Step 1: Create agent and session
+    let agent: Agent = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "SSE Contract Test Agent",
+            "system_prompt": "You are helpful"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent")
+        .json()
+        .await
+        .expect("Failed to parse agent");
+
+    let session: Session = client
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "SSE Contract Test"}))
+        .send()
+        .await
+        .expect("Failed to create session")
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    println!("Created session: {}", session.id);
+
+    // Step 2: Connect to SSE stream and verify headers and initial data
+    println!("\nConnecting to SSE stream...");
+    let sse_url = format!(
+        "{}/v1/orgs/{}/sessions/{}/sse",
+        API_BASE_URL, DEFAULT_ORG, session.id
+    );
+
+    let sse_response = client
+        .get(&sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("Failed to connect to SSE");
+
+    assert_eq!(sse_response.status(), 200);
+
+    // Verify content type is text/event-stream
+    let content_type = sse_response.headers().get("content-type");
+    assert!(
+        content_type.is_some(),
+        "SSE response should have content-type header"
+    );
+    let ct = content_type.unwrap().to_str().unwrap();
+    assert!(
+        ct.contains("text/event-stream"),
+        "Content-type should be text/event-stream, got: {}",
+        ct
+    );
+
+    // Read first chunk with timeout (SSE streams are long-lived, can't use .text())
+    let mut stream = sse_response.bytes_stream();
+    let first_chunk = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+        .await
+        .expect("Timeout reading first SSE chunk")
+        .expect("Stream ended unexpectedly")
+        .expect("Failed to read chunk");
+
+    let chunk_str = String::from_utf8_lossy(&first_chunk);
+    println!("SSE first chunk:\n{}", chunk_str);
+
+    // Verify SSE format (should have event: line and data: line)
+    assert!(
+        chunk_str.contains("event:") || chunk_str.contains("data:"),
+        "SSE should have event: or data: lines"
+    );
+
+    // Cleanup
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("SSE contract test passed!");
+}

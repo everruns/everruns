@@ -1,0 +1,8 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "turn_id": "turn_00000000000000000000000000000002",
+  "input_message_id": "message_00000000000000000000000000000003"
+}

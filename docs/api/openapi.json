@@ -3367,10 +3367,6 @@
           },
           {
             "$ref": "#/components/schemas/SessionIdledData"
-          },
-          {
-            "type": "object",
-            "description": "Raw data for backward compatibility with legacy events"
           }
         ],
         "title": "EventData",

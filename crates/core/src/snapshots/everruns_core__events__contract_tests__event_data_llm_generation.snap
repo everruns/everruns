@@ -1,0 +1,42 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "messages": [
+    {
+      "id": "[MESSAGE_ID]",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello"
+        }
+      ],
+      "created_at": "[TIMESTAMP]"
+    }
+  ],
+  "tools": [
+    {
+      "name": "tool1",
+      "description": "A tool"
+    }
+  ],
+  "output": {
+    "text": "Hi there!"
+  },
+  "metadata": {
+    "model": "gpt-4o",
+    "provider": "openai",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 5
+    },
+    "duration_ms": 100,
+    "time_to_first_token_ms": 25,
+    "success": true,
+    "finish_reasons": [
+      "stop"
+    ]
+  }
+}
