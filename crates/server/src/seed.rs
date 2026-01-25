@@ -1,4 +1,4 @@
-// Service seeding module for control-plane
+// Service seeding module for server
 // Decision: Always seed on startup (no flag needed)
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)

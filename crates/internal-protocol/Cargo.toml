@@ -8,7 +8,7 @@
 #   1. Edit the proto file
 #   2. Run: cargo build -p everruns-internal-protocol
 #   3. Rust types are regenerated automatically in target/debug/build/everruns-internal-protocol-*/out/
-#   4. Update grpc_service.rs (control-plane) and grpc_adapters.rs (worker) to use new types
+#   4. Update grpc_service.rs (server) and grpc_adapters.rs (worker) to use new types
 
 [package]
 name = "everruns-internal-protocol"

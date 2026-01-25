@@ -154,7 +154,7 @@ services:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
     depends_on:
-      - control-plane
+      - server
       - ui
     restart: unless-stopped
 

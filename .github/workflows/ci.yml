@@ -411,6 +411,6 @@ jobs:
           target: ${{ matrix.target }}
           push: false
           tags: ${{ matrix.image }}:ci
-          # Use shared cache scope for better layer reuse between control-plane and worker
+          # Use shared cache scope for better layer reuse between server and worker
           cache-from: type=gha,scope=docker-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
