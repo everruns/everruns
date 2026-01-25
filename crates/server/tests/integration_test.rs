@@ -3745,6 +3745,41 @@ async fn test_streaming_events_emitted() {
         delta_event["data"]["accumulated"].as_str().unwrap_or("")
     );
 
+    // Check for output.message.completed event
+    let completed_events: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "output.message.completed")
+        .collect();
+    println!(
+        "Found {} output.message.completed events",
+        completed_events.len()
+    );
+    assert!(
+        !completed_events.is_empty(),
+        "Expected at least one output.message.completed event"
+    );
+
+    // Verify output.message.completed has required fields (message)
+    let completed_event = &completed_events[0];
+    assert!(
+        completed_event["data"]["message"].is_object(),
+        "output.message.completed should have message object"
+    );
+    assert!(
+        completed_event["data"]["message"]["role"] == "agent",
+        "output.message.completed message should have role=agent"
+    );
+    assert!(
+        completed_event["data"]["message"]["content"].is_array(),
+        "output.message.completed message should have content array"
+    );
+    println!(
+        "output.message.completed event: message_id={}",
+        completed_event["data"]["message"]["id"]
+            .as_str()
+            .unwrap_or("unknown")
+    );
+
     // Check for llm.generation event with time_to_first_token_ms
     let llm_events: Vec<_> = events
         .iter()
