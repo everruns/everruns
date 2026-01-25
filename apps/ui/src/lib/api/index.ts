@@ -7,5 +7,6 @@ export * from "./messages";
 export * from "./events";
 export * from "./llm-providers";
 export * from "./mcp-servers";
+export * from "./organizations";
 export * from "./auth";
 export * from "./durable";

@@ -584,6 +584,19 @@ export interface OrganizationMembership {
   name: string;
 }
 
+/** Full organization details (from API) */
+export interface Organization {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to update an organization */
+export interface UpdateOrganizationRequest {
+  name?: string;
+}
+
 export interface UserInfoResponse {
   id: string;
   email: string;

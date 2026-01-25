@@ -4,9 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Server, Key, Users, Plug } from "lucide-react";
+import { Server, Key, Users, Plug, Building2 } from "lucide-react";
 
 const settingsNavigation = [
+  {
+    name: "Organisation",
+    href: "/settings/organisation",
+    icon: Building2,
+    description: "Manage organisation settings",
+  },
   {
     name: "LLM Providers",
     href: "/settings/providers",
