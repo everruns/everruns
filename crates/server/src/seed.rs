@@ -1,4 +1,4 @@
-// Service seeding module for server
+// Service seeding module for server (control plane)
 // Decision: Always seed on startup (no flag needed)
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)

@@ -13,7 +13,7 @@ graph TB
         API_Client[API Clients]
     end
 
-    subgraph Control Plane
+    subgraph Server["Server (Control Plane)"]
         REST[REST API<br/>:9000]
         GRPC[gRPC Server<br/>:9001]
         Services[Services Layer]
@@ -49,10 +49,10 @@ graph TB
 
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation** (folder → package name):
-   - `server/` → `everruns-server` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
+   - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
-   - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
+   - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
@@ -68,7 +68,7 @@ everruns/
 │   ├── ui/               # Next.js Management UI
 │   └── docs/             # Astro Starlight Documentation
 ├── crates/
-│   ├── server/           # HTTP API + gRPC server + storage
+│   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Shared abstractions and types
 │   ├── internal-protocol/# gRPC protocol definitions
@@ -91,16 +91,16 @@ graph TD
     anthropic[anthropic]
     protocol[internal-protocol]
     worker[worker]
-    cp[server]
+    server["server (control plane)"]
 
     core --> openai
     core --> anthropic
     core --> protocol
     core --> worker
     protocol --> worker
-    protocol --> cp
-    core --> cp
-    worker -.->|gRPC| cp
+    protocol --> server
+    core --> server
+    worker -.->|gRPC| server
 ```
 
 ### Data Layer

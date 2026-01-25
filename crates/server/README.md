@@ -1,6 +1,6 @@
-# Everrun API
+# Everruns Server (Control Plane)
 
-REST API server for managing AI agents, threads, and runs.
+The control plane component of Everruns. Provides REST API and gRPC server for managing AI agents, sessions, and runs. Workers connect to this server via gRPC for all database operations.
 
 ## Features
 

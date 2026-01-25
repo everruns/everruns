@@ -2,7 +2,7 @@
 #
 # This configuration deploys the complete Everruns platform:
 # - PostgreSQL database
-# - Server API (HTTP + gRPC)
+# - Server (control plane): HTTP API + gRPC server
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
@@ -62,7 +62,7 @@ services:
     restart: "no"
 
   # ==========================================================================
-  # Server (API + gRPC server)
+  # Server (Control Plane) - HTTP API + gRPC server
   # ==========================================================================
   server:
     image: ghcr.io/everruns/everruns-server:latest
