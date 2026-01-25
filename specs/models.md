@@ -70,7 +70,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `id` | MessageId | Typed ID with `message_` prefix (stored in event.data.message_id) |
 | `session_id` | SessionId | Parent session reference (from event.session_id) |
 | `sequence` | integer | Order within session (from event.sequence) |
-| `role` | enum | `user`, `assistant`, `tool_result` |
+| `role` | enum | `user`, `agent`, `tool_result` |
 | `content` | ContentPart[] | Array of content parts (see below) |
 | `thinking` | string? | Extended thinking content from reasoning models (Anthropic Claude) |
 | `thinking_signature` | string? | Cryptographic signature for thinking (required for multi-turn with Anthropic) |
@@ -95,7 +95,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 // type=image_file (reference to uploaded image)
 { "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
 
-// type=tool_call (assistant requesting tool execution)
+// type=tool_call (agent requesting tool execution)
 {
   "type": "tool_call",
   "id": "call_abc123",
@@ -129,7 +129,7 @@ Controls are optional and allow per-message overrides for model selection and re
 
 **Extended Thinking:**
 
-When `controls.reasoning.effort` is set, models that support extended thinking (e.g., Anthropic Claude) will generate internal reasoning before producing a response. This thinking content is stored in the `thinking` field of assistant messages.
+When `controls.reasoning.effort` is set, models that support extended thinking (e.g., Anthropic Claude) will generate internal reasoning before producing a response. This thinking content is stored in the `thinking` field of agent messages.
 
 - `thinking`: The model's chain-of-thought reasoning (can be lengthy)
 - `thinking_signature`: Cryptographic signature required by Anthropic for multi-turn conversations
@@ -169,7 +169,7 @@ Each level references a UUID that points to a configured model in the `llm_model
 }
 ```
 
-**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `assistant`, `tool_result`, and `system` messages are created internally by the system.
+**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `agent`, `tool_result`, and `system` messages are created internally by the system.
 
 **InputContentPart types (allowed in user messages):**
 
@@ -198,7 +198,7 @@ Messages are stored in the `events` table with the full content in the `data` JS
 // Event for an agent message with tool calls (event_type: "output.message.completed")
 {
   "message_id": "...",
-  "role": "assistant",
+  "role": "agent",
   "content": [
     {"type": "text", "text": "Let me search for that."},
     {"type": "tool_call", "id": "call_abc123", "name": "search", "arguments": {"query": "test"}}
@@ -380,7 +380,7 @@ User sends: "How much is 2+2?"
    → Emits Event(output.message.started)
    → LLM streams response
    → Emits Event(output.message.delta) (batched)
-   → Creates Message(role=assistant, content: { text: "The answer is 4" })
+   → Creates Message(role=agent, content: { text: "The answer is 4" })
    → Emits Event(reason.completed)
    → Emits Event(llm.generation)
    → Emits Event(output.message.completed)

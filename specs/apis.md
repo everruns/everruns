@@ -141,7 +141,7 @@ The user message is emitted immediately by the API, while the agent message and 
 
 ### Messages
 
-Messages store all conversation content (user, assistant, tool calls, tool results).
+Messages store all conversation content (user, agent, tool calls, tool results).
 
 | Method | Path | Description |
 |--------|------|-------------|

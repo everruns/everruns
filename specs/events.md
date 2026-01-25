@@ -266,7 +266,7 @@ Agent response message. Emitted when LLM generation completes.
   "data": {
     "message": {
       "id": "01937abc-...",
-      "role": "assistant",
+      "role": "agent",
       "content": [
         { "type": "text", "text": "Hello! How can I help?" }
       ],
@@ -960,7 +960,7 @@ Messages are reconstructed from events for the conversation view. The following 
 | Event Type | Role | Content Source |
 |------------|------|----------------|
 | `input.message` | `user` | `data.message.content` |
-| `output.message.completed` | `assistant` | `data.message.content` (may include tool calls) |
+| `output.message.completed` | `agent` | `data.message.content` (may include tool calls) |
 | `tool.completed` | `tool` | `data.result` (tool execution results) |
 
 **Note:** Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events, not a separate message type.
