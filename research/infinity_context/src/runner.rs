@@ -34,6 +34,8 @@ pub struct EvalConfig {
     pub dry_run: bool,
     /// Delay in milliseconds between scenarios (helps avoid rate limits)
     pub delay_ms: u64,
+    /// Delay in milliseconds between LLM calls within a scenario (for tool loops)
+    pub inter_call_delay_ms: u64,
 }
 
 // ============================================================================
@@ -76,8 +78,15 @@ pub async fn run_evaluation(
     );
 
     let mut strategy_results = Vec::new();
+    let mut is_first_cap = true;
 
     for capability in capabilities {
+        // Delay between capabilities too
+        if !is_first_cap && config.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
+        }
+        is_first_cap = false;
+
         println!(
             "{} Capability: {}",
             "━".repeat(60).dimmed(),
@@ -445,6 +454,12 @@ async fn execute_llm_calls(
                     thinking: None,
                     thinking_signature: None,
                 });
+            }
+
+            // Delay between tool call iterations to avoid rate limits
+            if config.inter_call_delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(config.inter_call_delay_ms))
+                    .await;
             }
         } else {
             final_response = response.text;

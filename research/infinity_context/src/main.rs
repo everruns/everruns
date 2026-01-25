@@ -87,6 +87,10 @@ enum Commands {
         /// Delay in milliseconds between scenarios (helps avoid rate limits)
         #[arg(long, default_value = "0")]
         delay_ms: u64,
+
+        /// Delay in milliseconds between LLM calls within a scenario (for tool loops)
+        #[arg(long, default_value = "0")]
+        inter_call_delay_ms: u64,
     },
 
     /// View evaluation results
@@ -129,6 +133,7 @@ async fn main() -> Result<()> {
             budget_percent,
             dry_run,
             delay_ms,
+            inter_call_delay_ms,
         } => {
             cmd_run(
                 dataset,
@@ -140,6 +145,7 @@ async fn main() -> Result<()> {
                 budget_percent,
                 dry_run,
                 delay_ms,
+                inter_call_delay_ms,
             )
             .await
         }
@@ -218,6 +224,7 @@ async fn cmd_run(
     budget_percent: f64,
     dry_run: bool,
     delay_ms: u64,
+    inter_call_delay_ms: u64,
 ) -> Result<()> {
     println!(
         "{} Loading dataset from: {}\n",
@@ -254,6 +261,7 @@ async fn cmd_run(
         budget_percent,
         dry_run,
         delay_ms,
+        inter_call_delay_ms,
     };
 
     println!("{}", "Configuration:".bold());
@@ -273,6 +281,12 @@ async fn cmd_run(
         println!(
             "  Delay: {}ms between scenarios",
             delay_ms.to_string().bright_yellow()
+        );
+    }
+    if inter_call_delay_ms > 0 {
+        println!(
+            "  Inter-call delay: {}ms between LLM calls",
+            inter_call_delay_ms.to_string().bright_yellow()
         );
     }
     println!();
