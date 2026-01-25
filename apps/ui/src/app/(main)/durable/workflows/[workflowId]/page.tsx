@@ -25,6 +25,7 @@ import {
   Zap,
   MessageSquare,
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 
 function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
@@ -248,9 +249,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             {getStatusIcon(workflow.status, "lg")}
-            <div>
+            <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold">{workflow.workflow_type}</h2>
-              <p className="text-sm text-muted-foreground font-mono">{workflow.id}</p>
+              <CopyButton value={workflow.id} />
             </div>
           </div>
           <div className="flex items-center gap-2">

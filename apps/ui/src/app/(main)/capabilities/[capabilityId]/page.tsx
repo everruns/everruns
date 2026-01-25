@@ -16,6 +16,7 @@ import {
   Code,
   Link as LinkIcon,
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
@@ -145,13 +146,11 @@ export default function CapabilityDetailPage({
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-3">
               {capability.name}
+              <CopyButton value={capability.id} />
               <Badge variant={getStatusBadgeVariant(capability.status)}>
                 {getStatusLabel(capability.status)}
               </Badge>
             </h1>
-            <p className="text-muted-foreground font-mono text-sm">
-              {capability.id}
-            </p>
           </div>
         </div>
       </div>
@@ -261,13 +260,6 @@ export default function CapabilityDetailPage({
                   </div>
                 </div>
               )}
-
-              <div>
-                <p className="text-sm font-medium">ID</p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {capability.id}
-                </p>
-              </div>
             </CardContent>
           </Card>
 

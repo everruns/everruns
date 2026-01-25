@@ -23,6 +23,7 @@ import {
   Eye,
   LayoutDashboard,
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
@@ -141,15 +142,13 @@ export default function AgentDetailPage({
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             {agent.name}
+            <CopyButton value={agent.id} />
             <Badge
               variant={agent.status === "active" ? "default" : "secondary"}
             >
               {agent.status}
             </Badge>
           </h1>
-          <p className="text-muted-foreground font-mono text-sm">
-            ID: {agent.id}
-          </p>
         </div>
         <div className="flex gap-2">
           <Button

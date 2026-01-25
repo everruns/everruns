@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Pencil } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineMarkdown } from "@/components/ui/markdown";
@@ -38,15 +39,13 @@ export function AgentCard({
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="space-y-1">
+        <div className="flex items-center gap-2">
           <CardTitle className="text-lg">
             <Link href={`/agents/${agent.id}`} className="hover:underline">
               {agent.name}
             </Link>
           </CardTitle>
-          <p className="text-sm text-muted-foreground font-mono">
-            {agent.id}
-          </p>
+          <CopyButton value={agent.id} />
         </div>
         <Badge variant={agent.status === "active" ? "default" : "secondary"}>
           {agent.status}

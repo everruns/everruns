@@ -233,6 +233,42 @@ export function AgentFilterMenu({ value, onValueChange, className }) {
 **Existing components:**
 - `AgentFilterMenu` - `components/agent/agent-filter-menu.tsx`
 
+### Entity ID Display
+
+**Rule:** Never show entity IDs as visible text. Provide a copy button for ID access.
+
+**Pattern:**
+- Display entity name/title prominently
+- Add `CopyButton` next to title for ID copying
+- Tooltips may show full ID for reference
+- If entity has no name, show `"{EntityType} {shortenId(id)}"` as fallback
+
+**Implementation:**
+```tsx
+// In headers/titles
+<h1 className="text-2xl font-bold flex items-center gap-2">
+  {entity.name}
+  <CopyButton value={entity.id} />
+</h1>
+
+// In cards (within Link)
+<div className="flex items-center gap-2">
+  <CardTitle>{entity.name}</CardTitle>
+  <CopyButton value={entity.id} />
+</div>
+
+// Fallback when no name
+<h1 className="text-2xl font-bold flex items-center gap-2">
+  {entity.name || `Agent ${shortenId(entity.id)}`}
+  <CopyButton value={entity.id} />
+</h1>
+```
+
+**Why:** IDs are for programmatic use (API calls, debugging). Users need to copy them occasionally but don't need to see them constantly. This keeps the UI clean while maintaining accessibility.
+
+**Components:**
+- `CopyButton` - `components/ui/copy-button.tsx` - Icon button that copies value to clipboard
+
 ### List Page Structure
 
 For pages listing entities with filters:

@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Info,
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineMarkdown } from "@/components/ui/markdown";
@@ -52,11 +53,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
             <div className="p-2 bg-muted rounded-lg">
               <IconComponent className="w-5 h-5" />
             </div>
-            <div>
+            <div className="flex items-center gap-2">
               <CardTitle className="text-lg">{capability.name}</CardTitle>
-              <p className="text-sm text-muted-foreground font-mono">
-                {capability.id}
-              </p>
+              <CopyButton value={capability.id} />
             </div>
           </div>
           <Badge variant={getStatusBadgeVariant(capability.status)}>

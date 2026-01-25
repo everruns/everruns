@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { CopyButton } from "@/components/ui/copy-button";
 
 type TabValue = "workflows" | "tasks" | "dlq";
 
@@ -108,10 +109,8 @@ function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCanc
       <TableCell>
         <div className="flex items-center gap-2">
           {getStatusIcon(workflow.status)}
-          <div>
-            <p className="font-medium">{workflow.workflow_type}</p>
-            <p className="text-xs text-muted-foreground font-mono">{workflow.id.slice(0, 16)}...</p>
-          </div>
+          <p className="font-medium">{workflow.workflow_type}</p>
+          <CopyButton value={workflow.id} />
         </div>
       </TableCell>
       <TableCell>
