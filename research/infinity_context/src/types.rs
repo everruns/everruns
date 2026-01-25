@@ -40,11 +40,6 @@ pub fn estimate_tokens(message: &Message) -> usize {
     content_len.div_ceil(4)
 }
 
-/// Estimate total tokens for a slice of messages
-pub fn estimate_total_tokens(messages: &[Message]) -> usize {
-    messages.iter().map(estimate_tokens).sum()
-}
-
 // ============================================================================
 // Context Strategy Configuration
 // ============================================================================
@@ -59,14 +54,6 @@ pub struct ContextStrategyConfig {
     /// Minimum recent messages to always keep (default: 10)
     #[serde(default = "default_min_recent")]
     pub min_recent_messages: usize,
-
-    /// Boost more recent messages in search results (default: true)
-    #[serde(default = "default_true")]
-    pub boost_recency: bool,
-
-    /// Boost user/assistant messages over tool results (default: true)
-    #[serde(default = "default_true")]
-    pub boost_conversation: bool,
 }
 
 fn default_budget() -> usize {
@@ -77,17 +64,11 @@ fn default_min_recent() -> usize {
     10
 }
 
-fn default_true() -> bool {
-    true
-}
-
 impl Default for ContextStrategyConfig {
     fn default() -> Self {
         Self {
             context_budget_tokens: default_budget(),
             min_recent_messages: default_min_recent(),
-            boost_recency: true,
-            boost_conversation: true,
         }
     }
 }
@@ -128,14 +109,6 @@ pub mod message_helpers {
 
     pub fn assistant(content: impl Into<String>) -> Message {
         Message::assistant(content)
-    }
-
-    pub fn system(content: impl Into<String>) -> Message {
-        Message::system(content)
-    }
-
-    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Message {
-        Message::tool_result(tool_call_id, Some(serde_json::json!(content.into())), None)
     }
 }
 

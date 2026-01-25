@@ -4,80 +4,68 @@ Research evaluation framework for comparing context management strategies in lon
 
 ## Overview
 
-This evaluation framework compares three approaches to handling conversations that exceed LLM context limits:
+Compares three approaches to handling conversations that exceed LLM context limits:
 
-1. **Baseline (No Trimming)**: Sends all messages to the model. Fails when context is exceeded.
-2. **Naive Trim**: Drops oldest messages to fit within budget. Simple but loses information.
-3. **Infinity Context**: Trims messages but provides a `query_history` tool for the LLM to retrieve excluded history on-demand.
+1. **Baseline**: Sends all messages. Fails when context exceeded.
+2. **Naive Trim**: Drops oldest messages. Simple but loses information.
+3. **Infinity Context**: Trims messages but provides `query_history` tool for retrieving excluded history.
 
-## Running Evaluations
+## Usage
 
 ```bash
-# From repo root
-just eval              # Dry run (no LLM calls, shows token estimates)
-just eval-live         # Full run with LLM calls
-just eval-dry          # Explicit dry run
+# Generate dataset
+cargo run -- generate -o datasets/infinity_context.jsonl
 
-# Or run directly
-cd research/infinity_context
-cargo run --release -- --synthetic
-cargo run --release -- --synthetic --dry-run
+# Run evaluation (with delays to avoid rate limits)
+cargo run -- run -d datasets/infinity_context.jsonl \
+  --delay-ms 5000 \
+  --inter-call-delay-ms 10000
+
+# Run specific scenario/capability
+cargo run -- run -d datasets/infinity_context.jsonl \
+  --capability "Infinity Context" \
+  --scenario needle_basic_0
+
+# Dry run (no LLM calls)
+cargo run -- run -d datasets/infinity_context.jsonl --dry-run
 ```
 
 ## Scenarios
 
-The framework generates synthetic scenarios to test each strategy:
+Generated scenarios test each strategy:
 
-- **Needle in Haystack**: Important information appears early, needs to be retrieved later
-- **Multi-hop Reasoning**: Requires connecting facts spread across the conversation
-- **Cumulative Tasks**: Results build on each other across the conversation
+- **Needle in Haystack**: Important info early, retrieve later
+- **Multi-hop Reasoning**: Connect facts across conversation
+- **Cumulative Tasks**: Results build on each other
+- **Final Decision**: Early context affects final answer
+- **Decision Timeline**: Track decision changes over time
+- **Tool Result Disambiguation**: Distinguish similar tool outputs
 
 ## Metrics
 
-The framework tracks:
-
-- **Task Completion Rate**: Did the agent produce the correct answer?
-- **Token Efficiency**: Tokens used vs baseline
+- **Score**: LLM-as-judge evaluation (0-100%)
+- **Token Usage**: Input/output tokens
 - **Latency**: Time to produce response
-- **History Queries**: Number of times the agent used `query_history` tool
-
-## Integration with Core
-
-The context strategy capabilities are implemented in `crates/core/src/capabilities/context_strategies.rs`:
-
-- `NaiveTrimCapability` - Drops old messages via `BatchTransform` filter
-- `InfinityContextCapability` - Provides `query_history` tool + message injection
-
-These capabilities use the `MessageFilterProvider` trait to modify how messages are loaded for the LLM.
+- **History Queries**: Times `query_history` was called
 
 ## Project Structure
 
 ```
 research/infinity_context/
 ├── src/
-│   ├── main.rs           # CLI entry point
-│   ├── runner.rs         # Evaluation orchestration
-│   ├── metrics.rs        # Metric collection
-│   ├── report.rs         # Markdown report generation
-│   └── strategies/       # Strategy implementations for eval
-├── scenarios/            # Scenario configurations
-└── results/              # Generated evaluation reports
-```
-
-## Configuration
-
-Strategies accept these configuration options:
-
-```json
-{
-  "context_budget_tokens": 100000,   // Max tokens to send to LLM
-  "min_recent_messages": 10,         // Always keep this many recent messages
-  "boost_recency": true,             // Prefer recent messages in search
-  "boost_conversation": true         // Boost user/assistant over tool results
-}
+│   ├── main.rs              # CLI
+│   ├── runner.rs            # Evaluation orchestration
+│   ├── dataset.rs           # Dataset loading
+│   ├── scenarios/           # Scenario generation
+│   ├── capabilities/        # Strategy implementations
+│   ├── scorer.rs            # LLM-as-judge scoring
+│   ├── metrics.rs           # Metric aggregation
+│   └── report.rs            # Markdown reports
+├── datasets/                # Generated datasets (gitignored)
+└── results/                 # Evaluation reports (gitignored)
 ```
 
 ## See Also
 
-- [Infinity Context Spec](../../specs/infinity-context.md) - Full specification
-- [Capabilities Spec](../../specs/capabilities.md) - Agent capabilities system
+- [Infinity Context Spec](../../specs/infinity-context.md)
+- [Capabilities Spec](../../specs/capabilities.md)
