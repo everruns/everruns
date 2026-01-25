@@ -105,4 +105,10 @@ export const queryKeys = {
     list: () => ["mcp-servers"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
+
+  // Organization queries
+  organizations: {
+    all: ["organizations"] as const,
+    detail: (orgId: string) => ["organization", orgId] as const,
+  },
 };
