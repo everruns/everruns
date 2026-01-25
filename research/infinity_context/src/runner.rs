@@ -535,11 +535,37 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
             crate::types::MessageRole::System => LlmMessageRole::System,
         };
 
+        // For tool result messages, extract tool_call_id from content
+        // This is required for OpenAI Responses API which uses FunctionCallOutput
+        let tool_call_id = if msg.role == crate::types::MessageRole::ToolResult {
+            msg.tool_call_id().map(|s| s.to_string())
+        } else {
+            None
+        };
+
+        // For assistant messages, extract tool calls from content
+        // This is required for OpenAI Responses API which uses FunctionCall items
+        let tool_calls = if msg.role == crate::types::MessageRole::Assistant && msg.has_tool_calls()
+        {
+            Some(
+                msg.tool_calls()
+                    .into_iter()
+                    .map(|tc| everruns_core::tool_types::ToolCall {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: tc.arguments.clone(),
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
         messages.push(LlmMessage {
             role,
             content: LlmMessageContent::Text(msg.text_content()),
-            tool_calls: None,
-            tool_call_id: None,
+            tool_calls,
+            tool_call_id,
             thinking: None,
             thinking_signature: None,
         });

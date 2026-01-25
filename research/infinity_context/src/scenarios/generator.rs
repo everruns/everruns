@@ -18,8 +18,8 @@
 //! query_history returns empty results (nothing was excluded).
 
 use crate::dataset::{
-    make_input_event, make_output_event, make_tool_event, DatasetRecord, Event, Input, Meta,
-    PlantedInfo, SessionId,
+    make_input_event, make_output_event, make_output_event_with_tool_call, make_tool_event,
+    DatasetRecord, Event, Input, Meta, PlantedInfo, SessionId,
 };
 
 /// Generate synthetic test scenarios - one of each type
@@ -199,10 +199,22 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
             events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
             seq += 1;
         } else {
+            // First, add assistant message with the tool call
+            let tool_call_id = format!("call_{}", i);
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"filename": format!("file_{}.txt", i)}),
+                seq,
+            ));
+            seq += 1;
+            // Then add the tool result
             events.push(make_tool_event(
                 session_id,
                 "read_file",
-                format!("call_{}", i),
+                tool_call_id,
                 generate_filler_file_content(i),
                 seq,
             ));
@@ -477,16 +489,30 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
         let tool_call = calls.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, filename, content)) = tool_call {
+            // User asks to read file
             events.push(make_input_event(session_id, format!("Read the file {}", filename), seq));
             seq += 1;
+            // Assistant calls the tool
+            let tool_call_id = format!("read_file_{}", i);
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"filename": filename}),
+                seq,
+            ));
+            seq += 1;
+            // Tool result
             events.push(make_tool_event(
                 session_id,
                 "read_file",
-                format!("read_file_{}", i),
+                tool_call_id,
                 format!("Contents of {}:\n{}", filename, content),
                 seq,
             ));
             seq += 1;
+            // Assistant response
             events.push(make_output_event(session_id, format!("I've read {}.", filename), seq));
             seq += 1;
         } else if i % 2 == 0 {

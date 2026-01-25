@@ -282,6 +282,27 @@ pub fn make_output_event(session_id: SessionId, content: impl Into<String>, sequ
     Event::new(session_id, EventContext::empty(), OutputMessageCompletedData::new(message)).with_sequence(sequence)
 }
 
+/// Create an output.message.completed event for an agent message with a tool call
+///
+/// This creates an assistant message that includes both text content (optional) and a tool call.
+/// The tool call will be included in the message's content as a ToolCall content part.
+pub fn make_output_event_with_tool_call(
+    session_id: SessionId,
+    content: impl Into<String>,
+    tool_call_id: impl Into<String>,
+    tool_name: impl Into<String>,
+    tool_arguments: serde_json::Value,
+    sequence: i32,
+) -> Event {
+    let tool_call = everruns_core::tool_types::ToolCall {
+        id: tool_call_id.into(),
+        name: tool_name.into(),
+        arguments: tool_arguments,
+    };
+    let message = Message::assistant_with_tools(content, vec![tool_call]);
+    Event::new(session_id, EventContext::empty(), OutputMessageCompletedData::new(message)).with_sequence(sequence)
+}
+
 /// Create a tool.completed event for a tool result
 pub fn make_tool_event(
     session_id: SessionId,
