@@ -32,6 +32,8 @@ pub struct EvalConfig {
     pub context_window: usize,
     pub budget_percent: f64,
     pub dry_run: bool,
+    /// Delay in milliseconds between scenarios (helps avoid rate limits)
+    pub delay_ms: u64,
 }
 
 // ============================================================================
@@ -84,8 +86,15 @@ pub async fn run_evaluation(
         println!("  {}\n", capability.description().dimmed());
 
         let mut results = Vec::new();
+        let mut is_first = true;
 
         for scenario in scenarios {
+            // Delay between scenarios (skip first)
+            if !is_first && config.delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
+            }
+            is_first = false;
+
             let result = run_single_scenario(
                 config,
                 scenario,

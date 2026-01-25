@@ -83,6 +83,10 @@ enum Commands {
         /// Dry run - show what would be executed without calling LLM
         #[arg(long)]
         dry_run: bool,
+
+        /// Delay in milliseconds between scenarios (helps avoid rate limits)
+        #[arg(long, default_value = "0")]
+        delay_ms: u64,
     },
 
     /// View evaluation results
@@ -124,6 +128,7 @@ async fn main() -> Result<()> {
             context_window,
             budget_percent,
             dry_run,
+            delay_ms,
         } => {
             cmd_run(
                 dataset,
@@ -134,6 +139,7 @@ async fn main() -> Result<()> {
                 context_window,
                 budget_percent,
                 dry_run,
+                delay_ms,
             )
             .await
         }
@@ -211,6 +217,7 @@ async fn cmd_run(
     context_window: usize,
     budget_percent: f64,
     dry_run: bool,
+    delay_ms: u64,
 ) -> Result<()> {
     println!(
         "{} Loading dataset from: {}\n",
@@ -246,6 +253,7 @@ async fn cmd_run(
         context_window,
         budget_percent,
         dry_run,
+        delay_ms,
     };
 
     println!("{}", "Configuration:".bold());
@@ -260,6 +268,12 @@ async fn cmd_run(
     );
     if dry_run {
         println!("  {} Dry run mode", "⚠".bright_yellow());
+    }
+    if delay_ms > 0 {
+        println!(
+            "  Delay: {}ms between scenarios",
+            delay_ms.to_string().bright_yellow()
+        );
     }
     println!();
 
