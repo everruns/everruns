@@ -573,7 +573,7 @@ async fn test_reason_atom_handles_llm_error() {
     // Verify an error message was stored for the user
     let messages = message_retriever.load(session_id.into()).await.unwrap();
     assert_eq!(messages.len(), 2, "Should have user + error message");
-    assert_eq!(messages[1].role, everruns_core::MessageRole::Assistant);
+    assert_eq!(messages[1].role, everruns_core::MessageRole::Agent);
     assert!(
         messages[1].text().unwrap().contains("error"),
         "Stored message should be an error message"
@@ -674,7 +674,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     if let Some(event) = output_completed {
         if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
             assert_eq!(data.message.text(), Some("The capital of France is Paris."));
-            assert_eq!(data.message.role, everruns_core::MessageRole::Assistant);
+            assert_eq!(data.message.role, everruns_core::MessageRole::Agent);
         } else {
             panic!("Expected OutputMessageCompleted data");
         }

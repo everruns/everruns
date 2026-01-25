@@ -310,7 +310,7 @@ async fn test_message_retriever_preserves_tool_calls() {
     assert_eq!(loaded.len(), 1);
 
     let loaded_msg = &loaded[0];
-    assert_eq!(loaded_msg.role, MessageRole::Assistant);
+    assert_eq!(loaded_msg.role, MessageRole::Agent);
     assert_eq!(loaded_msg.text(), Some("Let me check that for you."));
 
     // Verify tool_calls are preserved - this is the key assertion
@@ -371,9 +371,9 @@ async fn test_message_retriever_full_tool_conversation() {
 
     // Verify message order and content
     assert_eq!(messages[0].role, MessageRole::User);
-    assert_eq!(messages[1].role, MessageRole::Assistant);
+    assert_eq!(messages[1].role, MessageRole::Agent);
     assert_eq!(messages[2].role, MessageRole::ToolResult);
-    assert_eq!(messages[3].role, MessageRole::Assistant);
+    assert_eq!(messages[3].role, MessageRole::Agent);
 
     // Verify the assistant message with tool calls has them preserved
     let assistant_msg = &messages[1];

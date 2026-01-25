@@ -24,9 +24,7 @@ pub enum MessageRole {
     /// User message
     User,
     /// Agent response (may contain tool calls in content)
-    /// Note: Serializes as "agent" for API consistency
-    #[serde(rename = "agent")]
-    Assistant,
+    Agent,
     /// Tool execution result
     ToolResult,
 }
@@ -36,7 +34,7 @@ impl std::fmt::Display for MessageRole {
         match self {
             MessageRole::System => write!(f, "system"),
             MessageRole::User => write!(f, "user"),
-            MessageRole::Assistant => write!(f, "agent"),
+            MessageRole::Agent => write!(f, "agent"),
             MessageRole::ToolResult => write!(f, "tool_result"),
         }
     }
@@ -48,7 +46,7 @@ impl From<&str> for MessageRole {
             "system" => MessageRole::System,
             "user" => MessageRole::User,
             // Accept both "agent" and legacy "assistant"
-            "agent" | "assistant" => MessageRole::Assistant,
+            "agent" | "assistant" => MessageRole::Agent,
             "tool_result" => MessageRole::ToolResult,
             _ => MessageRole::User,
         }
@@ -498,7 +496,7 @@ impl Message {
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             id: MessageId::new(),
-            role: MessageRole::Assistant,
+            role: MessageRole::Agent,
             content: vec![ContentPart::text(content)],
             thinking: None,
             thinking_signature: None,
@@ -532,7 +530,7 @@ impl Message {
         }
         Self {
             id: MessageId::new(),
-            role: MessageRole::Assistant,
+            role: MessageRole::Agent,
             content: parts,
             thinking: None,
             thinking_signature: None,
@@ -661,7 +659,7 @@ impl Message {
         let role = match self.role {
             MessageRole::System => "system",
             MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
+            MessageRole::Agent => "assistant",
             MessageRole::ToolResult => "tool",
         };
 
@@ -693,7 +691,7 @@ impl Message {
         }
 
         // Handle assistant messages with tool calls
-        if self.role == MessageRole::Assistant {
+        if self.role == MessageRole::Agent {
             let tool_calls: Vec<serde_json::Value> = self
                 .content
                 .iter()
@@ -791,7 +789,7 @@ mod tests {
     #[test]
     fn test_assistant_message() {
         let msg = Message::assistant("Hi there!");
-        assert_eq!(msg.role, MessageRole::Assistant);
+        assert_eq!(msg.role, MessageRole::Agent);
         assert_eq!(msg.text(), Some("Hi there!"));
     }
 
@@ -815,7 +813,7 @@ mod tests {
         };
         let msg = Message::assistant_with_tools("Let me check the weather.", vec![tool_call]);
 
-        assert_eq!(msg.role, MessageRole::Assistant);
+        assert_eq!(msg.role, MessageRole::Agent);
         assert_eq!(msg.text(), Some("Let me check the weather."));
         assert_eq!(msg.tool_calls().len(), 1);
         assert_eq!(msg.tool_calls()[0].name, "get_weather");
@@ -832,7 +830,7 @@ mod tests {
         };
         let msg = Message::assistant_with_tools("", vec![tool_call]);
 
-        assert_eq!(msg.role, MessageRole::Assistant);
+        assert_eq!(msg.role, MessageRole::Agent);
         // Empty text should result in None, not Some("")
         assert_eq!(msg.text(), None);
         // But tool calls should still be present

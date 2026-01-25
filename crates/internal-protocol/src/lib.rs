@@ -830,7 +830,7 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
     match s.to_lowercase().as_str() {
         "system" => everruns_core::MessageRole::System,
         "user" => everruns_core::MessageRole::User,
-        "assistant" | "agent" => everruns_core::MessageRole::Assistant,
+        "assistant" | "agent" => everruns_core::MessageRole::Agent,
         "tool_result" => everruns_core::MessageRole::ToolResult,
         _ => everruns_core::MessageRole::User,
     }
@@ -1054,7 +1054,7 @@ mod tests {
         let thinking_content = "Let me analyze this step by step...\n\n1. First, I need to understand the problem.\n2. Then, I'll formulate a solution.".to_string();
         let message = Message {
             id: Uuid::now_v7().into(),
-            role: MessageRole::Assistant,
+            role: MessageRole::Agent,
             content: vec![ContentPart::text(
                 "Here is my response based on my analysis.",
             )],
@@ -1080,7 +1080,7 @@ mod tests {
 
         // Verify thinking field survives roundtrip
         assert_eq!(schema_message.thinking, Some(thinking_content));
-        assert_eq!(schema_message.role, MessageRole::Assistant);
+        assert_eq!(schema_message.role, MessageRole::Agent);
     }
 
     #[test]
@@ -1092,7 +1092,7 @@ mod tests {
         // Create a Message without thinking content (normal model output)
         let message = Message {
             id: Uuid::now_v7().into(),
-            role: MessageRole::Assistant,
+            role: MessageRole::Agent,
             content: vec![ContentPart::text("A simple response without thinking.")],
             thinking: None,
             thinking_signature: None,
