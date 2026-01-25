@@ -6,7 +6,7 @@
 //!
 //! Requirements:
 //!   - PostgreSQL running with DATABASE_URL set
-//!   - Migrations applied from crates/control-plane/migrations/
+//!   - Migrations applied from crates/server/migrations/
 //!
 //! Usage:
 //!   cargo bench -p everruns-durable --bench db_cold_start_latency

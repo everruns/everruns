@@ -8,13 +8,13 @@ mod grpc_service;
 mod seed;
 
 // Use modules from library
-use everruns_control_plane::DirectWorkerAdapters;
-use everruns_control_plane::api;
-use everruns_control_plane::auth;
-use everruns_control_plane::openapi::ApiDoc;
-use everruns_control_plane::services;
-use everruns_control_plane::storage::{EncryptionService, StorageBackend};
-use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
+use everruns_server::DirectWorkerAdapters;
+use everruns_server::api;
+use everruns_server::auth;
+use everruns_server::openapi::ApiDoc;
+use everruns_server::services;
+use everruns_server::storage::{EncryptionService, StorageBackend};
+use everruns_server::task_notifications::TaskNotificationBroadcaster;
 use everruns_worker::{TaskWorker, TaskWorkerConfig};
 
 use anyhow::{Context, Result};
@@ -65,12 +65,12 @@ struct HealthState {
 async fn main() -> Result<()> {
     // Initialize telemetry with OpenTelemetry support
     // Configure via environment variables:
-    // - OTEL_SERVICE_NAME: Service name (default: "everruns-control-plane")
+    // - OTEL_SERVICE_NAME: Service name (default: "everruns-server")
     // - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., "http://localhost:4317")
     // - RUST_LOG: Log filter (default: "everruns_api=debug,tower_http=debug")
     let mut telemetry_config = TelemetryConfig::from_env();
     if telemetry_config.service_name == "everruns" {
-        telemetry_config.service_name = "everruns-control-plane".to_string();
+        telemetry_config.service_name = "everruns-server".to_string();
     }
     if telemetry_config.log_filter.is_none() {
         telemetry_config.log_filter = Some("everruns_api=debug,tower_http=debug".to_string());
@@ -520,7 +520,7 @@ async fn main() -> Result<()> {
                 }
             });
 
-            tracing::info!("DEV MODE: Task worker started - control-plane is fully functional");
+            tracing::info!("DEV MODE: Task worker started - server is fully functional");
         } else {
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }

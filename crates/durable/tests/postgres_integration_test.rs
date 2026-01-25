@@ -4,7 +4,7 @@
 //!
 //! Requirements:
 //! - PostgreSQL running with DATABASE_URL set or postgres://localhost:5432/everruns_test
-//! - Migrations applied (run migrations from crates/control-plane/migrations/)
+//! - Migrations applied (run migrations from crates/server/migrations/)
 
 use std::time::Duration;
 

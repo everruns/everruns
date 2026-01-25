@@ -6,13 +6,13 @@
 // Decision: No direct database access - all operations go through services layer
 
 use base64::Engine;
-use everruns_control_plane::services::{
+use everruns_server::services::{
     AgentService, EventService, LlmResolverService, McpServerService, SessionFileService,
     SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
-use everruns_control_plane::storage::{EncryptionService, StorageBackend};
-use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
+use everruns_server::storage::{EncryptionService, StorageBackend};
+use everruns_server::task_notifications::TaskNotificationBroadcaster;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,

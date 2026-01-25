@@ -5,7 +5,7 @@
 // Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
 // Decision: Modular design allows easy addition of new seeders
 
-use everruns_control_plane::storage::{
+use everruns_server::storage::{
     StorageBackend,
     models::{
         CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,

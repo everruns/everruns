@@ -129,7 +129,7 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/control-plane/migrations
+        run: sqlx migrate run --source crates/server/migrations
 
       - name: Run unit tests
         run: cargo test --all-features --lib --bins
@@ -260,16 +260,16 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/control-plane/migrations
+        run: sqlx migrate run --source crates/server/migrations
 
       - name: Build API and Worker
         run: |
-          cargo build -p everruns-control-plane
+          cargo build -p everruns-server
           cargo build -p everruns-worker
 
       - name: Start API server
         run: |
-          cargo run -p everruns-control-plane > /tmp/api.log 2>&1 &
+          cargo run -p everruns-server > /tmp/api.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
           # Wait for API to be ready
@@ -281,7 +281,7 @@ jobs:
           cargo run -p everruns-worker > /tmp/worker.log 2>&1 &
           WORKER_PID=$!
           echo "WORKER_PID=$WORKER_PID" >> $GITHUB_ENV
-          # Give worker time to connect to control-plane
+          # Give worker time to connect to server
           sleep 5
           # Verify worker is still running
           if kill -0 $WORKER_PID 2>/dev/null; then
@@ -295,7 +295,7 @@ jobs:
       - name: Run integration tests
         run: |
           # Run integration tests (uses LlmSim for workflow tests, no real API keys needed)
-          cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
+          cargo test -p everruns-server --test integration_test -- --test-threads=1
 
       - name: Show logs on failure
         if: failure()
@@ -390,9 +390,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: control-plane
+          - target: server
             dockerfile: docker/Dockerfile.unified
-            image: everruns-control-plane
+            image: everruns-server
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image: everruns-worker

@@ -40,7 +40,7 @@ curl -s http://localhost:9000/health | jq
 cargo test --all-features
 
 # Integration tests only (requires server running)
-cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
+cargo test -p everruns-server --test integration_test -- --test-threads=1
 
 # Durable engine tests
 cargo test -p everruns-durable --lib

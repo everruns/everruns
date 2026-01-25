@@ -80,10 +80,10 @@ This will:
 
 ```bash
 # Run all integration tests (requires API + Worker running)
-cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
+cargo test -p everruns-server --test integration_test -- --test-threads=1
 
 # Run a specific test
-cargo test -p everruns-control-plane --test integration_test test_full_agent_session_workflow -- --test-threads=1
+cargo test -p everruns-server --test integration_test test_full_agent_session_workflow -- --test-threads=1
 ```
 
 ### Test Coverage

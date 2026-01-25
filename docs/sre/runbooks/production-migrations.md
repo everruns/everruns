@@ -59,8 +59,8 @@ Expected output shows applied and pending migrations:
 Before applying, review the migration SQL:
 
 ```bash
-ls -la crates/control-plane/migrations/
-cat crates/control-plane/migrations/003_new_feature.sql
+ls -la crates/server/migrations/
+cat crates/server/migrations/003_new_feature.sql
 ```
 
 **Check for:**

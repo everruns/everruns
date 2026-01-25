@@ -16,10 +16,10 @@ Enable development mode with in-memory storage. No PostgreSQL required.
 
 ```bash
 # Start in dev mode (no database required)
-DEV_MODE=true ./target/debug/everruns-control-plane
+DEV_MODE=true ./target/debug/everruns-server
 
 # Or with 1
-DEV_MODE=1 ./target/debug/everruns-control-plane
+DEV_MODE=1 ./target/debug/everruns-server
 ```
 
 **Notes:**
@@ -58,10 +58,10 @@ Deployment environment grade. Controls which features and capabilities are avail
 
 ```bash
 # Run in development mode with experimental features
-DEPLOYMENT_GRADE=dev ./target/debug/everruns-control-plane
+DEPLOYMENT_GRADE=dev ./target/debug/everruns-server
 
 # Production mode (default)
-DEPLOYMENT_GRADE=prod ./target/debug/everruns-control-plane
+DEPLOYMENT_GRADE=prod ./target/debug/everruns-server
 ```
 
 **Notes:**
@@ -242,7 +242,7 @@ Service name for traces.
 | Property | Value |
 |----------|-------|
 | **Required** | No |
-| **Default** | `everruns-control-plane` (API), `everruns-worker` (Worker) |
+| **Default** | `everruns-server` (API), `everruns-worker` (Worker) |
 
 **Example:**
 

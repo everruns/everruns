@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.4
 #
 # Unified multi-target Dockerfile for everruns services
-# Builds both control-plane and worker in a single build with shared dependency cache
+# Builds both server and worker in a single build with shared dependency cache
 # Supports cross-compilation for ARM64 builds using xx toolchain
 #
 # Usage:
-#   docker build --target control-plane -f docker/Dockerfile.unified -t everruns-control-plane .
+#   docker build --target server -f docker/Dockerfile.unified -t everruns-server .
 #   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
 
 # ============================================================================
@@ -51,9 +51,9 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
 # ============================================================================
-# Stage 2a: Build Control-Plane binary
+# Stage 2a: Build Server binary
 # ============================================================================
-FROM builder-base AS builder-control-plane
+FROM builder-base AS builder-server
 
 ARG TARGETPLATFORM
 
@@ -62,8 +62,8 @@ ARG TARGETPLATFORM
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
-    xx-cargo build --release -p everruns-control-plane && \
-    cp target/$(xx-cargo --print-target-triple)/release/everruns-control-plane /app/everruns-control-plane
+    xx-cargo build --release -p everruns-server && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-server /app/everruns-server
 
 # ============================================================================
 # Stage 2b: Build Worker binary
@@ -95,13 +95,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
-# Stage 3a: Control-Plane Runtime image (distroless for minimal size and security)
+# Stage 3a: Server Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS control-plane
+FROM gcr.io/distroless/cc-debian12 AS server
 
 WORKDIR /app
 
-COPY --from=builder-control-plane /app/everruns-control-plane /app/everruns-control-plane
+COPY --from=builder-server /app/everruns-server /app/everruns-server
 
 EXPOSE 9000
 EXPOSE 9001
@@ -110,7 +110,7 @@ ENV RUST_LOG=info
 ENV HOST=0.0.0.0
 ENV PORT=9000
 
-CMD ["/app/everruns-control-plane"]
+CMD ["/app/everruns-server"]
 
 # ============================================================================
 # Stage 3b: Worker Runtime image (distroless for minimal size and security)
@@ -161,7 +161,7 @@ COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
-COPY crates/control-plane/migrations /app/migrations
+COPY crates/server/migrations /app/migrations
 
 # Copy entrypoint script (--chmod avoids RUN on target platform)
 COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh

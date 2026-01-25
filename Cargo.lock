@@ -1126,52 +1126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-control-plane"
-version = "0.4.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "argon2",
- "async-trait",
- "axum",
- "axum-extra",
- "base64 0.22.1",
- "chrono",
- "dotenvy",
- "everruns-core",
- "everruns-durable",
- "everruns-internal-protocol",
- "everruns-worker",
- "futures",
- "hex",
- "http-body-util",
- "image",
- "jsonwebtoken",
- "parking_lot",
- "prost",
- "rand 0.8.5",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "sqlx",
- "thiserror 2.0.17",
- "time",
- "tokio",
- "tokio-stream",
- "tonic",
- "tower 0.5.3",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "utoipa",
- "utoipa-swagger-ui",
- "uuid",
-]
-
-[[package]]
 name = "everruns-core"
 version = "0.4.0"
 dependencies = [
@@ -1271,6 +1225,52 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "everruns-server"
+version = "0.4.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "argon2",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "chrono",
+ "dotenvy",
+ "everruns-core",
+ "everruns-durable",
+ "everruns-internal-protocol",
+ "everruns-worker",
+ "futures",
+ "hex",
+ "http-body-util",
+ "image",
+ "jsonwebtoken",
+ "parking_lot",
+ "prost",
+ "rand 0.8.5",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sqlx",
+ "thiserror 2.0.17",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower 0.5.3",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "utoipa",
+ "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]

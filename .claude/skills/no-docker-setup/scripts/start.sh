@@ -30,7 +30,7 @@ fi
 
 cleanup() {
     log_info "Cleaning up..."
-    pkill -f "everruns-control-plane" 2>/dev/null || true
+    pkill -f "everruns-server" 2>/dev/null || true
     pkill -f "everruns-worker" 2>/dev/null || true
     stop_postgres
 }

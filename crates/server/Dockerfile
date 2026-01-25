@@ -41,7 +41,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-control-plane
+RUN cargo build --release -p everruns-server
 
 # ============================================================================
 # Stage 4: Runtime - Distroless production image (minimal size and security)
@@ -50,7 +50,7 @@ FROM gcr.io/distroless/cc-debian12 AS runtime
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/everruns-control-plane /app/everruns-control-plane
+COPY --from=builder /app/target/release/everruns-server /app/everruns-server
 
 EXPOSE 9000
 EXPOSE 9001
@@ -59,4 +59,4 @@ ENV RUST_LOG=info
 ENV HOST=0.0.0.0
 ENV PORT=9000
 
-CMD ["/app/everruns-control-plane"]
+CMD ["/app/everruns-server"]

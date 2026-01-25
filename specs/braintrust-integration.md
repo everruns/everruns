@@ -243,7 +243,7 @@ Conversion is handled via `Message::to_openai_format()` and `ToolCall::to_openai
 ## Implementation
 
 - **File**: `crates/core/src/observation/braintrust.rs`
-- **Registration**: `crates/control-plane/src/main.rs` (event listener setup)
+- **Registration**: `crates/server/src/main.rs` (event listener setup)
 - **Configuration**: `docs/sre/environment-variables.md`
 - **Format conversion**: `crates/core/src/message.rs` (`Message::to_openai_format()`)
 

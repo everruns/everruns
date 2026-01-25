@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Service operations: control-plane, worker, watch-*, start-dev, start-all, stop-all
+# Service operations: server, worker, watch-*, start-dev, start-all, stop-all
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -21,10 +21,10 @@ done
 # require_command is defined in common.sh (sourced above)
 
 case "$cmd" in
-  control-plane)
-    echo "🌐 Starting control-plane server..."
+  server)
+    echo "🌐 Starting server..."
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
-    cargo run -p everruns-control-plane
+    cargo run -p everruns-server
     ;;
 
   worker)
@@ -32,11 +32,11 @@ case "$cmd" in
     cargo run -p everruns-worker
     ;;
 
-  watch-control-plane)
-    echo "👀 Starting control-plane server with auto-reload..."
+  watch-server)
+    echo "👀 Starting server with auto-reload..."
     require_command cargo-watch "Run: just init"
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
-    cargo watch -w crates -x 'run -p everruns-control-plane'
+    cargo watch -w crates -x 'run -p everruns-server'
     ;;
 
   watch-worker)
@@ -81,7 +81,7 @@ case "$cmd" in
 
       # Kill by name (catches any child processes we didn't track directly)
       pkill -TERM -f "cargo-watch" 2>/dev/null || true
-      pkill -TERM -f "everruns-control-plane" 2>/dev/null || true
+      pkill -TERM -f "everruns-server" 2>/dev/null || true
       pkill -TERM -f "next dev" 2>/dev/null || true
       pkill -TERM -f "next-router-worker" 2>/dev/null || true
 
@@ -95,7 +95,7 @@ case "$cmd" in
         fi
       done
       pkill -KILL -f "cargo-watch" 2>/dev/null || true
-      pkill -KILL -f "everruns-control-plane" 2>/dev/null || true
+      pkill -KILL -f "everruns-server" 2>/dev/null || true
       pkill -KILL -f "next dev" 2>/dev/null || true
       pkill -KILL -f "next-router-worker" 2>/dev/null || true
 
@@ -139,29 +139,29 @@ case "$cmd" in
       echo "   ℹ️  OpenTelemetry disabled (no collector in dev mode)"
     fi
 
-    # Start control-plane
+    # Start server
     if [ "$NO_WATCH" = true ]; then
-      echo "1️⃣  Starting control-plane (DEV MODE)..."
-      cargo run -p everruns-control-plane &
+      echo "1️⃣  Starting server (DEV MODE)..."
+      cargo run -p everruns-server &
     else
-      echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
-      cargo watch -w crates -x 'run -p everruns-control-plane' &
+      echo "1️⃣  Starting server (DEV MODE) with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-server' &
     fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
 
-    # Wait for control-plane
-    echo "2️⃣  Waiting for control-plane to be ready..."
+    # Wait for server
+    echo "2️⃣  Waiting for server to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-        echo "   ✅ Control-plane is ready"
+        echo "   ✅ Server is ready"
         break
       fi
       sleep 2
     done
 
-    echo "3️⃣  Worker: Running in-process with control-plane (no separate worker needed)"
+    echo "3️⃣  Worker: Running in-process with server (no separate worker needed)"
 
     # Check UI dependencies
     echo "4️⃣  Checking UI dependencies..."
@@ -182,9 +182,9 @@ case "$cmd" in
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
     if [ "$NO_WATCH" = true ]; then
-      echo "   🌐 Control-plane: http://localhost:9000"
+      echo "   🌐 Server:        http://localhost:9000"
     else
-      echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+      echo "   🌐 Server:        http://localhost:9000 (auto-reload)"
     fi
     echo "   📖 API Docs:      http://localhost:9000/swagger-ui/"
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
@@ -193,7 +193,7 @@ case "$cmd" in
     echo "⚠️  DEV MODE notes:"
     echo "   - Data is stored in memory (lost on restart)"
     echo "   - No PostgreSQL or Docker required"
-    echo "   - Worker runs in-process with control-plane"
+    echo "   - Worker runs in-process with server"
     echo ""
     if [ "$NO_WATCH" = false ]; then
       echo "👀 Edit code in crates/ and services will auto-restart"
@@ -243,7 +243,7 @@ case "$cmd" in
 
       # Kill by name (catches any child processes we didn't track directly)
       pkill -TERM -f "cargo-watch" 2>/dev/null || true
-      pkill -TERM -f "everruns-control-plane" 2>/dev/null || true
+      pkill -TERM -f "everruns-server" 2>/dev/null || true
       pkill -TERM -f "everruns-worker" 2>/dev/null || true
       pkill -TERM -f "next dev" 2>/dev/null || true
       pkill -TERM -f "next-router-worker" 2>/dev/null || true
@@ -258,7 +258,7 @@ case "$cmd" in
         fi
       done
       pkill -KILL -f "cargo-watch" 2>/dev/null || true
-      pkill -KILL -f "everruns-control-plane" 2>/dev/null || true
+      pkill -KILL -f "everruns-server" 2>/dev/null || true
       pkill -KILL -f "everruns-worker" 2>/dev/null || true
       pkill -KILL -f "next dev" 2>/dev/null || true
       pkill -KILL -f "next-router-worker" 2>/dev/null || true
@@ -340,7 +340,7 @@ case "$cmd" in
 
     # Run migrations
     echo "2️⃣  Running database migrations..."
-    sqlx migrate run --source "$PROJECT_ROOT/crates/control-plane/migrations"
+    sqlx migrate run --source "$PROJECT_ROOT/crates/server/migrations"
     echo "   ✅ Migrations complete"
 
     # Configure LLM API keys
@@ -364,10 +364,10 @@ case "$cmd" in
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then
       echo "4️⃣  Starting API server..."
-      cargo run -p everruns-control-plane &
+      cargo run -p everruns-server &
     else
       echo "4️⃣  Starting API server with auto-reload..."
-      cargo watch -w crates -x 'run -p everruns-control-plane' &
+      cargo watch -w crates -x 'run -p everruns-server' &
     fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
@@ -491,7 +491,7 @@ case "$cmd" in
   stop-all)
     echo "🛑 Stopping all Everruns services..."
 
-    pkill -f "everruns-control-plane" 2>/dev/null || true
+    pkill -f "everruns-server" 2>/dev/null || true
     pkill -f "everruns-worker" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
 
@@ -505,7 +505,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all} [options]"
+    echo "Usage: $0 {server|worker|watch-server|watch-worker|start-dev|start-all|stop-all} [options]"
     echo ""
     echo "Options:"
     echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
