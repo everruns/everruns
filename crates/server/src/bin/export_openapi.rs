@@ -5,7 +5,7 @@
 // This binary generates the OpenAPI spec without starting the full API server.
 // It's useful for CI/CD pipelines and documentation builds.
 
-use everruns_control_plane::openapi::ApiDoc;
+use everruns_server::openapi::ApiDoc;
 
 fn main() {
     println!("{}", ApiDoc::to_json());

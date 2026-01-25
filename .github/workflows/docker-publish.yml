@@ -27,9 +27,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: control-plane
+          - target: server
             dockerfile: docker/Dockerfile.unified
-            image_name: everruns-control-plane
+            image_name: everruns-server
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image_name: everruns-worker

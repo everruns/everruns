@@ -52,7 +52,7 @@ url = "2"
 # Web fetching
 fetchkit = { git = "https://github.com/everruns/fetchkit" }
 
-# OpenAPI schema generation (optional, enabled by everruns-control-plane)
+# OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
 
 # Database (optional, for TypedId sqlx support)

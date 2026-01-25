@@ -42,7 +42,7 @@ case "$cmd" in
   migrate)
     echo "🔧 Running database migrations..."
     export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source "$PROJECT_ROOT/crates/control-plane/migrations"
+    sqlx migrate run --source "$PROJECT_ROOT/crates/server/migrations"
     echo "✅ Migrations complete!"
     ;;
 

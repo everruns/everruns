@@ -375,7 +375,7 @@ The binary is useful for:
 
 #### Implementation
 
-The spec is defined in `crates/control-plane/src/openapi.rs`:
+The spec is defined in `crates/server/src/openapi.rs`:
 
 ```rust
 use utoipa::OpenApi;

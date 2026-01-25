@@ -1,12 +1,12 @@
 [package]
-name = "everruns-control-plane"
+name = "everruns-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "everruns-control-plane"
+default-run = "everruns-server"
 
 [[bin]]
-name = "everruns-control-plane"
+name = "everruns-server"
 path = "src/main.rs"
 
 [[bin]]

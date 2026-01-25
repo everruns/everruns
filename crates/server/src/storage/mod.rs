@@ -1,4 +1,4 @@
-// Storage layer for Everruns control-plane
+// Storage layer for Everruns server (control plane)
 // Decision: Support both PostgreSQL (production) and in-memory (dev mode)
 //
 // This crate provides database implementations for core traits:

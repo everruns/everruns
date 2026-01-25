@@ -13,7 +13,7 @@ graph TB
         API_Client[API Clients]
     end
 
-    subgraph Control Plane
+    subgraph Server["Server (Control Plane)"]
         REST[REST API<br/>:9000]
         GRPC[gRPC Server<br/>:9001]
         Services[Services Layer]
@@ -49,10 +49,10 @@ graph TB
 
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation** (folder → package name):
-   - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
+   - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
-   - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
+   - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
@@ -68,7 +68,7 @@ everruns/
 │   ├── ui/               # Next.js Management UI
 │   └── docs/             # Astro Starlight Documentation
 ├── crates/
-│   ├── control-plane/    # HTTP API + gRPC server + storage
+│   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Shared abstractions and types
 │   ├── internal-protocol/# gRPC protocol definitions
@@ -91,16 +91,16 @@ graph TD
     anthropic[anthropic]
     protocol[internal-protocol]
     worker[worker]
-    cp[control-plane]
+    server["server (control plane)"]
 
     core --> openai
     core --> anthropic
     core --> protocol
     core --> worker
     protocol --> worker
-    protocol --> cp
-    core --> cp
-    worker -.->|gRPC| cp
+    protocol --> server
+    core --> server
+    worker -.->|gRPC| server
 ```
 
 ### Data Layer
@@ -108,7 +108,7 @@ graph TD
 1. **Database**: PostgreSQL 17 with custom UUID v7 function
    - Decision: Using PostgreSQL 17 because PostgreSQL 18 is not yet available on managed services like AWS Aurora RDS. This is temporary; we will migrate to PostgreSQL 18 with native uuidv7() when it becomes widely available.
 2. **UUID Strategy**: All IDs use UUID v7 (time-ordered, better indexing, naturally sortable)
-3. **Migrations**: Managed via sqlx-cli in `crates/control-plane/migrations/`
+3. **Migrations**: Managed via sqlx-cli in `crates/server/migrations/`
 4. **String Columns**: Use `TEXT` instead of `VARCHAR(n)` for string columns
    - In PostgreSQL, TEXT and VARCHAR have identical performance
    - TEXT avoids artificial length limits that may cause issues later
@@ -379,7 +379,7 @@ For rapid local development without infrastructure dependencies:
 
 ```bash
 # Start in dev mode (no Docker/PostgreSQL required)
-DEV_MODE=true cargo run -p everruns-control-plane
+DEV_MODE=true cargo run -p everruns-server
 
 # Or use the convenience command
 just start-dev
@@ -431,7 +431,7 @@ pub trait EventListener: Send + Sync {
 **Key components**:
 - `EventListener` trait (`core/src/traits.rs`) - Interface for observability backends
 - `OtelEventListener` (`core/src/otel_listener.rs`) - Generates OTel spans from events
-- `EventService` (`control-plane/src/services/event.rs`) - Notifies listeners after event persistence
+- `EventService` (`server/src/services/event.rs`) - Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
@@ -486,12 +486,12 @@ The control-plane follows a strict layered architecture:
 **Key Principle**: Both HTTP API and gRPC handlers access storage ONLY through services.
 No direct database access from transport layer handlers.
 
-1. **Storage Layer** (`control-plane/src/storage/`):
+1. **Storage Layer** (`server/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
    - Update structs use `Update` prefix (e.g., `UpdateAgent`)
    - Repositories handle raw database operations only
-   - Migrations in `control-plane/migrations/`
+   - Migrations in `server/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
 2. **Core Layer** (`core/` → `everruns-core`):
@@ -503,7 +503,7 @@ No direct database access from transport layer handlers.
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-3. **Service Layer** (`control-plane/src/services/`):
+3. **Service Layer** (`server/src/services/`):
    - **Single point of business logic** - both HTTP and gRPC handlers use services
    - Services accept API contracts (request types) and return domain types
    - Services handle conversion from API contracts to storage Row types
@@ -519,7 +519,7 @@ No direct database access from transport layer handlers.
      - `LlmModelService`, `LlmProviderService` - LLM configuration management
      - `CapabilityService` - Capability listing
 
-4. **Transport Layer** (`control-plane/src/api/`, `control-plane/src/grpc_service.rs`):
+4. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
    - **HTTP API** (axum) on port 9000 - public REST API
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module

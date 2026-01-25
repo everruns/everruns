@@ -3,7 +3,7 @@
 // Decision: UUIDs generated via uuid v7 (time-ordered)
 //
 // This implementation provides a PostgreSQL-compatible API backed by in-memory
-// HashMaps, allowing the control-plane to run without a database for development.
+// HashMaps, allowing the server to run without a database for development.
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};

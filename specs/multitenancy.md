@@ -453,7 +453,7 @@ ApiError::Forbidden("You don't have access to this agent")
 ## Implementation Notes
 
 ### OrgContext Extractor
-The `OrgContext` extractor (`control-plane/src/api/org_context.rs`) extracts org from URI path directly since Axum's `Path<T>` extractor consumes the request body. It validates membership against the authenticated user's organizations.
+The `OrgContext` extractor (`server/src/api/org_context.rs`) extracts org from URI path directly since Axum's `Path<T>` extractor consumes the request body. It validates membership against the authenticated user's organizations.
 
 ### Anonymous Auth Mode (AUTH_MODE=none)
 When auth is disabled, the UI uses a hardcoded default organization:

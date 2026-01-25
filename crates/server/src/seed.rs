@@ -1,18 +1,18 @@
-// Service seeding module for control-plane
+// Service seeding module for server (control plane)
 // Decision: Always seed on startup (no flag needed)
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)
 // Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
 // Decision: Modular design allows easy addition of new seeders
 
-use everruns_control_plane::storage::{
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
+use everruns_server::storage::{
     StorageBackend,
     models::{
         CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
         CreateOrganizationRow,
     },
 };
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;

@@ -145,7 +145,7 @@ just migrate
 ```
 
 Rules:
-- Migrations live in `crates/control-plane/migrations/`
+- Migrations live in `crates/server/migrations/`
 - Never modify existing migrations - always add new ones
 - Test migrations both up and down
 

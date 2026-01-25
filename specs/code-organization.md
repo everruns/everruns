@@ -123,8 +123,8 @@ just check         # Format + lint + test
 **Collocation principle:** Keep related code together.
 
 - API contracts (DTOs) live with their route handlers
-- Services in `control-plane/src/services/`
-- Storage in `control-plane/src/storage/`
+- Services in `server/src/services/` (control plane)
+- Storage in `server/src/storage/` (control plane)
 - Core types in `core/src/`
 
 ## OpenAPI Support

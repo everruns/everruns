@@ -31,7 +31,7 @@ export RUNNER_MODE=durable
 export DATABASE_URL="postgres://postgres:postgres@localhost/everruns"
 
 # Start the API server
-cargo run -p everruns-control-plane
+cargo run -p everruns-server
 ```
 
 You should see:
@@ -108,7 +108,7 @@ psql -U postgres -c "CREATE DATABASE everruns_test;"
 
 # Run migrations
 DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
-  sqlx migrate run --source crates/control-plane/migrations
+  sqlx migrate run --source crates/server/migrations
 
 # Run integration tests
 DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \

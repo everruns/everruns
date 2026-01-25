@@ -2,7 +2,7 @@
 #
 # This configuration deploys the complete Everruns platform:
 # - PostgreSQL database
-# - Control-plane API (HTTP + gRPC)
+# - Server (control plane): HTTP API + gRPC server
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
@@ -62,11 +62,11 @@ services:
     restart: "no"
 
   # ==========================================================================
-  # Control Plane (API + gRPC server)
+  # Server (Control Plane) - HTTP API + gRPC server
   # ==========================================================================
-  control-plane:
-    image: ghcr.io/everruns/everruns-control-plane:latest
-    container_name: everruns-control-plane
+  server:
+    image: ghcr.io/everruns/everruns-server:latest
+    container_name: everruns-server
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
@@ -84,7 +84,7 @@ services:
       jaeger:
         condition: service_started
     healthcheck:
-      test: ["CMD", "/app/everruns-control-plane", "--version"]
+      test: ["CMD", "/app/everruns-server", "--version"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -97,11 +97,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-1
     environment:
-      GRPC_ADDRESS: control-plane:9001
+      GRPC_ADDRESS: server:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      control-plane:
+      server:
         condition: service_started
     restart: unless-stopped
 
@@ -109,11 +109,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-2
     environment:
-      GRPC_ADDRESS: control-plane:9001
+      GRPC_ADDRESS: server:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      control-plane:
+      server:
         condition: service_started
     restart: unless-stopped
 
@@ -121,11 +121,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-3
     environment:
-      GRPC_ADDRESS: control-plane:9001
+      GRPC_ADDRESS: server:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      control-plane:
+      server:
         condition: service_started
     restart: unless-stopped
 
@@ -139,7 +139,7 @@ services:
       PORT: "9100"
       HOSTNAME: 0.0.0.0
     depends_on:
-      control-plane:
+      server:
         condition: service_started
 
   # ==========================================================================
@@ -154,7 +154,7 @@ services:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
     depends_on:
-      - control-plane
+      - server
       - ui
     restart: unless-stopped
 
@@ -185,16 +185,16 @@ configs:
       #   /*            -> UI
       :8080 {
         handle_path /api/* {
-          reverse_proxy control-plane:9000
+          reverse_proxy server:9000
         }
         handle /swagger-ui/* {
-          reverse_proxy control-plane:9000
+          reverse_proxy server:9000
         }
         handle /api-doc/* {
-          reverse_proxy control-plane:9000
+          reverse_proxy server:9000
         }
         handle /health {
-          reverse_proxy control-plane:9000
+          reverse_proxy server:9000
         }
         handle {
           reverse_proxy ui:9100

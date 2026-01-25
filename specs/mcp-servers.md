@@ -288,7 +288,7 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 | Crate | Responsibility |
 |-------|----------------|
 | `everruns-core` | MCP types (`McpServer`, `McpToolDefinition`), tool name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
-| `everruns-control-plane` | API routes, gRPC services, database operations |
+| `everruns-server` | API routes, gRPC services, database operations |
 | `everruns-worker` | `McpToolExecutor` for HTTP calls, `CompositeToolExecutor` for routing |
 
 ### Key Components

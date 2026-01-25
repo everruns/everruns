@@ -73,7 +73,7 @@ case "$cmd" in
     # Check API is healthy
     if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
       echo "❌ API not reachable at $API_URL"
-      echo "   Start the control-plane first: just control-plane"
+      echo "   Start the server first: just server"
       exit 1
     fi
 

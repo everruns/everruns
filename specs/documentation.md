@@ -129,8 +129,8 @@ cd apps/docs && npm run build
 |------|---------|
 | `docs/api/openapi.json` | Generated OpenAPI spec (committed to repo) |
 | `scripts/export-openapi.sh` | Script to regenerate spec |
-| `crates/control-plane/src/bin/export_openapi.rs` | Binary for spec generation |
-| `crates/control-plane/src/openapi.rs` | Shared OpenAPI definition |
+| `crates/server/src/bin/export_openapi.rs` | Binary for spec generation |
+| `crates/server/src/openapi.rs` | Shared OpenAPI definition |
 
 #### Starlight Integration
 

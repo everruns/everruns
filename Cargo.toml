@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-    "crates/control-plane",
+    "crates/server",
     "crates/worker",
     "crates/core",
     "crates/openai",
