@@ -3,8 +3,9 @@
 // Note: Organization routes are NOT org-scoped (they are at the root level)
 // because they manage organizations themselves.
 
-use crate::auth::middleware::{AuthState, AuthUser, FromRef};
+use crate::auth::middleware::{AuthState, AuthUser};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},

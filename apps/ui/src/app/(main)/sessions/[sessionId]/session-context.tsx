@@ -124,7 +124,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(org!, sessionId, content, controls),
+    }) => sendUserMessage(sessionId, content, controls),
     onMutate: async ({ sessionId, content }) => {
       // Create optimistic event immediately
       const optimisticId = `optimistic-${Date.now()}`;
@@ -164,7 +164,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const cancelCurrentTurn = useMutation({
     mutationFn: async () => {
       if (!org) throw new Error("Organization not found");
-      await cancelTurn(org, sessionId);
+      await cancelTurn(sessionId);
     },
     onSuccess: () => {
       // Reset waiting state since turn is cancelled

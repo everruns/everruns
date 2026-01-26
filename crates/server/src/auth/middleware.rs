@@ -4,7 +4,7 @@
 
 use axum::{
     Json,
-    extract::FromRequestParts,
+    extract::{FromRef, FromRequestParts},
     http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
 };
@@ -161,17 +161,6 @@ where
     }
 }
 
-/// Helper trait for extracting AuthState from application state
-pub trait FromRef<T> {
-    fn from_ref(input: &T) -> Self;
-}
-
-impl FromRef<AuthState> for AuthState {
-    fn from_ref(input: &AuthState) -> Self {
-        input.clone()
-    }
-}
-
 /// Extract authenticated user from request
 async fn extract_auth_user(
     parts: &mut Parts,
@@ -258,6 +247,7 @@ async fn validate_api_key(key: &str, auth_state: &AuthState) -> Result<AuthUser,
     let validated_key = ValidatedApiKey {
         key_id: api_key_row.id,
         user_id: api_key_row.user_id,
+        org_id: api_key_row.org_id,
         name: api_key_row.name.clone(),
         scopes: serde_json::from_value(api_key_row.scopes.clone()).unwrap_or_default(),
         expires_at: api_key_row.expires_at,
@@ -287,8 +277,16 @@ async fn validate_api_key(key: &str, auth_state: &AuthState) -> Result<AuthUser,
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Fetch organization memberships for the user
-    let organizations = fetch_user_organizations(&auth_state.db, user.id).await?;
+    // Fetch org for the API key (API key is scoped to single org)
+    let org = auth_state
+        .db
+        .get_organization(api_key_row.org_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch org for API key: {}", e);
+            AuthError::unauthorized("Failed to validate API key")
+        })?
+        .ok_or_else(|| AuthError::unauthorized("Organization not found for API key"))?;
 
     Ok(AuthUser {
         id: user.id,
@@ -296,7 +294,11 @@ async fn validate_api_key(key: &str, auth_state: &AuthState) -> Result<AuthUser,
         name: user.name,
         roles,
         auth_method: AuthMethod::ApiKey,
-        organizations,
+        organizations: vec![OrgMembership {
+            org_id: org.org_id,
+            public_id: org.public_id,
+            name: org.name,
+        }],
     })
 }
 
@@ -452,6 +454,108 @@ where
             public_id: org.public_id.clone(),
             name: org.name.clone(),
         })
+    }
+}
+
+// ============================================================================
+// ResolvedOrg - Organization context from auth (not URL path)
+// ============================================================================
+
+/// Cookie name for org selection in session auth
+/// Note: Also defined in api/users.rs - keep in sync
+pub const ORG_COOKIE_NAME: &str = "everruns_org";
+
+/// Organization context resolved from authentication
+///
+/// Unlike OrgContext which extracts org from URL path, ResolvedOrg derives
+/// the organization from the authentication context:
+/// - API key auth: org comes from API key (single org in AuthUser.organizations)
+/// - Session auth (JWT/None): org from everruns_org cookie, validated against user membership
+///
+/// The cookie is set via POST /v1/users/me/switch-org endpoint.
+/// Cookies work automatically with SSE (EventSource) unlike headers.
+///
+/// Usage:
+/// ```rust,ignore
+/// async fn handler(
+///     ResolvedOrg { org_id, public_id, .. }: ResolvedOrg,
+/// ) -> impl IntoResponse {
+///     // org_id is the internal i64 ID for database queries
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ResolvedOrg {
+    /// Internal organization ID (for database queries)
+    pub org_id: i64,
+    /// External organization public ID
+    pub public_id: String,
+    /// Organization name
+    pub name: String,
+}
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for ResolvedOrg
+where
+    S: Send + Sync,
+    AuthState: axum::extract::FromRef<S>,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // First extract the authenticated user
+        let user = AuthUser::from_request_parts(parts, state).await?;
+
+        match user.auth_method {
+            AuthMethod::ApiKey | AuthMethod::None => {
+                // API key auth: user has exactly one org (from API key)
+                // None (anonymous): user has exactly one org (default org)
+                // In both cases, just use the single org - no cookie needed
+                let org = user
+                    .organizations
+                    .first()
+                    .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
+                Ok(ResolvedOrg {
+                    org_id: org.org_id,
+                    public_id: org.public_id.clone(),
+                    name: org.name.clone(),
+                })
+            }
+            AuthMethod::Jwt => {
+                // Session auth: get org from everruns_org cookie
+                // Cookie is set via POST /v1/users/me/switch-org
+                // Cookies work automatically with SSE (EventSource) unlike headers
+                let jar = CookieJar::from_headers(&parts.headers);
+                let org_public_id = jar
+                    .get(ORG_COOKIE_NAME)
+                    .map(|c| c.value().to_string())
+                    .ok_or_else(|| {
+                        AuthError::unauthorized(
+                            "Missing organization cookie. Call POST /v1/users/me/switch-org first.",
+                        )
+                    })?;
+                let org_public_id = org_public_id.as_str();
+
+                // Validate format
+                if !validate_org_public_id(org_public_id) {
+                    return Err(AuthError::unauthorized("Invalid organization ID format"));
+                }
+
+                // Check user membership
+                let org = user.get_org(org_public_id).ok_or_else(|| {
+                    // Return 404 to prevent enumeration
+                    AuthError {
+                        error: "Organization not found".to_string(),
+                        status: StatusCode::NOT_FOUND,
+                    }
+                })?;
+
+                Ok(ResolvedOrg {
+                    org_id: org.org_id,
+                    public_id: org.public_id.clone(),
+                    name: org.name.clone(),
+                })
+            }
+        }
     }
 }
 

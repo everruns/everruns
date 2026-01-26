@@ -18,7 +18,7 @@ export function useCapabilities() {
 
   return useQuery({
     queryKey: ["capabilities", org],
-    queryFn: () => listCapabilities(org!),
+    queryFn: () => listCapabilities(),
     enabled: !!org,
   });
 }
@@ -29,7 +29,7 @@ export function useCapability(capabilityId: CapabilityId | undefined) {
 
   return useQuery({
     queryKey: ["capability", capabilityId, org],
-    queryFn: () => getCapability(org!, capabilityId!),
+    queryFn: () => getCapability(capabilityId!),
     enabled: !!org && !!capabilityId,
   });
 }

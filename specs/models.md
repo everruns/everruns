@@ -585,7 +585,7 @@ Automatic discovery of available models from provider APIs.
 **Discovery Flow:**
 
 1. **Background Sync** - Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, set to 0 to disable)
-2. **Manual Sync** - `POST /v1/orgs/:org/llm-providers/:id/sync-models`
+2. **Manual Sync** - `POST /v1/llm-providers/:id/sync-models`
 
 **Sync Behavior:**
 
@@ -597,7 +597,7 @@ Automatic discovery of available models from provider APIs.
 
 **Listing Models:**
 
-`GET /v1/orgs/:org/llm-models` supports query parameters:
+`GET /v1/llm-models` supports query parameters:
 - `source` - Filter by source (`manual`, `discovered`, `predefined`)
 - `include_stale` - Include stale models (default: true)
 - `favorites_only` - Only return favorites (default: false)

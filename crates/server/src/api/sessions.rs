@@ -1,9 +1,10 @@
 // Session CRUD HTTP routes
-// Routes are org-scoped: /v1/orgs/:org/sessions/...
+// Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -122,35 +123,26 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create session routes (org-scoped)
+/// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        // Session CRUD at org level
+        // Session CRUD
+        .route("/v1/sessions", post(create_session).get(list_sessions))
         .route(
-            "/v1/orgs/:org/sessions",
-            post(create_session).get(list_sessions),
-        )
-        .route(
-            "/v1/orgs/:org/sessions/:session_id",
+            "/v1/sessions/:session_id",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
         // Cancel turn endpoint
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/cancel",
-            post(cancel_turn),
-        )
+        .route("/v1/sessions/:session_id/cancel", post(cancel_turn))
         .with_state(state)
 }
 
-/// POST /v1/orgs/{org}/sessions - Create a new session
+/// POST /v1/sessions - Create a new session
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions",
-    params(
-        ("org" = String, Path, description = "Organization public ID"),
-    ),
+    path = "/v1/sessions",
     request_body = CreateSessionRequest,
     responses(
         (status = 201, description = "Session created successfully", body = Session),
@@ -160,7 +152,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "sessions"
 )]
 pub async fn create_session(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
@@ -173,14 +165,11 @@ pub async fn create_session(
     Ok((StatusCode::CREATED, Json(session)))
 }
 
-/// GET /v1/orgs/{org}/sessions - List sessions in organization
+/// GET /v1/sessions - List sessions in organization
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions",
-    params(
-        ("org" = String, Path, description = "Organization public ID"),
-        ListSessionsQuery
-    ),
+    path = "/v1/sessions",
+    params(ListSessionsQuery),
     responses(
         (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<Session>),
         (status = 500, description = "Internal server error")
@@ -188,7 +177,7 @@ pub async fn create_session(
     tag = "sessions"
 )]
 pub async fn list_sessions(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSessionsQuery>,
 ) -> Result<Json<PaginatedResponse<Session>>, (StatusCode, Json<ErrorResponse>)> {
@@ -210,12 +199,11 @@ pub async fn list_sessions(
     Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
 }
 
-/// GET /v1/orgs/{org}/sessions/{session_id} - Get session
+/// GET /v1/sessions/{session_id} - Get session
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}",
+    path = "/v1/sessions/{session_id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
@@ -227,9 +215,9 @@ pub async fn list_sessions(
     tag = "sessions"
 )]
 pub async fn get_session(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -250,12 +238,11 @@ pub async fn get_session(
     Ok(Json(session))
 }
 
-/// PATCH /v1/orgs/{org}/sessions/{session_id} - Update session
+/// PATCH /v1/sessions/{session_id} - Update session
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}/sessions/{session_id}",
+    path = "/v1/sessions/{session_id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     request_body = UpdateSessionRequest,
@@ -268,9 +255,9 @@ pub async fn get_session(
     tag = "sessions"
 )]
 pub async fn update_session(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -292,12 +279,11 @@ pub async fn update_session(
     Ok(Json(session))
 }
 
-/// DELETE /v1/orgs/{org}/sessions/{session_id} - Delete session
+/// DELETE /v1/sessions/{session_id} - Delete session
 #[utoipa::path(
     delete,
-    path = "/v1/orgs/{org}/sessions/{session_id}",
+    path = "/v1/sessions/{session_id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
@@ -309,9 +295,9 @@ pub async fn update_session(
     tag = "sessions"
 )]
 pub async fn delete_session(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -340,7 +326,7 @@ pub async fn delete_session(
     }
 }
 
-/// POST /v1/orgs/{org}/sessions/{session_id}/cancel - Cancel current turn
+/// POST /v1/sessions/{session_id}/cancel - Cancel current turn
 ///
 /// Cancels the currently running turn in the session. If no turn is running,
 /// this is a no-op and returns success (idempotent). When a turn is active:
@@ -350,9 +336,8 @@ pub async fn delete_session(
 /// 4. Set the session status back to idle
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/cancel",
+    path = "/v1/sessions/{session_id}/cancel",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
@@ -364,9 +349,9 @@ pub async fn delete_session(
     tag = "sessions"
 )]
 pub async fn cancel_turn(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<CancelTurnResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 

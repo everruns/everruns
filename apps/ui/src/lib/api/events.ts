@@ -1,6 +1,6 @@
 // Event API functions
 // Events are SSE notifications for real-time updates
-// All routes are org-scoped: /v1/orgs/{org}/sessions/{sessionId}/events
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api, getDirectBackendUrl } from "./client";
 import type { Event, ListResponse } from "./types";
@@ -14,7 +14,6 @@ export const DEFAULT_EXCLUDED_EVENTS = [
 // List events for a session (polling alternative to SSE)
 // Optional exclude parameter to filter out event types (e.g., delta events)
 export async function listEvents(
-  org: string,
   sessionId: string,
   exclude?: string[]
 ): Promise<Event[]> {
@@ -26,7 +25,7 @@ export async function listEvents(
   }
   const queryString = params.toString();
   const response = await api.get<ListResponse<Event>>(
-    `/v1/orgs/${org}/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`
+    `/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`
   );
   return response.data.data;
 }
@@ -35,8 +34,8 @@ export async function listEvents(
 // Uses direct backend URL to bypass Next.js proxy (proxies buffer SSE)
 // Uses since_id for incremental updates (UUID v7 monotonically increasing)
 // Optional exclude parameter to filter out event types (e.g., delta events)
+// Note: Org is sent via everruns_org cookie (EventSource sends cookies automatically)
 export function getSseUrl(
-  org: string,
   sessionId: string,
   sinceId?: string,
   exclude?: string[]
@@ -52,5 +51,5 @@ export function getSseUrl(
     }
   }
   const queryString = params.toString();
-  return `${baseUrl}/v1/orgs/${org}/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
+  return `${baseUrl}/v1/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
 }

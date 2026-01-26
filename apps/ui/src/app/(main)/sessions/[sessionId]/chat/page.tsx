@@ -24,12 +24,7 @@ import { useLlmModels, useImageAttachments } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
-import { useOrg } from "@/providers/org-provider";
-
 export default function ChatPage() {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   const {
     agentId,
     sessionId,
@@ -141,7 +136,7 @@ export default function ChatPage() {
       images: Array<{ imageId: string; filename?: string }>;
       controls?: Controls;
     }) => {
-      return sendUserMessageWithImages(org!, sessionId, text, images, controls);
+      return sendUserMessageWithImages(sessionId, text, images, controls);
     },
   });
 

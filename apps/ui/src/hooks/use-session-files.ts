@@ -49,7 +49,7 @@ export function useFiles(
 
   return useQuery({
     queryKey: fileKeys.list(org!, sessionId!, path, recursive),
-    queryFn: () => listFiles(org!, sessionId!, path, recursive),
+    queryFn: () => listFiles(sessionId!, path, recursive),
     enabled: !!org && !!sessionId,
   });
 }
@@ -64,7 +64,7 @@ export function useFile(
 
   return useQuery({
     queryKey: fileKeys.file(org!, sessionId!, path!),
-    queryFn: () => readFile(org!, sessionId!, path!),
+    queryFn: () => readFile(sessionId!, path!),
     enabled: !!org && !!sessionId && !!path,
   });
 }
@@ -79,7 +79,7 @@ export function useFileStat(
 
   return useQuery({
     queryKey: fileKeys.stat(org!, sessionId!, path!),
-    queryFn: () => statFile(org!, sessionId!, path!),
+    queryFn: () => statFile(sessionId!, path!),
     enabled: !!org && !!sessionId && !!path,
   });
 }
@@ -101,7 +101,7 @@ export function useCreateFile() {
     }: {
       sessionId: string;
       request: CreateFileRequest;
-    }) => createFile(org!, sessionId, request),
+    }) => createFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -123,7 +123,7 @@ export function useCreateDirectory() {
     }: {
       sessionId: string;
       path: string;
-    }) => mkdir(org!, sessionId, path),
+    }) => mkdir(sessionId, path),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -147,7 +147,7 @@ export function useUpdateFile() {
       sessionId: string;
       path: string;
       request: UpdateFileRequest;
-    }) => updateFile(org!, sessionId, path, request),
+    }) => updateFile(sessionId, path, request),
     onSuccess: (_, { sessionId, path }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -174,7 +174,7 @@ export function useDeleteFile() {
       sessionId: string;
       path: string;
       recursive?: boolean;
-    }) => deleteFile(org!, sessionId, path, recursive),
+    }) => deleteFile(sessionId, path, recursive),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -196,7 +196,7 @@ export function useMoveFile() {
     }: {
       sessionId: string;
       request: MoveFileRequest;
-    }) => moveFile(org!, sessionId, request),
+    }) => moveFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -218,7 +218,7 @@ export function useCopyFile() {
     }: {
       sessionId: string;
       request: CopyFileRequest;
-    }) => copyFile(org!, sessionId, request),
+    }) => copyFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -229,9 +229,6 @@ export function useCopyFile() {
 
 /** Search files using grep */
 export function useGrepFiles() {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   return useMutation({
     mutationFn: ({
       sessionId,
@@ -239,6 +236,6 @@ export function useGrepFiles() {
     }: {
       sessionId: string;
       request: GrepRequest;
-    }) => grepFiles(org!, sessionId, request),
+    }) => grepFiles(sessionId, request),
   });
 }

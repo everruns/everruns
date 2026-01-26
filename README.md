@@ -64,12 +64,12 @@ curl -X POST http://localhost:8080/api/v1/agents \
   -d '{"name": "Assistant", "system_prompt": "You are a helpful assistant."}'
 
 # Create a session (agent_id in request body)
-curl -X POST http://localhost:8080/api/v1/orgs/default/sessions \
+curl -X POST http://localhost:8080/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
 # Send a message
-curl -X POST http://localhost:8080/api/v1/orgs/default/sessions/{session_id}/messages \
+curl -X POST http://localhost:8080/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
 ```

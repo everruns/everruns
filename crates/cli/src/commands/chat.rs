@@ -63,10 +63,7 @@ pub async fn run(
 
     let _: serde_json::Value = client
         .post(
-            &format!(
-                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/messages",
-                session_id.as_hyphenated()
-            ),
+            &format!("/v1/sessions/ses_{}/messages", session_id.as_hyphenated()),
             &request,
         )
         .await?;
@@ -97,14 +94,11 @@ pub async fn run(
         // Build URL with since_id parameter
         let url = match &last_event_id {
             Some(id) => format!(
-                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events?since_id={}",
+                "/v1/sessions/ses_{}/events?since_id={}",
                 session_id.as_hyphenated(),
                 id
             ),
-            None => format!(
-                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events",
-                session_id.as_hyphenated()
-            ),
+            None => format!("/v1/sessions/ses_{}/events", session_id.as_hyphenated()),
         };
 
         let response: ListResponse<Event> = client.get(&url).await?;

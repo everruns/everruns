@@ -1,5 +1,5 @@
 // Message HTTP routes and API contracts
-// Routes are org-scoped: /v1/orgs/:org/sessions/:session_id/messages
+// Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
 // - Tool results are conveyed via `tool.completed` events
@@ -8,8 +8,9 @@
 // ContentPart and InputContentPart are defined in everruns-core.
 // We re-export them here with ToSchema for OpenAPI documentation.
 
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -170,11 +171,11 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create message routes (nested under sessions, org-scoped)
+/// Create message routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/:org/sessions/:session_id/messages",
+            "/v1/sessions/:session_id/messages",
             post(create_message).get(list_messages),
         )
         .with_state(state)
@@ -184,12 +185,11 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/orgs/{org}/sessions/{session_id}/messages - Create message (user message triggers workflow)
+/// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/messages",
+    path = "/v1/sessions/{session_id}/messages",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = CreateMessageRequest,
@@ -202,9 +202,9 @@ pub fn routes(state: AppState) -> Router {
     tag = "messages"
 )]
 pub async fn create_message(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -256,12 +256,11 @@ pub async fn create_message(
     Ok((StatusCode::CREATED, Json(message)))
 }
 
-/// GET /v1/orgs/{org}/sessions/{session_id}/messages - List messages (PRIMARY data)
+/// GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/messages",
+    path = "/v1/sessions/{session_id}/messages",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     responses(
@@ -273,9 +272,9 @@ pub async fn create_message(
     tag = "messages"
 )]
 pub async fn list_messages(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<Message>>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (

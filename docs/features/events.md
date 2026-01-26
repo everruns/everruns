@@ -21,7 +21,7 @@ Every action during a session - from user messages to LLM responses to tool exec
 Subscribe to real-time events via Server-Sent Events:
 
 ```bash
-curl -N "https://api.everruns.com/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse" \
+curl -N "https://api.everruns.com/v1/agents/{agent_id}/sessions/{session_id}/sse" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
@@ -30,7 +30,7 @@ curl -N "https://api.everruns.com/v1/orgs/{org}/agents/{agent_id}/sessions/{sess
 Alternatively, poll for events with pagination:
 
 ```bash
-curl "https://api.everruns.com/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events?since_id={last_event_id}" \
+curl "https://api.everruns.com/v1/agents/{agent_id}/sessions/{session_id}/events?since_id={last_event_id}" \
   -H "Authorization: Bearer $API_KEY"
 ```
 

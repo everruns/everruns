@@ -1,13 +1,14 @@
 // Capability HTTP routes
-// Routes are org-scoped: /v1/orgs/:org/capabilities/...
+// Routes: /v1/capabilities/...
 //
 // Design Decision: Capabilities are defined in everruns-core via the Capability trait.
 // This module provides HTTP endpoints that expose capability information from the
 // CapabilityRegistry in everruns-core.
 //
-// Agent capabilities are managed through the agents API (POST/PATCH /v1/orgs/{org}/agents).
+// Agent capabilities are managed through the agents API (POST/PATCH /v1/agents).
 
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -40,31 +41,25 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create capability routes (org-scoped)
+/// Create capability routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/orgs/:org/capabilities", get(list_capabilities))
-        .route(
-            "/v1/orgs/:org/capabilities/:capability_id",
-            get(get_capability),
-        )
+        .route("/v1/capabilities", get(list_capabilities))
+        .route("/v1/capabilities/:capability_id", get(get_capability))
         .with_state(state)
 }
 
-/// GET /v1/orgs/{org}/capabilities - List all available capabilities
+/// GET /v1/capabilities - List all available capabilities
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/capabilities",
-    params(
-        ("org" = String, Path, description = "Organization public ID")
-    ),
+    path = "/v1/capabilities",
     responses(
         (status = 200, description = "List of available capabilities", body = ListResponse<CapabilityInfo>),
     ),
     tag = "capabilities"
 )]
 pub async fn list_capabilities(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<CapabilityInfo>>, StatusCode> {
     let capabilities = state.service.list_all().await.map_err(|e| {
@@ -74,12 +69,11 @@ pub async fn list_capabilities(
     Ok(Json(ListResponse::new(capabilities)))
 }
 
-/// GET /v1/orgs/{org}/capabilities/{capability_id} - Get a specific capability
+/// GET /v1/capabilities/{capability_id} - Get a specific capability
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/capabilities/{capability_id}",
+    path = "/v1/capabilities/{capability_id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("capability_id" = String, Path, description = "Capability ID")
     ),
     responses(
@@ -89,9 +83,9 @@ pub async fn list_capabilities(
     tag = "capabilities"
 )]
 pub async fn get_capability(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, capability_id)): Path<(String, String)>,
+    Path(capability_id): Path<String>,
 ) -> Result<Json<CapabilityInfo>, StatusCode> {
     let cap_id = CapabilityId::new(&capability_id);
 

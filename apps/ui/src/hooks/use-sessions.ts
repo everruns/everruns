@@ -30,7 +30,7 @@ export function useSessions(
 
   return useQuery({
     queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
-    queryFn: () => listSessions(org!, { ...params, agentId }),
+    queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org,
   });
 }
@@ -44,7 +44,7 @@ export function useSession(
 
   return useQuery({
     queryKey: queryKeys.sessions.detail(org, sessionId!),
-    queryFn: () => getSession(org!, sessionId!),
+    queryFn: () => getSession(sessionId!),
     enabled: !!org && !!sessionId,
     refetchInterval: options?.refetchInterval,
   });
@@ -52,15 +52,13 @@ export function useSession(
 
 export function useCreateSession() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
       request,
     }: {
       request: CreateSessionRequest;
-    }) => createSession(org!, request),
+    }) => createSession(request),
     onSuccess: (_, { request }) => {
       // Invalidate sessions list - both all sessions and agent-specific
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
@@ -83,7 +81,7 @@ export function useUpdateSession() {
     }: {
       sessionId: string;
       request: UpdateSessionRequest;
-    }) => updateSession(org!, sessionId, request),
+    }) => updateSession(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
       queryClient.invalidateQueries({
@@ -95,15 +93,13 @@ export function useUpdateSession() {
 
 export function useDeleteSession() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
       sessionId,
     }: {
       sessionId: string;
-    }) => deleteSession(org!, sessionId),
+    }) => deleteSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
     },
@@ -112,8 +108,6 @@ export function useDeleteSession() {
 
 export function useSendMessage() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -124,7 +118,7 @@ export function useSendMessage() {
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(org!, sessionId, content, controls),
+    }) => sendUserMessage(sessionId, content, controls),
     onSuccess: (_, { sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({
@@ -190,7 +184,7 @@ export function useEvents(
       // Close existing connection
       cleanup();
 
-      const sseUrl = getSseUrl(org, sessionId, lastEventIdRef.current ?? undefined);
+      const sseUrl = getSseUrl(sessionId, lastEventIdRef.current ?? undefined);
       const eventSource = new EventSource(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 

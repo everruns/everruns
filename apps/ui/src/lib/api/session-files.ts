@@ -1,5 +1,5 @@
 // Session Files (Virtual Filesystem) API functions
-// All routes are org-scoped: /v1/orgs/{org}/sessions/{sessionId}/fs/...
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 //
 // RESTful API design:
 // - GET    /fs/{path}  - Read file or list directory
@@ -27,8 +27,8 @@ import type {
 } from "./types";
 
 // Base path for filesystem
-function fsPath(org: string, sessionId: string, path?: string): string {
-  const base = `/v1/orgs/${org}/sessions/${sessionId}/fs`;
+function fsPath(sessionId: string, path?: string): string {
+  const base = `/v1/sessions/${sessionId}/fs`;
   if (!path || path === "/") return base;
   // Ensure path doesn't have double slashes
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
@@ -41,27 +41,25 @@ function fsPath(org: string, sessionId: string, path?: string): string {
 
 /** List files in a directory */
 export async function listFiles(
-  org: string,
   sessionId: string,
   path: string = "/",
   recursive: boolean = false
 ): Promise<FileInfo[]> {
   const url = recursive
-    ? `${fsPath(org, sessionId, path)}?recursive=true`
-    : fsPath(org, sessionId, path);
+    ? `${fsPath(sessionId, path)}?recursive=true`
+    : fsPath(sessionId, path);
   const response = await api.get<ListResponse<FileInfo>>(url);
   return response.data.data;
 }
 
 /** Create a new file */
 export async function createFile(
-  org: string,
   sessionId: string,
   request: CreateFileRequest
 ): Promise<SessionFile> {
   const { path, ...body } = request;
   const response = await api.post<SessionFile>(
-    fsPath(org, sessionId, path),
+    fsPath(sessionId, path),
     body
   );
   return response.data;
@@ -69,25 +67,23 @@ export async function createFile(
 
 /** Read a file */
 export async function readFile(
-  org: string,
   sessionId: string,
   path: string
 ): Promise<SessionFile> {
   const response = await api.get<SessionFile>(
-    fsPath(org, sessionId, path)
+    fsPath(sessionId, path)
   );
   return response.data;
 }
 
 /** Update a file */
 export async function updateFile(
-  org: string,
   sessionId: string,
   path: string,
   request: UpdateFileRequest
 ): Promise<SessionFile> {
   const response = await api.put<SessionFile>(
-    fsPath(org, sessionId, path),
+    fsPath(sessionId, path),
     request
   );
   return response.data;
@@ -95,12 +91,11 @@ export async function updateFile(
 
 /** Get file stat (metadata) */
 export async function statFile(
-  org: string,
   sessionId: string,
   path: string
 ): Promise<FileStat> {
   const response = await api.post<FileStat>(
-    `/v1/orgs/${org}/sessions/${sessionId}/fs/_/stat`,
+    `/v1/sessions/${sessionId}/fs/_/stat`,
     { path }
   );
   return response.data;
@@ -108,14 +103,13 @@ export async function statFile(
 
 /** Delete a file or directory */
 export async function deleteFile(
-  org: string,
   sessionId: string,
   path: string,
   recursive: boolean = false
 ): Promise<boolean> {
   const url = recursive
-    ? `${fsPath(org, sessionId, path)}?recursive=true`
-    : fsPath(org, sessionId, path);
+    ? `${fsPath(sessionId, path)}?recursive=true`
+    : fsPath(sessionId, path);
   const response = await api.delete<DeleteFileResponse>(url);
   return response.data.deleted;
 }
@@ -126,12 +120,11 @@ export async function deleteFile(
 
 /** Create a directory */
 export async function mkdir(
-  org: string,
   sessionId: string,
   path: string
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    fsPath(org, sessionId, path),
+    fsPath(sessionId, path),
     { is_directory: true }
   );
   return response.data;
@@ -143,12 +136,11 @@ export async function mkdir(
 
 /** Move/rename a file or directory */
 export async function moveFile(
-  org: string,
   sessionId: string,
   request: MoveFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `/v1/orgs/${org}/sessions/${sessionId}/fs/_/move`,
+    `/v1/sessions/${sessionId}/fs/_/move`,
     request
   );
   return response.data;
@@ -156,12 +148,11 @@ export async function moveFile(
 
 /** Copy a file */
 export async function copyFile(
-  org: string,
   sessionId: string,
   request: CopyFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `/v1/orgs/${org}/sessions/${sessionId}/fs/_/copy`,
+    `/v1/sessions/${sessionId}/fs/_/copy`,
     request
   );
   return response.data;
@@ -173,12 +164,11 @@ export async function copyFile(
 
 /** Search files using grep-like pattern matching */
 export async function grepFiles(
-  org: string,
   sessionId: string,
   request: GrepRequest
 ): Promise<GrepResult[]> {
   const response = await api.post<ListResponse<GrepResult>>(
-    `/v1/orgs/${org}/sessions/${sessionId}/fs/_/grep`,
+    `/v1/sessions/${sessionId}/fs/_/grep`,
     request
   );
   return response.data.data;

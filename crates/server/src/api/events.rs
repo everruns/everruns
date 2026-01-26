@@ -1,9 +1,10 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
-// Routes are org-scoped: /v1/orgs/:org/sessions/:session_id/...
+// Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -83,14 +84,11 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create event routes (nested under sessions, org-scoped)
+/// Create event routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/orgs/:org/sessions/:session_id/sse", get(stream_sse))
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/events",
-            get(list_events),
-        )
+        .route("/v1/sessions/:session_id/sse", get(stream_sse))
+        .route("/v1/sessions/:session_id/events", get(list_events))
         .with_state(state)
 }
 
@@ -98,12 +96,11 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// GET /v1/orgs/{org}/sessions/{session_id}/sse - Stream events (SSE notifications)
+/// GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/sse",
+    path = "/v1/sessions/{session_id}/sse",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
@@ -116,9 +113,9 @@ pub fn routes(state: AppState) -> Router {
     tag = "events"
 )]
 pub async fn stream_sse(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
@@ -271,12 +268,11 @@ pub async fn stream_sse(
 // List Events (JSON response for polling)
 // ============================================
 
-/// GET /v1/orgs/{org}/sessions/{session_id}/events - List events (JSON)
+/// GET /v1/sessions/{session_id}/events - List events (JSON)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/events",
+    path = "/v1/sessions/{session_id}/events",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
@@ -289,9 +285,9 @@ pub async fn stream_sse(
     tag = "events"
 )]
 pub async fn list_events(
-    org: OrgContext,
+    org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Json<ListResponse<Event>>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {

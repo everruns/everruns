@@ -11,13 +11,66 @@ This document defines the multitenancy model for Everruns, enabling organization
 | Membership model | Members only (no roles) | Simplicity; roles can be added later |
 | Multi-org support | Yes | Users switch between orgs in UI |
 | Personal namespace | No | Org-only model; SaaS auto-creates org on signup |
-| API org identifier | Path-based `/v1/orgs/{org_public_id}/...` | Explicit, debuggable, RESTful |
+| API org identifier | Auth-derived (cookie or API key) | Cleaner URLs, org derived from auth context |
 | Org ID format | BIGINT internal + TEXT public_id | Performance + security |
 | Resource sharing | No cross-org sharing | Isolation by default |
-| API keys | Org-scoped | Limited blast radius if leaked |
+| API keys | Org-scoped (1:1 with org) | Limited blast radius; org derived from key |
+| Session org selection | Cookie-based | Consistent for all requests including SSE |
 | InMemory storage | Supports multitenancy | Consistency across modes |
 | Default org | Seeded on startup | No "first boot" concept |
 | Migration | Reset (no backward compat) | Clean slate |
+
+### Why Auth-Derived Org Instead of Path-Based
+
+**Previous approach:** `/v1/orgs/{org}/agents` - org was explicit in every API path.
+
+**Current approach:** `/v1/agents` - org is derived from authentication context:
+- **API key auth:** Org derived directly from API key (1:1 relationship)
+- **Session auth (UI):** Org stored in `everruns_org` cookie
+
+**Rationale:**
+1. **Redundancy eliminated** - API keys are org-scoped, so requiring both org AND API key was redundant
+2. **Cleaner URLs** - Paths like `/v1/agents` are simpler than `/v1/orgs/{org}/agents`
+3. **Better DX** - API users only need their API key, not also the org ID
+4. **Security** - Org is always validated against auth context, preventing org enumeration
+5. **Consistency** - Cookie works uniformly for all requests including SSE (EventSource)
+
+### Cookie-Based Org Selection (Session Auth)
+
+When using session/JWT authentication (UI), the selected organization is stored in a cookie.
+
+**Cookie specification:**
+```
+Name: everruns_org
+Value: org_xxx (organization public_id)
+Path: /
+HttpOnly: true (not accessible via JavaScript)
+SameSite: Lax
+Secure: true (in production)
+```
+
+**Switching organizations:**
+```
+POST /v1/users/me/switch-org
+Content-Type: application/json
+
+{"org_id": "org_xxx"}
+
+Response:
+200 OK
+Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
+```
+
+**Benefits over header-based approach:**
+- Works automatically with EventSource (SSE) - no query param workaround needed
+- No client-side header management required
+- Cookie sent automatically with all requests
+- HttpOnly prevents XSS attacks from reading org context
+
+**Server resolution order:**
+1. API key auth → use org from API key
+2. Session auth → read `everruns_org` cookie
+3. No org found → return 401 (Missing organization context)
 
 ## Requirements
 
@@ -116,26 +169,31 @@ CREATE INDEX idx_api_keys_org_id ON api_keys(org_id);
 
 ### API Design
 
-**Path Structure:**
+**Path Structure (org derived from auth context):**
 ```
-/v1/orgs/{org_public_id}/agents
-/v1/orgs/{org_public_id}/agents/{agent_id}
-/v1/orgs/{org_public_id}/sessions
-/v1/orgs/{org_public_id}/sessions/{session_id}
-/v1/orgs/{org_public_id}/sessions/{session_id}/messages
-/v1/orgs/{org_public_id}/sessions/{session_id}/sse
-/v1/orgs/{org_public_id}/llm-providers
-/v1/orgs/{org_public_id}/llm-providers/{provider_id}
-/v1/orgs/{org_public_id}/llm-models
-/v1/orgs/{org_public_id}/api-keys
+/v1/agents
+/v1/agents/{agent_id}
+/v1/sessions
+/v1/sessions/{session_id}
+/v1/sessions/{session_id}/messages
+/v1/sessions/{session_id}/sse
+/v1/llm-providers
+/v1/llm-providers/{provider_id}
+/v1/llm-models
 ```
+
+**Org Resolution:**
+- **API key auth:** Org looked up from `api_keys.org_id` (no cookie/header needed)
+- **Session auth:** Org read from `everruns_org` cookie
 
 **Global Endpoints (no org scope):**
 ```
 /health
 /v1/auth/*
 /v1/users/me
+/v1/users/me/switch-org  (sets org cookie)
 /v1/capabilities
+/v1/orgs  (org CRUD - uses auth context)
 ```
 
 **User Info Response Enhancement:**
@@ -178,20 +236,24 @@ pub struct OrgMembership {
 }
 ```
 
-**Org Context Extractor:**
+**ResolvedOrg Extractor:**
 ```rust
-/// Extracts organization from path parameter and validates user membership.
-/// Returns 404 if org not found or user is not a member.
-pub struct OrgContext {
+/// Extracts organization from authentication context.
+/// - API key auth: uses org_id from the API key (1:1 relationship)
+/// - Session auth: reads everruns_org cookie
+/// Returns 401/404 if org not found or user is not a member.
+pub struct ResolvedOrg {
     pub org_id: i64,        // For DB queries
     pub public_id: String,  // For API responses
+    pub name: String,
 }
 
-impl<S> FromRequestParts<S> for OrgContext {
-    // 1. Extract org_public_id from path
-    // 2. Look up organization by public_id
-    // 3. Verify AuthUser is member of org
-    // 4. Return OrgContext or 404
+impl<S> FromRequestParts<S> for ResolvedOrg {
+    // 1. Extract AuthUser from request
+    // 2. For API key auth: use single org from AuthUser.organizations
+    // 3. For session auth: read org from everruns_org cookie
+    // 4. Validate user is member of requested org
+    // 5. Return ResolvedOrg or error
 }
 ```
 
@@ -417,13 +479,10 @@ ApiError::Forbidden("You don't have access to this agent")
 
 ### Phase 4: API Routes ✅
 - [x] Add org CRUD endpoints (`/v1/orgs`)
-- [x] Migrate all agent routes to `/v1/orgs/{org}/agents/...`
-- [x] Migrate LLM provider routes to `/v1/orgs/{org}/llm-providers/...`
-- [x] Migrate LLM model routes to `/v1/orgs/{org}/llm-models/...`
-- [x] Migrate API key routes to `/v1/orgs/{org}/api-keys/...`
-- [x] Migrate capabilities routes to `/v1/orgs/{org}/capabilities/...`
-- [x] Migrate MCP server routes to `/v1/orgs/{org}/mcp-servers/...`
-- [x] Migrate session files routes to `/v1/orgs/{org}/agents/{agent}/sessions/{session}/fs/...`
+- [x] ~~Migrate all routes to `/v1/orgs/{org}/...`~~ (superseded)
+- [x] Remove org from API paths - use ResolvedOrg extractor instead
+- [x] All routes now at `/v1/agents`, `/v1/sessions`, `/v1/llm-providers`, etc.
+- [x] Org derived from auth context (API key or cookie)
 - [x] Update OpenAPI spec
 
 ### Phase 5: Seeds ✅
@@ -452,8 +511,13 @@ ApiError::Forbidden("You don't have access to this agent")
 
 ## Implementation Notes
 
-### OrgContext Extractor
-The `OrgContext` extractor (`server/src/api/org_context.rs`) extracts org from URI path directly since Axum's `Path<T>` extractor consumes the request body. It validates membership against the authenticated user's organizations.
+### ResolvedOrg Extractor
+The `ResolvedOrg` extractor (`server/src/auth/middleware.rs`) derives org from the authentication context:
+- **API key auth:** The API key's `org_id` is used directly (API keys have a 1:1 relationship with orgs)
+- **Session auth (JWT):** Org from `everruns_org` cookie (set via `POST /v1/users/me/switch-org`)
+- **Anonymous auth (None):** Uses the default org automatically
+
+This approach eliminates redundancy (no need to specify org when API key already implies it) and provides cleaner URLs. The cookie-based approach for session auth works seamlessly with SSE (EventSource) since cookies are automatically sent with all requests.
 
 ### Anonymous Auth Mode (AUTH_MODE=none)
 When auth is disabled, the UI uses a hardcoded default organization:

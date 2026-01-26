@@ -4,6 +4,10 @@
 // - Handled by reverse proxy in production (strips /api, forwards to backend)
 const API_BASE = "/api";
 
+// Org selection is handled via server-side cookie (everruns_org), set by
+// POST /v1/users/me/switch-org. This works automatically with all requests
+// including SSE (EventSource) because cookies are sent automatically.
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -19,13 +23,15 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<{ data: T }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
-    credentials: "include", // Include cookies for auth
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    credentials: "include", // Include cookies for auth (access_token, everruns_org)
+    headers,
   });
 
   if (!response.ok) {

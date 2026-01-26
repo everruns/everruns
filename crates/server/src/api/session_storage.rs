@@ -2,8 +2,9 @@
 // Routes for listing session key-value storage and secrets
 // Secrets are returned without their values for security
 
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -60,26 +61,22 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create session storage routes (nested under sessions, org-scoped)
+/// Create session storage routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/sessions/:session_id/storage/keys", get(list_keys))
         .route(
-            "/v1/orgs/:org/sessions/:session_id/storage/keys",
-            get(list_keys),
-        )
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/storage/secrets",
+            "/v1/sessions/:session_id/storage/secrets",
             get(list_secrets),
         )
         .with_state(state)
 }
 
-/// GET /v1/orgs/{org}/sessions/{session_id}/storage/keys - List all key-value pairs
+/// GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/storage/keys",
+    path = "/v1/sessions/{session_id}/storage/keys",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID")
     ),
     responses(
@@ -90,9 +87,9 @@ pub fn routes(state: AppState) -> Router {
     tag = "session-storage"
 )]
 pub async fn list_keys(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -125,12 +122,11 @@ pub async fn list_keys(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// GET /v1/orgs/{org}/sessions/{session_id}/storage/secrets - List all secrets (names only)
+/// GET /v1/sessions/{session_id}/storage/secrets - List all secrets (names only)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/storage/secrets",
+    path = "/v1/sessions/{session_id}/storage/secrets",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID")
     ),
     responses(
@@ -141,9 +137,9 @@ pub async fn list_keys(
     tag = "session-storage"
 )]
 pub async fn list_secrets(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 

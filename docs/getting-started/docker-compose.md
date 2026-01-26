@@ -89,12 +89,12 @@ If you didn't set `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY` in you
 
 ```bash
 # Create a session (agent_id in request body)
-curl -X POST http://localhost:8080/api/v1/orgs/default/sessions \
+curl -X POST http://localhost:8080/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
 # Send a message
-curl -X POST http://localhost:8080/api/v1/orgs/default/sessions/{session_id}/messages \
+curl -X POST http://localhost:8080/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
 ```
