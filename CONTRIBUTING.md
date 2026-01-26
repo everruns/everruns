@@ -107,8 +107,7 @@ api           # Start API server
 ui            # Start UI dev server
 
 # Database
-migrate       # Run migrations
-reset         # Reset database
+reset         # Reset database (wipes all data)
 
 # Quality
 check         # Run format, lint, tests
@@ -136,18 +135,21 @@ pre-pr        # Run all pre-PR checks
 
 ## Database Migrations
 
+Migrations are **auto-applied on server startup**. No manual migration step needed.
+
 ```bash
 # Create a new migration
 sqlx migrate add -r <migration_name>
 
-# Run migrations
-just migrate
+# Check migration status (via admin container)
+docker run --rm -e DATABASE_URL="$DATABASE_URL" everruns-admin migrate-info
 ```
 
 Rules:
 - Migrations live in `crates/server/migrations/`
 - Never modify existing migrations - always add new ones
-- Test migrations both up and down
+- Migrations run automatically when `everruns-server` starts
+- Multi-instance safe via PostgreSQL advisory locks
 
 ## Testing
 

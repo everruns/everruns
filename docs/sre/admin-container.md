@@ -1,9 +1,11 @@
 ---
 title: Admin Container
-description: Tools for running database migrations, key rotation, and other administrative tasks
+description: Tools for checking migration status, key rotation, and other administrative tasks
 ---
 
-The admin container provides tools for running database migrations, key rotation, and other administrative tasks in production environments.
+The admin container provides tools for key rotation, migration status checks, and other administrative tasks in production environments.
+
+> **Note**: Migrations are **auto-applied on server startup**. The admin container's `migrate` command is primarily for checking status or running migrations separately in special cases.
 
 ## Building
 
@@ -23,20 +25,26 @@ docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
 
 ## Usage
 
-### Run Migrations
-
-```bash
-docker run --rm \
-    -e DATABASE_URL="postgres://user:pass@host:5432/db" \
-    everruns-admin migrate
-```
-
 ### Check Migration Status
+
+Use this before deployments to verify migration state:
 
 ```bash
 docker run --rm \
     -e DATABASE_URL="postgres://user:pass@host:5432/db" \
     everruns-admin migrate-info
+```
+
+### Run Migrations Manually
+
+Migrations auto-apply on server startup. Use this only for:
+- Running migrations without starting the server
+- Debugging migration issues (with `--no-migrations` on server)
+
+```bash
+docker run --rm \
+    -e DATABASE_URL="postgres://user:pass@host:5432/db" \
+    everruns-admin migrate
 ```
 
 ### Re-encrypt Secrets (Dry Run)

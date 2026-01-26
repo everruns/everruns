@@ -51,7 +51,6 @@ main() {
     set_encryption_key
     check_jq
     check_postgres_binaries
-    ensure_sqlx
 
     echo ""
     echo "--- PostgreSQL Setup ---"
@@ -67,7 +66,7 @@ main() {
     cd "$PROJECT_ROOT"
 
     # Use just start-all with flags for no-docker setup
-    # This runs migrations, API, and Worker
+    # API server auto-applies migrations on startup
     export AUTH_MODE="none"
     export RUST_LOG=${RUST_LOG:-info}
 

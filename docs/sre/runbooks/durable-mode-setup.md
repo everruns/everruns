@@ -106,7 +106,7 @@ Expected: 91+ tests passing
 # Create test database
 psql -U postgres -c "CREATE DATABASE everruns_test;"
 
-# Run migrations
+# Run migrations (required for tests - server auto-migrates but tests don't start server)
 DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
   sqlx migrate run --source crates/server/migrations
 
@@ -116,6 +116,9 @@ DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
 ```
 
 Expected: 17 tests passing
+
+> **Note**: In production, migrations are auto-applied when `everruns-server` starts.
+> For tests, we run migrations manually since tests don't start the server.
 
 ## Workflow Lifecycle
 

@@ -183,14 +183,13 @@ DELETE FROM refresh_tokens WHERE user_id = 'user-uuid-here';
 
 ## Database Migration
 
-Authentication requires migration `003_authentication.sql`:
+Authentication tables are included in the base schema and **auto-applied on server startup**.
+
+No manual migration step is required. To check migration status:
 
 ```bash
-# Run migrations
-sqlx migrate run
-
-# Or via just
-just migrate
+# Via admin container
+docker run --rm -e DATABASE_URL="$DATABASE_URL" everruns-admin migrate-info
 ```
 
 ## Health Check
