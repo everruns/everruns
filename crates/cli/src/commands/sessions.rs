@@ -118,12 +118,7 @@ async fn create(
         model_id,
     };
 
-    let session: Session = client
-        .post(
-            "/v1/sessions",
-            &request,
-        )
-        .await?;
+    let session: Session = client.post("/v1/sessions", &request).await?;
 
     if output.is_text() {
         if quiet {
@@ -179,10 +174,7 @@ async fn get(
     session_id: Uuid,
 ) -> Result<()> {
     let session: Session = client
-        .get(&format!(
-            "/v1/sessions/ses_{}",
-            session_id.as_hyphenated()
-        ))
+        .get(&format!("/v1/sessions/ses_{}", session_id.as_hyphenated()))
         .await
         .map_err(|e| match e {
             ClientError::NotFound => anyhow::anyhow!("Session not found: {}", session_id),

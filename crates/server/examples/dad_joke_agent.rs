@@ -141,10 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nListening to SSE events...");
     println!("-------------------------------------------");
 
-    let sse_url = format!(
-        "{}/v1/sessions/{}/sse",
-        API_BASE_URL, session.id
-    );
+    let sse_url = format!("{}/v1/sessions/{}/sse", API_BASE_URL, session.id);
 
     // Use blocking client for SSE streaming (reqwest-eventsource alternative)
     let result = listen_to_sse(&sse_url).await;

@@ -63,10 +63,7 @@ pub async fn run(
 
     let _: serde_json::Value = client
         .post(
-            &format!(
-                "/v1/sessions/ses_{}/messages",
-                session_id.as_hyphenated()
-            ),
+            &format!("/v1/sessions/ses_{}/messages", session_id.as_hyphenated()),
             &request,
         )
         .await?;
@@ -101,10 +98,7 @@ pub async fn run(
                 session_id.as_hyphenated(),
                 id
             ),
-            None => format!(
-                "/v1/sessions/ses_{}/events",
-                session_id.as_hyphenated()
-            ),
+            None => format!("/v1/sessions/ses_{}/events", session_id.as_hyphenated()),
         };
 
         let response: ListResponse<Event> = client.get(&url).await?;
