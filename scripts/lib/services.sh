@@ -338,13 +338,8 @@ case "$cmd" in
       export OTEL_SDK_DISABLED=true
     fi
 
-    # Run migrations
-    echo "2️⃣  Running database migrations..."
-    sqlx migrate run --source "$PROJECT_ROOT/crates/server/migrations"
-    echo "   ✅ Migrations complete"
-
     # Configure LLM API keys
-    echo "3️⃣  Configuring LLM API keys from environment..."
+    echo "2️⃣  Configuring LLM API keys from environment..."
     if [ -n "${OPENAI_API_KEY:-}" ]; then
       export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
       echo "   ✅ OpenAI API key configured"
@@ -363,10 +358,10 @@ case "$cmd" in
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then
-      echo "4️⃣  Starting API server..."
+      echo "3️⃣  Starting API server (auto-migrates on startup)..."
       cargo run -p everruns-server &
     else
-      echo "4️⃣  Starting API server with auto-reload..."
+      echo "3️⃣  Starting API server with auto-reload (auto-migrates on startup)..."
       cargo watch -w crates -x 'run -p everruns-server' &
     fi
     API_PID=$!
@@ -374,7 +369,7 @@ case "$cmd" in
     sleep 3
 
     # Wait for API
-    echo "5️⃣  Waiting for API to be ready..."
+    echo "4️⃣  Waiting for API to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
         echo "   ✅ API is ready"

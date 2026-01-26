@@ -2,10 +2,13 @@
 // Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
 // Decision: DEV_MODE=true uses in-memory storage, no PostgreSQL required
 // Decision: Always seed default data on startup (agents, etc.)
+// Decision: Auto-migrate database on startup (multi-instance safe via advisory locks)
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod grpc_service;
 mod seed;
+
+use clap::Parser;
 
 // Use modules from library
 use everruns_server::DirectWorkerAdapters;
@@ -33,6 +36,15 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+/// CLI arguments for everruns-server
+#[derive(Parser)]
+#[command(name = "everruns-server", about = "Everruns API server")]
+struct Args {
+    /// Disable automatic database migrations on startup
+    #[arg(long)]
+    no_migrations: bool,
+}
 
 /// App state shared across routes
 #[derive(Clone)]
@@ -63,6 +75,8 @@ struct HealthState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+
     // Initialize telemetry with OpenTelemetry support
     // Configure via environment variables:
     // - OTEL_SERVICE_NAME: Service name (default: "everruns-server")
@@ -116,6 +130,20 @@ async fn main() -> Result<()> {
             .await
             .context("Failed to connect to database")?;
         tracing::info!("Connected to PostgreSQL database");
+
+        // Run migrations unless disabled
+        // Uses PostgreSQL advisory locks for multi-instance safety
+        if !args.no_migrations {
+            tracing::info!("Running database migrations...");
+            let pool = backend.pool().expect("PostgreSQL backend should have pool");
+            sqlx::migrate!("./migrations")
+                .run(pool)
+                .await
+                .context("Database migration failed - check migration files and database state")?;
+            tracing::info!("Database migrations complete");
+        } else {
+            tracing::info!("Skipping database migrations (--no-migrations)");
+        }
 
         // Create PostgreSQL-backed runner
         let pool = backend

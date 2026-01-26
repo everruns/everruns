@@ -1,45 +1,66 @@
 ---
 title: Production Database Migrations
-description: How to run database migrations in production environments
+description: How database migrations work in production environments
 ---
 
-This runbook describes how to run database migrations in production environments.
+This runbook describes how database migrations work in production environments.
 
 ## Overview
 
-Database migrations should be run **before** deploying new application code that depends on schema changes. The admin container provides a safe way to run migrations as a one-off task.
+**Migrations are applied automatically on server startup.** The `everruns-server` runs pending migrations when it starts, using PostgreSQL advisory locks to ensure only one instance applies migrations even in multi-instance deployments.
 
-## Prerequisites
+## How Auto-Migration Works
 
-- Access to run containers in your production environment
-- Network access to the production database
-- The `everruns-admin` container image
+1. Server connects to PostgreSQL
+2. Acquires advisory lock (blocks if another instance is migrating)
+3. Checks `_sqlx_migrations` table for pending migrations
+4. Applies pending migrations in order
+5. Releases lock
+6. Continues startup
 
-## Migration Strategy
+### Multi-Instance Safety
 
-### When to Run Migrations
-
-1. **Pre-deployment**: Run migrations before deploying new code that requires schema changes
-2. **Backward-compatible changes**: Prefer additive migrations (new tables, new columns with defaults)
-3. **Multi-phase deployments**: For breaking changes, use multiple deployments:
-   - Phase 1: Add new schema (backward compatible)
-   - Phase 2: Deploy new code
-   - Phase 3: Remove old schema (if needed)
-
-### Migration Execution Flow
+PostgreSQL advisory locks ensure safe concurrent startup:
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Check Status   │────▶│ Run Migrations  │────▶│ Deploy New Code │
-│ (migrate-info)  │     │    (migrate)    │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+Instance A                Instance B
+    |                         |
+    v                         v
+ Connect                   Connect
+    |                         |
+    v                         |
+Acquire lock                  |
+    |                         v
+Run migrations         Wait for lock...
+    |                         |
+    v                         |
+Release lock                  v
+    |                    Acquire lock
+    v                         |
+Start serving           No pending migrations
+                              |
+                              v
+                        Release lock
+                              |
+                              v
+                        Start serving
 ```
 
-## Procedure
+## Disabling Auto-Migration
 
-### Step 1: Check Current Migration Status
+To skip automatic migrations (e.g., for debugging or special deployments):
 
-Before running migrations, check which migrations have been applied:
+```bash
+everruns-server --no-migrations
+```
+
+## Admin Container
+
+The admin container is still useful for:
+
+### Checking Migration Status
+
+Before deploying, verify migration status:
 
 ```bash
 docker run --rm \
@@ -47,31 +68,9 @@ docker run --rm \
     everruns-admin migrate-info
 ```
 
-Expected output shows applied and pending migrations:
-```
-20240101000000/installed: 001_initial_schema
-20240115000000/installed: 002_llm_providers
-20240201000000/pending: 003_new_feature (NEW)
-```
+### Running Migrations Separately
 
-### Step 2: Review Pending Migrations
-
-Before applying, review the migration SQL:
-
-```bash
-ls -la crates/server/migrations/
-cat crates/server/migrations/003_new_feature.sql
-```
-
-**Check for:**
-- Backward compatibility with current code
-- Long-running operations (large table alterations)
-- Potential locking issues
-- Data migrations that might fail
-
-### Step 3: Run Migrations
-
-Execute the pending migrations:
+If you need to run migrations without starting the server:
 
 ```bash
 docker run --rm \
@@ -79,27 +78,33 @@ docker run --rm \
     everruns-admin migrate
 ```
 
-The task will:
-1. Connect to the database
-2. Apply pending migrations in order
-3. Record applied migrations in `_sqlx_migrations` table
-4. Exit with code 0 on success
+### Debugging
 
-### Step 4: Verify Migration Success
-
-Confirm migrations were applied:
+For interactive debugging:
 
 ```bash
-docker run --rm \
+docker run --rm -it \
     -e DATABASE_URL="$DATABASE_URL" \
-    everruns-admin migrate-info
+    everruns-admin shell
 ```
 
-All migrations should show as `installed`.
+## Migration Strategy
 
-### Step 5: Deploy Application
+### Backward-Compatible Changes (Preferred)
 
-Once migrations are verified, proceed with the application deployment.
+For most changes, use additive migrations that work with both old and new code:
+
+1. Deploy new code (auto-applies migration on startup)
+2. Migration adds new tables/columns with defaults
+3. Old instances continue working (ignore new schema)
+
+### Breaking Changes
+
+For breaking schema changes, use multi-phase deployment:
+
+1. **Phase 1**: Deploy migration that adds new schema (backward compatible)
+2. **Phase 2**: Deploy code that uses new schema
+3. **Phase 3**: Deploy migration that removes old schema (optional cleanup)
 
 ## Rollback Procedure
 
@@ -114,68 +119,49 @@ SQLx does not have built-in rollback. To rollback a migration:
    DELETE FROM _sqlx_migrations WHERE version = 20240201000000;
    ```
 
-### Option 2: Forward-Fix
+### Option 2: Forward-Fix (Safer)
 
-Often safer than rollback:
 1. Create a new migration that reverts the changes
-2. Apply the new migration
-3. This maintains a clear audit trail
+2. Deploy with the fix migration
+3. Maintains clear audit trail
 
 ## Troubleshooting
 
-### Migration Fails Mid-Way
+### Migration Fails on Startup
 
-If a migration partially applies:
+If server fails to start due to migration error:
 
-1. **Check database state**: Verify what was applied
-2. **Fix manually**: Apply remaining changes or rollback
-3. **Update migration table**: Ensure state is consistent
+1. Check server logs for specific SQL error
+2. Fix the migration file or database state
+3. If needed, use `--no-migrations` to start server for debugging
+4. Use admin container to run migrations manually after fixing
 
-```sql
--- Check migration status
-SELECT * FROM _sqlx_migrations ORDER BY version;
+### Migration Takes Too Long
 
--- If needed, mark as applied after manual fix
-INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum)
-VALUES (20240201000000, '003_new_feature', NOW(), true, '...');
-```
+For large data migrations:
 
-### Container Fails to Start
+1. Consider running migration during maintenance window
+2. Use admin container to run migration separately
+3. Start servers with `--no-migrations` first
+4. Run migration via admin container
+5. Restart servers normally
 
-Common issues:
+### Deadlock During Migration
 
-1. **Database not reachable**: Check network connectivity and credentials
-2. **Invalid DATABASE_URL**: Verify connection string format
-3. **Missing secrets**: Ensure environment variables are set
+If multiple instances appear stuck:
 
-### Database Connection Timeout
-
-If migrations timeout:
-
-1. Check network rules allow database access
-2. Verify database is accessible from the container environment
-3. Check database credentials
-
-## Emergency: Production Database Issues
-
-If migrations cause production issues:
-
-1. **Stop the deployment pipeline** immediately
-2. **Assess the damage**: What queries are failing?
-3. **Decide: rollback or forward-fix**
-   - Rollback if changes are isolated
-   - Forward-fix if rollback is risky
-4. **Execute the fix** using admin container
-5. **Verify application health**
-6. **Post-incident review**
+1. Check PostgreSQL for advisory lock holders:
+   ```sql
+   SELECT * FROM pg_locks WHERE locktype = 'advisory';
+   ```
+2. Kill stuck connections if necessary
+3. Restart affected instances
 
 ## Best Practices
 
-1. **Always check status first** before running migrations
-2. **Review migration SQL** before applying to production
-3. **Test in staging** before production
-4. **Prefer additive changes** (add columns, not modify)
-5. **Use transactions** for multi-statement migrations
-6. **Monitor database metrics** during migration
-7. **Have a rollback plan** before starting
-8. **Document breaking changes** in migration files
+1. **Test in staging** before production deployment
+2. **Prefer additive changes** (new columns with defaults)
+3. **Use transactions** for multi-statement migrations
+4. **Monitor startup time** after adding new migrations
+5. **Check migration status** with admin container before deployment
+6. **Have a rollback plan** for complex migrations

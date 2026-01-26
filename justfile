@@ -35,10 +35,6 @@ stop-docker:
 reset:
     ./scripts/lib/docker.sh reset
 
-# Run database migrations
-migrate:
-    ./scripts/lib/docker.sh migrate
-
 # === Build & Test ===
 
 # Build all crates
