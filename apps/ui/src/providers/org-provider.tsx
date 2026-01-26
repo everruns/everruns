@@ -4,6 +4,7 @@
 // Decision: Current org stored in localStorage for persistence across sessions
 // Decision: Default org ID used as fallback
 // Decision: When AUTH_MODE=none, use default org directly
+// Decision: Org selection via server-side cookie (everruns_org) for SSE compatibility
 
 import {
   createContext,
@@ -11,10 +12,11 @@ import {
   useState,
   useEffect,
   useMemo,
+  useCallback,
   type ReactNode,
 } from "react";
 import { useAuth } from "./auth-provider";
-import { setCurrentOrgId } from "@/lib/api/client";
+import { switchOrg as switchOrgApi } from "@/lib/api/users";
 import type { OrganizationMembership } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
@@ -99,18 +101,29 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
   }, [organizations, currentOrg, isInitialized]);
 
-  const setCurrentOrg = (org: OrganizationMembership) => {
-    setCurrentOrgState(org);
-    setCurrentOrgId(org.public_id); // Update API client header
-    localStorage.setItem(STORAGE_KEY, org.public_id);
-  };
-
-  // Sync currentOrg changes to API client header
-  useEffect(() => {
-    if (currentOrg) {
-      setCurrentOrgId(currentOrg.public_id);
+  // Call API to switch org (sets server-side cookie)
+  const syncOrgCookie = useCallback(async (orgId: string) => {
+    try {
+      await switchOrgApi(orgId);
+    } catch (error) {
+      // Log but don't throw - org switching should be resilient
+      console.warn("Failed to sync org cookie:", error);
     }
-  }, [currentOrg]);
+  }, []);
+
+  const setCurrentOrg = useCallback((org: OrganizationMembership) => {
+    setCurrentOrgState(org);
+    localStorage.setItem(STORAGE_KEY, org.public_id);
+    // Set server-side cookie via API
+    void syncOrgCookie(org.public_id);
+  }, [syncOrgCookie]);
+
+  // Sync currentOrg to server cookie on mount/change
+  useEffect(() => {
+    if (currentOrg && isInitialized) {
+      void syncOrgCookie(currentOrg.public_id);
+    }
+  }, [currentOrg, isInitialized, syncOrgCookie]);
 
   const value: OrgContextValue = {
     currentOrg,

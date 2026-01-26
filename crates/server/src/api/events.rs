@@ -1,6 +1,6 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
-// Routes use ResolvedOrg: org derived from auth context (API key or X-Org-Id header)
+// Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;

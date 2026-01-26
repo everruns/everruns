@@ -1,8 +1,8 @@
 // Event API functions
 // Events are SSE notifications for real-time updates
-// Org is sent via X-Org-Id header (set by OrgProvider)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api, getDirectBackendUrl, getCurrentOrgId } from "./client";
+import { api, getDirectBackendUrl } from "./client";
 import type { Event, ListResponse } from "./types";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
@@ -34,7 +34,7 @@ export async function listEvents(
 // Uses direct backend URL to bypass Next.js proxy (proxies buffer SSE)
 // Uses since_id for incremental updates (UUID v7 monotonically increasing)
 // Optional exclude parameter to filter out event types (e.g., delta events)
-// Note: X-Org-Id header must be set via EventSource headers or query param
+// Note: Org is sent via everruns_org cookie (EventSource sends cookies automatically)
 export function getSseUrl(
   sessionId: string,
   sinceId?: string,
@@ -49,11 +49,6 @@ export function getSseUrl(
     for (const type of exclude) {
       params.append("exclude", type);
     }
-  }
-  // Include org ID as query param for SSE (EventSource doesn't support custom headers)
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    params.set("org_id", orgId);
   }
   const queryString = params.toString();
   return `${baseUrl}/v1/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;

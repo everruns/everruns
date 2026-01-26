@@ -461,15 +461,19 @@ where
 // ResolvedOrg - Organization context from auth (not URL path)
 // ============================================================================
 
-/// Header name for org selection in session auth
-pub const ORG_HEADER: &str = "X-Org-Id";
+/// Cookie name for org selection in session auth
+/// Note: Also defined in api/users.rs - keep in sync
+pub const ORG_COOKIE_NAME: &str = "everruns_org";
 
 /// Organization context resolved from authentication
 ///
 /// Unlike OrgContext which extracts org from URL path, ResolvedOrg derives
 /// the organization from the authentication context:
 /// - API key auth: org comes from API key (single org in AuthUser.organizations)
-/// - Session auth (JWT): org from X-Org-Id header, validated against user membership
+/// - Session auth (JWT/None): org from everruns_org cookie, validated against user membership
+///
+/// The cookie is set via POST /v1/users/me/switch-org endpoint.
+/// Cookies work automatically with SSE (EventSource) unlike headers.
 ///
 /// Usage:
 /// ```rust,ignore
@@ -502,37 +506,32 @@ where
         let user = AuthUser::from_request_parts(parts, state).await?;
 
         match user.auth_method {
-            AuthMethod::ApiKey => {
+            AuthMethod::ApiKey | AuthMethod::None => {
                 // API key auth: user has exactly one org (from API key)
+                // None (anonymous): user has exactly one org (default org)
+                // In both cases, just use the single org - no cookie needed
                 let org = user
                     .organizations
                     .first()
-                    .ok_or_else(|| AuthError::unauthorized("API key has no organization"))?;
+                    .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
                 Ok(ResolvedOrg {
                     org_id: org.org_id,
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
                 })
             }
-            AuthMethod::Jwt | AuthMethod::None => {
-                // Session auth: get org from X-Org-Id header or org_id query param
-                // Query param fallback is needed for SSE (EventSource doesn't support headers)
-                let org_public_id = parts
-                    .headers
-                    .get(ORG_HEADER)
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        // Fallback to query param for SSE (EventSource doesn't support headers)
-                        parts.uri.query().and_then(|q| {
-                            q.split('&')
-                                .filter_map(|part| part.split_once('='))
-                                .find(|(k, _)| *k == "org_id")
-                                .map(|(_, v)| v.to_string())
-                        })
-                    })
+            AuthMethod::Jwt => {
+                // Session auth: get org from everruns_org cookie
+                // Cookie is set via POST /v1/users/me/switch-org
+                // Cookies work automatically with SSE (EventSource) unlike headers
+                let jar = CookieJar::from_headers(&parts.headers);
+                let org_public_id = jar
+                    .get(ORG_COOKIE_NAME)
+                    .map(|c| c.value().to_string())
                     .ok_or_else(|| {
-                        AuthError::unauthorized("Missing X-Org-Id header or org_id query param")
+                        AuthError::unauthorized(
+                            "Missing organization cookie. Call POST /v1/users/me/switch-org first.",
+                        )
                     })?;
                 let org_public_id = org_public_id.as_str();
 

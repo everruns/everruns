@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useOrg } from "@/providers/org-provider";
 
 interface ImageAttachmentsProps {
   images: PendingImage[];
@@ -21,15 +20,12 @@ interface ImageAttachmentsProps {
  * Component to display pending image attachments in the chat input area
  */
 export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   if (images.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
       {images.map((img) => (
-        <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} org={org} />
+        <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} />
       ))}
     </div>
   );
@@ -38,10 +34,9 @@ export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
 interface ImageAttachmentItemProps {
   image: PendingImage;
   onRemove: (tempId: string) => void;
-  org: string | undefined;
 }
 
-function ImageAttachmentItem({ image, onRemove, org }: ImageAttachmentItemProps) {
+function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
   // Use thumbnail URL if uploaded, otherwise use object URL preview
   const displayUrl = image.imageId
     ? getThumbnailUrl(image.imageId)
@@ -96,9 +91,6 @@ interface MessageImageProps {
 }
 
 export function MessageImage({ imageId, filename }: MessageImageProps) {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   const [isOpen, setIsOpen] = useState(false);
   const thumbnailUrl = getThumbnailUrl(imageId);
   const fullImageUrl = getImageUrl(imageId);

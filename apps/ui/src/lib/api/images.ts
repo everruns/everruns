@@ -1,10 +1,10 @@
 // Image upload API
-// Org is sent via X-Org-Id header (set by OrgProvider)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 //
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
 
-import { getApiBaseUrl, getDirectBackendUrl, getCurrentOrgId } from "./client";
+import { getApiBaseUrl, getDirectBackendUrl } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
 
@@ -58,18 +58,11 @@ export async function uploadImage(
   const params = sessionId ? `?session_id=${sessionId}` : "";
   const url = `${baseUrl}/v1/images${params}`;
 
-  // Build headers with X-Org-Id
-  const headers: Record<string, string> = {};
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    headers["X-Org-Id"] = orgId;
-  }
-
+  // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch(url, {
     method: "POST",
     body: formData,
-    headers,
-    credentials: "include", // Include cookies for auth
+    credentials: "include", // Include cookies for auth (access_token, everruns_org)
   });
 
   if (!response.ok) {
@@ -98,17 +91,10 @@ export function getThumbnailUrl(imageId: string): string {
  * Delete an image
  */
 export async function deleteImage(imageId: string): Promise<void> {
-  // Build headers with X-Org-Id
-  const headers: Record<string, string> = {};
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    headers["X-Org-Id"] = orgId;
-  }
-
+  // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch(`${getApiBaseUrl()}/v1/images/${imageId}`, {
     method: "DELETE",
-    headers,
-    credentials: "include",
+    credentials: "include", // Include cookies for auth (access_token, everruns_org)
   });
 
   if (!response.ok) {
@@ -124,16 +110,10 @@ export async function listImages(
   limit: number = 50,
   offset: number = 0
 ): Promise<ImageInfo[]> {
-  // Build headers with X-Org-Id
-  const headers: Record<string, string> = {};
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    headers["X-Org-Id"] = orgId;
-  }
-
+  // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch(
     `${getApiBaseUrl()}/v1/images?limit=${limit}&offset=${offset}`,
-    { headers, credentials: "include" }
+    { credentials: "include" } // Include cookies for auth (access_token, everruns_org)
   );
 
   if (!response.ok) {

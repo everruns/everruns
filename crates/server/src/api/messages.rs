@@ -1,5 +1,5 @@
 // Message HTTP routes and API contracts
-// Routes use ResolvedOrg: org derived from auth context (API key or X-Org-Id header)
+// Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
 // - Tool results are conveyed via `tool.completed` events

@@ -645,7 +645,7 @@ pub async fn list_api_keys(
 
 /// POST /v1/auth/api-keys - Create a new API key
 ///
-/// Requires X-Org-Id header to specify which organization the API key is for.
+/// Organization is derived from the everruns_org cookie (set via /v1/users/me/switch-org).
 /// Cannot be called with API key authentication (must use session auth).
 pub async fn create_api_key_route(
     State(state): State<AuthState>,

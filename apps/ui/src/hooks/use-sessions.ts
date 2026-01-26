@@ -52,8 +52,6 @@ export function useSession(
 
 export function useCreateSession() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({

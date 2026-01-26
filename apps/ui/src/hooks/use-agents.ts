@@ -40,8 +40,6 @@ export function useAgent(agentId: string | undefined) {
 
 export function useCreateAgent() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: (request: CreateAgentRequest) => createAgent(request),

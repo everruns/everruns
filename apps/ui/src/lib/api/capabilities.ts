@@ -1,5 +1,5 @@
 // Capability API functions
-// Org is sent via X-Org-Id header (set by OrgProvider)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 //
 // Note: Agent-specific capabilities are managed through the agents API.
 // See agents.ts for createAgent/updateAgent with capabilities.

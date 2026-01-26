@@ -1,14 +1,17 @@
 // Users API routes
 // Decision: Expose user listing for admin settings page (member management)
+// Decision: Cookie-based org selection for consistent auth across all requests (including SSE)
 
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Query, State},
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
 };
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
+use everruns_core::validate_org_public_id;
 
 use super::common::ListResponse;
 use serde::{Deserialize, Serialize};
@@ -17,6 +20,9 @@ use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthState, AuthUser};
 use axum::extract::FromRef;
+
+/// Cookie name for storing selected organization
+pub const ORG_COOKIE_NAME: &str = "everruns_org";
 
 /// App state for users routes
 #[derive(Clone)]
@@ -53,10 +59,28 @@ pub struct ListUsersQuery {
     pub search: Option<String>,
 }
 
+/// Request to switch organization
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SwitchOrgRequest {
+    /// Organization public ID to switch to
+    #[schema(example = "org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0")]
+    pub org_id: String,
+}
+
+/// Response from switch org endpoint
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SwitchOrgResponse {
+    /// Whether the switch was successful
+    pub success: bool,
+    /// The organization ID that was switched to
+    pub org_id: String,
+}
+
 /// Create users routes
 pub fn routes(state: UsersState) -> Router {
     Router::new()
         .route("/v1/users", get(list_users))
+        .route("/v1/users/me/switch-org", post(switch_org))
         .with_state(state)
 }
 
@@ -108,6 +132,69 @@ pub async fn list_users(
         .collect();
 
     Ok(Json(ListResponse::new(users)))
+}
+
+/// POST /v1/users/me/switch-org - Switch current organization
+///
+/// Sets a cookie with the selected organization. This org will be used for all
+/// subsequent requests (including SSE connections via EventSource).
+/// The user must be a member of the requested organization.
+#[utoipa::path(
+    post,
+    path = "/v1/users/me/switch-org",
+    request_body = SwitchOrgRequest,
+    responses(
+        (status = 200, description = "Organization switched successfully", body = SwitchOrgResponse),
+        (status = 400, description = "Invalid organization ID format"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Organization not found or user is not a member")
+    ),
+    tag = "users"
+)]
+pub async fn switch_org(
+    auth: AuthUser,
+    jar: CookieJar,
+    Json(req): Json<SwitchOrgRequest>,
+) -> Result<(CookieJar, Json<SwitchOrgResponse>), StatusCode> {
+    // Validate org ID format
+    if !validate_org_public_id(&req.org_id) {
+        tracing::warn!("Invalid org ID format: {}", req.org_id);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Verify user is a member of this org
+    let is_member = auth
+        .organizations
+        .iter()
+        .any(|org| org.public_id == req.org_id);
+
+    if !is_member {
+        tracing::warn!(
+            "User {} attempted to switch to org {} but is not a member",
+            auth.id,
+            req.org_id
+        );
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Build the org cookie
+    let org_cookie = Cookie::build((ORG_COOKIE_NAME, req.org_id.clone()))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .build();
+
+    let jar = jar.add(org_cookie);
+
+    tracing::info!("User {} switched to org {}", auth.id, req.org_id);
+
+    Ok((
+        jar,
+        Json(SwitchOrgResponse {
+            success: true,
+            org_id: req.org_id,
+        }),
+    ))
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 // MCP Server API functions
-// Org is sent via X-Org-Id header (set by OrgProvider)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api } from "./client";
 import type {

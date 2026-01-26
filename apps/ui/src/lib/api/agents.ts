@@ -1,7 +1,7 @@
 // Agent API functions (M2)
-// Org is sent via X-Org-Id header (set by OrgProvider)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api, getCurrentOrgId } from "./client";
+import { api } from "./client";
 import type {
   Agent,
   AgentPreviewResponse,
@@ -40,15 +40,9 @@ export async function deleteAgent(agentId: string): Promise<void> {
 
 export async function exportAgent(agentId: string): Promise<string> {
   // Use fetch directly since we need to return text, not JSON
-  const headers: Record<string, string> = {};
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    headers["X-Org-Id"] = orgId;
-  }
-
+  // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch(`/api/v1/agents/${agentId}/export`, {
     credentials: "include",
-    headers,
   });
   if (!response.ok) {
     throw new Error(`Export failed: ${response.statusText}`);
@@ -58,18 +52,13 @@ export async function exportAgent(agentId: string): Promise<string> {
 
 export async function importAgent(markdown: string): Promise<Agent> {
   // Use fetch directly since we need to send text/markdown content type
-  const headers: Record<string, string> = {
-    "Content-Type": "text/markdown",
-  };
-  const orgId = getCurrentOrgId();
-  if (orgId) {
-    headers["X-Org-Id"] = orgId;
-  }
-
+  // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch("/api/v1/agents/import", {
     method: "POST",
     credentials: "include",
-    headers,
+    headers: {
+      "Content-Type": "text/markdown",
+    },
     body: markdown,
   });
   if (!response.ok) {
