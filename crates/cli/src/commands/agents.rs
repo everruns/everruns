@@ -327,7 +327,7 @@ async fn create(
 
     let agent: Agent = client
         .post(
-            "/v1/orgs/org_00000000000000000000000000000001/agents",
+            "/v1/agents",
             &request,
         )
         .await?;
@@ -356,7 +356,7 @@ async fn create(
 
 async fn list(client: &Client, output: OutputFormat) -> Result<()> {
     let response: ListResponse<Agent> = client
-        .get("/v1/orgs/org_00000000000000000000000000000001/agents")
+        .get("/v1/agents")
         .await?;
 
     if output.is_text() {
@@ -400,7 +400,7 @@ async fn list(client: &Client, output: OutputFormat) -> Result<()> {
 async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let agent: Agent = client
         .get(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/agents/{}",
+            "/v1/agents/{}",
             agent_id
         ))
         .await
@@ -438,7 +438,7 @@ async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()
 async fn delete(client: &Client, output: OutputFormat, quiet: bool, agent_id: Uuid) -> Result<()> {
     client
         .delete(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/agents/{}",
+            "/v1/agents/{}",
             agent_id
         ))
         .await

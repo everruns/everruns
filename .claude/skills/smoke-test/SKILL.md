@@ -61,7 +61,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:9100
 ORG="org_00000000000000000000000000000001"
 
 # Create agent
-curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents" \
+curl -s -X POST "http://localhost:9000/v1/agents" \
   -H "Content-Type: application/json" \
   -d '{"name": "Test", "system_prompt": "You are helpful."}' | jq '.id'
 ```

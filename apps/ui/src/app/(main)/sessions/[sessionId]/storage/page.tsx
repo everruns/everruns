@@ -28,10 +28,10 @@ export default function StoragePage() {
       try {
         const [keysRes, secretsRes] = await Promise.all([
           api.get<ListResponse<KeyValueInfo>>(
-            `/v1/orgs/${currentOrg.public_id}/sessions/${sessionId}/storage/keys`
+            `/v1/sessions/${sessionId}/storage/keys`
           ),
           api.get<ListResponse<SecretInfo>>(
-            `/v1/orgs/${currentOrg.public_id}/sessions/${sessionId}/storage/secrets`
+            `/v1/sessions/${sessionId}/storage/secrets`
           ),
         ]);
 

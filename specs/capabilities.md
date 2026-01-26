@@ -677,18 +677,18 @@ All endpoints are organization-scoped.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/orgs/{org}/capabilities` | List all available capabilities |
-| GET | `/v1/orgs/{org}/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/capabilities` | List all available capabilities |
+| GET | `/v1/capabilities/{capability_id}` | Get capability details |
 
 Agent capabilities are managed through the agents API:
-- `POST /v1/orgs/{org}/agents` - Create agent with capabilities
-- `PATCH /v1/orgs/{org}/agents/{id}` - Update agent capabilities
-- `GET /v1/orgs/{org}/agents/{id}` - Get agent (includes capabilities)
+- `POST /v1/agents` - Create agent with capabilities
+- `PATCH /v1/agents/{id}` - Update agent capabilities
+- `GET /v1/agents/{id}` - Get agent (includes capabilities)
 
 #### List Capabilities
 
 ```http
-GET /v1/orgs/{org}/capabilities
+GET /v1/capabilities
 
 Response:
 {
@@ -733,7 +733,7 @@ Response:
 #### Create Agent with Capabilities
 
 ```http
-POST /v1/orgs/{org}/agents
+POST /v1/agents
 Content-Type: application/json
 
 {
@@ -762,7 +762,7 @@ Response:
 #### Update Agent Capabilities
 
 ```http
-PATCH /v1/orgs/{org}/agents/{agent_id}
+PATCH /v1/agents/{agent_id}
 Content-Type: application/json
 
 {
@@ -903,7 +903,7 @@ pub trait Capability: Send + Sync {
 
 #### Mount Application Flow
 
-1. Session is created via POST `/v1/orgs/{org}/sessions` (with `agent_id` in body)
+1. Session is created via POST `/v1/sessions` (with `agent_id` in body)
 2. SessionService fetches agent's capabilities
 3. Mounts are collected from all enabled capabilities
 4. Files and directories are created in session filesystem

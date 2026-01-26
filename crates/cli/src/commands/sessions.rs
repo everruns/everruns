@@ -120,7 +120,7 @@ async fn create(
 
     let session: Session = client
         .post(
-            "/v1/orgs/org_00000000000000000000000000000001/sessions",
+            "/v1/sessions",
             &request,
         )
         .await?;
@@ -143,7 +143,7 @@ async fn create(
 async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let response: ListResponse<Session> = client
         .get(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/sessions?agent_id=agt_{}",
+            "/v1/sessions?agent_id=agt_{}",
             agent_id.as_hyphenated()
         ))
         .await?;
@@ -180,7 +180,7 @@ async fn get(
 ) -> Result<()> {
     let session: Session = client
         .get(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}",
+            "/v1/sessions/ses_{}",
             session_id.as_hyphenated()
         ))
         .await
