@@ -7,6 +7,8 @@ use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{Value, json};
 
 const API_BASE_URL: &str = "http://localhost:9000";
+const ORG_HEADER: &str = "X-Org-Id";
+const DEFAULT_ORG: &str = "org_00000000000000000000000000000001";
 
 #[tokio::test]
 async fn test_full_agent_session_workflow() {
@@ -23,6 +25,7 @@ async fn test_full_agent_session_workflow() {
             "description": "An agent for testing",
             "system_prompt": "You are a helpful assistant"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -47,6 +50,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 2: Listing agents...");
     let list_response = client
         .get(format!("{}/v1/agents", API_BASE_URL))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list agents");
@@ -63,6 +67,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 3: Getting agent by ID...");
     let get_response = client
         .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get agent");
@@ -80,6 +85,7 @@ async fn test_full_agent_session_workflow() {
             "name": "Updated Test Agent",
             "description": "Updated description"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to update agent");
@@ -97,6 +103,7 @@ async fn test_full_agent_session_workflow() {
             "agent_id": agent.id,
             "title": "Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -122,6 +129,7 @@ async fn test_full_agent_session_workflow() {
                 "content": [{"type": "text", "text": "Hello!"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create message");
@@ -141,6 +149,7 @@ async fn test_full_agent_session_workflow() {
             "{}/v1/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list messages");
@@ -157,6 +166,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 8: Getting session...");
     let get_session_response = client
         .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get session");
@@ -176,6 +186,7 @@ async fn test_full_agent_session_workflow() {
             "{}/v1/sessions/{}/events",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list events");
@@ -202,6 +213,7 @@ async fn test_health_endpoint() {
     println!("Testing health endpoint...");
     let response = client
         .get(format!("{}/health", API_BASE_URL))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to call health endpoint");
@@ -219,6 +231,7 @@ async fn test_openapi_spec() {
     println!("Testing OpenAPI spec endpoint...");
     let response = client
         .get(format!("{}/api-doc/openapi.json", API_BASE_URL))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get OpenAPI spec");
@@ -245,6 +258,7 @@ async fn test_llm_provider_and_model_workflow() {
             "base_url": "https://api.openai.com/v1",
             "is_default": true
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create LLM provider");
@@ -273,6 +287,7 @@ async fn test_llm_provider_and_model_workflow() {
             "capabilities": ["chat", "vision"],
             "is_default": true
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -293,12 +308,14 @@ async fn test_llm_provider_and_model_workflow() {
 
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
 
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -321,6 +338,7 @@ async fn test_llm_model_profile() {
             "provider_type": "openai",
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create LLM provider");
@@ -345,6 +363,7 @@ async fn test_llm_model_profile() {
             "capabilities": ["chat", "vision"],
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -361,6 +380,7 @@ async fn test_llm_model_profile() {
     println!("\nStep 3: Getting model with profile via list endpoint...");
     let list_models_response = client
         .get(format!("{}/v1/llm-models", API_BASE_URL))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list models");
@@ -404,12 +424,14 @@ async fn test_llm_model_profile() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model_id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
 
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -432,6 +454,7 @@ async fn test_session_inherits_agent_default_model() {
             "provider_type": "openai",
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -454,6 +477,7 @@ async fn test_session_inherits_agent_default_model() {
             "display_name": "Test Model",
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -470,6 +494,7 @@ async fn test_session_inherits_agent_default_model() {
             "system_prompt": "Test agent",
             "default_model_id": model.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -490,6 +515,7 @@ async fn test_session_inherits_agent_default_model() {
             "agent_id": agent.id,
             "title": "Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -525,6 +551,7 @@ async fn test_session_inherits_agent_default_model() {
             "display_name": "Test Model 2",
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create second model");
@@ -541,6 +568,7 @@ async fn test_session_inherits_agent_default_model() {
             "title": "Test Session 2",
             "model_id": model2.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session with explicit model");
@@ -566,21 +594,25 @@ async fn test_session_inherits_agent_default_model() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model2.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model2");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -602,6 +634,7 @@ async fn test_session_filesystem() {
             "name": "Filesystem Test Agent",
             "system_prompt": "Test agent for filesystem"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -617,6 +650,7 @@ async fn test_session_filesystem() {
             "agent_id": agent.id,
             "title": "Filesystem Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -633,6 +667,7 @@ async fn test_session_filesystem() {
     println!("\nStep 3: Listing root directory...");
     let list_response = client
         .get(&fs_url)
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list files");
@@ -650,6 +685,7 @@ async fn test_session_filesystem() {
             "content": "Hello, World!",
             "encoding": "text"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create file");
@@ -664,6 +700,7 @@ async fn test_session_filesystem() {
     println!("\nStep 5: Reading file...");
     let read_response = client
         .get(format!("{}/hello.txt", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to read file");
@@ -680,6 +717,7 @@ async fn test_session_filesystem() {
         .json(&json!({
             "path": "/hello.txt"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get stat");
@@ -697,6 +735,7 @@ async fn test_session_filesystem() {
         .json(&json!({
             "content": "Updated content"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to update file");
@@ -713,6 +752,7 @@ async fn test_session_filesystem() {
         .json(&json!({
             "is_directory": true
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create directory");
@@ -729,6 +769,7 @@ async fn test_session_filesystem() {
         .json(&json!({
             "content": "fn main() {}"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create nested file");
@@ -742,6 +783,7 @@ async fn test_session_filesystem() {
     println!("\nStep 10: Listing all files...");
     let list_all_response = client
         .get(format!("{}?recursive=true", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list all files");
@@ -760,6 +802,7 @@ async fn test_session_filesystem() {
             "src_path": "/hello.txt",
             "dst_path": "/hello-copy.txt"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to copy file");
@@ -775,6 +818,7 @@ async fn test_session_filesystem() {
             "src_path": "/hello-copy.txt",
             "dst_path": "/renamed.txt"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to move file");
@@ -789,6 +833,7 @@ async fn test_session_filesystem() {
         .json(&json!({
             "pattern": "main"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to grep");
@@ -803,6 +848,7 @@ async fn test_session_filesystem() {
     println!("\nStep 14: Deleting file...");
     let delete_response = client
         .delete(format!("{}/renamed.txt", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete file");
@@ -816,6 +862,7 @@ async fn test_session_filesystem() {
     println!("\nStep 15: Deleting directory recursively...");
     let delete_dir_response = client
         .delete(format!("{}/src?recursive=true", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete directory");
@@ -827,6 +874,7 @@ async fn test_session_filesystem() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -860,6 +908,7 @@ async fn test_message_triggers_agent_workflow() {
             "name": "LlmSim Test Provider",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -887,6 +936,7 @@ async fn test_message_triggers_agent_workflow() {
             "model_id": "llmsim-test",
             "display_name": "LlmSim Test Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -911,6 +961,7 @@ async fn test_message_triggers_agent_workflow() {
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -927,6 +978,7 @@ async fn test_message_triggers_agent_workflow() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Workflow Test Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -951,6 +1003,7 @@ async fn test_message_triggers_agent_workflow() {
                 "content": [{"type": "text", "text": "Say hello in one word."}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create message");
@@ -986,6 +1039,7 @@ async fn test_message_triggers_agent_workflow() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -1037,6 +1091,7 @@ async fn test_message_triggers_agent_workflow() {
                 "{}/v1/sessions/{}/events",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await
             && resp.status() == 200
@@ -1074,6 +1129,7 @@ async fn test_message_triggers_agent_workflow() {
             "{}/v1/sessions/{}/events",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list events");
@@ -1096,16 +1152,19 @@ async fn test_message_triggers_agent_workflow() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1147,6 +1206,7 @@ async fn test_no_duplicate_tool_calls() {
             "api_key": api_key,
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -1168,6 +1228,7 @@ async fn test_no_duplicate_tool_calls() {
             "model_id": "gpt-4o-mini",
             "display_name": "GPT-4o Mini Test"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -1190,7 +1251,7 @@ async fn test_no_duplicate_tool_calls() {
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -1205,6 +1266,7 @@ async fn test_no_duplicate_tool_calls() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -1227,6 +1289,7 @@ async fn test_no_duplicate_tool_calls() {
                 "content": [{"type": "text", "text": "What time is it right now?"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -1248,6 +1311,7 @@ async fn test_no_duplicate_tool_calls() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -1293,6 +1357,7 @@ async fn test_no_duplicate_tool_calls() {
             "{}/v1/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list messages");
@@ -1360,16 +1425,19 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1390,6 +1458,7 @@ async fn test_sessions_pagination() {
             "name": "Pagination Test Agent",
             "system_prompt": "Test agent"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -1404,6 +1473,7 @@ async fn test_sessions_pagination() {
         let response = client
             .post(format!("{}/v1/sessions", API_BASE_URL))
             .json(&json!({ "agent_id": agent.id, "title": format!("Session {}", i) }))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await
             .expect("Failed to create session");
@@ -1418,6 +1488,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions");
@@ -1442,6 +1513,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}&limit=5",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions with limit");
@@ -1465,6 +1537,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}&offset=5&limit=5",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions with offset");
@@ -1485,6 +1558,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}&offset=10&limit=10",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions");
@@ -1507,6 +1581,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}&offset=20",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions");
@@ -1529,6 +1604,7 @@ async fn test_sessions_pagination() {
             "{}/v1/sessions?agent_id={}&limit=200",
             API_BASE_URL, agent.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list sessions");
@@ -1543,6 +1619,7 @@ async fn test_sessions_pagination() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1580,6 +1657,7 @@ async fn test_second_message_triggers_workflow() {
             "name": "LlmSim Second Message Test",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -1607,6 +1685,7 @@ async fn test_second_message_triggers_workflow() {
             "model_id": "llmsim-second-msg-test",
             "display_name": "LlmSim Second Message Test Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -1631,6 +1710,7 @@ async fn test_second_message_triggers_workflow() {
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -1647,6 +1727,7 @@ async fn test_second_message_triggers_workflow() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Second Message Test Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -1670,6 +1751,7 @@ async fn test_second_message_triggers_workflow() {
                 "content": [{"type": "text", "text": "Hello, this is the first message."}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create first message");
@@ -1692,6 +1774,7 @@ async fn test_second_message_triggers_workflow() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -1737,7 +1820,7 @@ async fn test_second_message_triggers_workflow() {
                 "content": [{"type": "text", "text": "Hello, this is the SECOND message. Please respond."}]
             }
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create second message");
 
@@ -1762,6 +1845,7 @@ async fn test_second_message_triggers_workflow() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -1800,6 +1884,7 @@ async fn test_second_message_triggers_workflow() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await
             && resp.status() == 200
@@ -1830,6 +1915,7 @@ async fn test_second_message_triggers_workflow() {
             "{}/v1/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get final messages");
@@ -1862,16 +1948,19 @@ async fn test_second_message_triggers_workflow() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1904,6 +1993,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
                 {"ref": "session_file_system", "config": {}}
             ]
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -1933,6 +2023,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
             "agent_id": agent.id,
             "title": "Mount Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -1951,6 +2042,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let stat_response = client
         .post(format!("{}/_/stat", fs_url))
         .json(&json!({"path": "/samples"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to stat /samples");
@@ -1964,6 +2056,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("\nStep 4: Listing /samples directory...");
     let list_response = client
         .get(format!("{}/samples", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list /samples");
@@ -1993,6 +2086,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("\nStep 5: Reading /samples/users.json...");
     let read_response = client
         .get(format!("{}/samples/users.json", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to read users.json");
@@ -2012,6 +2106,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
         .json(&json!({
             "content": "modified content"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send update request");
@@ -2028,6 +2123,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("\nStep 7: Reading /samples/config.yaml...");
     let config_response = client
         .get(format!("{}/samples/config.yaml", fs_url))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to read config.yaml");
@@ -2053,6 +2149,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
             "agent_id": agent.id,
             "title": "Second Mount Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create second session");
@@ -2069,6 +2166,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let stat2_response = client
         .post(format!("{}/_/stat", fs_url2))
         .json(&json!({"path": "/samples"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to stat /samples in session2");
@@ -2085,6 +2183,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2117,6 +2216,7 @@ async fn test_mcp_server_crud() {
             "description": "A test MCP server for integration testing",
             "url": "https://mcp.example.com/v1/mcp"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create MCP server");
@@ -2143,6 +2243,7 @@ async fn test_mcp_server_crud() {
     println!("\nStep 2: Listing MCP servers...");
     let list_response = client
         .get(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list MCP servers");
@@ -2159,6 +2260,7 @@ async fn test_mcp_server_crud() {
     println!("\nStep 3: Getting MCP server by ID...");
     let get_response = client
         .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get MCP server");
@@ -2181,6 +2283,7 @@ async fn test_mcp_server_crud() {
             "description": "Updated description",
             "url": "https://mcp.updated.com/v1/mcp"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to update MCP server");
@@ -2205,6 +2308,7 @@ async fn test_mcp_server_crud() {
         .json(&json!({
             "status": "disabled"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to disable MCP server");
@@ -2226,6 +2330,7 @@ async fn test_mcp_server_crud() {
             "url": "https://secure.mcp.com/v1/mcp",
             "api_key": "test-api-key-12345"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create MCP server with API key");
@@ -2253,6 +2358,7 @@ async fn test_mcp_server_crud() {
                 "X-Another-Header": "another-value"
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create MCP server with headers");
@@ -2281,6 +2387,7 @@ async fn test_mcp_server_crud() {
             "name": "",
             "url": "https://mcp.example.com/v1/mcp"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send request");
@@ -2300,6 +2407,7 @@ async fn test_mcp_server_crud() {
             "name": "test-server",
             "url": ""
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send request");
@@ -2318,6 +2426,7 @@ async fn test_mcp_server_crud() {
             "{}/v1/mcp-servers/mcp_00000000000000000000000000000000",
             API_BASE_URL
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get non-existent server");
@@ -2333,6 +2442,7 @@ async fn test_mcp_server_crud() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete MCP server");
@@ -2341,6 +2451,7 @@ async fn test_mcp_server_crud() {
             "{}/v1/mcp-servers/{}",
             API_BASE_URL, server_with_key.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete MCP server with key");
@@ -2349,6 +2460,7 @@ async fn test_mcp_server_crud() {
             "{}/v1/mcp-servers/{}",
             API_BASE_URL, server_with_headers.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete MCP server with headers");
@@ -2356,6 +2468,7 @@ async fn test_mcp_server_crud() {
     // Verify deletion
     let verify_deleted = client
         .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to verify deletion");
@@ -2398,6 +2511,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             "name": "LlmSim Tool Test Provider",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -2425,6 +2539,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             "model_id": "llmsim-tool-test",
             "display_name": "LlmSim Tool Test Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -2450,7 +2565,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -2466,6 +2581,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Dad Jokes Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -2489,6 +2605,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
                 "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -2510,6 +2627,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -2581,6 +2699,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             "{}/v1/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get final messages");
@@ -2633,6 +2752,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2641,11 +2761,13 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -2694,6 +2816,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
             "api_key": api_key,
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -2722,6 +2845,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
             "model_id": "gpt-4o-mini",
             "display_name": "GPT-4o Mini (Tool Test)"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -2744,7 +2868,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -2757,6 +2881,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "OpenAI Dad Jokes Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -2780,6 +2905,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
                 "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -2800,6 +2926,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -2865,6 +2992,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2873,11 +3001,13 @@ async fn test_agent_execution_openai_with_tool_calls() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -2942,6 +3072,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             "api_key": api_key,
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -2970,6 +3101,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             "model_id": "claude-3-5-haiku-latest",
             "display_name": "Claude 3.5 Haiku (Tool Test)"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -2992,7 +3124,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -3005,6 +3137,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Anthropic Dad Jokes Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -3028,6 +3161,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
                 "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -3048,6 +3182,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -3113,6 +3248,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3121,11 +3257,13 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3175,6 +3313,7 @@ async fn test_agent_execution_multiple_tool_calls() {
             "name": "LlmSim Multi-Tool Test",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -3201,6 +3340,7 @@ async fn test_agent_execution_multiple_tool_calls() {
             "model_id": "llmsim-multi-tool",
             "display_name": "LlmSim Multi-Tool Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -3218,7 +3358,7 @@ async fn test_agent_execution_multiple_tool_calls() {
             "capabilities": [{"ref": "test_math", "config": {}}],
             "default_model_id": model.id
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -3231,6 +3371,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -3250,7 +3391,7 @@ async fn test_agent_execution_multiple_tool_calls() {
                 "content": [{"type": "text", "text": "Calculate 5 + 3, then multiply the result by 2"}]
             }
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to send message");
 
@@ -3268,6 +3409,7 @@ async fn test_agent_execution_multiple_tool_calls() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -3300,6 +3442,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3308,11 +3451,13 @@ async fn test_agent_execution_multiple_tool_calls() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3349,6 +3494,7 @@ async fn test_streaming_events_emitted() {
             "name": "Streaming Test Provider",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -3376,6 +3522,7 @@ async fn test_streaming_events_emitted() {
             "model_id": "llmsim-streaming",
             "display_name": "LlmSim Streaming Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -3397,6 +3544,7 @@ async fn test_streaming_events_emitted() {
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -3410,6 +3558,7 @@ async fn test_streaming_events_emitted() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Streaming Test Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -3433,6 +3582,7 @@ async fn test_streaming_events_emitted() {
                 "content": [{"type": "text", "text": "Hello, how are you?"}]
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create message");
@@ -3452,6 +3602,7 @@ async fn test_streaming_events_emitted() {
                 "{}/v1/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -3492,6 +3643,7 @@ async fn test_streaming_events_emitted() {
             "{}/v1/sessions/{}/events",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list events");
@@ -3599,16 +3751,19 @@ async fn test_streaming_events_emitted() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
     client
         .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3636,6 +3791,7 @@ async fn test_cancel_turn_endpoint() {
             "name": "LlmSim Cancel Test",
             "provider_type": "llmsim"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -3665,6 +3821,7 @@ async fn test_cancel_turn_endpoint() {
             "model_id": "llmsim-cancel-test",
             "display_name": "LlmSim Cancel Test Model"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -3686,6 +3843,7 @@ async fn test_cancel_turn_endpoint() {
             "system_prompt": "You are a helpful assistant.",
             "default_model_id": model.id.to_string()
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -3702,6 +3860,7 @@ async fn test_cancel_turn_endpoint() {
             "agent_id": agent.id,
             "title": "Cancel Test Session"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -3720,6 +3879,7 @@ async fn test_cancel_turn_endpoint() {
             "{}/v1/sessions/{}/cancel",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to call cancel endpoint");
@@ -3745,12 +3905,14 @@ async fn test_cancel_turn_endpoint() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
 
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3796,6 +3958,7 @@ async fn test_anthropic_extended_thinking() {
             "api_key": api_key,
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -3824,6 +3987,7 @@ async fn test_anthropic_extended_thinking() {
             "model_id": "claude-sonnet-4-20250514",
             "display_name": "Claude Sonnet 4 (Thinking Test)"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -3845,6 +4009,7 @@ async fn test_anthropic_extended_thinking() {
             "system_prompt": "You are a helpful assistant. Think through problems step by step.",
             "default_model_id": model.id
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent");
@@ -3858,6 +4023,7 @@ async fn test_anthropic_extended_thinking() {
     let session_response = client
         .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
         .json(&json!({"title": "Extended Thinking Test Session"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -3887,6 +4053,7 @@ async fn test_anthropic_extended_thinking() {
                 }
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -3912,6 +4079,7 @@ async fn test_anthropic_extended_thinking() {
                 "{}/v1/agents/{}/sessions/{}",
                 API_BASE_URL, agent.id, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -3938,6 +4106,7 @@ async fn test_anthropic_extended_thinking() {
             "{}/v1/agents/{}/sessions/{}/events",
             API_BASE_URL, agent.id, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get events");
@@ -4024,6 +4193,7 @@ async fn test_anthropic_extended_thinking() {
                 }
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send follow-up message");
@@ -4041,6 +4211,7 @@ async fn test_anthropic_extended_thinking() {
                 "{}/v1/agents/{}/sessions/{}",
                 API_BASE_URL, agent.id, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -4070,6 +4241,7 @@ async fn test_anthropic_extended_thinking() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4078,11 +4250,13 @@ async fn test_anthropic_extended_thinking() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4151,6 +4325,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             "api_key": api_key,
             "is_default": false
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create provider");
@@ -4179,6 +4354,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             "model_id": "claude-sonnet-4-20250514",
             "display_name": "Claude Sonnet 4 (Thinking+Tools Test)"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create model");
@@ -4203,7 +4379,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 {"ref": "current_time"}
             ]
         }))
-        .send()
+        .header(ORG_HEADER, DEFAULT_ORG).send()
         .await
         .expect("Failed to create agent");
 
@@ -4216,6 +4392,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let session_response = client
         .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
         .json(&json!({"title": "Time Reporting with Thinking Test"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session");
@@ -4245,6 +4422,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 }
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send message");
@@ -4268,6 +4446,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 "{}/v1/agents/{}/sessions/{}",
                 API_BASE_URL, agent.id, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -4301,6 +4480,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             "{}/v1/agents/{}/sessions/{}/events",
             API_BASE_URL, agent.id, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to get events");
@@ -4363,6 +4543,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 }
             }
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to send follow-up message");
@@ -4380,6 +4561,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 "{}/v1/agents/{}/sessions/{}",
                 API_BASE_URL, agent.id, session.id
             ))
+            .header(ORG_HEADER, DEFAULT_ORG)
             .send()
             .await;
 
@@ -4415,6 +4597,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nCleaning up...");
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4423,11 +4606,13 @@ async fn test_anthropic_extended_thinking_with_tools() {
             "{}/v1/llm-providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete model");
     client
         .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4480,6 +4665,7 @@ async fn test_events_api_contract() {
             "name": "Events Contract Test Agent",
             "system_prompt": "You are helpful"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent")
@@ -4490,6 +4676,7 @@ async fn test_events_api_contract() {
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "Events Contract Test"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session")
@@ -4506,6 +4693,7 @@ async fn test_events_api_contract() {
             "{}/v1/sessions/{}/events",
             API_BASE_URL, session.id
         ))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to list events");
@@ -4568,6 +4756,7 @@ async fn test_events_api_contract() {
     // Cleanup
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4591,6 +4780,7 @@ async fn test_events_sse_contract() {
             "name": "SSE Contract Test Agent",
             "system_prompt": "You are helpful"
         }))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create agent")
@@ -4601,6 +4791,7 @@ async fn test_events_sse_contract() {
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({"agent_id": agent.id, "title": "SSE Contract Test"}))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to create session")
@@ -4617,6 +4808,7 @@ async fn test_events_sse_contract() {
     let sse_response = client
         .get(&sse_url)
         .header("Accept", "text/event-stream")
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to connect to SSE");
@@ -4656,6 +4848,7 @@ async fn test_events_sse_contract() {
     // Cleanup
     client
         .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .header(ORG_HEADER, DEFAULT_ORG)
         .send()
         .await
         .expect("Failed to delete agent");
