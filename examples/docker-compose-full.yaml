@@ -48,21 +48,8 @@ services:
       retries: 10
 
   # ==========================================================================
-  # Database Migrations (runs once on startup)
-  # ==========================================================================
-  migrate:
-    image: ghcr.io/everruns/everruns-admin:latest
-    container_name: everruns-migrate
-    command: migrate
-    environment:
-      DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  # ==========================================================================
   # Server (Control Plane) - HTTP API + gRPC server
+  # Note: Migrations are auto-applied on startup
   # ==========================================================================
   server:
     image: ghcr.io/everruns/everruns-server:latest
@@ -79,8 +66,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
       jaeger:
         condition: service_started
     healthcheck:

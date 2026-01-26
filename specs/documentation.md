@@ -30,8 +30,7 @@ docs/
 │   ├── admin-container.md
 │   └── runbooks/
 │       ├── authentication.md
-│       ├── encryption-key-rotation.md
-│       └── production-migrations.md
+│       └── encryption-key-rotation.md
 └── api/
     └── openapi.json      # Auto-generated OpenAPI spec
 ```

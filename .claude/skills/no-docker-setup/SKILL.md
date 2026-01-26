@@ -19,7 +19,7 @@ description: Set up full production-like backend (PostgreSQL + API + Worker) wit
 
 1. Sets up fresh PostgreSQL cluster at `/tmp/pgdata`
 2. Runs `just start-all --no-watch --no-docker --no-ui`
-   - Runs database migrations
+   - API server auto-applies migrations on startup
    - Starts API server (port 9000)
    - Starts Worker (port 9001)
 
@@ -36,8 +36,6 @@ sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 2. **jq** - `apt-get install jq`
 3. **API Key** - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
 4. **Root access** - For PostgreSQL cluster initialization
-
-Note: `sqlx` CLI is auto-installed if missing.
 
 ## Architecture
 

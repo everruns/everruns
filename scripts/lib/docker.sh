@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Docker operations: start, stop, reset, logs, migrate
+# Docker operations: start, stop, reset, logs
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -39,15 +39,8 @@ case "$cmd" in
     "${DOCKER_COMPOSE[@]}" logs -f
     ;;
 
-  migrate)
-    echo "🔧 Running database migrations..."
-    export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source "$PROJECT_ROOT/crates/server/migrations"
-    echo "✅ Migrations complete!"
-    ;;
-
   *)
-    echo "Usage: $0 {start|stop|reset|logs|migrate}"
+    echo "Usage: $0 {start|stop|reset|logs}"
     exit 1
     ;;
 esac

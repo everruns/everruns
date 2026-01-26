@@ -16,15 +16,10 @@ The control plane component of Everruns. Provides REST API and gRPC server for m
 ### 1. Start Services
 
 ```bash
-just start    # Start PostgreSQL
-just migrate  # Run database migrations
+just start-all  # Start PostgreSQL, API, Worker, UI
 ```
 
-### 2. Start API Server
-
-```bash
-just api
-```
+Migrations are applied automatically on server startup.
 
 The API will be available at `http://localhost:9000`
 
@@ -201,10 +196,10 @@ just start
 
 ### Migration Errors
 
-Reset the database:
+Reset the database and restart (migrations auto-apply):
 ```bash
 just reset
-just migrate
+just start-all
 ```
 
 ### Port Already in Use

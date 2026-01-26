@@ -38,6 +38,7 @@ utoipa-swagger-ui.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
+clap.workspace = true
 jsonwebtoken.workspace = true
 rand.workspace = true
 sha2.workspace = true
