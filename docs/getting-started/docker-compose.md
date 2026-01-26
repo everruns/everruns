@@ -153,14 +153,20 @@ docker compose logs postgres
 
 ### Migration Failures
 
-The `migrate` service runs once on startup. If it fails:
+Migrations are auto-applied when the API server starts. If migrations fail:
 
 ```bash
-# Check migration logs
-docker compose logs migrate
+# Check API logs for migration errors
+docker compose logs api
 
-# Retry migrations
-docker compose up migrate
+# Restart API to retry migrations
+docker compose restart api
+```
+
+To check migration status before deployment:
+
+```bash
+docker compose exec api everruns-admin migrate-info
 ```
 
 ### Worker Not Processing
