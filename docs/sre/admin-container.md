@@ -84,6 +84,43 @@ The admin container supports TLS connections to PostgreSQL. Use the `sslmode` pa
 DATABASE_URL="postgres://user:pass@host:5432/db?sslmode=require"
 ```
 
+## Migration Troubleshooting
+
+### Migration Fails on Startup
+
+If the server won't start due to a migration error:
+
+1. Check server logs for the specific SQL error
+2. Fix the migration file
+3. Rebuild and redeploy
+
+### Bad Migration Deployed
+
+If a migration succeeded but caused issues, use **forward-fix**:
+
+```bash
+# Create a new migration that fixes the problem
+sqlx migrate add -r fix_bad_migration
+# Edit the migration, then redeploy
+```
+
+### Emergency: Manual Database Fix
+
+For emergencies where you need to manually fix the database:
+
+```bash
+# Start server without auto-migrations
+everruns-server --no-migrations
+
+# Connect and fix manually
+psql -h host -U everruns -d everruns
+> -- Fix schema issues
+> DELETE FROM _sqlx_migrations WHERE version = 006;  -- If needed
+
+# Restart server normally
+everruns-server
+```
+
 ## Production Deployment
 
 The admin container can be run as a one-off task in any container orchestration platform:
@@ -92,5 +129,3 @@ The admin container can be run as a one-off task in any container orchestration 
 - **ECS**: Use `aws ecs run-task` with command override
 - **Docker Compose**: Use `docker compose run`
 - **Nomad**: Use a batch job
-
-See [Production Migrations Runbook](./runbooks/production-migrations.md) for detailed procedures.
