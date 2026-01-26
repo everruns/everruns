@@ -1,9 +1,10 @@
 // LLM Model API endpoints
-// Routes are org-scoped: /v1/orgs/:org/llm-providers/:provider_id/models/...
+// Routes: /v1/llm-providers/:provider_id/models/... and /v1/llm-models/...
 
 use crate::api::common::{ErrorResponse, ListResponse};
-use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -111,9 +112,8 @@ pub struct UpdateLlmModelRequest {
 /// Create a new model for a provider
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
+    path = "/v1/llm-providers/{provider_id}/models",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     request_body = CreateLlmModelRequest,
@@ -125,9 +125,9 @@ pub struct UpdateLlmModelRequest {
     tag = "llm-models"
 )]
 pub async fn create_model(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, provider_id)): Path<(String, String)>,
+    Path(provider_id): Path<String>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
     let provider_id: ProviderId = provider_id.parse().map_err(|e| {
@@ -159,9 +159,8 @@ pub async fn create_model(
 /// List models for a specific provider
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
+    path = "/v1/llm-providers/{provider_id}/models",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
@@ -171,9 +170,9 @@ pub async fn create_model(
     tag = "llm-models"
 )]
 pub async fn list_provider_models(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, provider_id)): Path<(String, String)>,
+    Path(provider_id): Path<String>,
 ) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
     let provider_id: ProviderId = provider_id.parse().map_err(|e| {
         (
@@ -204,9 +203,8 @@ pub async fn list_provider_models(
 /// List all models across all providers
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/llm-models",
+    path = "/v1/llm-models",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ListModelsQuery
     ),
     responses(
@@ -215,7 +213,7 @@ pub async fn list_provider_models(
     tag = "llm-models"
 )]
 pub async fn list_all_models(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
@@ -239,9 +237,8 @@ pub async fn list_all_models(
 /// Get a specific model with provider info and profile
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/llm-models/{id}",
+    path = "/v1/llm-models/{id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     responses(
@@ -252,9 +249,9 @@ pub async fn list_all_models(
     tag = "llm-models"
 )]
 pub async fn get_model(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, String)>,
+    Path(id): Path<String>,
 ) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
     let model_id: ModelId = id.parse().map_err(|e| {
         (
@@ -293,9 +290,8 @@ pub async fn get_model(
 /// Update a model
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}/llm-models/{id}",
+    path = "/v1/llm-models/{id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     request_body = UpdateLlmModelRequest,
@@ -307,9 +303,9 @@ pub async fn get_model(
     tag = "llm-models"
 )]
 pub async fn update_model(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, String)>,
+    Path(id): Path<String>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
     let model_id: ModelId = id.parse().map_err(|e| {
@@ -349,9 +345,8 @@ pub async fn update_model(
 /// Delete a model
 #[utoipa::path(
     delete,
-    path = "/v1/orgs/{org}/llm-models/{id}",
+    path = "/v1/llm-models/{id}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     responses(
@@ -362,9 +357,9 @@ pub async fn update_model(
     tag = "llm-models"
 )]
 pub async fn delete_model(
-    _org: OrgContext,
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, String)>,
+    Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let model_id: ModelId = id.parse().map_err(|e| {
         (
@@ -400,12 +395,12 @@ pub async fn delete_model(
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/:org/llm-providers/:provider_id/models",
+            "/v1/llm-providers/:provider_id/models",
             post(create_model).get(list_provider_models),
         )
-        .route("/v1/orgs/:org/llm-models", get(list_all_models))
+        .route("/v1/llm-models", get(list_all_models))
         .route(
-            "/v1/orgs/:org/llm-models/:id",
+            "/v1/llm-models/:id",
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)

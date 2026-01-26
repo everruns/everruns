@@ -1,8 +1,8 @@
 // Event API functions
 // Events are SSE notifications for real-time updates
-// All routes are org-scoped: /v1/orgs/{org}/sessions/{sessionId}/events
+// Org is sent via X-Org-Id header (set by OrgProvider)
 
-import { api, getDirectBackendUrl } from "./client";
+import { api, getDirectBackendUrl, getCurrentOrgId } from "./client";
 import type { Event, ListResponse } from "./types";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
@@ -14,7 +14,6 @@ export const DEFAULT_EXCLUDED_EVENTS = [
 // List events for a session (polling alternative to SSE)
 // Optional exclude parameter to filter out event types (e.g., delta events)
 export async function listEvents(
-  org: string,
   sessionId: string,
   exclude?: string[]
 ): Promise<Event[]> {
@@ -26,7 +25,7 @@ export async function listEvents(
   }
   const queryString = params.toString();
   const response = await api.get<ListResponse<Event>>(
-    `/v1/orgs/${org}/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`
+    `/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`
   );
   return response.data.data;
 }
@@ -35,8 +34,8 @@ export async function listEvents(
 // Uses direct backend URL to bypass Next.js proxy (proxies buffer SSE)
 // Uses since_id for incremental updates (UUID v7 monotonically increasing)
 // Optional exclude parameter to filter out event types (e.g., delta events)
+// Note: X-Org-Id header must be set via EventSource headers or query param
 export function getSseUrl(
-  org: string,
   sessionId: string,
   sinceId?: string,
   exclude?: string[]
@@ -51,6 +50,11 @@ export function getSseUrl(
       params.append("exclude", type);
     }
   }
+  // Include org ID as query param for SSE (EventSource doesn't support custom headers)
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    params.set("org_id", orgId);
+  }
   const queryString = params.toString();
-  return `${baseUrl}/v1/orgs/${org}/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
+  return `${baseUrl}/v1/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
 }

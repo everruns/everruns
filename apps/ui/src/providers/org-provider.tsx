@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "./auth-provider";
+import { setCurrentOrgId } from "@/lib/api/client";
 import type { OrganizationMembership } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
@@ -100,8 +101,16 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
   const setCurrentOrg = (org: OrganizationMembership) => {
     setCurrentOrgState(org);
+    setCurrentOrgId(org.public_id); // Update API client header
     localStorage.setItem(STORAGE_KEY, org.public_id);
   };
+
+  // Sync currentOrg changes to API client header
+  useEffect(() => {
+    if (currentOrg) {
+      setCurrentOrgId(currentOrg.public_id);
+    }
+  }, [currentOrg]);
 
   const value: OrgContextValue = {
     currentOrg,

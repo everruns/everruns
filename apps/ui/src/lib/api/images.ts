@@ -1,10 +1,10 @@
 // Image upload API
-// All routes are org-scoped: /v1/orgs/{org}/images/...
+// Org is sent via X-Org-Id header (set by OrgProvider)
 //
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
 
-import { getApiBaseUrl, getDirectBackendUrl } from "./client";
+import { getApiBaseUrl, getDirectBackendUrl, getCurrentOrgId } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
 
@@ -42,12 +42,10 @@ function formatBytes(bytes: number): string {
 
 /**
  * Upload an image file
- * @param org - Organization public ID
  * @param file - Image file to upload
  * @param sessionId - Optional: session ID stored as metadata for tracking (not required)
  */
 export async function uploadImage(
-  org: string,
   file: File,
   sessionId?: string
 ): Promise<ImageUploadResponse> {
@@ -58,11 +56,19 @@ export async function uploadImage(
   // Next.js rewrites don't handle streaming/multipart properly (causes EPIPE errors)
   const baseUrl = getDirectBackendUrl();
   const params = sessionId ? `?session_id=${sessionId}` : "";
-  const url = `${baseUrl}/v1/orgs/${org}/images${params}`;
+  const url = `${baseUrl}/v1/images${params}`;
+
+  // Build headers with X-Org-Id
+  const headers: Record<string, string> = {};
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
 
   const response = await fetch(url, {
     method: "POST",
     body: formData,
+    headers,
     credentials: "include", // Include cookies for auth
   });
 
@@ -77,23 +83,32 @@ export async function uploadImage(
 /**
  * Get image URL for display (original size)
  */
-export function getImageUrl(org: string, imageId: string): string {
-  return `${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}`;
+export function getImageUrl(imageId: string): string {
+  return `${getApiBaseUrl()}/v1/images/${imageId}`;
 }
 
 /**
  * Get thumbnail URL for display
  */
-export function getThumbnailUrl(org: string, imageId: string): string {
-  return `${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}/thumbnail`;
+export function getThumbnailUrl(imageId: string): string {
+  return `${getApiBaseUrl()}/v1/images/${imageId}/thumbnail`;
 }
 
 /**
  * Delete an image
  */
-export async function deleteImage(org: string, imageId: string): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}`, {
+export async function deleteImage(imageId: string): Promise<void> {
+  // Build headers with X-Org-Id
+  const headers: Record<string, string> = {};
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}/v1/images/${imageId}`, {
     method: "DELETE",
+    headers,
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -106,12 +121,19 @@ export async function deleteImage(org: string, imageId: string): Promise<void> {
  * List images
  */
 export async function listImages(
-  org: string,
   limit: number = 50,
   offset: number = 0
 ): Promise<ImageInfo[]> {
+  // Build headers with X-Org-Id
+  const headers: Record<string, string> = {};
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
+
   const response = await fetch(
-    `${getApiBaseUrl()}/v1/orgs/${org}/images?limit=${limit}&offset=${offset}`
+    `${getApiBaseUrl()}/v1/images?limit=${limit}&offset=${offset}`,
+    { headers, credentials: "include" }
   );
 
   if (!response.ok) {
@@ -146,15 +168,14 @@ export interface PendingImage {
 
 /**
  * Create a pending image from a file
- * @param org - Organization public ID
  * @param file - Image file to upload
  * @param sessionId - Optional: session ID stored as metadata for tracking (not required)
  */
-export function createPendingImage(org: string, file: File, sessionId?: string): PendingImage {
+export function createPendingImage(file: File, sessionId?: string): PendingImage {
   const tempId = crypto.randomUUID();
   const previewUrl = URL.createObjectURL(file);
 
-  const uploadPromise = uploadImage(org, file, sessionId);
+  const uploadPromise = uploadImage(file, sessionId);
 
   return {
     tempId,

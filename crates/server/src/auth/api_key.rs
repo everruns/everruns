@@ -74,6 +74,7 @@ pub fn is_valid_api_key_format(key: &str) -> bool {
 pub struct ValidatedApiKey {
     pub key_id: Uuid,
     pub user_id: Uuid,
+    pub org_id: i64,
     pub name: String,
     pub scopes: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -170,6 +171,7 @@ mod tests {
         let key = ValidatedApiKey {
             key_id: Uuid::nil(),
             user_id: Uuid::nil(),
+            org_id: 1,
             name: "test".to_string(),
             scopes: vec!["*".to_string()],
             expires_at: Some(Utc::now() + Duration::days(1)),
@@ -180,6 +182,7 @@ mod tests {
         let expired_key = ValidatedApiKey {
             key_id: Uuid::nil(),
             user_id: Uuid::nil(),
+            org_id: 1,
             name: "test".to_string(),
             scopes: vec!["*".to_string()],
             expires_at: Some(Utc::now() - Duration::days(1)),
@@ -190,6 +193,7 @@ mod tests {
         let no_expiry_key = ValidatedApiKey {
             key_id: Uuid::nil(),
             user_id: Uuid::nil(),
+            org_id: 1,
             name: "test".to_string(),
             scopes: vec!["*".to_string()],
             expires_at: None,
@@ -202,6 +206,7 @@ mod tests {
         let key = ValidatedApiKey {
             key_id: Uuid::nil(),
             user_id: Uuid::nil(),
+            org_id: 1,
             name: "test".to_string(),
             scopes: vec!["read".to_string(), "write".to_string()],
             expires_at: None,
@@ -215,6 +220,7 @@ mod tests {
         let admin_key = ValidatedApiKey {
             key_id: Uuid::nil(),
             user_id: Uuid::nil(),
+            org_id: 1,
             name: "admin".to_string(),
             scopes: vec!["*".to_string()],
             expires_at: None,

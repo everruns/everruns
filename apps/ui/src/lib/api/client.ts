@@ -4,6 +4,24 @@
 // - Handled by reverse proxy in production (strips /api, forwards to backend)
 const API_BASE = "/api";
 
+// Current organization ID for X-Org-Id header injection
+let currentOrgId: string | null = null;
+
+/**
+ * Set the current organization ID for API requests.
+ * All subsequent API requests will include X-Org-Id header with this value.
+ */
+export function setCurrentOrgId(orgId: string | null): void {
+  currentOrgId = orgId;
+}
+
+/**
+ * Get the current organization ID.
+ */
+export function getCurrentOrgId(): string | null {
+  return currentOrgId;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -19,13 +37,21 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<{ data: T }> {
+  // Build headers with optional X-Org-Id
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  // Inject X-Org-Id header if org is set
+  if (currentOrgId) {
+    headers["X-Org-Id"] = currentOrgId;
+  }
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     credentials: "include", // Include cookies for auth
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {

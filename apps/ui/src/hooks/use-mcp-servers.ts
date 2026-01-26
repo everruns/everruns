@@ -23,7 +23,7 @@ export function useMcpServers() {
 
   return useQuery({
     queryKey: [...queryKeys.mcpServers.list(), org],
-    queryFn: () => getMcpServers(org!),
+    queryFn: () => getMcpServers(),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -35,18 +35,16 @@ export function useMcpServer(serverId: string) {
 
   return useQuery({
     queryKey: [...queryKeys.mcpServers.detail(serverId), org],
-    queryFn: () => getMcpServer(org!, serverId),
+    queryFn: () => getMcpServer(serverId),
     enabled: !!org && !!serverId,
   });
 }
 
 export function useCreateMcpServer() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (data: CreateMcpServerRequest) => createMcpServer(org!, data),
+    mutationFn: (data: CreateMcpServerRequest) => createMcpServer(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
     },
@@ -55,12 +53,10 @@ export function useCreateMcpServer() {
 
 export function useUpdateMcpServer(serverId: string) {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: (data: UpdateMcpServerRequest) =>
-      updateMcpServer(org!, serverId, data),
+      updateMcpServer(serverId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.detail(serverId) });
@@ -70,11 +66,9 @@ export function useUpdateMcpServer(serverId: string) {
 
 export function useDeleteMcpServer() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (serverId: string) => deleteMcpServer(org!, serverId),
+    mutationFn: (serverId: string) => deleteMcpServer(serverId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
     },

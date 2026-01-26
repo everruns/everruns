@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
         api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
     let agents_state =
         api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
-    let session_files_state = api::session_files::AppState::new(db.clone());
+    let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
     let session_storage_state = api::session_storage::AppState::new(db.clone(), auth_state.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),

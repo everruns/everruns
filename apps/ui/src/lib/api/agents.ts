@@ -1,7 +1,7 @@
 // Agent API functions (M2)
-// All routes are org-scoped: /v1/orgs/{org}/agents/...
+// Org is sent via X-Org-Id header (set by OrgProvider)
 
-import { api } from "./client";
+import { api, getCurrentOrgId } from "./client";
 import type {
   Agent,
   AgentPreviewResponse,
@@ -11,44 +11,44 @@ import type {
   ListResponse,
 } from "./types";
 
-export async function createAgent(
-  org: string,
-  request: CreateAgentRequest
-): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/orgs/${org}/agents`, request);
+export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
+  const response = await api.post<Agent>("/v1/agents", request);
   return response.data;
 }
 
-export async function listAgents(org: string): Promise<Agent[]> {
-  const response = await api.get<ListResponse<Agent>>(`/v1/orgs/${org}/agents`);
+export async function listAgents(): Promise<Agent[]> {
+  const response = await api.get<ListResponse<Agent>>("/v1/agents");
   return response.data.data;
 }
 
-export async function getAgent(org: string, agentId: string): Promise<Agent> {
-  const response = await api.get<Agent>(`/v1/orgs/${org}/agents/${agentId}`);
+export async function getAgent(agentId: string): Promise<Agent> {
+  const response = await api.get<Agent>(`/v1/agents/${agentId}`);
   return response.data;
 }
 
 export async function updateAgent(
-  org: string,
   agentId: string,
   request: UpdateAgentRequest
 ): Promise<Agent> {
-  const response = await api.patch<Agent>(
-    `/v1/orgs/${org}/agents/${agentId}`,
-    request
-  );
+  const response = await api.patch<Agent>(`/v1/agents/${agentId}`, request);
   return response.data;
 }
 
-export async function deleteAgent(org: string, agentId: string): Promise<void> {
-  await api.delete(`/v1/orgs/${org}/agents/${agentId}`);
+export async function deleteAgent(agentId: string): Promise<void> {
+  await api.delete(`/v1/agents/${agentId}`);
 }
 
-export async function exportAgent(org: string, agentId: string): Promise<string> {
+export async function exportAgent(agentId: string): Promise<string> {
   // Use fetch directly since we need to return text, not JSON
-  const response = await fetch(`/api/v1/orgs/${org}/agents/${agentId}/export`, {
+  const headers: Record<string, string> = {};
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
+
+  const response = await fetch(`/api/v1/agents/${agentId}/export`, {
     credentials: "include",
+    headers,
   });
   if (!response.ok) {
     throw new Error(`Export failed: ${response.statusText}`);
@@ -56,14 +56,20 @@ export async function exportAgent(org: string, agentId: string): Promise<string>
   return response.text();
 }
 
-export async function importAgent(org: string, markdown: string): Promise<Agent> {
+export async function importAgent(markdown: string): Promise<Agent> {
   // Use fetch directly since we need to send text/markdown content type
-  const response = await fetch(`/api/v1/orgs/${org}/agents/import`, {
+  const headers: Record<string, string> = {
+    "Content-Type": "text/markdown",
+  };
+  const orgId = getCurrentOrgId();
+  if (orgId) {
+    headers["X-Org-Id"] = orgId;
+  }
+
+  const response = await fetch("/api/v1/agents/import", {
     method: "POST",
     credentials: "include",
-    headers: {
-      "Content-Type": "text/markdown",
-    },
+    headers,
     body: markdown,
   });
   if (!response.ok) {
@@ -74,11 +80,10 @@ export async function importAgent(org: string, markdown: string): Promise<Agent>
 }
 
 export async function previewAgent(
-  org: string,
   request: PreviewAgentRequest
 ): Promise<AgentPreviewResponse> {
   const response = await api.post<AgentPreviewResponse>(
-    `/v1/orgs/${org}/agents/preview`,
+    "/v1/agents/preview",
     request
   );
   return response.data;

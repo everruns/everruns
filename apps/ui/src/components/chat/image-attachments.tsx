@@ -43,8 +43,8 @@ interface ImageAttachmentItemProps {
 
 function ImageAttachmentItem({ image, onRemove, org }: ImageAttachmentItemProps) {
   // Use thumbnail URL if uploaded, otherwise use object URL preview
-  const displayUrl = image.imageId && org
-    ? getThumbnailUrl(org, image.imageId)
+  const displayUrl = image.imageId
+    ? getThumbnailUrl(image.imageId)
     : image.previewUrl;
 
   return (
@@ -100,8 +100,8 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
   const org = currentOrg?.public_id;
 
   const [isOpen, setIsOpen] = useState(false);
-  const thumbnailUrl = org ? getThumbnailUrl(org, imageId) : "";
-  const fullImageUrl = org ? getImageUrl(org, imageId) : "";
+  const thumbnailUrl = getThumbnailUrl(imageId);
+  const fullImageUrl = getImageUrl(imageId);
 
   const handleDownload = () => {
     const link = document.createElement("a");

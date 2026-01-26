@@ -22,7 +22,7 @@ export function useAgents() {
 
   return useQuery({
     queryKey: [...queryKeys.agents.list(), org],
-    queryFn: () => listAgents(org!),
+    queryFn: () => listAgents(),
     enabled: !!org,
   });
 }
@@ -33,7 +33,7 @@ export function useAgent(agentId: string | undefined) {
 
   return useQuery({
     queryKey: [...queryKeys.agents.detail(agentId!), org],
-    queryFn: () => getAgent(org!, agentId!),
+    queryFn: () => getAgent(agentId!),
     enabled: !!org && !!agentId,
   });
 }
@@ -44,7 +44,7 @@ export function useCreateAgent() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (request: CreateAgentRequest) => createAgent(org!, request),
+    mutationFn: (request: CreateAgentRequest) => createAgent(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
@@ -53,8 +53,6 @@ export function useCreateAgent() {
 
 export function useUpdateAgent() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -63,7 +61,7 @@ export function useUpdateAgent() {
     }: {
       agentId: string;
       request: UpdateAgentRequest;
-    }) => updateAgent(org!, agentId, request),
+    }) => updateAgent(agentId, request),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
@@ -73,11 +71,9 @@ export function useUpdateAgent() {
 
 export function useDeleteAgent() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (agentId: string) => deleteAgent(org!, agentId),
+    mutationFn: (agentId: string) => deleteAgent(agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
@@ -85,21 +81,16 @@ export function useDeleteAgent() {
 }
 
 export function useExportAgent() {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   return useMutation({
-    mutationFn: (agentId: string) => exportAgent(org!, agentId),
+    mutationFn: (agentId: string) => exportAgent(agentId),
   });
 }
 
 export function useImportAgent() {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (markdown: string) => importAgent(org!, markdown),
+    mutationFn: (markdown: string) => importAgent(markdown),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
@@ -107,10 +98,7 @@ export function useImportAgent() {
 }
 
 export function usePreviewAgent() {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   return useMutation({
-    mutationFn: (request: PreviewAgentRequest) => previewAgent(org!, request),
+    mutationFn: (request: PreviewAgentRequest) => previewAgent(request),
   });
 }

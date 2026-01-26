@@ -200,7 +200,7 @@ impl Database {
     pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
         let row = sqlx::query_as::<_, ApiKeyRow>(
             r#"
-            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
+            SELECT id, org_id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
             FROM api_keys
             WHERE key_hash = $1
             "#,
@@ -215,7 +215,7 @@ impl Database {
     pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
         let rows = sqlx::query_as::<_, ApiKeyRow>(
             r#"
-            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
+            SELECT id, org_id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
             FROM api_keys
             WHERE user_id = $1
             ORDER BY created_at DESC

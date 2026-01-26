@@ -16,24 +16,13 @@
     }
   ],
   "paths": {
-    "/v1/orgs/{org}/agents": {
+    "/v1/agents": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/orgs/{org}/agents - List all active agents",
+        "summary": "GET /v1/agents - List all active agents",
         "operationId": "list_agents",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of agents",
@@ -54,19 +43,8 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/orgs/{org}/agents - Create a new agent",
+        "summary": "POST /v1/agents - Create a new agent",
         "operationId": "create_agent",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -111,25 +89,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/agents/import": {
+    "/v1/agents/import": {
       "post": {
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/orgs/{org}/agents/import - Import agent from Markdown, YAML, or JSON",
+        "summary": "POST /v1/agents/import - Import agent from Markdown, YAML, or JSON",
         "description": "Accepts agent definition in multiple formats:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)",
         "operationId": "import_agent",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "text/plain": {
@@ -174,23 +141,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/agents/{agent_id}": {
+    "/v1/agents/{agent_id}": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id} - Get agent by ID",
+        "summary": "GET /v1/agents/{agent_id} - Get agent by ID",
         "operationId": "get_agent",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "agent_id",
             "in": "path",
@@ -227,18 +185,9 @@
         "tags": [
           "agents"
         ],
-        "summary": "DELETE /v1/orgs/{org}/agents/{agent_id} - Archive agent",
+        "summary": "DELETE /v1/agents/{agent_id} - Archive agent",
         "operationId": "delete_agent",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "agent_id",
             "in": "path",
@@ -268,18 +217,9 @@
         "tags": [
           "agents"
         ],
-        "summary": "PATCH /v1/orgs/{org}/agents/{agent_id} - Update agent",
+        "summary": "PATCH /v1/agents/{agent_id} - Update agent",
         "operationId": "update_agent",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "agent_id",
             "in": "path",
@@ -344,23 +284,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/agents/{agent_id}/export": {
+    "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter",
+        "summary": "GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter",
         "operationId": "export_agent",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "agent_id",
             "in": "path",
@@ -390,24 +321,13 @@
         }
       }
     },
-    "/v1/orgs/{org}/capabilities": {
+    "/v1/capabilities": {
       "get": {
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/orgs/{org}/capabilities - List all available capabilities",
+        "summary": "GET /v1/capabilities - List all available capabilities",
         "operationId": "list_capabilities",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of available capabilities",
@@ -422,23 +342,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/capabilities/{capability_id}": {
+    "/v1/capabilities/{capability_id}": {
       "get": {
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/orgs/{org}/capabilities/{capability_id} - Get a specific capability",
+        "summary": "GET /v1/capabilities/{capability_id} - Get a specific capability",
         "operationId": "get_capability",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "capability_id",
             "in": "path",
@@ -466,7 +377,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/llm-models": {
+    "/v1/llm-models": {
       "get": {
         "tags": [
           "llm-models"
@@ -474,15 +385,6 @@
         "summary": "List all models across all providers",
         "operationId": "list_all_models",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "source",
             "in": "query",
@@ -532,7 +434,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/llm-models/{id}": {
+    "/v1/llm-models/{id}": {
       "get": {
         "tags": [
           "llm-models"
@@ -540,15 +442,6 @@
         "summary": "Get a specific model with provider info and profile",
         "operationId": "get_model",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "in": "path",
@@ -586,15 +479,6 @@
         "operationId": "delete_model",
         "parameters": [
           {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "id",
             "in": "path",
             "description": "Model ID (prefixed, e.g., mod_...)",
@@ -623,15 +507,6 @@
         "summary": "Update a model",
         "operationId": "update_model",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "in": "path",
@@ -672,24 +547,13 @@
         }
       }
     },
-    "/v1/orgs/{org}/llm-providers": {
+    "/v1/llm-providers": {
       "get": {
         "tags": [
           "llm-providers"
         ],
         "summary": "List all LLM providers",
         "operationId": "list_providers",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of providers",
@@ -709,17 +573,6 @@
         ],
         "summary": "Create a new LLM provider",
         "operationId": "create_provider",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -750,7 +603,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/llm-providers/{id}": {
+    "/v1/llm-providers/{id}": {
       "get": {
         "tags": [
           "llm-providers"
@@ -758,15 +611,6 @@
         "summary": "Get a specific LLM provider",
         "operationId": "get_provider",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "in": "path",
@@ -804,15 +648,6 @@
         "operationId": "delete_provider",
         "parameters": [
           {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "id",
             "in": "path",
             "description": "Provider ID (prefixed, e.g., prov_...)",
@@ -841,15 +676,6 @@
         "summary": "Update an LLM provider",
         "operationId": "update_provider",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "in": "path",
@@ -890,7 +716,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/llm-providers/{provider_id}/models": {
+    "/v1/llm-providers/{provider_id}/models": {
       "get": {
         "tags": [
           "llm-models"
@@ -898,15 +724,6 @@
         "summary": "List models for a specific provider",
         "operationId": "list_provider_models",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "provider_id",
             "in": "path",
@@ -940,15 +757,6 @@
         "summary": "Create a new model for a provider",
         "operationId": "create_model",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "provider_id",
             "in": "path",
@@ -989,24 +797,13 @@
         }
       }
     },
-    "/v1/orgs/{org}/mcp-servers": {
+    "/v1/mcp-servers": {
       "get": {
         "tags": [
           "mcp-servers"
         ],
-        "summary": "GET /v1/orgs/{org}/mcp-servers - List all MCP servers",
+        "summary": "GET /v1/mcp-servers - List all MCP servers",
         "operationId": "list_mcp_servers",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of MCP servers",
@@ -1027,19 +824,8 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "POST /v1/orgs/{org}/mcp-servers - Create a new MCP server",
+        "summary": "POST /v1/mcp-servers - Create a new MCP server",
         "operationId": "create_mcp_server",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1084,23 +870,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/mcp-servers/{server_id}": {
+    "/v1/mcp-servers/{server_id}": {
       "get": {
         "tags": [
           "mcp-servers"
         ],
-        "summary": "GET /v1/orgs/{org}/mcp-servers/{server_id} - Get MCP server by ID",
+        "summary": "GET /v1/mcp-servers/{server_id} - Get MCP server by ID",
         "operationId": "get_mcp_server",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "server_id",
             "in": "path",
@@ -1137,18 +914,9 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "DELETE /v1/orgs/{org}/mcp-servers/{server_id} - Delete MCP server",
+        "summary": "DELETE /v1/mcp-servers/{server_id} - Delete MCP server",
         "operationId": "delete_mcp_server",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "server_id",
             "in": "path",
@@ -1178,18 +946,9 @@
         "tags": [
           "mcp-servers"
         ],
-        "summary": "PATCH /v1/orgs/{org}/mcp-servers/{server_id} - Update MCP server",
+        "summary": "PATCH /v1/mcp-servers/{server_id} - Update MCP server",
         "operationId": "update_mcp_server",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "server_id",
             "in": "path",
@@ -1254,23 +1013,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions": {
+    "/v1/sessions": {
       "get": {
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/orgs/{org}/sessions - List sessions in organization",
+        "summary": "GET /v1/sessions - List sessions in organization",
         "operationId": "list_sessions",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "agent_id",
             "in": "query",
@@ -1336,19 +1086,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/orgs/{org}/sessions - Create a new session",
+        "summary": "POST /v1/sessions - Create a new session",
         "operationId": "create_session",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1379,23 +1118,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}": {
+    "/v1/sessions/{session_id}": {
       "get": {
         "tags": [
           "sessions"
         ],
-        "summary": "GET /v1/orgs/{org}/sessions/{session_id} - Get session",
+        "summary": "GET /v1/sessions/{session_id} - Get session",
         "operationId": "get_session",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1432,18 +1162,9 @@
         "tags": [
           "sessions"
         ],
-        "summary": "DELETE /v1/orgs/{org}/sessions/{session_id} - Delete session",
+        "summary": "DELETE /v1/sessions/{session_id} - Delete session",
         "operationId": "delete_session",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1473,18 +1194,9 @@
         "tags": [
           "sessions"
         ],
-        "summary": "PATCH /v1/orgs/{org}/sessions/{session_id} - Update session",
+        "summary": "PATCH /v1/sessions/{session_id} - Update session",
         "operationId": "update_session",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1528,24 +1240,15 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/cancel": {
+    "/v1/sessions/{session_id}/cancel": {
       "post": {
         "tags": [
           "sessions"
         ],
-        "summary": "POST /v1/orgs/{org}/sessions/{session_id}/cancel - Cancel current turn",
+        "summary": "POST /v1/sessions/{session_id}/cancel - Cancel current turn",
         "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
         "operationId": "cancel_turn",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1579,23 +1282,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/events": {
+    "/v1/sessions/{session_id}/events": {
       "get": {
         "tags": [
           "events"
         ],
-        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/events - List events (JSON)",
+        "summary": "GET /v1/sessions/{session_id}/events - List events (JSON)",
         "operationId": "list_events",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1656,7 +1350,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs": {
+    "/v1/sessions/{session_id}/fs": {
       "get": {
         "tags": [
           "filesystem"
@@ -1664,15 +1358,6 @@
         "summary": "GET /fs - Get root directory listing",
         "operationId": "get_root",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1705,7 +1390,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs/_/copy": {
+    "/v1/sessions/{session_id}/fs/_/copy": {
       "post": {
         "tags": [
           "filesystem"
@@ -1713,15 +1398,6 @@
         "summary": "POST /fs/_/copy - Copy file",
         "operationId": "copy_file",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1768,7 +1444,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs/_/grep": {
+    "/v1/sessions/{session_id}/fs/_/grep": {
       "post": {
         "tags": [
           "filesystem"
@@ -1776,15 +1452,6 @@
         "summary": "POST /fs/_/grep - Search files",
         "operationId": "grep_files",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1825,7 +1492,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs/_/move": {
+    "/v1/sessions/{session_id}/fs/_/move": {
       "post": {
         "tags": [
           "filesystem"
@@ -1833,15 +1500,6 @@
         "summary": "POST /fs/_/move - Move/rename file",
         "operationId": "move_file",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1888,7 +1546,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs/_/stat": {
+    "/v1/sessions/{session_id}/fs/_/stat": {
       "post": {
         "tags": [
           "filesystem"
@@ -1896,15 +1554,6 @@
         "summary": "POST /fs/_/stat - Get file or directory stat",
         "operationId": "stat_file",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -1948,7 +1597,7 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/fs/{path}": {
+    "/v1/sessions/{session_id}/fs/{path}": {
       "get": {
         "tags": [
           "filesystem"
@@ -1956,15 +1605,6 @@
         "summary": "GET /fs/*path - Get file content or directory listing",
         "operationId": "get_path",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -2015,15 +1655,6 @@
         "summary": "PUT /fs/*path - Update file content",
         "operationId": "update_path",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -2083,15 +1714,6 @@
         "operationId": "create_path",
         "parameters": [
           {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "session_id",
             "in": "path",
             "description": "Session ID (prefixed, e.g., sess_...)",
@@ -2150,15 +1772,6 @@
         "operationId": "delete_path",
         "parameters": [
           {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "session_id",
             "in": "path",
             "description": "Session ID (prefixed, e.g., sess_...)",
@@ -2206,23 +1819,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/messages": {
+    "/v1/sessions/{session_id}/messages": {
       "get": {
         "tags": [
           "messages"
         ],
-        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/messages - List messages (PRIMARY data)",
+        "summary": "GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data)",
         "operationId": "list_messages",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -2259,18 +1863,9 @@
         "tags": [
           "messages"
         ],
-        "summary": "POST /v1/orgs/{org}/sessions/{session_id}/messages - Create message (user message triggers workflow)",
+        "summary": "POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)",
         "operationId": "create_message",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",
@@ -2314,23 +1909,14 @@
         }
       }
     },
-    "/v1/orgs/{org}/sessions/{session_id}/sse": {
+    "/v1/sessions/{session_id}/sse": {
       "get": {
         "tags": [
           "events"
         ],
-        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/sse - Stream events (SSE notifications)",
+        "summary": "GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)",
         "operationId": "stream_sse",
         "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "session_id",
             "in": "path",

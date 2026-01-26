@@ -1,5 +1,5 @@
 // Message API functions
-// All routes are org-scoped: /v1/orgs/{org}/sessions/{sessionId}/messages
+// Org is sent via X-Org-Id header (set by OrgProvider)
 
 import { api } from "./client";
 import type {
@@ -10,35 +10,30 @@ import type {
 } from "./types";
 
 export async function createMessage(
-  org: string,
   sessionId: string,
   request: CreateMessageRequest
 ): Promise<Message> {
   const response = await api.post<Message>(
-    `/v1/orgs/${org}/sessions/${sessionId}/messages`,
+    `/v1/sessions/${sessionId}/messages`,
     request
   );
   return response.data;
 }
 
-export async function listMessages(
-  org: string,
-  sessionId: string
-): Promise<Message[]> {
+export async function listMessages(sessionId: string): Promise<Message[]> {
   const response = await api.get<ListResponse<Message>>(
-    `/v1/orgs/${org}/sessions/${sessionId}/messages`
+    `/v1/sessions/${sessionId}/messages`
   );
   return response.data.data;
 }
 
 // Send a user message to a session (triggers workflow)
 export async function sendUserMessage(
-  org: string,
   sessionId: string,
   content: string,
   controls?: Controls
 ): Promise<Message> {
-  return createMessage(org, sessionId, {
+  return createMessage(sessionId, {
     message: {
       role: "user",
       content: [{ type: "text", text: content }],
@@ -57,7 +52,6 @@ export interface ImageAttachment {
  * Send a user message with optional image attachments
  */
 export async function sendUserMessageWithImages(
-  org: string,
   sessionId: string,
   text: string,
   images: ImageAttachment[],
@@ -79,7 +73,7 @@ export async function sendUserMessageWithImages(
     });
   }
 
-  return createMessage(org, sessionId, {
+  return createMessage(sessionId, {
     message: {
       role: "user",
       content,

@@ -13,7 +13,9 @@
 // Note: Paths starting with "_" are reserved for actions and cannot be
 // used for file creation or updates.
 
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -134,43 +136,39 @@ pub enum GetResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub file_service: Arc<SessionFileService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
             file_service: Arc::new(SessionFileService::new(db)),
+            auth,
         }
     }
 }
 
-/// Create session files routes (org-scoped)
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create session files routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
         // Actions (must be before wildcard to take precedence)
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/fs/_/move",
-            post(move_file),
-        )
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/fs/_/copy",
-            post(copy_file),
-        )
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/fs/_/grep",
-            post(grep_files),
-        )
-        .route(
-            "/v1/orgs/:org/sessions/:session_id/fs/_/stat",
-            post(stat_file),
-        )
+        .route("/v1/sessions/:session_id/fs/_/move", post(move_file))
+        .route("/v1/sessions/:session_id/fs/_/copy", post(copy_file))
+        .route("/v1/sessions/:session_id/fs/_/grep", post(grep_files))
+        .route("/v1/sessions/:session_id/fs/_/stat", post(stat_file))
         // File operations with path
         .route(
-            "/v1/orgs/:org/sessions/:session_id/fs",
+            "/v1/sessions/:session_id/fs",
             get(get_root).post(create_root).delete(delete_root),
         )
         .route(
-            "/v1/orgs/:org/sessions/:session_id/fs/*path",
+            "/v1/sessions/:session_id/fs/*path",
             get(get_path)
                 .post(create_path)
                 .put(update_path)
@@ -198,9 +196,8 @@ fn is_reserved_path(path: &str) -> bool {
 /// GET /fs - Get root directory listing
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs",
+    path = "/v1/sessions/{session_id}/fs",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("recursive" = Option<bool>, Query, description = "List recursively")
     ),
@@ -212,8 +209,9 @@ fn is_reserved_path(path: &str) -> bool {
     tag = "filesystem"
 )]
 pub async fn get_root(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -228,9 +226,8 @@ pub async fn get_root(
 /// GET /fs/*path - Get file content or directory listing
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/{path}",
+    path = "/v1/sessions/{session_id}/fs/{path}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
         ("recursive" = Option<bool>, Query, description = "List recursively")
@@ -244,8 +241,9 @@ pub async fn get_root(
     tag = "filesystem"
 )]
 pub async fn get_path(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id, path)): Path<(String, String, String)>,
+    Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -322,7 +320,7 @@ async fn get_path_impl(
 }
 
 /// POST /fs - Create at root (not allowed)
-pub async fn create_root() -> (StatusCode, String) {
+pub async fn create_root(_org: ResolvedOrg) -> (StatusCode, String) {
     (
         StatusCode::BAD_REQUEST,
         "Cannot create at root path, specify a path".to_string(),
@@ -332,9 +330,8 @@ pub async fn create_root() -> (StatusCode, String) {
 /// POST /fs/*path - Create file or directory
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/{path}",
+    path = "/v1/sessions/{session_id}/fs/{path}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path")
     ),
@@ -348,8 +345,9 @@ pub async fn create_root() -> (StatusCode, String) {
     tag = "filesystem"
 )]
 pub async fn create_path(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id, path)): Path<(String, String, String)>,
+    Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -441,9 +439,8 @@ pub async fn create_path(
 /// PUT /fs/*path - Update file content
 #[utoipa::path(
     put,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/{path}",
+    path = "/v1/sessions/{session_id}/fs/{path}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File path")
     ),
@@ -457,8 +454,9 @@ pub async fn create_path(
     tag = "filesystem"
 )]
 pub async fn update_path(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id, path)): Path<(String, String, String)>,
+    Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -506,7 +504,7 @@ pub async fn update_path(
 }
 
 /// DELETE /fs - Delete root (not allowed)
-pub async fn delete_root() -> (StatusCode, String) {
+pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
     (
         StatusCode::BAD_REQUEST,
         "Cannot delete root directory".to_string(),
@@ -516,9 +514,8 @@ pub async fn delete_root() -> (StatusCode, String) {
 /// DELETE /fs/*path - Delete file or directory
 #[utoipa::path(
     delete,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/{path}",
+    path = "/v1/sessions/{session_id}/fs/{path}",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
         ("recursive" = Option<bool>, Query, description = "Delete recursively")
@@ -531,8 +528,9 @@ pub async fn delete_root() -> (StatusCode, String) {
     tag = "filesystem"
 )]
 pub async fn delete_path(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id, path)): Path<(String, String, String)>,
+    Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -567,9 +565,8 @@ pub async fn delete_path(
 /// POST /fs/_/move - Move/rename file
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/_/move",
+    path = "/v1/sessions/{session_id}/fs/_/move",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = MoveFileRequest,
@@ -583,8 +580,9 @@ pub async fn delete_path(
     tag = "filesystem"
 )]
 pub async fn move_file(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -627,9 +625,8 @@ pub async fn move_file(
 /// POST /fs/_/copy - Copy file
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/_/copy",
+    path = "/v1/sessions/{session_id}/fs/_/copy",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = CopyFileRequest,
@@ -643,8 +640,9 @@ pub async fn move_file(
     tag = "filesystem"
 )]
 pub async fn copy_file(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -687,9 +685,8 @@ pub async fn copy_file(
 /// POST /fs/_/grep - Search files
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/_/grep",
+    path = "/v1/sessions/{session_id}/fs/_/grep",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = GrepRequest,
@@ -701,8 +698,9 @@ pub async fn copy_file(
     tag = "filesystem"
 )]
 pub async fn grep_files(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -740,9 +738,8 @@ pub async fn grep_files(
 /// POST /fs/_/stat - Get file or directory stat
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/sessions/{session_id}/fs/_/stat",
+    path = "/v1/sessions/{session_id}/fs/_/stat",
     params(
-        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = StatRequest,
@@ -755,8 +752,9 @@ pub async fn grep_files(
     tag = "filesystem"
 )]
 pub async fn stat_file(
+    _org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_org_path, session_id)): Path<(String, String)>,
+    Path(session_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {

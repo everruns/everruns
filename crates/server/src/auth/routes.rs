@@ -21,7 +21,7 @@ use super::{
     api_key::generate_api_key,
     config::AuthMode,
     jwt::hash_token,
-    middleware::{AuthError, AuthState, AuthUser},
+    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ResolvedOrg},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
 use crate::api::common::ListResponse;
@@ -644,11 +644,22 @@ pub async fn list_api_keys(
 }
 
 /// POST /v1/auth/api-keys - Create a new API key
+///
+/// Requires X-Org-Id header to specify which organization the API key is for.
+/// Cannot be called with API key authentication (must use session auth).
 pub async fn create_api_key_route(
     State(state): State<AuthState>,
     user: AuthUser,
+    org: ResolvedOrg,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<(StatusCode, Json<ApiKeyResponse>), AuthError> {
+    // Cannot create API key using API key auth
+    if user.auth_method == AuthMethod::ApiKey {
+        return Err(AuthError::forbidden(
+            "Cannot create API key using API key authentication",
+        ));
+    }
+
     let generated = generate_api_key();
 
     let scopes = if req.scopes.is_empty() {
@@ -664,7 +675,7 @@ pub async fn create_api_key_route(
     let key_row = state
         .db
         .create_api_key(CreateApiKeyRow {
-            org_id: DEFAULT_ORG_ID, // TODO: Get from request context after Phase 3
+            org_id: org.org_id,
             user_id: user.id,
             name: req.name.clone(),
             key_hash: generated.key_hash.clone(),

@@ -141,7 +141,7 @@ export default function ChatPage() {
       images: Array<{ imageId: string; filename?: string }>;
       controls?: Controls;
     }) => {
-      return sendUserMessageWithImages(org!, sessionId, text, images, controls);
+      return sendUserMessageWithImages(sessionId, text, images, controls);
     },
   });
 

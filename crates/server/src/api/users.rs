@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::middleware::{AuthState, AuthUser, FromRef};
+use crate::auth::middleware::{AuthState, AuthUser};
+use axum::extract::FromRef;
 
 /// App state for users routes
 #[derive(Clone)]
