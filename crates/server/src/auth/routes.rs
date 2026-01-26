@@ -241,7 +241,20 @@ pub async fn login(
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -319,14 +332,18 @@ pub async fn register(
     // Fetch organization memberships (should include default org now)
     let organizations = fetch_user_organizations(&state.db, user.id)
         .await
-        .unwrap_or_else(|_| {
-            // Fallback to default org if fetch fails
-            vec![OrgMembership {
-                org_id: DEFAULT_ORG_ID,
-                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-                name: "Default Organization".to_string(),
-            }]
-        });
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -390,7 +407,20 @@ pub async fn refresh_token(
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -412,19 +442,16 @@ pub async fn logout(jar: CookieJar) -> CookieJar {
 
 /// GET /v1/auth/me - Get current user info
 pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
-    let organizations = if user.organizations.is_empty() {
-        None
-    } else {
-        Some(
-            user.organizations
-                .iter()
-                .map(|o| OrgMembershipResponse {
-                    public_id: o.public_id.clone(),
-                    name: o.name.clone(),
-                })
-                .collect(),
-        )
-    };
+    // Always return organizations array (middleware ensures at least default org)
+    let organizations = Some(
+        user.organizations
+            .iter()
+            .map(|o| OrgMembershipResponse {
+                public_id: o.public_id.clone(),
+                name: o.name.clone(),
+            })
+            .collect(),
+    );
 
     Json(UserInfoResponse {
         id: user.id.to_string(),
@@ -585,14 +612,18 @@ pub async fn oauth_callback(
     // Fetch organization memberships
     let organizations = fetch_user_organizations(&state.db, user.id)
         .await
-        .unwrap_or_else(|_| {
-            // Fallback to default org if fetch fails
-            vec![OrgMembership {
-                org_id: DEFAULT_ORG_ID,
-                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-                name: "Default Organization".to_string(),
-            }]
-        });
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
