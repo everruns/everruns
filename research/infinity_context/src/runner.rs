@@ -8,18 +8,14 @@
 //! - `tool.completed`: tool execution results (e.g., query_history calls)
 
 use crate::capabilities::{Capability, InfinityContextCapability, NaiveTrimCapability};
-use crate::metrics::aggregate_strategy_results;
 use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
-use crate::types::{EvalMetrics, EvaluationResults, Scenario, ScenarioResult};
+use crate::types::{EvalMetrics, Scenario, ScenarioResult};
 use anyhow::Result;
-use chrono::Utc;
-use colored::Colorize;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -27,9 +23,18 @@ use std::time::Instant;
 #[derive(Clone)]
 pub struct EvalConfig {
     pub model: String,
+    pub capability: Arc<dyn Capability>,
     pub dry_run: bool,
-    /// Delay in milliseconds between scenarios (helps avoid rate limits)
-    pub delay_ms: u64,
+}
+
+/// Result of running a scenario (before scoring)
+#[derive(Clone)]
+pub struct RunResult {
+    pub scenario_name: String,
+    pub capability_name: String,
+    pub response: String,
+    pub metrics: EvalMetrics,
+    pub error: Option<String>,
 }
 
 // ============================================================================
@@ -61,152 +66,45 @@ fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
 }
 
 // ============================================================================
-// Evaluation Runner
-// ============================================================================
-
-/// Run evaluation across all scenarios and capabilities
-pub async fn run_evaluation(
-    config: &EvalConfig,
-    scenarios: &[Scenario],
-    capabilities: &[Arc<dyn Capability>],
-) -> Result<EvaluationResults> {
-    println!(
-        "\n{} Running {} scenario(s) against {} capability(ies)\n",
-        "▶".bright_blue(),
-        scenarios.len(),
-        capabilities.len()
-    );
-
-    let mut strategy_results = Vec::new();
-    let mut is_first_cap = true;
-
-    for capability in capabilities {
-        // Delay between capabilities too
-        if !is_first_cap && config.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
-        }
-        is_first_cap = false;
-
-        println!(
-            "{} Capability: {}",
-            "━".repeat(60).dimmed(),
-            capability.name().bright_cyan().bold()
-        );
-        println!("  {}\n", capability.description().dimmed());
-
-        let mut results = Vec::new();
-        let mut is_first = true;
-
-        for scenario in scenarios {
-            // Delay between scenarios (skip first)
-            if !is_first && config.delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
-            }
-            is_first = false;
-
-            let result = run_single_scenario(config, scenario, capability.as_ref()).await;
-
-            let status = if result.score >= 0.8 {
-                "✓".bright_green()
-            } else if result.score >= 0.5 {
-                "◐".bright_yellow()
-            } else if result.metrics.context_exceeded {
-                "⊘".bright_yellow()
-            } else {
-                "✗".bright_red()
-            };
-
-            println!(
-                "  {} {} (score: {:.2}, tokens: {}, latency: {}ms, queries: {})",
-                status,
-                scenario.name,
-                result.score,
-                result.metrics.total_tokens,
-                result.metrics.latency_ms,
-                result.metrics.history_queries
-            );
-
-            if result.score < 0.5
-                && !result.metrics.context_exceeded
-                && let Some(err) = &result.error
-            {
-                println!("    {} {}", "Error:".red(), err);
-            }
-
-            results.push(result);
-        }
-
-        let aggregated = aggregate_strategy_results(capability.name(), results);
-        println!(
-            "\n  {} Avg Score: {:.1}% ({}/{})\n",
-            "→".bright_blue(),
-            aggregated.accuracy(),
-            aggregated.passed,
-            aggregated.total_scenarios
-        );
-
-        strategy_results.push(aggregated);
-    }
-
-    Ok(EvaluationResults {
-        timestamp: Utc::now(),
-        model: config.model.clone(),
-        config: HashMap::new(),
-        strategy_results,
-    })
-}
-
-// ============================================================================
 // Scenario Execution
 // ============================================================================
 
-async fn run_single_scenario(
-    config: &EvalConfig,
-    scenario: &Scenario,
-    capability: &dyn Capability,
-) -> ScenarioResult {
+/// Run a single scenario and return the result (without scoring)
+pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult {
     let start = Instant::now();
 
     if config.dry_run {
-        return create_dry_run_result(scenario, capability);
+        return RunResult {
+            scenario_name: scenario.name.clone(),
+            capability_name: config.capability.name().to_string(),
+            response: "[DRY RUN]".to_string(),
+            metrics: EvalMetrics {
+                messages_in_context: scenario.messages.len(),
+                ..Default::default()
+            },
+            error: None,
+        };
     }
 
-    match execute_with_agentic_loop(config, scenario, capability).await {
-        Ok((response, metrics)) => {
-            // Score the response using all scorers
-            let judge_config = create_judge_config();
-            let scores = evaluate_all(
-                &scenario.scorers,
-                &scenario.task,
-                &response,
-                judge_config.as_ref(),
-            )
-            .await;
-            let score = aggregate_scores(&scores);
-
-            ScenarioResult {
-                scenario_name: scenario.name.clone(),
-                strategy_name: capability.name().to_string(),
-                score,
-                scores,
-                response,
-                metrics: EvalMetrics {
-                    latency_ms: start.elapsed().as_millis() as u64,
-                    ..metrics
-                },
-                error: None,
-            }
-        }
+    match execute_with_agentic_loop(config, scenario).await {
+        Ok((response, metrics)) => RunResult {
+            scenario_name: scenario.name.clone(),
+            capability_name: config.capability.name().to_string(),
+            response,
+            metrics: EvalMetrics {
+                latency_ms: start.elapsed().as_millis() as u64,
+                ..metrics
+            },
+            error: None,
+        },
         Err(e) => {
             let is_context_error = e.to_string().contains("context")
                 || e.to_string().contains("too long")
                 || e.to_string().contains("maximum");
 
-            ScenarioResult {
+            RunResult {
                 scenario_name: scenario.name.clone(),
-                strategy_name: capability.name().to_string(),
-                score: 0.0,
-                scores: vec![Score::new("error", 0.0).with_rationale(e.to_string())],
+                capability_name: config.capability.name().to_string(),
                 response: String::new(),
                 metrics: EvalMetrics {
                     context_exceeded: is_context_error,
@@ -216,6 +114,47 @@ async fn run_single_scenario(
                 error: Some(e.to_string()),
             }
         }
+    }
+}
+
+// ============================================================================
+// Scoring
+// ============================================================================
+
+/// Score a run result against a scenario's expectations
+pub async fn score_result(scenario: &Scenario, run: &RunResult) -> ScenarioResult {
+    // If there was an error, return error score
+    if let Some(err) = &run.error {
+        return ScenarioResult {
+            scenario_name: run.scenario_name.clone(),
+            strategy_name: run.capability_name.clone(),
+            score: 0.0,
+            scores: vec![Score::new("error", 0.0).with_rationale(err.clone())],
+            response: run.response.clone(),
+            metrics: run.metrics.clone(),
+            error: Some(err.clone()),
+        };
+    }
+
+    // Score the response using all scorers
+    let judge_config = create_judge_config();
+    let scores = evaluate_all(
+        &scenario.scorers,
+        &scenario.task,
+        &run.response,
+        judge_config.as_ref(),
+    )
+    .await;
+    let score = aggregate_scores(&scores);
+
+    ScenarioResult {
+        scenario_name: run.scenario_name.clone(),
+        strategy_name: run.capability_name.clone(),
+        score,
+        scores,
+        response: run.response.clone(),
+        metrics: run.metrics.clone(),
+        error: None,
     }
 }
 
@@ -229,11 +168,14 @@ fn create_judge_config() -> Option<JudgeConfig> {
         })
 }
 
+// ============================================================================
+// Agentic Loop Execution
+// ============================================================================
+
 /// Execute scenario using InMemoryAgenticLoop
 async fn execute_with_agentic_loop(
     config: &EvalConfig,
     scenario: &Scenario,
-    capability: &dyn Capability,
 ) -> Result<(String, EvalMetrics)> {
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
@@ -248,13 +190,13 @@ async fn execute_with_agentic_loop(
     // Build the agentic loop with the capability
     let mut builder = InMemoryAgenticLoop::builder()
         .agent_name("Eval Agent")
-        .system_prompt(build_system_prompt(capability))
+        .system_prompt(build_system_prompt(config.capability.as_ref()))
         .model(model)
         .driver_registry(create_driver_registry())
         .max_iterations(10);
 
     // Add capability for tool registration and message filtering
-    match capability.id() {
+    match config.capability.id() {
         "infinity_context" => {
             builder = builder.capability(InfinityContextCapability);
         }
@@ -359,21 +301,6 @@ fn build_system_prompt(capability: &dyn Capability) -> String {
     prompt
 }
 
-fn create_dry_run_result(scenario: &Scenario, capability: &dyn Capability) -> ScenarioResult {
-    ScenarioResult {
-        scenario_name: scenario.name.clone(),
-        strategy_name: capability.name().to_string(),
-        score: 1.0,
-        scores: vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")],
-        response: "[DRY RUN]".to_string(),
-        metrics: EvalMetrics {
-            messages_in_context: scenario.messages.len(),
-            ..Default::default()
-        },
-        error: None,
-    }
-}
-
 // ============================================================================
 // Capability Registry
 // ============================================================================
@@ -388,7 +315,7 @@ pub fn all_capabilities() -> Vec<Arc<dyn Capability>> {
 }
 
 /// Baseline capability - no filtering, passes all messages through
-struct BaselineCapability;
+pub struct BaselineCapability;
 
 impl Capability for BaselineCapability {
     fn id(&self) -> &str {

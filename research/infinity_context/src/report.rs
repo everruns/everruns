@@ -1,10 +1,9 @@
 //! Report generation for evaluation results
 
-use crate::runner::EvalConfig;
 use crate::types::{EvaluationResults, StrategyResults};
 
 /// Generate a markdown report from evaluation results
-pub fn generate(results: &EvaluationResults, _config: &EvalConfig) -> String {
+pub fn generate(results: &EvaluationResults) -> String {
     let mut report = String::new();
 
     // Header

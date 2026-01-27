@@ -23,10 +23,12 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use dataset::{EvalResultRecord, RunMetadata};
-use types::Scenario;
+use metrics::aggregate_strategy_results;
+use types::{EvaluationResults, Scenario};
 
 #[derive(Parser)]
 #[command(name = "eval")]
@@ -244,12 +246,6 @@ async fn cmd_run(
     }
     println!();
 
-    let config = runner::EvalConfig {
-        model: model.clone(),
-        dry_run,
-        delay_ms,
-    };
-
     println!("{}", "Configuration:".bold());
     println!("  Model: {}", model.bright_yellow());
     if dry_run {
@@ -263,16 +259,18 @@ async fn cmd_run(
     }
     println!();
 
-    let capabilities = if let Some(ref name) = capability_filter {
-        let all = runner::all_capabilities();
-        let cap = all
-            .into_iter()
-            .find(|c| c.name() == name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown capability: {}", name))?;
-        vec![cap]
-    } else {
-        runner::all_capabilities()
-    };
+    // Get capabilities to evaluate
+    let capabilities: Vec<Arc<dyn capabilities::Capability>> =
+        if let Some(ref name) = capability_filter {
+            let all = runner::all_capabilities();
+            let cap = all
+                .into_iter()
+                .find(|c| c.name() == name)
+                .ok_or_else(|| anyhow::anyhow!("Unknown capability: {}", name))?;
+            vec![cap]
+        } else {
+            runner::all_capabilities()
+        };
 
     println!("{}", "Capabilities to evaluate:".bold());
     for cap in &capabilities {
@@ -280,65 +278,169 @@ async fn cmd_run(
     }
     println!();
 
-    let results = runner::run_evaluation(&config, &scenarios, &capabilities).await?;
+    // Run evaluation for each capability
+    let mut strategy_results = Vec::new();
+
+    for (cap_idx, capability) in capabilities.iter().enumerate() {
+        // Delay between capabilities
+        if cap_idx > 0 && delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+
+        println!(
+            "{} Capability: {}",
+            "━".repeat(60).dimmed(),
+            capability.name().bright_cyan().bold()
+        );
+        println!("  {}\n", capability.description().dimmed());
+
+        let config = runner::EvalConfig {
+            model: model.clone(),
+            capability: capability.clone(),
+            dry_run,
+        };
+
+        // Phase 1: Run all scenarios
+        let mut run_results = Vec::new();
+        for (idx, scenario) in scenarios.iter().enumerate() {
+            // Delay between scenarios
+            if idx > 0 && delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+
+            let run_result = runner::run_scenario(&config, scenario).await;
+            print_run_status(&run_result);
+            run_results.push((scenario, run_result));
+        }
+
+        // Phase 2: Score all results
+        println!("\n  {} Scoring results...", "→".bright_blue());
+        let mut scenario_results = Vec::new();
+        for (scenario, run_result) in &run_results {
+            let scored = runner::score_result(scenario, run_result).await;
+            scenario_results.push(scored);
+        }
+
+        // Aggregate and print summary
+        let aggregated = aggregate_strategy_results(capability.name(), scenario_results);
+        println!(
+            "\n  {} Avg Score: {:.1}% ({}/{})\n",
+            "→".bright_blue(),
+            aggregated.accuracy(),
+            aggregated.passed,
+            aggregated.total_scenarios
+        );
+
+        strategy_results.push(aggregated);
+    }
+
+    let results = EvaluationResults {
+        timestamp: Utc::now(),
+        model: model.clone(),
+        config: std::collections::HashMap::new(),
+        strategy_results,
+    };
 
     // Print report
-    let report = report::generate(&results, &config);
+    let report = report::generate(&results);
     println!("{}", report);
 
     // Save results if requested
     if save {
-        // Build filename: YYYYMMDD_HHMMSS__moniker.jsonl
-        // Moniker defaults to model name (e.g., "sonnet-4.5", "gpt-5.2")
-        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let moniker = moniker.unwrap_or_else(|| generate_moniker(&model));
-        let filename = format!("{}__{}.jsonl", timestamp, moniker);
-        let output_path = PathBuf::from("results").join(&filename);
-
-        std::fs::create_dir_all("results")?;
-
-        // Convert results to JSONL records
-        let mut result_records = Vec::new();
-        for strategy_result in &results.strategy_results {
-            for scenario_result in &strategy_result.scenario_results {
-                result_records.push(EvalResultRecord {
-                    id: scenario_result.scenario_name.clone(),
-                    capability: scenario_result.strategy_name.clone(),
-                    score: scenario_result.score,
-                    scores: scenario_result.scores.clone(),
-                    response: scenario_result.response.clone(),
-                    error: scenario_result.error.clone(),
-                    metrics: scenario_result.metrics.clone().into(),
-                });
-            }
-        }
-
-        let metadata = RunMetadata {
-            timestamp: results.timestamp,
-            model,
-            dataset: dataset_path.display().to_string(),
-            scenario_count: scenarios.len(),
-            capability_count: capabilities.len(),
-            capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
-        };
-
-        dataset::write_results(&output_path, &metadata, &result_records)?;
-
-        println!(
-            "\n{} Results saved to: {}",
-            "✓".bright_green(),
-            output_path.display().to_string().bright_yellow()
-        );
-
-        // Also save markdown report
-        let md_path = output_path.with_extension("md");
-        std::fs::write(&md_path, &report)?;
-        println!(
-            "{} Report saved to: {}",
-            "✓".bright_green(),
-            md_path.display().to_string().bright_yellow()
-        );
+        save_results(&results, &dataset_path, &model, moniker, &capabilities)?;
     }
+
+    Ok(())
+}
+
+fn print_run_status(run: &runner::RunResult) {
+    let status = if run.error.is_some() {
+        if run.metrics.context_exceeded {
+            "⊘".bright_yellow()
+        } else {
+            "✗".bright_red()
+        }
+    } else {
+        "●".bright_blue() // Running indicator (not scored yet)
+    };
+
+    println!(
+        "  {} {} (tokens: {}, latency: {}ms, queries: {})",
+        status,
+        run.scenario_name,
+        run.metrics.total_tokens,
+        run.metrics.latency_ms,
+        run.metrics.history_queries
+    );
+
+    if let Some(err) = &run.error {
+        if !run.metrics.context_exceeded {
+            println!("    {} {}", "Error:".red(), err);
+        }
+    }
+}
+
+fn save_results(
+    results: &EvaluationResults,
+    dataset_path: &PathBuf,
+    model: &str,
+    moniker: Option<String>,
+    capabilities: &[Arc<dyn capabilities::Capability>],
+) -> Result<()> {
+    // Build filename: YYYYMMDD_HHMMSS__moniker.jsonl
+    let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+    let moniker = moniker.unwrap_or_else(|| generate_moniker(model));
+    let filename = format!("{}__{}.jsonl", timestamp, moniker);
+    let output_path = PathBuf::from("results").join(&filename);
+
+    std::fs::create_dir_all("results")?;
+
+    // Convert results to JSONL records
+    let mut result_records = Vec::new();
+    for strategy_result in &results.strategy_results {
+        for scenario_result in &strategy_result.scenario_results {
+            result_records.push(EvalResultRecord {
+                id: scenario_result.scenario_name.clone(),
+                capability: scenario_result.strategy_name.clone(),
+                score: scenario_result.score,
+                scores: scenario_result.scores.clone(),
+                response: scenario_result.response.clone(),
+                error: scenario_result.error.clone(),
+                metrics: scenario_result.metrics.clone().into(),
+            });
+        }
+    }
+
+    let metadata = RunMetadata {
+        timestamp: results.timestamp,
+        model: model.to_string(),
+        dataset: dataset_path.display().to_string(),
+        scenario_count: results
+            .strategy_results
+            .first()
+            .map(|s| s.total_scenarios)
+            .unwrap_or(0),
+        capability_count: capabilities.len(),
+        capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
+    };
+
+    dataset::write_results(&output_path, &metadata, &result_records)?;
+
+    println!(
+        "\n{} Results saved to: {}",
+        "✓".bright_green(),
+        output_path.display().to_string().bright_yellow()
+    );
+
+    // Also save markdown report
+    let md_path = output_path.with_extension("md");
+    let report = report::generate(results);
+    std::fs::write(&md_path, &report)?;
+    println!(
+        "{} Report saved to: {}",
+        "✓".bright_green(),
+        md_path.display().to_string().bright_yellow()
+    );
 
     Ok(())
 }
