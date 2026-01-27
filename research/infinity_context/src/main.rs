@@ -25,10 +25,10 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-use dataset::{EvalResultRecord, RunMetadata};
+use dataset::{DatasetRecord, EvalResultRecord, RunMetadata};
 use metrics::aggregate_strategy_results;
 use runner::Approach;
-use types::{EvaluationResults, Scenario};
+use types::EvaluationResults;
 
 #[derive(Parser)]
 #[command(name = "eval")]
@@ -223,15 +223,14 @@ async fn cmd_run(
         dataset_path.display().to_string().bright_yellow()
     );
 
-    let records = dataset::read_dataset(&dataset_path)?;
-    let mut scenarios: Vec<Scenario> = records.into_iter().map(Scenario::from).collect();
+    let mut records: Vec<DatasetRecord> = dataset::read_dataset(&dataset_path)?;
 
     // Apply scenario filter
     if let Some(ref name) = scenario_filter {
-        scenarios.retain(|s| s.name == *name);
+        records.retain(|r| r.id == *name);
     }
 
-    if scenarios.is_empty() {
+    if records.is_empty() {
         println!("{}", "No scenarios found!".bright_red());
         return Ok(());
     }
@@ -239,10 +238,10 @@ async fn cmd_run(
     println!(
         "{} Found {} scenario(s)",
         "✓".bright_green(),
-        scenarios.len()
+        records.len()
     );
-    for s in &scenarios {
-        println!("  - {}", s.name.dimmed());
+    for r in &records {
+        println!("  - {}", r.id.dimmed());
     }
     println!();
 
@@ -296,22 +295,22 @@ async fn cmd_run(
 
         // Phase 1: Run all scenarios
         let mut run_results = Vec::new();
-        for (scenario_idx, scenario) in scenarios.iter().enumerate() {
+        for (scenario_idx, record) in records.iter().enumerate() {
             // Delay between scenarios
             if scenario_idx > 0 && delay_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             }
 
-            let run_result = runner::run_scenario(&config, scenario).await;
+            let run_result = runner::run_scenario(&config, record).await;
             print_run_status(&run_result);
-            run_results.push((scenario, run_result));
+            run_results.push((record, run_result));
         }
 
         // Phase 2: Score all results
         println!("\n  {} Scoring results...", "→".bright_blue());
         let mut scenario_results = Vec::new();
-        for (scenario, run_result) in &run_results {
-            let scored = runner::score_result(scenario, run_result).await;
+        for (record, run_result) in &run_results {
+            let scored = runner::score_result(record, run_result).await;
             scenario_results.push(scored);
         }
 

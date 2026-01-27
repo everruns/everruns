@@ -8,14 +8,16 @@
 //! - `tool.completed`: tool execution results (e.g., query_history calls)
 
 use crate::capabilities::{InfinityContextCapability, NaiveTrimCapability};
-use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
-use crate::types::{EvalMetrics, Scenario, ScenarioResult};
+use crate::dataset::DatasetRecord;
+use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
+use crate::types::{EvalMetrics, ScenarioResult};
 use anyhow::Result;
 use everruns_core::Capability;
-use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
+use everruns_core::events::{Event, EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
+use everruns_core::message::Message;
 use everruns_core::traits::ModelWithProvider;
 use std::time::Instant;
 
@@ -118,29 +120,77 @@ fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
 }
 
 // ============================================================================
+// Message Extraction
+// ============================================================================
+
+/// Extract messages from dataset record events
+fn extract_messages(record: &DatasetRecord) -> Vec<Message> {
+    record
+        .input
+        .events
+        .iter()
+        .filter_map(message_from_event)
+        .collect()
+}
+
+/// Extract a Message from a core Event
+fn message_from_event(event: &Event) -> Option<Message> {
+    match &event.data {
+        EventData::InputMessage(data) => Some(data.message.clone()),
+        EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+        EventData::ToolCompleted(data) => {
+            // Convert tool result to a Message with ToolResult content part
+            let result_str = data
+                .result
+                .as_ref()
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter_map(|p| p.as_text())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default();
+            Some(Message::tool_result(&data.tool_call_id, Some(serde_json::json!(result_str)), None))
+        }
+        _ => None,
+    }
+}
+
+/// Convert expectations to LLM judge scorers
+fn expectations_to_scorers(expectations: &[String]) -> Vec<Scorer> {
+    expectations
+        .iter()
+        .enumerate()
+        .map(|(i, expectation)| Scorer::llm_judge(format!("expectation_{}", i), expectation.clone()))
+        .collect()
+}
+
+// ============================================================================
 // Scenario Execution
 // ============================================================================
 
 /// Run a single scenario and return the result (without scoring)
-pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult {
+pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunResult {
     let start = Instant::now();
+    let messages = extract_messages(record);
 
     if config.dry_run {
         return RunResult {
-            scenario_name: scenario.name.clone(),
+            scenario_name: record.id.clone(),
             approach: config.approach,
             response: "[DRY RUN]".to_string(),
             metrics: EvalMetrics {
-                messages_in_context: scenario.messages.len(),
+                messages_in_context: messages.len(),
                 ..Default::default()
             },
             error: None,
         };
     }
 
-    match execute_with_agentic_loop(config, scenario).await {
+    match execute_with_agentic_loop(config, record, &messages).await {
         Ok((response, metrics)) => RunResult {
-            scenario_name: scenario.name.clone(),
+            scenario_name: record.id.clone(),
             approach: config.approach,
             response,
             metrics: EvalMetrics {
@@ -155,7 +205,7 @@ pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult
                 || e.to_string().contains("maximum");
 
             RunResult {
-                scenario_name: scenario.name.clone(),
+                scenario_name: record.id.clone(),
                 approach: config.approach,
                 response: String::new(),
                 metrics: EvalMetrics {
@@ -173,8 +223,8 @@ pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult
 // Scoring
 // ============================================================================
 
-/// Score a run result against a scenario's expectations
-pub async fn score_result(scenario: &Scenario, run: &RunResult) -> ScenarioResult {
+/// Score a run result against a record's expectations
+pub async fn score_result(record: &DatasetRecord, run: &RunResult) -> ScenarioResult {
     // If there was an error, return error score
     if let Some(err) = &run.error {
         return ScenarioResult {
@@ -189,14 +239,9 @@ pub async fn score_result(scenario: &Scenario, run: &RunResult) -> ScenarioResul
     }
 
     // Score the response using all scorers
+    let scorers = expectations_to_scorers(&record.expectations);
     let judge_config = create_judge_config();
-    let scores = evaluate_all(
-        &scenario.scorers,
-        &scenario.task,
-        &run.response,
-        judge_config.as_ref(),
-    )
-    .await;
+    let scores = evaluate_all(&scorers, &record.task, &run.response, judge_config.as_ref()).await;
     let score = aggregate_scores(&scores);
 
     ScenarioResult {
@@ -227,7 +272,8 @@ fn create_judge_config() -> Option<JudgeConfig> {
 /// Execute scenario using InMemoryAgenticLoop
 async fn execute_with_agentic_loop(
     config: &EvalConfig,
-    scenario: &Scenario,
+    record: &DatasetRecord,
+    messages: &[Message],
 ) -> Result<(String, EvalMetrics)> {
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
@@ -266,7 +312,7 @@ async fn execute_with_agentic_loop(
     // Seed all scenario messages into the retriever.
     // The capability's message filter (if any) will determine what goes to the LLM.
     // The query_history tool can access all messages via the retriever.
-    for msg in &scenario.messages {
+    for msg in messages {
         agentic_loop
             .message_retriever()
             .store(session_id, msg.clone())
@@ -274,10 +320,10 @@ async fn execute_with_agentic_loop(
     }
 
     // Run the turn with the task as user input
-    let result = agentic_loop.run_turn(scenario.task.as_str()).await?;
+    let result = agentic_loop.run_turn(record.task.as_str()).await?;
 
     // Extract metrics from events (ground truth from actual execution)
-    let metrics = extract_metrics_from_events(&agentic_loop, scenario.messages.len()).await;
+    let metrics = extract_metrics_from_events(&agentic_loop, messages.len()).await;
 
     Ok((result.response, metrics))
 }
