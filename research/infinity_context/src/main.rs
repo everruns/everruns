@@ -67,14 +67,6 @@ enum Commands {
         #[arg(long, default_value = "gpt-5.2")]
         model: String,
 
-        /// Context window size in tokens (default 50k to ensure scenarios exceed budget)
-        #[arg(long, default_value = "50000")]
-        context_window: usize,
-
-        /// Context budget percentage (0.0-1.0) - with 50k window, 0.7 = 35k token budget
-        #[arg(long, default_value = "0.7")]
-        budget_percent: f64,
-
         /// Dry run - show what would be executed without calling LLM
         #[arg(long)]
         dry_run: bool,
@@ -82,10 +74,6 @@ enum Commands {
         /// Delay in milliseconds between scenarios (helps avoid rate limits)
         #[arg(long, default_value = "0")]
         delay_ms: u64,
-
-        /// Delay in milliseconds between LLM calls within a scenario (for tool loops)
-        #[arg(long, default_value = "0")]
-        inter_call_delay_ms: u64,
 
         /// Save results to results/ directory
         #[arg(long)]
@@ -120,29 +108,11 @@ async fn main() -> Result<()> {
             scenario,
             capability,
             model,
-            context_window,
-            budget_percent,
             dry_run,
             delay_ms,
-            inter_call_delay_ms,
             save,
             moniker,
-        } => {
-            cmd_run(
-                dataset,
-                scenario,
-                capability,
-                model,
-                context_window,
-                budget_percent,
-                dry_run,
-                delay_ms,
-                inter_call_delay_ms,
-                save,
-                moniker,
-            )
-            .await
-        }
+        } => cmd_run(dataset, scenario, capability, model, dry_run, delay_ms, save, moniker).await,
     }
 }
 
@@ -240,11 +210,8 @@ async fn cmd_run(
     scenario_filter: Option<String>,
     capability_filter: Option<String>,
     model: String,
-    context_window: usize,
-    budget_percent: f64,
     dry_run: bool,
     delay_ms: u64,
-    inter_call_delay_ms: u64,
     save: bool,
     moniker: Option<String>,
 ) -> Result<()> {
@@ -279,23 +246,12 @@ async fn cmd_run(
 
     let config = runner::EvalConfig {
         model: model.clone(),
-        context_window,
-        budget_percent,
         dry_run,
         delay_ms,
-        inter_call_delay_ms,
     };
 
     println!("{}", "Configuration:".bold());
     println!("  Model: {}", model.bright_yellow());
-    println!(
-        "  Context window: {} tokens",
-        context_window.to_string().bright_yellow()
-    );
-    println!(
-        "  Budget: {}%",
-        (budget_percent * 100.0).to_string().bright_yellow()
-    );
     if dry_run {
         println!("  {} Dry run mode", "⚠".bright_yellow());
     }
@@ -303,12 +259,6 @@ async fn cmd_run(
         println!(
             "  Delay: {}ms between scenarios",
             delay_ms.to_string().bright_yellow()
-        );
-    }
-    if inter_call_delay_ms > 0 {
-        println!(
-            "  Inter-call delay: {}ms between LLM calls",
-            inter_call_delay_ms.to_string().bright_yellow()
         );
     }
     println!();
@@ -366,8 +316,6 @@ async fn cmd_run(
         let metadata = RunMetadata {
             timestamp: results.timestamp,
             model,
-            context_window,
-            budget_percent,
             dataset: dataset_path.display().to_string(),
             scenario_count: scenarios.len(),
             capability_count: capabilities.len(),

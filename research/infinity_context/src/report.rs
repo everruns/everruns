@@ -4,20 +4,16 @@ use crate::runner::EvalConfig;
 use crate::types::{EvaluationResults, StrategyResults};
 
 /// Generate a markdown report from evaluation results
-pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
+pub fn generate(results: &EvaluationResults, _config: &EvalConfig) -> String {
     let mut report = String::new();
 
     // Header
     report.push_str(&format!(
         "# Infinity Context Evaluation Report\n\n\
         **Generated:** {}\n\
-        **Model:** {}\n\
-        **Context Window:** {} tokens\n\
-        **Budget:** {:.0}%\n\n",
+        **Model:** {}\n\n",
         results.timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
         results.model,
-        config.context_window,
-        config.budget_percent * 100.0
     ));
 
     // Summary table

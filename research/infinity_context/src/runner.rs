@@ -7,12 +7,10 @@
 //! - `llm.generation`: messages sent to LLM, token usage
 //! - `tool.completed`: tool execution results (e.g., query_history calls)
 
-use crate::capabilities::{Capability, InfinityContextCapability, MessageQuery, NaiveTrimCapability};
+use crate::capabilities::{Capability, InfinityContextCapability, NaiveTrimCapability};
 use crate::metrics::aggregate_strategy_results;
 use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
-use crate::types::{
-    ContextStrategyConfig, EvalMetrics, EvaluationResults, MessageExt, Scenario, ScenarioResult,
-};
+use crate::types::{EvalMetrics, EvaluationResults, Scenario, ScenarioResult};
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
@@ -20,7 +18,6 @@ use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
-use everruns_core::message::Message;
 use everruns_core::traits::ModelWithProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,13 +27,9 @@ use std::time::Instant;
 #[derive(Clone)]
 pub struct EvalConfig {
     pub model: String,
-    pub context_window: usize,
-    pub budget_percent: f64,
     pub dry_run: bool,
     /// Delay in milliseconds between scenarios (helps avoid rate limits)
     pub delay_ms: u64,
-    /// Delay in milliseconds between LLM calls within a scenario (for tool loops)
-    pub inter_call_delay_ms: u64,
 }
 
 // ============================================================================
@@ -77,8 +70,6 @@ pub async fn run_evaluation(
     scenarios: &[Scenario],
     capabilities: &[Arc<dyn Capability>],
 ) -> Result<EvaluationResults> {
-    let budget_tokens = (config.context_window as f64 * config.budget_percent) as usize;
-
     println!(
         "\n{} Running {} scenario(s) against {} capability(ies)\n",
         "▶".bright_blue(),
@@ -113,8 +104,7 @@ pub async fn run_evaluation(
             }
             is_first = false;
 
-            let result =
-                run_single_scenario(config, scenario, capability.as_ref(), budget_tokens).await;
+            let result = run_single_scenario(config, scenario, capability.as_ref()).await;
 
             let status = if result.score >= 0.8 {
                 "✓".bright_green()
@@ -161,84 +151,9 @@ pub async fn run_evaluation(
     Ok(EvaluationResults {
         timestamp: Utc::now(),
         model: config.model.clone(),
-        config: HashMap::from([
-            (
-                "context_window".to_string(),
-                config.context_window.to_string(),
-            ),
-            (
-                "budget_percent".to_string(),
-                config.budget_percent.to_string(),
-            ),
-        ]),
+        config: HashMap::new(),
         strategy_results,
     })
-}
-
-// ============================================================================
-// Context Preparation
-// ============================================================================
-
-struct PreparedContext {
-    /// Messages to include in context (sent to LLM)
-    visible_messages: Vec<Message>,
-    /// Estimated tokens for visible messages
-    estimated_tokens: usize,
-    /// Total messages in scenario history (for calculating excluded count)
-    total_history_messages: usize,
-}
-
-/// Prepare context by applying capability's message filter
-fn prepare_context(
-    capability: &dyn Capability,
-    messages: &[Message],
-    budget_tokens: usize,
-) -> PreparedContext {
-    let total_history_messages = messages.len();
-    let filter_provider = capability.message_filter_provider();
-
-    // If no filter provider, pass all messages through (baseline)
-    let Some(provider) = filter_provider else {
-        let estimated_tokens: usize = messages.iter().map(|m| m.estimated_tokens()).sum();
-        return PreparedContext {
-            visible_messages: messages.to_vec(),
-            estimated_tokens,
-            total_history_messages,
-        };
-    };
-
-    // Build config for the filter
-    let config = serde_json::to_value(ContextStrategyConfig {
-        context_budget_tokens: budget_tokens,
-        ..Default::default()
-    })
-    .unwrap_or_default();
-
-    // Build and apply filters
-    let mut query = MessageQuery::default();
-    provider.apply_filters(&mut query, &config);
-
-    // Apply limit from query (keep most recent N messages)
-    let visible = if let Some(limit) = query.limit {
-        let limit = limit.max(0) as usize;
-        if messages.len() > limit {
-            // Keep the most recent messages
-            let split_point = messages.len() - limit;
-            messages[split_point..].to_vec()
-        } else {
-            messages.to_vec()
-        }
-    } else {
-        messages.to_vec()
-    };
-
-    let estimated_tokens: usize = visible.iter().map(|m| m.estimated_tokens()).sum();
-
-    PreparedContext {
-        visible_messages: visible,
-        estimated_tokens,
-        total_history_messages,
-    }
 }
 
 // ============================================================================
@@ -249,42 +164,14 @@ async fn run_single_scenario(
     config: &EvalConfig,
     scenario: &Scenario,
     capability: &dyn Capability,
-    budget_tokens: usize,
 ) -> ScenarioResult {
     let start = Instant::now();
-    let prepared = prepare_context(capability, &scenario.messages, budget_tokens);
-    let will_exceed = prepared.estimated_tokens > config.context_window;
 
     if config.dry_run {
-        return create_dry_run_result(scenario, capability, &prepared, will_exceed);
+        return create_dry_run_result(scenario, capability);
     }
 
-    // Fail immediately if context would be exceeded (simulates API rejection)
-    if will_exceed {
-        let messages_excluded =
-            prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
-        return ScenarioResult {
-            scenario_name: scenario.name.clone(),
-            strategy_name: capability.name().to_string(),
-            score: 0.0,
-            scores: vec![Score::new("context", 0.0).with_rationale("Context limit exceeded")],
-            response: String::new(),
-            metrics: EvalMetrics {
-                context_exceeded: true,
-                messages_in_context: prepared.visible_messages.len(),
-                messages_excluded,
-                total_tokens: prepared.estimated_tokens,
-                latency_ms: start.elapsed().as_millis() as u64,
-                ..Default::default()
-            },
-            error: Some(format!(
-                "Context exceeded: {} tokens > {} limit",
-                prepared.estimated_tokens, config.context_window
-            )),
-        };
-    }
-
-    match execute_with_agentic_loop(config, scenario, capability, prepared).await {
+    match execute_with_agentic_loop(config, scenario, capability).await {
         Ok((response, metrics)) => {
             // Score the response using all scorers
             let judge_config = create_judge_config();
@@ -347,7 +234,6 @@ async fn execute_with_agentic_loop(
     config: &EvalConfig,
     scenario: &Scenario,
     capability: &dyn Capability,
-    prepared: PreparedContext,
 ) -> Result<(String, EvalMetrics)> {
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
@@ -359,8 +245,7 @@ async fn execute_with_agentic_loop(
         base_url: None,
     };
 
-    // Build the agentic loop
-    // We add capability based on ID to get proper tool registration
+    // Build the agentic loop with the capability
     let mut builder = InMemoryAgenticLoop::builder()
         .agent_name("Eval Agent")
         .system_prompt(build_system_prompt(capability))
@@ -368,7 +253,7 @@ async fn execute_with_agentic_loop(
         .driver_registry(create_driver_registry())
         .max_iterations(10);
 
-    // Add capability if it provides tools (infinity_context has query_history)
+    // Add capability for tool registration and message filtering
     match capability.id() {
         "infinity_context" => {
             builder = builder.capability(InfinityContextCapability);
@@ -377,34 +262,17 @@ async fn execute_with_agentic_loop(
             builder = builder.capability(NaiveTrimCapability);
         }
         _ => {
-            // baseline and others - no capability needed
+            // baseline - no capability needed
         }
     }
 
     let agentic_loop = builder.build().await?;
     let session_id = agentic_loop.session_id();
 
-    // Seed ALL messages into the retriever for query_history tool access.
-    // Calculate how many excluded messages we have.
-    let excluded_count =
-        prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
-
-    // Seed excluded messages first (older history) - these won't be in LLM context
-    // but will be accessible via query_history tool
-    if excluded_count > 0 {
-        // We need to reconstruct excluded messages from scenario
-        // They are the first N messages where N = total - visible
-        let excluded_messages = &scenario.messages[..excluded_count];
-        for msg in excluded_messages {
-            agentic_loop
-                .message_retriever()
-                .store(session_id, msg.clone())
-                .await?;
-        }
-    }
-
-    // Seed visible messages (recent context - these are what the LLM sees)
-    for msg in &prepared.visible_messages {
+    // Seed all scenario messages into the retriever.
+    // The capability's message filter (if any) will determine what goes to the LLM.
+    // The query_history tool can access all messages via the retriever.
+    for msg in &scenario.messages {
         agentic_loop
             .message_retriever()
             .store(session_id, msg.clone())
@@ -415,7 +283,7 @@ async fn execute_with_agentic_loop(
     let result = agentic_loop.run_turn(scenario.task.as_str()).await?;
 
     // Extract metrics from events (ground truth from actual execution)
-    let metrics = extract_metrics_from_events(&agentic_loop, prepared.total_history_messages).await;
+    let metrics = extract_metrics_from_events(&agentic_loop, scenario.messages.len()).await;
 
     Ok((result.response, metrics))
 }
@@ -491,49 +359,18 @@ fn build_system_prompt(capability: &dyn Capability) -> String {
     prompt
 }
 
-fn create_dry_run_result(
-    scenario: &Scenario,
-    capability: &dyn Capability,
-    prepared: &PreparedContext,
-    will_exceed: bool,
-) -> ScenarioResult {
-    let (score, scores) = if will_exceed {
-        (
-            0.0,
-            vec![Score::new("context", 0.0).with_rationale("Context would exceed limit")],
-        )
-    } else {
-        (
-            1.0,
-            vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")],
-        )
-    };
-
-    let messages_excluded =
-        prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
-
+fn create_dry_run_result(scenario: &Scenario, capability: &dyn Capability) -> ScenarioResult {
     ScenarioResult {
         scenario_name: scenario.name.clone(),
         strategy_name: capability.name().to_string(),
-        score,
-        scores,
+        score: 1.0,
+        scores: vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")],
         response: "[DRY RUN]".to_string(),
         metrics: EvalMetrics {
-            total_tokens: prepared.estimated_tokens,
-            input_tokens: prepared.estimated_tokens,
-            output_tokens: 0,
-            llm_calls: 0,
-            history_queries: 0,
-            latency_ms: 0,
-            context_exceeded: will_exceed,
-            messages_in_context: prepared.visible_messages.len(),
-            messages_excluded,
+            messages_in_context: scenario.messages.len(),
+            ..Default::default()
         },
-        error: if will_exceed {
-            Some("Context would exceed limit".to_string())
-        } else {
-            None
-        },
+        error: None,
     }
 }
 

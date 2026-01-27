@@ -179,12 +179,6 @@ pub struct RunMetadata {
     /// Model used for evaluation
     pub model: String,
 
-    /// Context window size
-    pub context_window: usize,
-
-    /// Budget percentage
-    pub budget_percent: f64,
-
     /// Dataset file used
     pub dataset: String,
 
@@ -273,13 +267,27 @@ use everruns_core::message::Message;
 /// Create an input.message event for a user message
 pub fn make_input_event(session_id: SessionId, content: impl Into<String>, sequence: i32) -> Event {
     let message = Message::user(content);
-    Event::new(session_id, EventContext::empty(), InputMessageData::new(message)).with_sequence(sequence)
+    Event::new(
+        session_id,
+        EventContext::empty(),
+        InputMessageData::new(message),
+    )
+    .with_sequence(sequence)
 }
 
 /// Create an output.message.completed event for an agent message
-pub fn make_output_event(session_id: SessionId, content: impl Into<String>, sequence: i32) -> Event {
+pub fn make_output_event(
+    session_id: SessionId,
+    content: impl Into<String>,
+    sequence: i32,
+) -> Event {
     let message = Message::assistant(content);
-    Event::new(session_id, EventContext::empty(), OutputMessageCompletedData::new(message)).with_sequence(sequence)
+    Event::new(
+        session_id,
+        EventContext::empty(),
+        OutputMessageCompletedData::new(message),
+    )
+    .with_sequence(sequence)
 }
 
 /// Create an output.message.completed event for an agent message with a tool call
@@ -300,7 +308,12 @@ pub fn make_output_event_with_tool_call(
         arguments: tool_arguments,
     };
     let message = Message::assistant_with_tools(content, vec![tool_call]);
-    Event::new(session_id, EventContext::empty(), OutputMessageCompletedData::new(message)).with_sequence(sequence)
+    Event::new(
+        session_id,
+        EventContext::empty(),
+        OutputMessageCompletedData::new(message),
+    )
+    .with_sequence(sequence)
 }
 
 /// Create a tool.completed event for a tool result
