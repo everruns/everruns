@@ -6,6 +6,7 @@
 //! - Infinity: Trim + history query tool (proposed solution)
 //!
 //! Usage:
+//!   eval health                            # Check API keys and LLM judge (run first!)
 //!   eval run --save                        # Run evals (dataset is in git)
 //!   eval run --model claude-sonnet-4-20250514 --save
 //!   eval generate                          # Regenerate dataset (rarely needed)
@@ -41,6 +42,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Check API keys and LLM judge configuration
+    Health,
+
     /// Generate evaluation dataset
     Generate {
         /// Output file path (JSONL format)
@@ -104,6 +108,7 @@ async fn main() -> Result<()> {
     print_header();
 
     match cli.command {
+        Commands::Health => cmd_health().await,
         Commands::Generate { output } => cmd_generate(output).await,
         Commands::Run {
             dataset,
@@ -137,6 +142,96 @@ fn print_header() {
             .bright_cyan()
             .bold()
     );
+}
+
+/// Health check command - verify API keys and LLM judge
+async fn cmd_health() -> Result<()> {
+    println!("{}", "Health Check".bold());
+    println!("{}\n", "=".repeat(50));
+
+    // Check OpenAI API key (for eval models)
+    print!("OpenAI API Key:      ");
+    let (openai_ok, openai_err) = scorer::check_provider_api_key("openai");
+    if openai_ok {
+        println!("{}", "✓ configured".bright_green());
+    } else {
+        println!(
+            "{} ({})",
+            "✗ missing".bright_red(),
+            openai_err.unwrap_or_default().dimmed()
+        );
+    }
+
+    // Check Anthropic API key (for LLM judge)
+    print!("Anthropic API Key:   ");
+    let (anthropic_ok, anthropic_err) = scorer::check_provider_api_key("anthropic");
+    if anthropic_ok {
+        println!("{}", "✓ configured".bright_green());
+    } else {
+        println!(
+            "{} ({})",
+            "✗ missing".bright_red(),
+            anthropic_err.unwrap_or_default().dimmed()
+        );
+    }
+
+    println!();
+
+    // Check LLM judge
+    print!("LLM Judge:           ");
+    if !anthropic_ok {
+        println!(
+            "{}",
+            "✗ skipped (no Anthropic key)".bright_yellow()
+        );
+    } else {
+        println!("{}", "testing...".dimmed());
+        let health = scorer::check_llm_judge_health().await;
+
+        // Move cursor up and overwrite
+        print!("\x1b[1A"); // Move up one line
+        print!("\x1b[K");  // Clear line
+        print!("LLM Judge:           ");
+
+        if health.llm_judge_working {
+            println!(
+                "{} (model: {})",
+                "✓ working".bright_green(),
+                health.model.unwrap_or_default().dimmed()
+            );
+            if let Some(ref msg) = health.error {
+                println!("                     {}", msg.dimmed());
+            }
+        } else {
+            println!(
+                "{} - {}",
+                "✗ error".bright_red(),
+                health.error.unwrap_or_default()
+            );
+        }
+    }
+
+    println!();
+
+    // Summary
+    let all_ok = openai_ok && anthropic_ok;
+    if all_ok {
+        println!(
+            "{} All checks passed. Ready to run evaluations.",
+            "✓".bright_green()
+        );
+    } else {
+        println!(
+            "{} Some checks failed. Set missing environment variables.",
+            "⚠".bright_yellow()
+        );
+        println!();
+        println!("{}", "Required environment variables:".bold());
+        println!("  OPENAI_API_KEY     - For running evaluations with GPT models");
+        println!("  ANTHROPIC_API_KEY  - For LLM judge scoring");
+    }
+
+    Ok(())
 }
 
 /// Generate evaluation dataset

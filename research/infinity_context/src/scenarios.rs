@@ -9,13 +9,22 @@
 //! making the history search tool useful. Key considerations:
 //!
 //! - Filler messages are ~100-200 tokens each (detailed questions/answers)
-//! - Tool outputs are ~300-500 tokens each (realistic code/config files)
-//! - With ~150-200 events per scenario, total tokens exceed 35k budget
+//! - Tool outputs are ~1500-3000 tokens each (realistic large file reads)
+//! - With ~300-500 events per scenario and many large tool results,
+//!   total tokens significantly exceed 35k budget (target: 80k-150k tokens)
 //! - The Infinity Context capability trims older messages and provides
 //!   the query_history tool to search excluded content
 //!
 //! If scenarios don't exceed the budget, all messages stay in context and
 //! query_history returns empty results (nothing was excluded).
+//!
+//! # Token Estimation
+//!
+//! Rough estimates (chars / 4 ≈ tokens):
+//! - Large tool results: ~6000 chars = ~1500 tokens each
+//! - With 40 tool results per scenario: ~60k tokens just from tools
+//! - Plus filler messages: additional ~20-40k tokens
+//! - Total per scenario: ~80-100k tokens (well over 35k budget)
 
 use crate::dataset::{
     make_input_event, make_output_event, make_output_event_with_tool_call, make_tool_event,
@@ -48,15 +57,18 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
     ];
 
     let (key_name, key_value) = secrets[variant % secrets.len()];
-    let needle_position = 15 + (variant * 7) % 30;
-    let total_events = 150 + (variant * 20);
+    // Plant needle early so it gets trimmed from context
+    let needle_position = 25 + (variant * 7) % 40;
+    // Much larger conversation with many tool results
+    let total_turns = 400;
 
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
+    let mut tool_call_counter = 0usize;
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         if i == needle_position {
-            // Plant the needle
+            // Plant the needle as a user message
             events.push(make_input_event(
                 session_id,
                 format!(
@@ -66,11 +78,62 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
                 seq,
             ));
             seq += 1;
+            events.push(make_output_event(
+                session_id,
+                "Got it, I've noted that configuration.".to_string(),
+                seq,
+            ));
+            seq += 1;
+        } else if i % 5 == 0 {
+            // Every 5th turn: user asks to read a file, assistant calls tool, tool returns large result
+            let filename = generate_realistic_filename(i + variant);
+            events.push(make_input_event(
+                session_id,
+                format!("Can you read {} and tell me what's in it?", filename),
+                seq,
+            ));
+            seq += 1;
+
+            let tool_call_id = format!("call_needle_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"path": filename}),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_tool_event(
+                session_id,
+                "read_file",
+                &tool_call_id,
+                generate_large_file_content(i + variant),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i),
+                seq,
+            ));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i),
+                seq,
+            ));
             seq += 1;
         } else {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i),
+                seq,
+            ));
             seq += 1;
         }
     }
@@ -78,10 +141,13 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
     DatasetRecord {
         id: format!("needle_basic_{}", variant),
         description: format!(
-            "Find {} value planted at event {} in {} event conversation",
-            key_name, needle_position, total_events
+            "Find {} value planted at turn {} in {} turn conversation with large tool results",
+            key_name, needle_position, total_turns
         ),
-        task: format!("What is the {} we configured earlier?", key_name),
+        task: format!(
+            "What is the {} we configured earlier in the conversation?",
+            key_name
+        ),
         input: Input { events },
         expectations: vec![
             format!("Response mentions the value: {}", key_value),
@@ -102,38 +168,106 @@ fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
     let session_id = SessionId::new();
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
-    let total_events = 200;
+    let mut tool_call_counter = 0usize;
+    let total_turns = 350;
 
     let service_name = "UserAuthService";
     let auth_method = "OAuth 2.0";
     let storage = "Redis";
     let port = "8443";
 
+    // Plant information at early positions so they get trimmed
     let plants = [
-        (10, format!("Let's call the authentication service {}", service_name)),
-        (45, format!("{} will use {} for authentication flow", service_name, auth_method)),
-        (80, format!("We'll cache {} sessions in {}", service_name, storage)),
-        (120, format!("{} should run on port {}", service_name, port)),
+        (
+            15,
+            format!("Let's call the authentication service {}", service_name),
+        ),
+        (
+            40,
+            format!(
+                "{} will use {} for authentication flow",
+                service_name, auth_method
+            ),
+        ),
+        (
+            70,
+            format!("We'll cache {} sessions in {}", service_name, storage),
+        ),
+        (100, format!("{} should run on port {}", service_name, port)),
     ];
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         let plant = plants.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, content)) = plant {
             events.push(make_input_event(session_id, content.clone(), seq));
             seq += 1;
+            events.push(make_output_event(
+                session_id,
+                "Understood, I've noted that configuration decision.".to_string(),
+                seq,
+            ));
+            seq += 1;
+        } else if i % 4 == 0 {
+            // Every 4th turn: file read with large tool result
+            let filename = generate_realistic_filename(i + variant + 1000);
+            events.push(make_input_event(
+                session_id,
+                format!("Let me check {}", filename),
+                seq,
+            ));
+            seq += 1;
+
+            let tool_call_id = format!("call_multihop_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"path": filename}),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_tool_event(
+                session_id,
+                "read_file",
+                &tool_call_id,
+                generate_large_file_content(i + variant + 1000),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i + 1000),
+                seq,
+            ));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i),
+                seq,
+            ));
             seq += 1;
         } else {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i),
+                seq,
+            ));
             seq += 1;
         }
     }
 
     DatasetRecord {
         id: format!("multi_hop_{}", variant),
-        description: "Synthesize service configuration from multiple points in conversation".to_string(),
+        description: format!(
+            "Synthesize service configuration from 4 points across {} turn conversation",
+            total_turns
+        ),
         task: format!(
             "Summarize the complete configuration for {}: what authentication method, caching, and port?",
             service_name
@@ -165,18 +299,25 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
     let session_id = SessionId::new();
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
+    let mut tool_call_counter = 0usize;
 
     let function_versions = [
-        (0, "fn calculate(x: i32) -> i32 { x }"),
-        (20, "fn calculate(x: i32) -> i32 { x * 2 }"),
-        (40, "fn calculate(x: i32, y: i32) -> i32 { (x + y) * 2 }"),
-        (60, "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }"),
-        (80, "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }"),
+        (5, "fn calculate(x: i32) -> i32 { x }"),
+        (30, "fn calculate(x: i32) -> i32 { x * 2 }"),
+        (60, "fn calculate(x: i32, y: i32) -> i32 { (x + y) * 2 }"),
+        (
+            90,
+            "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }",
+        ),
+        (
+            120,
+            "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }",
+        ),
     ];
 
-    let total_events = 150;
+    let total_turns = 380;
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         let version = function_versions.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, code)) = version {
@@ -192,30 +333,55 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
                 seq,
             ));
             seq += 1;
-        } else if i % 3 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+        } else if i % 4 == 0 {
+            // Every 4th turn: large tool result
+            let tool_call_id = format!("call_cumul_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            let filename = generate_realistic_filename(i + variant + 2000);
+
+            events.push(make_input_event(
+                session_id,
+                format!("Read {}", filename),
+                seq,
+            ));
             seq += 1;
-        } else if i % 3 == 1 {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
-            seq += 1;
-        } else {
-            // First, add assistant message with the tool call
-            let tool_call_id = format!("call_{}", i);
+
             events.push(make_output_event_with_tool_call(
                 session_id,
                 "",
                 &tool_call_id,
                 "read_file",
-                serde_json::json!({"filename": format!("file_{}.txt", i)}),
+                serde_json::json!({"path": filename}),
                 seq,
             ));
             seq += 1;
-            // Then add the tool result
+
             events.push(make_tool_event(
                 session_id,
                 "read_file",
-                tool_call_id,
-                generate_filler_file_content(i),
+                &tool_call_id,
+                generate_large_file_content(i + variant + 2000),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i + 2000),
+                seq,
+            ));
+            seq += 1;
+        } else if i % 3 == 0 {
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i),
+                seq,
+            ));
+            seq += 1;
+        } else {
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i),
                 seq,
             ));
             seq += 1;
@@ -226,7 +392,10 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
 
     DatasetRecord {
         id: format!("cumulative_{}", variant),
-        description: "Track cumulative changes to a function across conversation".to_string(),
+        description: format!(
+            "Track cumulative changes to a function across {} turn conversation",
+            total_turns
+        ),
         task: "What is the current/final version of the calculate function? Show the complete function signature and body.".to_string(),
         input: Input { events },
         expectations: vec![
@@ -261,7 +430,10 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
                 ("PostgreSQL", "Let's use PostgreSQL for the database"),
                 ("MySQL", "Actually, let's switch to MySQL instead"),
                 ("MongoDB", "On second thought, MongoDB would be better"),
-                ("PostgreSQL", "After more research, let's go back to PostgreSQL"),
+                (
+                    "PostgreSQL",
+                    "After more research, let's go back to PostgreSQL",
+                ),
                 ("CockroachDB", "Final decision: we'll use CockroachDB"),
             ],
         ),
@@ -290,12 +462,14 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
     ];
 
     let (topic, task, choices) = &decision_topics[variant % decision_topics.len()];
-    let total_events = 180 + (variant * 20) % 60;
+    let total_turns = 360;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
+    let mut tool_call_counter = 0usize;
 
+    // Spread decisions across the conversation, earlier ones will be trimmed
     let positions: Vec<usize> = (0..choices.len())
-        .map(|i| 5 + i * (total_events / choices.len()))
+        .map(|i| 10 + i * (total_turns / (choices.len() + 1)))
         .collect();
 
     let decisions: Vec<(usize, &str, &str)> = positions
@@ -304,7 +478,7 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
         .map(|(pos, (name, stmt))| (*pos, *name, *stmt))
         .collect();
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         let decision = decisions.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, _name, statement)) = decision {
@@ -316,11 +490,57 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
                 seq,
             ));
             seq += 1;
+        } else if i % 4 == 0 {
+            // Large tool results
+            let tool_call_id = format!("call_decision_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            let filename = generate_realistic_filename(i + variant + 3000);
+
+            events.push(make_input_event(
+                session_id,
+                format!("Check {}", filename),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"path": filename}),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_tool_event(
+                session_id,
+                "read_file",
+                &tool_call_id,
+                generate_large_file_content(i + variant + 3000),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i + 3000),
+                seq,
+            ));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i + variant),
+                seq,
+            ));
             seq += 1;
         } else {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i + variant),
+                seq,
+            ));
             seq += 1;
         }
     }
@@ -329,7 +549,12 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
 
     DatasetRecord {
         id: format!("final_decision_{}_{}", topic, variant),
-        description: format!("Decision about {} changes {} times", topic, choices.len()),
+        description: format!(
+            "Decision about {} changes {} times across {} turns",
+            topic,
+            choices.len(),
+            total_turns
+        ),
         task: task.to_string(),
         input: Input { events },
         expectations: vec![
@@ -359,27 +584,43 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
         (
             "api_version",
             "List all the API versions we went through in order.",
-            vec![("v1", "Starting with v1"), ("v2", "Bump to v2"), ("v2.1", "Patch v2.1"), ("v3", "Major v3")],
+            vec![
+                ("v1", "Starting with v1"),
+                ("v2", "Bump to v2"),
+                ("v2.1", "Patch v2.1"),
+                ("v3", "Major v3"),
+            ],
         ),
         (
             "sprint",
             "List all the sprint names we completed in order.",
-            vec![("Alpha", "Sprint Alpha"), ("Beta", "Sprint Beta"), ("Gamma", "Sprint Gamma"), ("Delta", "Sprint Delta"), ("Epsilon", "Sprint Epsilon")],
+            vec![
+                ("Alpha", "Sprint Alpha"),
+                ("Beta", "Sprint Beta"),
+                ("Gamma", "Sprint Gamma"),
+                ("Delta", "Sprint Delta"),
+                ("Epsilon", "Sprint Epsilon"),
+            ],
         ),
         (
             "release",
             "List all the release codenames in order.",
-            vec![("Falcon", "Release Falcon"), ("Griffin", "Release Griffin"), ("Hydra", "Release Hydra")],
+            vec![
+                ("Falcon", "Release Falcon"),
+                ("Griffin", "Release Griffin"),
+                ("Hydra", "Release Hydra"),
+            ],
         ),
     ];
 
     let (topic, task, versions) = &timeline_topics[variant % timeline_topics.len()];
-    let total_events = 160 + (variant * 15) % 40;
+    let total_turns = 340;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
+    let mut tool_call_counter = 0usize;
 
     let positions: Vec<usize> = (0..versions.len())
-        .map(|i| 8 + i * (total_events / versions.len()))
+        .map(|i| 15 + i * (total_turns / (versions.len() + 1)))
         .collect();
 
     let version_list: Vec<(usize, &str, &str)> = positions
@@ -388,19 +629,73 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
         .map(|(pos, (ver, stmt))| (*pos, *ver, *stmt))
         .collect();
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         let version = version_list.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, ver, statement)) = version {
-            events.push(make_input_event(session_id, format!("{} - {}", statement, ver), seq));
+            events.push(make_input_event(
+                session_id,
+                format!("{} - {}", statement, ver),
+                seq,
+            ));
             seq += 1;
-            events.push(make_output_event(session_id, format!("Updated to {}.", ver), seq));
+            events.push(make_output_event(
+                session_id,
+                format!("Updated to {}.", ver),
+                seq,
+            ));
+            seq += 1;
+        } else if i % 4 == 0 {
+            // Large tool results
+            let tool_call_id = format!("call_timeline_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            let filename = generate_realistic_filename(i + variant + 4000);
+
+            events.push(make_input_event(
+                session_id,
+                format!("Show me {}", filename),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"path": filename}),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_tool_event(
+                session_id,
+                "read_file",
+                &tool_call_id,
+                generate_large_file_content(i + variant + 4000),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i + 4000),
+                seq,
+            ));
             seq += 1;
         } else if i % 2 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i + variant),
+                seq,
+            ));
             seq += 1;
         } else {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i + variant),
+                seq,
+            ));
             seq += 1;
         }
     }
@@ -409,12 +704,18 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
 
     DatasetRecord {
         id: format!("timeline_{}_{}", topic, variant),
-        description: format!("Recreate timeline of {} changes", topic),
+        description: format!(
+            "Recreate timeline of {} changes across {} turns",
+            topic, total_turns
+        ),
         task: task.to_string(),
         input: Input { events },
         expectations: vec![
             format!("Response lists all versions: {}", version_names.join(", ")),
-            format!("Response lists them in correct chronological order: {}", version_names.join(" → ")),
+            format!(
+                "Response lists them in correct chronological order: {}",
+                version_names.join(" → ")
+            ),
         ],
         meta: Meta {
             scenario_type: Some("decision_timeline".to_string()),
@@ -470,30 +771,38 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
         ),
     ];
 
-    let (name, task, expected, tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
-    let total_events = 140 + (variant * 20) % 40;
+    let (name, task, expected, target_tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
+    let total_turns = 320;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
+    let mut tool_call_counter = 0usize;
 
-    let positions: Vec<usize> = (0..tool_calls.len())
-        .map(|i| 10 + i * (total_events / tool_calls.len()))
+    // Spread the target file reads across the conversation
+    let positions: Vec<usize> = (0..target_tool_calls.len())
+        .map(|i| 20 + i * (total_turns / (target_tool_calls.len() + 1)))
         .collect();
 
     let calls: Vec<(usize, &str, &str)> = positions
         .iter()
-        .zip(tool_calls.iter())
+        .zip(target_tool_calls.iter())
         .map(|(pos, (file, content))| (*pos, *file, *content))
         .collect();
 
-    for i in 0..total_events {
+    for i in 0..total_turns {
         let tool_call = calls.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, filename, content)) = tool_call {
             // User asks to read file
-            events.push(make_input_event(session_id, format!("Read the file {}", filename), seq));
+            events.push(make_input_event(
+                session_id,
+                format!("Read the file {}", filename),
+                seq,
+            ));
             seq += 1;
+
             // Assistant calls the tool
-            let tool_call_id = format!("read_file_{}", i);
+            let tool_call_id = format!("call_disambig_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
             events.push(make_output_event_with_tool_call(
                 session_id,
                 "",
@@ -503,34 +812,92 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
                 seq,
             ));
             seq += 1;
+
             // Tool result
             events.push(make_tool_event(
                 session_id,
                 "read_file",
-                tool_call_id,
+                &tool_call_id,
                 format!("Contents of {}:\n{}", filename, content),
                 seq,
             ));
             seq += 1;
+
             // Assistant response
-            events.push(make_output_event(session_id, format!("I've read {}.", filename), seq));
+            events.push(make_output_event(
+                session_id,
+                format!("I've read {}.", filename),
+                seq,
+            ));
+            seq += 1;
+        } else if i % 4 == 0 {
+            // Large filler tool results (different files)
+            let tool_call_id = format!("call_disambig_filler_{}_{}", variant, tool_call_counter);
+            tool_call_counter += 1;
+            let filename = generate_realistic_filename(i + variant + 5000);
+
+            events.push(make_input_event(
+                session_id,
+                format!("Check {}", filename),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event_with_tool_call(
+                session_id,
+                "",
+                &tool_call_id,
+                "read_file",
+                serde_json::json!({"path": filename}),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_tool_event(
+                session_id,
+                "read_file",
+                &tool_call_id,
+                generate_large_file_content(i + variant + 5000),
+                seq,
+            ));
+            seq += 1;
+
+            events.push(make_output_event(
+                session_id,
+                generate_file_summary_response(i + 5000),
+                seq,
+            ));
             seq += 1;
         } else if i % 2 == 0 {
-            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            events.push(make_input_event(
+                session_id,
+                generate_filler_user_message(i + variant),
+                seq,
+            ));
             seq += 1;
         } else {
-            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            events.push(make_output_event(
+                session_id,
+                generate_filler_assistant_message(i + variant),
+                seq,
+            ));
             seq += 1;
         }
     }
 
     DatasetRecord {
         id: format!("tool_disambig_{}_{}", name, variant),
-        description: "Same file read multiple times, must use most recent".to_string(),
+        description: format!(
+            "Same file read multiple times across {} turns, must use most recent",
+            total_turns
+        ),
         task: format!("{} (Use the most recent read)", task),
         input: Input { events },
         expectations: vec![
-            format!("Response uses the value from the MOST RECENT read: {}", expected),
+            format!(
+                "Response uses the value from the MOST RECENT read: {}",
+                expected
+            ),
             "Response does not confuse earlier file reads with the latest one".to_string(),
         ],
         meta: Meta {
@@ -546,6 +913,57 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
             ..Default::default()
         },
     }
+}
+
+// =============================================================================
+// Helper Functions for Generating Content
+// =============================================================================
+
+/// Generate realistic file paths
+fn generate_realistic_filename(seed: usize) -> String {
+    let paths = [
+        "src/lib.rs",
+        "src/main.rs",
+        "src/config.rs",
+        "src/database/mod.rs",
+        "src/database/queries.rs",
+        "src/api/handlers.rs",
+        "src/api/routes.rs",
+        "src/models/user.rs",
+        "src/models/session.rs",
+        "src/utils/helpers.rs",
+        "src/middleware/auth.rs",
+        "tests/integration_test.rs",
+        "tests/unit_tests.rs",
+        "Cargo.toml",
+        "package.json",
+        "tsconfig.json",
+        "docker-compose.yml",
+        "Dockerfile",
+        ".env.example",
+        "README.md",
+        "CHANGELOG.md",
+        "scripts/deploy.sh",
+        "scripts/setup.sh",
+        "migrations/001_create_users.sql",
+        "migrations/002_add_sessions.sql",
+    ];
+    paths[seed % paths.len()].to_string()
+}
+
+/// Generate a summary response after reading a file
+fn generate_file_summary_response(seed: usize) -> String {
+    let responses = [
+        "I've read the file. It contains the main application configuration with database settings, API endpoints, and feature flags. The structure follows the standard pattern we've been using.",
+        "This file contains the core business logic for handling user requests. I can see the validation rules, data transformation functions, and error handling patterns we discussed earlier.",
+        "The file shows our database schema and query definitions. It includes indexes, foreign keys, and the audit columns we added for compliance.",
+        "I've reviewed this configuration file. It has the environment-specific settings for development, staging, and production deployments.",
+        "This contains our API route definitions and middleware configuration. The authentication flow and rate limiting settings are all present.",
+        "The file includes utility functions for data parsing, validation, and formatting. These are used across multiple modules in the codebase.",
+        "I can see the test fixtures and mock data definitions. The test coverage includes unit tests, integration tests, and end-to-end scenarios.",
+        "This file defines the data models and their relationships. The type definitions match our database schema and API contracts.",
+    ];
+    responses[seed % responses.len()].to_string()
 }
 
 /// Generate filler user messages (longer to fill token budget faster)
@@ -583,7 +1001,9 @@ fn generate_filler_assistant_message(seed: usize) -> String {
 }
 
 /// Generate filler file content for tool results (large to fill token budget)
-fn generate_filler_file_content(seed: usize) -> String {
+/// Generate large file content for tool results (~1500-3000 tokens each)
+/// This is the key function for making scenarios exceed the context budget
+fn generate_large_file_content(seed: usize) -> String {
     let templates = [
         r#"use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -1033,13 +1453,18 @@ mod tests {
         assert_eq!(records.len(), 6);
 
         // Should have different types
-        let types: Vec<_> = records.iter().filter_map(|r| r.meta.scenario_type.as_ref()).collect();
+        let types: Vec<_> = records
+            .iter()
+            .filter_map(|r| r.meta.scenario_type.as_ref())
+            .collect();
         assert!(types.iter().any(|t| t.as_str() == "needle_in_haystack"));
         assert!(types.iter().any(|t| t.as_str() == "multi_hop"));
         assert!(types.iter().any(|t| t.as_str() == "cumulative"));
         assert!(types.iter().any(|t| t.as_str() == "final_decision"));
         assert!(types.iter().any(|t| t.as_str() == "decision_timeline"));
-        assert!(types.iter().any(|t| t.as_str() == "tool_result_disambiguation"));
+        assert!(types
+            .iter()
+            .any(|t| t.as_str() == "tool_result_disambiguation"));
     }
 
     #[test]
@@ -1056,7 +1481,11 @@ mod tests {
     fn test_all_records_have_expectations() {
         let records = generate_synthetic();
         for record in &records {
-            assert!(!record.expectations.is_empty(), "Record {} should have expectations", record.id);
+            assert!(
+                !record.expectations.is_empty(),
+                "Record {} should have expectations",
+                record.id
+            );
         }
     }
 }

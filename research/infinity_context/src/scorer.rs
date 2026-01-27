@@ -398,6 +398,79 @@ impl Scorer {
     }
 }
 
+// ============================================================================
+// Health Check
+// ============================================================================
+
+/// Result of a health check
+#[derive(Debug)]
+pub struct HealthCheckResult {
+    pub llm_judge_configured: bool,
+    pub llm_judge_working: bool,
+    pub model: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Check if LLM judge is properly configured and working
+pub async fn check_llm_judge_health() -> HealthCheckResult {
+    // Check if API key is set
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            return HealthCheckResult {
+                llm_judge_configured: false,
+                llm_judge_working: false,
+                model: None,
+                error: Some("ANTHROPIC_API_KEY environment variable not set".to_string()),
+            };
+        }
+    };
+
+    let model = "claude-3-5-haiku-20241022".to_string();
+    let config = JudgeConfig {
+        model: model.clone(),
+        api_key,
+    };
+
+    // Try a simple judge call
+    let test_scorer = Scorer::llm_judge("health_check", "Response should say hello");
+    let result = evaluate_with_llm(&test_scorer, "Say hello", "Hello there!", &config).await;
+
+    match result {
+        Ok(score) => HealthCheckResult {
+            llm_judge_configured: true,
+            llm_judge_working: true,
+            model: Some(model),
+            error: Some(format!(
+                "Test score: {:.2} - {}",
+                score.value,
+                score.rationale.unwrap_or_default()
+            )),
+        },
+        Err(e) => HealthCheckResult {
+            llm_judge_configured: true,
+            llm_judge_working: false,
+            model: Some(model),
+            error: Some(format!("LLM judge call failed: {}", e)),
+        },
+    }
+}
+
+/// Check if a specific LLM provider API key is configured
+pub fn check_provider_api_key(provider: &str) -> (bool, Option<String>) {
+    let key_name = match provider.to_lowercase().as_str() {
+        "anthropic" | "claude" => "ANTHROPIC_API_KEY",
+        "openai" | "gpt" => "OPENAI_API_KEY",
+        _ => return (false, Some(format!("Unknown provider: {}", provider))),
+    };
+
+    match std::env::var(key_name) {
+        Ok(key) if !key.is_empty() => (true, None),
+        Ok(_) => (false, Some(format!("{} is set but empty", key_name))),
+        Err(_) => (false, Some(format!("{} not set", key_name))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

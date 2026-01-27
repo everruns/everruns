@@ -20,7 +20,8 @@ use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 // ============================================================================
 // Approach
@@ -369,7 +370,13 @@ pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult
 // Agentic Loop Execution
 // ============================================================================
 
-/// Execute scenario using InMemoryAgenticLoop
+/// Maximum retries for rate-limited requests
+const MAX_RETRIES: u32 = 5;
+
+/// Initial backoff delay in milliseconds
+const INITIAL_BACKOFF_MS: u64 = 5000;
+
+/// Execute scenario using InMemoryAgenticLoop with rate limit retry
 async fn execute_with_agentic_loop(
     config: &EvalConfig,
     record: &DatasetRecord,
@@ -377,44 +384,76 @@ async fn execute_with_agentic_loop(
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
 
-    let model = ModelWithProvider {
-        model: config.model.clone(),
-        provider_type,
-        api_key: Some(api_key),
-        base_url: None,
-    };
+    let mut retries = 0;
+    let mut backoff_ms = INITIAL_BACKOFF_MS;
 
-    // Build the agentic loop with seed events
-    let mut builder = InMemoryAgenticLoop::builder()
-        .agent_name("Eval Agent")
-        .system_prompt(build_system_prompt(config.approach))
-        .model(model)
-        .driver_registry(create_driver_registry())
-        .max_iterations(10)
-        .seed_events(record.input.events.clone());
+    loop {
+        let model = ModelWithProvider {
+            model: config.model.clone(),
+            provider_type: provider_type.clone(),
+            api_key: Some(api_key.clone()),
+            base_url: None,
+        };
 
-    // Add capability based on approach
-    match config.approach {
-        Approach::Baseline => {
-            // No capability - pass all messages through
+        // Build the agentic loop with seed events
+        let mut builder = InMemoryAgenticLoop::builder()
+            .agent_name("Eval Agent")
+            .system_prompt(build_system_prompt(config.approach))
+            .model(model)
+            .driver_registry(create_driver_registry())
+            .max_iterations(10)
+            .seed_events(record.input.events.clone());
+
+        // Add capability based on approach
+        match config.approach {
+            Approach::Baseline => {
+                // No capability - pass all messages through
+            }
+            Approach::NaiveTrim => {
+                builder = builder.capability(NaiveTrimCapability);
+            }
+            Approach::InfinityContext => {
+                builder = builder.capability(InfinityContextCapability);
+            }
         }
-        Approach::NaiveTrim => {
-            builder = builder.capability(NaiveTrimCapability);
+
+        let agentic_loop = builder.build().await?;
+
+        // Run the turn with the task as user input
+        let result = agentic_loop.run_turn(record.task.as_str()).await?;
+
+        // Check if turn failed (LLM failures return Ok with success=false)
+        if !result.success {
+            if let Some(ref err_str) = result.error {
+                let is_rate_limit = err_str.contains("429")
+                    || err_str.contains("rate_limit")
+                    || err_str.contains("Too Many Requests");
+
+                if is_rate_limit && retries < MAX_RETRIES {
+                    retries += 1;
+                    tracing::warn!(
+                        "Rate limited, retrying in {}ms (attempt {}/{})",
+                        backoff_ms,
+                        retries,
+                        MAX_RETRIES
+                    );
+                    sleep(Duration::from_millis(backoff_ms)).await;
+                    backoff_ms *= 2; // Exponential backoff
+                    continue; // Retry the loop
+                }
+            }
+            // Non-retryable failure - return error
+            return Err(anyhow::anyhow!(
+                "Turn failed: {}",
+                result.error.unwrap_or_else(|| "unknown error".to_string())
+            ));
         }
-        Approach::InfinityContext => {
-            builder = builder.capability(InfinityContextCapability);
-        }
+
+        // Success - extract metrics and return
+        let metrics =
+            extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
+        return Ok((result.response, metrics));
     }
-
-    let agentic_loop = builder.build().await?;
-
-    // Run the turn with the task as user input
-    let result = agentic_loop.run_turn(record.task.as_str()).await?;
-
-    // Extract metrics from events (ground truth from actual execution)
-    let metrics = extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
-
-    Ok((result.response, metrics))
 }
 
 /// Extract evaluation metrics from events emitted during execution.
