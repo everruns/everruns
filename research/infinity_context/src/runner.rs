@@ -104,6 +104,10 @@ pub struct EvalMetrics {
     pub messages_in_context: usize,
     /// Messages excluded from context
     pub messages_excluded: usize,
+    /// Total retry attempts across all LLM calls (due to rate limits)
+    pub retry_attempts: u32,
+    /// Total time spent waiting for retries in milliseconds
+    pub retry_wait_ms: u64,
 }
 
 /// Result of running a single record with an approach
@@ -142,6 +146,10 @@ pub struct ApproachResults {
     pub avg_tokens: f64,
     pub avg_latency_ms: f64,
     pub avg_history_queries: f64,
+    /// Total retry attempts across all records
+    pub total_retry_attempts: u32,
+    /// Total retry wait time in milliseconds across all records
+    pub total_retry_wait_ms: u64,
     pub record_results: Vec<RecordResult>,
 }
 
@@ -352,6 +360,10 @@ pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult
         0.0
     };
 
+    // Sum retry metrics across all records
+    let total_retry_attempts: u32 = results.iter().map(|r| r.metrics.retry_attempts).sum();
+    let total_retry_wait_ms: u64 = results.iter().map(|r| r.metrics.retry_wait_ms).sum();
+
     ApproachResults {
         approach_name: approach_name.to_string(),
         total_records: total,
@@ -362,6 +374,8 @@ pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult
         avg_tokens,
         avg_latency_ms: avg_latency,
         avg_history_queries: avg_queries,
+        total_retry_attempts,
+        total_retry_wait_ms,
         record_results: results,
     }
 }
@@ -478,6 +492,12 @@ async fn extract_metrics_from_events(
                 metrics.input_tokens += usage.input_tokens as usize;
                 metrics.output_tokens += usage.output_tokens as usize;
                 metrics.total_tokens += usage.total_tokens() as usize;
+            }
+
+            // Retry info from rate limit handling
+            if let Some(retry) = &data.metadata.retry {
+                metrics.retry_attempts += retry.attempts;
+                metrics.retry_wait_ms += retry.total_wait_ms;
             }
 
             // Messages in context from first LLM call (before any tool results added)

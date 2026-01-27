@@ -250,7 +250,7 @@ fn search_messages<'a>(
 
             // Message type boost
             match msg.role {
-                MessageRole::User | MessageRole::Assistant => score += 0.2,
+                MessageRole::User | MessageRole::Agent => score += 0.2,
                 MessageRole::System => score += 0.1,
                 MessageRole::ToolResult => {}
             }

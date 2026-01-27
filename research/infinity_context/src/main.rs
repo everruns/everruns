@@ -22,7 +22,7 @@ use anyhow::Result;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use dataset::{DatasetRecord, EvalResultRecord, RunMetadata};
@@ -461,16 +461,16 @@ fn print_run_status(run: &runner::RunResult) {
         run.metrics.history_queries
     );
 
-    if let Some(err) = &run.error {
-        if !run.metrics.context_exceeded {
-            println!("    {} {}", "Error:".red(), err);
-        }
+    if let Some(err) = &run.error
+        && !run.metrics.context_exceeded
+    {
+        println!("    {} {}", "Error:".red(), err);
     }
 }
 
 fn save_results(
     results: &EvaluationResults,
-    dataset_path: &PathBuf,
+    dataset_path: &Path,
     model: &str,
     moniker: Option<String>,
 ) -> Result<()> {
