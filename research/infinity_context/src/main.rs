@@ -336,7 +336,7 @@ async fn cmd_run(
 
     // Save results if requested
     if save {
-        save_results(&results, &dataset_path, &model, moniker, &approaches)?;
+        save_results(&results, &dataset_path, &model, moniker)?;
     }
 
     Ok(())
@@ -374,55 +374,56 @@ fn save_results(
     dataset_path: &PathBuf,
     model: &str,
     moniker: Option<String>,
-    approaches: &[Approach],
 ) -> Result<()> {
-    // Build filename: YYYYMMDD_HHMMSS__moniker.jsonl
-    let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-    let moniker = moniker.unwrap_or_else(|| generate_moniker(model));
-    let filename = format!("{}__{}.jsonl", timestamp, moniker);
-    let output_path = PathBuf::from("results").join(&filename);
-
     std::fs::create_dir_all("results")?;
 
-    // Convert results to JSONL records
-    let mut result_records = Vec::new();
+    let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+    let model_moniker = moniker.unwrap_or_else(|| generate_moniker(model));
+
+    // Save separate file per approach
     for approach_result in &results.approach_results {
-        for record_result in &approach_result.record_results {
-            result_records.push(EvalResultRecord {
-                id: record_result.record_id.clone(),
-                capability: record_result.approach_name.clone(),
-                score: record_result.score,
-                scores: record_result.scores.clone(),
-                response: record_result.response.clone(),
-                error: record_result.error.clone(),
-                metrics: record_result.metrics.clone().into(),
-            });
-        }
+        let filename = format!(
+            "{}__{}__{}.jsonl",
+            timestamp, model_moniker, approach_result.approach_name
+        );
+        let output_path = PathBuf::from("results").join(&filename);
+
+        // Convert to JSONL records
+        let result_records: Vec<EvalResultRecord> = approach_result
+            .record_results
+            .iter()
+            .map(|r| EvalResultRecord {
+                id: r.record_id.clone(),
+                capability: r.approach_name.clone(),
+                score: r.score,
+                scores: r.scores.clone(),
+                response: r.response.clone(),
+                error: r.error.clone(),
+                metrics: r.metrics.clone().into(),
+            })
+            .collect();
+
+        let metadata = RunMetadata {
+            timestamp: results.timestamp,
+            model: model.to_string(),
+            dataset: dataset_path.display().to_string(),
+            scenario_count: approach_result.total_records,
+            capability_count: 1,
+            capabilities: vec![approach_result.approach_name.clone()],
+        };
+
+        dataset::write_results(&output_path, &metadata, &result_records)?;
+
+        println!(
+            "{} Results saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_yellow()
+        );
     }
 
-    let metadata = RunMetadata {
-        timestamp: results.timestamp,
-        model: model.to_string(),
-        dataset: dataset_path.display().to_string(),
-        scenario_count: results
-            .approach_results
-            .first()
-            .map(|s| s.total_records)
-            .unwrap_or(0),
-        capability_count: approaches.len(),
-        capabilities: approaches.iter().map(|a| a.name().to_string()).collect(),
-    };
-
-    dataset::write_results(&output_path, &metadata, &result_records)?;
-
-    println!(
-        "\n{} Results saved to: {}",
-        "✓".bright_green(),
-        output_path.display().to_string().bright_yellow()
-    );
-
-    // Also save markdown report
-    let md_path = output_path.with_extension("md");
+    // Save combined markdown report
+    let md_filename = format!("{}__{}.md", timestamp, model_moniker);
+    let md_path = PathBuf::from("results").join(&md_filename);
     let report = report::generate(results);
     std::fs::write(&md_path, &report)?;
     println!(
