@@ -88,6 +88,8 @@ pub struct LlmCompletionMetadata {
     pub model: Option<String>,
     /// Finish reason
     pub finish_reason: Option<String>,
+    /// Retry metadata (present if rate limit retries occurred)
+    pub retry_metadata: Option<crate::llm_retry::RetryMetadata>,
 }
 
 /// Trait for LLM drivers

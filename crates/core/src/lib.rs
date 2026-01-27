@@ -51,6 +51,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
+pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
@@ -104,6 +105,9 @@ pub use llm_driver_registry::{
     LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
     ProviderConfig, ProviderType,
 };
+
+// LLM retry types re-exports
+pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
 pub use openai_protocol::OpenAIProtocolLlmDriver;

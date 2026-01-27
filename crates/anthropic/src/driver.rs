@@ -3,6 +3,10 @@
 // Implementation of LlmDriver for Anthropic's Claude API.
 // Uses the Messages API with streaming support.
 //
+// Rate limit handling: On 429 errors, the driver automatically retries with
+// exponential backoff, respecting the retry-after header if provided.
+// Retry metadata is included in the response for observability.
+//
 // Note: OTel instrumentation is handled via the event-listener pattern.
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
@@ -22,6 +26,9 @@ use everruns_core::llm_driver_registry::{
     LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent, ProviderType,
 };
+use everruns_core::llm_retry::{
+    LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
+};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -33,6 +40,9 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Implements `LlmDriver` for Anthropic's Messages API.
 /// Supports streaming responses and tool calls.
 ///
+/// Rate limit handling: On 429 errors, automatically retries with exponential
+/// backoff, respecting the `retry-after` header if provided by Anthropic.
+///
 /// # Example
 ///
 /// ```ignore
@@ -43,6 +53,9 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// let driver = AnthropicLlmDriver::new("your-api-key");
 /// // or with custom endpoint
 /// let driver = AnthropicLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
+/// // or with custom retry config
+/// let driver = AnthropicLlmDriver::new("your-api-key")
+///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
 pub struct AnthropicLlmDriver {
@@ -51,6 +64,8 @@ pub struct AnthropicLlmDriver {
     api_url: String,
     /// Whether using a custom base URL (not Anthropic's API)
     uses_custom_url: bool,
+    /// Retry configuration for rate limit errors
+    retry_config: LlmRetryConfig,
 }
 
 impl AnthropicLlmDriver {
@@ -61,6 +76,7 @@ impl AnthropicLlmDriver {
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
             uses_custom_url: false,
+            retry_config: LlmRetryConfig::default(),
         }
     }
 
@@ -78,7 +94,14 @@ impl AnthropicLlmDriver {
             api_key: api_key.into(),
             api_url: api_url.into(),
             uses_custom_url: true,
+            retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// Configure retry behavior for rate limit errors
+    pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
+        self.retry_config = config;
+        self
     }
 
     /// Check if using a custom base URL
@@ -310,30 +333,91 @@ impl LlmDriver for AnthropicLlmDriver {
             thinking,
         };
 
-        // Build request with headers
-        let mut request_builder = self
-            .client
-            .post(&self.api_url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("Content-Type", "application/json");
+        // Retry loop for rate limit (429) and transient errors
+        let mut retry_metadata = RetryMetadata::default();
+        let mut last_error: Option<String> = None;
 
-        // Add interleaved thinking beta header when thinking is enabled with tools
-        // Required for tool use with extended thinking per Anthropic docs
-        if needs_interleaved_thinking {
-            request_builder =
-                request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
-            tracing::info!("AnthropicDriver: enabling interleaved thinking beta for tool use");
-        }
+        let response = loop {
+            // Build request with headers (must rebuild each iteration)
+            let mut request_builder = self
+                .client
+                .post(&self.api_url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("Content-Type", "application/json");
 
-        let response = request_builder
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            // Add interleaved thinking beta header when thinking is enabled with tools
+            // Required for tool use with extended thinking per Anthropic docs
+            if needs_interleaved_thinking {
+                request_builder =
+                    request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+                if retry_metadata.attempts == 0 {
+                    tracing::info!(
+                        "AnthropicDriver: enabling interleaved thinking beta for tool use"
+                    );
+                }
+            }
 
-        if !response.status().is_success() {
+            let response = request_builder
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+
             let status = response.status();
+
+            if status.is_success() {
+                // Success - exit retry loop
+                break response;
+            }
+
+            // Check if this is a retryable error
+            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
+            {
+                // Parse rate limit info from headers before consuming response body
+                let rate_limit_info = if is_rate_limit_status(status) {
+                    Some(RateLimitInfo::from_anthropic_headers(response.headers()))
+                } else {
+                    None
+                };
+
+                let error_text = response.text().await.unwrap_or_default();
+
+                // Don't retry if this is a request-too-large error (not transient)
+                if is_anthropic_request_too_large(status, &error_text) {
+                    return Err(AgentLoopError::request_too_large(format!(
+                        "Anthropic API error ({}): {}",
+                        status, error_text
+                    )));
+                }
+
+                // Calculate wait duration
+                let wait_duration = rate_limit_info
+                    .as_ref()
+                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
+                    .unwrap_or_else(|| {
+                        self.retry_config.calculate_backoff(retry_metadata.attempts)
+                    });
+
+                tracing::warn!(
+                    status = %status,
+                    attempt = retry_metadata.attempts + 1,
+                    max_retries = self.retry_config.max_retries,
+                    wait_secs = wait_duration.as_secs_f64(),
+                    retry_after = ?rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
+                    "AnthropicDriver: rate limit or transient error, retrying"
+                );
+
+                // Record retry attempt
+                retry_metadata.record_retry(wait_duration, rate_limit_info);
+                last_error = Some(error_text);
+
+                // Wait before retry
+                tokio::time::sleep(wait_duration).await;
+                continue;
+            }
+
+            // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
 
@@ -342,7 +426,26 @@ impl LlmDriver for AnthropicLlmDriver {
                 return Err(AgentLoopError::request_too_large(error_msg));
             }
 
+            // If we exhausted retries, include that in the error message
+            if retry_metadata.attempts > 0 {
+                return Err(AgentLoopError::llm(format!(
+                    "{} (after {} retries, last error: {})",
+                    error_msg,
+                    retry_metadata.attempts,
+                    last_error.unwrap_or_default()
+                )));
+            }
+
             return Err(AgentLoopError::llm(error_msg));
+        };
+
+        // Log successful retry recovery
+        if retry_metadata.had_retries() {
+            tracing::info!(
+                attempts = retry_metadata.attempts,
+                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
+                "AnthropicDriver: request succeeded after retries"
+            );
         }
 
         let byte_stream = response.bytes_stream();
@@ -355,6 +458,12 @@ impl LlmDriver for AnthropicLlmDriver {
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        // Share retry metadata with stream closure (only set if retries occurred)
+        let shared_retry_metadata = if retry_metadata.had_retries() {
+            Some(Arc::new(retry_metadata))
+        } else {
+            None
+        };
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
@@ -364,6 +473,7 @@ impl LlmDriver for AnthropicLlmDriver {
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
                 match result {
@@ -538,6 +648,8 @@ impl LlmDriver for AnthropicLlmDriver {
                                     cache_creation_tokens: cache_creation,
                                     model: Some(model),
                                     finish_reason: Some("stop".to_string()),
+                                    retry_metadata: retry_metadata_for_done
+                                        .map(|arc| (*arc).clone()),
                                 }))
                             }
                             "error" => Ok(LlmStreamEvent::Error(format!(

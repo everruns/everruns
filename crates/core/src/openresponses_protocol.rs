@@ -3,6 +3,10 @@
 // Implementation of the Open Responses specification (https://www.openresponses.org/)
 // an open-source, vendor-neutral API standard for multi-provider LLM interfaces.
 //
+// Rate limit handling: On 429 errors, the driver automatically retries with
+// exponential backoff, respecting x-ratelimit-reset-* and retry-after headers.
+// Retry metadata is included in the response for observability.
+//
 // The spec is inspired by and interoperable with the OpenAI Responses API, offering:
 // - One spec, many providers (OpenAI, Anthropic, Gemini, local models)
 // - Agentic loop support with tool calls and state machines
@@ -28,6 +32,9 @@ use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::llm_retry::{
+    LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
+};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
@@ -37,6 +44,9 @@ const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
 /// Implements `LlmDriver` using the Open Responses specification
 /// (https://www.openresponses.org/). This driver targets OpenAI's API
 /// but follows the vendor-neutral Open Responses standard.
+///
+/// Rate limit handling: On 429 errors, automatically retries with exponential
+/// backoff, respecting `x-ratelimit-reset-*` and `retry-after` headers.
 ///
 /// The Open Responses spec is recommended for new projects, offering:
 /// - Better performance with reasoning models (o1, o3, GPT-5)
@@ -53,12 +63,17 @@ const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
 /// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key");
 /// // or with custom endpoint
 /// let driver = OpenResponsesProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
+/// // or with custom retry config
+/// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key")
+///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
 pub struct OpenResponsesProtocolLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
+    /// Retry configuration for rate limit errors
+    retry_config: LlmRetryConfig,
 }
 
 impl OpenResponsesProtocolLlmDriver {
@@ -68,6 +83,7 @@ impl OpenResponsesProtocolLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
+            retry_config: LlmRetryConfig::default(),
         }
     }
 
@@ -84,7 +100,14 @@ impl OpenResponsesProtocolLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: api_url.into(),
+            retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// Configure retry behavior for rate limit errors
+    pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
+        self.retry_config = config;
+        self
     }
 
     /// Get the API URL
@@ -277,23 +300,90 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             metadata,
         };
 
-        let response = self
-            .client
-            .post(&self.api_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+        // Retry loop for rate limit (429) and transient errors
+        let mut retry_metadata = RetryMetadata::default();
+        let mut last_error: Option<String> = None;
 
-        if !response.status().is_success() {
+        let response = loop {
+            let response = self
+                .client
+                .post(&self.api_url)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+
             let status = response.status();
+
+            if status.is_success() {
+                // Success - exit retry loop
+                break response;
+            }
+
+            // Check if this is a retryable error
+            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
+            {
+                // Parse rate limit info from headers before consuming response body
+                let rate_limit_info = if is_rate_limit_status(status) {
+                    Some(RateLimitInfo::from_openai_headers(response.headers()))
+                } else {
+                    None
+                };
+
+                let error_text = response.text().await.unwrap_or_default();
+
+                // Calculate wait duration
+                let wait_duration = rate_limit_info
+                    .as_ref()
+                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
+                    .unwrap_or_else(|| {
+                        self.retry_config.calculate_backoff(retry_metadata.attempts)
+                    });
+
+                tracing::warn!(
+                    status = %status,
+                    attempt = retry_metadata.attempts + 1,
+                    max_retries = self.retry_config.max_retries,
+                    wait_secs = wait_duration.as_secs_f64(),
+                    retry_after = ?rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
+                    "OpenResponsesDriver: rate limit or transient error, retrying"
+                );
+
+                // Record retry attempt
+                retry_metadata.record_retry(wait_duration, rate_limit_info);
+                last_error = Some(error_text);
+
+                // Wait before retry
+                tokio::time::sleep(wait_duration).await;
+                continue;
+            }
+
+            // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentLoopError::llm(format!(
-                "OpenAI Responses API error ({}): {}",
-                status, error_text
-            )));
+            let error_msg = format!("OpenAI Responses API error ({}): {}", status, error_text);
+
+            // If we exhausted retries, include that in the error message
+            if retry_metadata.attempts > 0 {
+                return Err(AgentLoopError::llm(format!(
+                    "{} (after {} retries, last error: {})",
+                    error_msg,
+                    retry_metadata.attempts,
+                    last_error.unwrap_or_default()
+                )));
+            }
+
+            return Err(AgentLoopError::llm(error_msg));
+        };
+
+        // Log successful retry recovery
+        if retry_metadata.had_retries() {
+            tracing::info!(
+                attempts = retry_metadata.attempts,
+                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
+                "OpenResponsesDriver: request succeeded after retries"
+            );
         }
 
         let byte_stream = response.bytes_stream();
@@ -305,6 +395,12 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCallAccumulator>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        // Share retry metadata with stream closure (only set if retries occurred)
+        let shared_retry_metadata = if retry_metadata.had_retries() {
+            Some(Arc::new(retry_metadata))
+        } else {
+            None
+        };
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
@@ -313,6 +409,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
+            let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
                 match result {
@@ -489,6 +586,8 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             cache_creation_tokens: None,
                                             model: Some(model),
                                             finish_reason: Some(reason),
+                                            retry_metadata: retry_metadata_for_done
+                                                .map(|arc| (*arc).clone()),
                                         }))
                                     }
 
