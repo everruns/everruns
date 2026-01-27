@@ -87,9 +87,9 @@ export function OrgProvider({ children }: OrgProviderProps) {
   useEffect(() => {
     if (!isInitialized || organizations.length === 0) return;
 
-    // If current org is no longer valid, reset to default
+    // If current org is null or no longer valid, set to default
     if (
-      currentOrg &&
+      !currentOrg ||
       !organizations.find((org) => org.public_id === currentOrg.public_id)
     ) {
       const defaultOrg = organizations.find(
