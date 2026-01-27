@@ -4,11 +4,7 @@
 // Decision: Use React Context + React Query for auth state management
 // Decision: Check auth config first, then only require login if auth is enabled
 
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useAuthConfig, useCurrentUser } from "@/hooks/use-auth";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
@@ -42,14 +38,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     error: configError,
   } = useAuthConfig();
 
-  // Only fetch user if auth is required
-  const shouldFetchUser = config?.mode !== "none";
-
+  // Always fetch user - this also sets the org cookie if missing
+  // In "none" mode, returns anonymous user with default org
   const {
     data: user,
     isLoading: userLoading,
     error: userError,
-  } = useCurrentUser(shouldFetchUser);
+  } = useCurrentUser(!!config);
 
   // Determine if authentication is required based on mode
   const requiresAuth = config ? config.mode !== "none" : false;
@@ -59,14 +54,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // 2. User data exists
   const isAuthenticated = !requiresAuth || !!user;
 
-  // Overall loading state
-  const isLoading = configLoading || (requiresAuth && userLoading);
+  // Overall loading state - always wait for user fetch (sets org cookie)
+  const isLoading = configLoading || userLoading;
 
   const value: AuthContextValue = {
     config,
     configLoading,
     configError: configError as Error | null,
-    user: requiresAuth ? user ?? null : null,
+    user: user ?? null,
     userLoading,
     userError: userError as Error | null,
     isAuthenticated,

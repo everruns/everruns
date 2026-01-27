@@ -3,8 +3,8 @@
 // Organization context and provider for multitenancy
 // Decision: Current org stored in localStorage for persistence across sessions
 // Decision: Default org ID used as fallback
-// Decision: When AUTH_MODE=none, use default org directly
 // Decision: Org selection via server-side cookie (everruns_org) for SSE compatibility
+// Decision: /v1/auth/me sets org cookie if missing, so we always have org context
 
 import {
   createContext,
@@ -22,12 +22,6 @@ import type { OrganizationMembership } from "@/lib/api/types";
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 const STORAGE_KEY = "everruns_current_org";
-
-// Default organization membership for anonymous auth mode
-const DEFAULT_ORG_MEMBERSHIP: OrganizationMembership = {
-  public_id: DEFAULT_ORG_PUBLIC_ID,
-  name: "Default Organization",
-};
 
 interface OrgContextValue {
   /** Currently selected organization */
@@ -47,21 +41,16 @@ interface OrgProviderProps {
 }
 
 export function OrgProvider({ children }: OrgProviderProps) {
-  const { user, isLoading: authLoading, requiresAuth } = useAuth();
-  const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
+  const { user, isLoading: authLoading } = useAuth();
+  const [currentOrg, setCurrentOrgState] =
+    useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Memoize organizations to prevent infinite re-renders
-  // When auth is not required (AUTH_MODE=none), use default org
+  // User is always fetched (even in none mode) and includes organizations
   const organizations = useMemo(
-    () => {
-      if (!requiresAuth) {
-        // Anonymous mode: use default organization
-        return [DEFAULT_ORG_MEMBERSHIP];
-      }
-      return user?.organizations ?? [];
-    },
-    [user?.organizations, requiresAuth]
+    () => user?.organizations ?? [],
+    [user?.organizations],
   );
 
   // Initialize current org from localStorage or default
@@ -73,7 +62,9 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
     if (storedOrgId && organizations.length > 0) {
       // Find the stored org in user's organizations
-      const storedOrg = organizations.find(org => org.public_id === storedOrgId);
+      const storedOrg = organizations.find(
+        (org) => org.public_id === storedOrgId,
+      );
       if (storedOrg) {
         setCurrentOrgState(storedOrg);
         setIsInitialized(true);
@@ -83,7 +74,9 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
     // Fall back to default org or first available org
     if (organizations.length > 0) {
-      const defaultOrg = organizations.find(org => org.public_id === DEFAULT_ORG_PUBLIC_ID);
+      const defaultOrg = organizations.find(
+        (org) => org.public_id === DEFAULT_ORG_PUBLIC_ID,
+      );
       setCurrentOrgState(defaultOrg ?? organizations[0]);
     }
 
@@ -95,8 +88,13 @@ export function OrgProvider({ children }: OrgProviderProps) {
     if (!isInitialized || organizations.length === 0) return;
 
     // If current org is no longer valid, reset to default
-    if (currentOrg && !organizations.find(org => org.public_id === currentOrg.public_id)) {
-      const defaultOrg = organizations.find(org => org.public_id === DEFAULT_ORG_PUBLIC_ID);
+    if (
+      currentOrg &&
+      !organizations.find((org) => org.public_id === currentOrg.public_id)
+    ) {
+      const defaultOrg = organizations.find(
+        (org) => org.public_id === DEFAULT_ORG_PUBLIC_ID,
+      );
       setCurrentOrgState(defaultOrg ?? organizations[0]);
     }
   }, [organizations, currentOrg, isInitialized]);
@@ -111,12 +109,15 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
   }, []);
 
-  const setCurrentOrg = useCallback((org: OrganizationMembership) => {
-    setCurrentOrgState(org);
-    localStorage.setItem(STORAGE_KEY, org.public_id);
-    // Set server-side cookie via API
-    void syncOrgCookie(org.public_id);
-  }, [syncOrgCookie]);
+  const setCurrentOrg = useCallback(
+    (org: OrganizationMembership) => {
+      setCurrentOrgState(org);
+      localStorage.setItem(STORAGE_KEY, org.public_id);
+      // Set server-side cookie via API
+      void syncOrgCookie(org.public_id);
+    },
+    [syncOrgCookie],
+  );
 
   // Sync currentOrg to server cookie on mount/change
   useEffect(() => {

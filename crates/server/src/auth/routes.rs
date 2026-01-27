@@ -21,7 +21,7 @@ use super::{
     api_key::generate_api_key,
     config::AuthMode,
     jwt::hash_token,
-    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ResolvedOrg},
+    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME, ResolvedOrg},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
 use crate::api::common::ListResponse;
@@ -441,7 +441,11 @@ pub async fn logout(jar: CookieJar) -> CookieJar {
 }
 
 /// GET /v1/auth/me - Get current user info
-pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
+/// Also sets everruns_org cookie if missing (using user's first org)
+pub async fn get_current_user(
+    user: AuthUser,
+    jar: CookieJar,
+) -> (CookieJar, Json<UserInfoResponse>) {
     // Always return organizations array (middleware ensures at least default org)
     let organizations = Some(
         user.organizations
@@ -453,14 +457,34 @@ pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
             .collect(),
     );
 
-    Json(UserInfoResponse {
-        id: user.id.to_string(),
-        email: user.email,
-        name: user.name,
-        roles: user.roles,
-        avatar_url: None,
-        organizations,
-    })
+    // Set org cookie if missing (ensures subsequent API calls have org context)
+    let jar = if jar.get(ORG_COOKIE_NAME).is_none() {
+        if let Some(org) = user.organizations.first() {
+            let cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
+                .path("/")
+                .http_only(false) // Allow JS to read for UI state
+                .secure(true)
+                .same_site(SameSite::Lax)
+                .build();
+            jar.add(cookie)
+        } else {
+            jar
+        }
+    } else {
+        jar
+    };
+
+    (
+        jar,
+        Json(UserInfoResponse {
+            id: user.id.to_string(),
+            email: user.email,
+            name: user.name,
+            roles: user.roles,
+            avatar_url: None,
+            organizations,
+        }),
+    )
 }
 
 /// GET /v1/auth/oauth/:provider - Redirect to OAuth provider
