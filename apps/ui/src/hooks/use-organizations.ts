@@ -7,15 +7,21 @@ import type { UpdateOrganizationRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useOrganization() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: [...queryKeys.organizations.detail(org ?? ""), org],
     queryFn: () => getOrganization(org!),
     enabled: !!org,
     staleTime: 30000,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useUpdateOrganization() {
@@ -24,11 +30,14 @@ export function useUpdateOrganization() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (data: UpdateOrganizationRequest) => updateOrganization(org!, data),
+    mutationFn: (data: UpdateOrganizationRequest) =>
+      updateOrganization(org!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       if (org) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.organizations.detail(org) });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.organizations.detail(org),
+        });
       }
       // Also invalidate auth session to refresh user's org list
       queryClient.invalidateQueries({ queryKey: queryKeys.users.me() });

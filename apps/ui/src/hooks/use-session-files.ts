@@ -42,46 +42,64 @@ const fileKeys = {
 export function useFiles(
   sessionId: string | undefined,
   path: string = "/",
-  recursive: boolean = false
+  recursive: boolean = false,
 ) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: fileKeys.list(org!, sessionId!, path, recursive),
     queryFn: () => listFiles(sessionId!, path, recursive),
     enabled: !!org && !!sessionId,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 /** Read a file */
 export function useFile(
   sessionId: string | undefined,
-  path: string | undefined
+  path: string | undefined,
 ) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: fileKeys.file(org!, sessionId!, path!),
     queryFn: () => readFile(sessionId!, path!),
     enabled: !!org && !!sessionId && !!path,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 /** Get file stat */
 export function useFileStat(
   sessionId: string | undefined,
-  path: string | undefined
+  path: string | undefined,
 ) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: fileKeys.stat(org!, sessionId!, path!),
     queryFn: () => statFile(sessionId!, path!),
     enabled: !!org && !!sessionId && !!path,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 // ============================================
@@ -117,13 +135,8 @@ export function useCreateDirectory() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      path,
-    }: {
-      sessionId: string;
-      path: string;
-    }) => mkdir(sessionId, path),
+    mutationFn: ({ sessionId, path }: { sessionId: string; path: string }) =>
+      mkdir(sessionId, path),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
