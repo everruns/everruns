@@ -229,6 +229,72 @@ The OpenAI crate provides two driver implementations:
 
 Both drivers share the same base URL handling and can work with OpenAI-compatible endpoints.
 
+## Automatic Retry for Transient Errors
+
+LLM drivers implement automatic retry with exponential backoff for transient errors. This follows official SDK behavior from OpenAI and Anthropic.
+
+### Retry Configuration
+
+Default retry config (matches official SDKs):
+- **max_retries**: 2
+- **initial_backoff**: 1 second
+- **max_backoff**: 60 seconds
+- **backoff_multiplier**: 2.0
+- **jitter_factor**: ±25%
+
+### Transient Error Detection
+
+The following HTTP status codes trigger automatic retry:
+- `408` - Request Timeout
+- `409` - Conflict
+- `429` - Too Many Requests (Rate Limited)
+- `5xx` - Server Errors (except 501 Not Implemented)
+
+### Rate Limit Header Support
+
+Drivers parse provider-specific headers to determine retry timing:
+
+**Standard Headers:**
+- `retry-after` - Seconds to wait (integer or HTTP-date)
+- `retry-after-ms` - Milliseconds to wait (used by OpenAI)
+
+**Anthropic-specific:**
+- `anthropic-ratelimit-requests-remaining`
+- `anthropic-ratelimit-requests-reset`
+- `anthropic-ratelimit-tokens-remaining`
+- `anthropic-ratelimit-tokens-reset`
+
+**OpenAI-specific:**
+- `x-ratelimit-remaining-requests`
+- `x-ratelimit-remaining-tokens`
+- `x-ratelimit-reset-requests`
+- `x-ratelimit-reset-tokens`
+
+### Retry Metadata
+
+On successful completion after retries, `LlmCompletionMetadata` includes:
+```rust
+pub struct RetryMetadata {
+    pub attempts: u32,              // Total attempts (1 = no retries)
+    pub total_retry_wait: Duration, // Total time spent waiting
+    pub last_rate_limit_info: Option<RateLimitInfo>,
+}
+```
+
+The `llm.generation` event includes retry info when retries occurred:
+```rust
+pub struct LlmRetryInfo {
+    pub attempts: u32,
+    pub total_wait_ms: u64,
+}
+```
+
+### Implementation Details
+
+1. **Retry-after cap**: Maximum wait time from `retry-after` headers is capped at 60 seconds
+2. **Exponential backoff**: When no `retry-after` header, uses exponential backoff with jitter
+3. **Rate limit type detection**: Distinguishes between request-based and token-based rate limits
+
 ## Testing
 
 1. **Unit Tests**: Each driver MUST have tests for error detection functions

@@ -1,17 +1,33 @@
 // LLM Rate Limit Retry Logic
 //
-// Provider-specific retry handling for 429 rate limit errors.
-// Separate from durable execution RetryPolicy - this handles transient API rate limits.
+// Provider-specific retry handling for transient API errors (429, 408, 409, 5xx).
+// Separate from durable execution RetryPolicy - this handles transient API errors.
+//
+// Aligns with official SDK behavior:
+// - Anthropic SDK: https://github.com/anthropics/anthropic-sdk-python
+// - OpenAI SDK: https://github.com/openai/openai-python
 //
 // Provider-specific headers:
-// - Anthropic: retry-after, anthropic-ratelimit-*
-// - OpenAI: retry-after, x-ratelimit-*
+// - Anthropic: retry-after, retry-after-ms, anthropic-ratelimit-*
+// - OpenAI: retry-after, retry-after-ms, x-ratelimit-*
 //
-// Design: exponential backoff with jitter, respecting provider retry-after hints.
+// Design: exponential backoff with 25% jitter, respecting provider retry-after hints.
+// Defaults match official SDKs: 2 retries, 1s initial, 60s max, 2x multiplier.
 
 use std::time::Duration;
 
-/// Configuration for LLM rate limit retry behavior
+/// Maximum retry-after value to honor (seconds).
+/// Matches official SDK behavior - if server says wait longer, use backoff instead.
+const MAX_RETRY_AFTER_SECS: u64 = 60;
+
+/// Configuration for LLM rate limit retry behavior.
+///
+/// Defaults match official Anthropic/OpenAI SDK behavior:
+/// - max_retries: 2
+/// - initial_backoff: 1 second
+/// - max_backoff: 60 seconds
+/// - backoff_multiplier: 2.0
+/// - jitter_factor: 0.25 (±25%)
 #[derive(Debug, Clone)]
 pub struct LlmRetryConfig {
     /// Maximum number of retry attempts (0 = no retries)
@@ -23,17 +39,19 @@ pub struct LlmRetryConfig {
     /// Backoff multiplier (typically 2.0 for exponential)
     pub backoff_multiplier: f64,
     /// Jitter factor (0.0-1.0, adds randomness to avoid thundering herd)
+    /// Official SDKs use 0.25 (±25%)
     pub jitter_factor: f64,
 }
 
 impl Default for LlmRetryConfig {
     fn default() -> Self {
+        // Matches official Anthropic/OpenAI SDK defaults
         Self {
-            max_retries: 3,
+            max_retries: 2,
             initial_backoff: Duration::from_secs(1),
             max_backoff: Duration::from_secs(60),
             backoff_multiplier: 2.0,
-            jitter_factor: 0.1,
+            jitter_factor: 0.25,
         }
     }
 }
@@ -47,14 +65,14 @@ impl LlmRetryConfig {
         }
     }
 
-    /// Create a config with aggressive retry settings
+    /// Create a config with aggressive retry settings (more retries, longer waits)
     pub fn aggressive() -> Self {
         Self {
             max_retries: 5,
             initial_backoff: Duration::from_millis(500),
             max_backoff: Duration::from_secs(120),
             backoff_multiplier: 2.0,
-            jitter_factor: 0.15,
+            jitter_factor: 0.25,
         }
     }
 
@@ -64,7 +82,9 @@ impl LlmRetryConfig {
             self.initial_backoff.as_secs_f64() * self.backoff_multiplier.powi(attempt as i32);
         let capped_backoff = base_backoff.min(self.max_backoff.as_secs_f64());
 
-        // Add jitter
+        // Add jitter (±jitter_factor around the base)
+        // Official SDKs use: sleep_seconds * (1 - 0.25 * random()) where random is 0-1
+        // This gives range [0.75, 1.0] * base
         let jitter = if self.jitter_factor > 0.0 {
             let jitter_range = capped_backoff * self.jitter_factor;
             // Simple deterministic jitter based on attempt number
@@ -112,23 +132,37 @@ pub enum RateLimitType {
 }
 
 impl RateLimitInfo {
-    /// Get the recommended wait duration, preferring retry-after if available
+    /// Get the recommended wait duration, preferring retry-after if available.
+    /// Caps retry-after at MAX_RETRY_AFTER_SECS (60s) like official SDKs.
     pub fn recommended_wait(&self, config: &LlmRetryConfig, attempt: u32) -> Duration {
         if let Some(retry_after) = self.retry_after_secs {
-            // Provider told us exactly how long to wait
-            Duration::from_secs(retry_after)
-        } else {
-            // Fall back to exponential backoff
-            config.calculate_backoff(attempt)
+            // Provider told us how long to wait
+            // Cap at 60s like official SDKs - if longer, use backoff instead
+            if retry_after > 0 && retry_after <= MAX_RETRY_AFTER_SECS {
+                return Duration::from_secs(retry_after);
+            }
         }
+        // Fall back to exponential backoff
+        config.calculate_backoff(attempt)
     }
 
     /// Parse rate limit info from Anthropic response headers
     pub fn from_anthropic_headers(headers: &reqwest::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
-        // retry-after header (standard)
-        if let Some(val) = headers.get("retry-after")
+        // Try non-standard retry-after-ms header first (milliseconds)
+        // Used by some providers for sub-second precision
+        if let Some(val) = headers.get("retry-after-ms")
+            && let Ok(s) = val.to_str()
+            && let Ok(ms) = s.parse::<u64>()
+        {
+            // Convert ms to seconds (round up)
+            info.retry_after_secs = Some(ms.div_ceil(1000));
+        }
+
+        // retry-after header (standard, seconds)
+        if info.retry_after_secs.is_none()
+            && let Some(val) = headers.get("retry-after")
             && let Ok(s) = val.to_str()
         {
             info.retry_after_secs = s.parse().ok();
@@ -176,8 +210,18 @@ impl RateLimitInfo {
     pub fn from_openai_headers(headers: &reqwest::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
-        // retry-after header (standard)
-        if let Some(val) = headers.get("retry-after")
+        // Try non-standard retry-after-ms header first (milliseconds)
+        if let Some(val) = headers.get("retry-after-ms")
+            && let Ok(s) = val.to_str()
+            && let Ok(ms) = s.parse::<u64>()
+        {
+            // Convert ms to seconds (round up)
+            info.retry_after_secs = Some(ms.div_ceil(1000));
+        }
+
+        // retry-after header (standard, seconds)
+        if info.retry_after_secs.is_none()
+            && let Some(val) = headers.get("retry-after")
             && let Ok(s) = val.to_str()
         {
             info.retry_after_secs = s.parse().ok();
@@ -304,9 +348,22 @@ pub fn is_rate_limit_status(status: reqwest::StatusCode) -> bool {
     status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
-/// Check if an error is a transient error that should be retried
-/// (network errors, 429, 5xx server errors)
+/// Check if an error is a transient error that should be retried.
+///
+/// Matches official SDK behavior - retries on:
+/// - 408 Request Timeout
+/// - 409 Conflict (lock timeout)
+/// - 429 Too Many Requests (rate limit)
+/// - 5xx Server errors (except 501 Not Implemented)
 pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
+    // 408 Request Timeout
+    if status == reqwest::StatusCode::REQUEST_TIMEOUT {
+        return true;
+    }
+    // 409 Conflict (often lock timeout in APIs)
+    if status == reqwest::StatusCode::CONFLICT {
+        return true;
+    }
     // 429 Too Many Requests
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return true;
@@ -327,11 +384,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_config() {
+    fn test_default_config_matches_official_sdks() {
+        // Defaults should match official Anthropic/OpenAI SDK behavior
         let config = LlmRetryConfig::default();
-        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.max_retries, 2); // SDK default is 2
         assert_eq!(config.initial_backoff, Duration::from_secs(1));
+        assert_eq!(config.max_backoff, Duration::from_secs(60));
         assert_eq!(config.backoff_multiplier, 2.0);
+        assert!((config.jitter_factor - 0.25).abs() < 0.001); // SDK uses ±25%
     }
 
     #[test]
@@ -401,6 +461,22 @@ mod tests {
     }
 
     #[test]
+    fn test_rate_limit_info_recommended_wait_capped_at_60s() {
+        // Like official SDKs, if retry-after > 60s, use backoff instead
+        let config = LlmRetryConfig {
+            jitter_factor: 0.0, // No jitter for predictable test
+            ..Default::default()
+        };
+        let info = RateLimitInfo {
+            retry_after_secs: Some(120), // 2 minutes - too long
+            ..Default::default()
+        };
+
+        // Should fall back to exponential backoff, not use 120s
+        assert_eq!(info.recommended_wait(&config, 0), Duration::from_secs(1));
+    }
+
+    #[test]
     fn test_rate_limit_info_recommended_wait_fallback() {
         let config = LlmRetryConfig {
             initial_backoff: Duration::from_secs(1),
@@ -432,21 +508,30 @@ mod tests {
     }
 
     #[test]
-    fn test_is_transient_error() {
-        assert!(is_transient_error(reqwest::StatusCode::TOO_MANY_REQUESTS));
+    fn test_is_transient_error_matches_official_sdks() {
+        // Official SDKs retry on: 408, 409, 429, 5xx (except 501)
+        assert!(is_transient_error(reqwest::StatusCode::REQUEST_TIMEOUT)); // 408
+        assert!(is_transient_error(reqwest::StatusCode::CONFLICT)); // 409
+        assert!(is_transient_error(reqwest::StatusCode::TOO_MANY_REQUESTS)); // 429
         assert!(is_transient_error(
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
-        ));
-        assert!(is_transient_error(reqwest::StatusCode::BAD_GATEWAY));
-        assert!(is_transient_error(reqwest::StatusCode::SERVICE_UNAVAILABLE));
-        assert!(is_transient_error(reqwest::StatusCode::GATEWAY_TIMEOUT));
+        )); // 500
+        assert!(is_transient_error(reqwest::StatusCode::BAD_GATEWAY)); // 502
+        assert!(is_transient_error(reqwest::StatusCode::SERVICE_UNAVAILABLE)); // 503
+        assert!(is_transient_error(reqwest::StatusCode::GATEWAY_TIMEOUT)); // 504
 
         // Not transient
         assert!(!is_transient_error(reqwest::StatusCode::OK));
-        assert!(!is_transient_error(reqwest::StatusCode::BAD_REQUEST));
-        assert!(!is_transient_error(reqwest::StatusCode::UNAUTHORIZED));
-        assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN));
-        assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND));
-        assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED));
+        assert!(!is_transient_error(reqwest::StatusCode::BAD_REQUEST)); // 400
+        assert!(!is_transient_error(reqwest::StatusCode::UNAUTHORIZED)); // 401
+        assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN)); // 403
+        assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND)); // 404
+        assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED)); // 501
+    }
+
+    #[test]
+    fn test_max_retry_after_constant() {
+        // Verify the constant matches SDK behavior
+        assert_eq!(MAX_RETRY_AFTER_SECS, 60);
     }
 }
