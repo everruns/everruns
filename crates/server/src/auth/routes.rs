@@ -826,7 +826,7 @@ async fn get_or_create_admin_user(
     state: &AuthState,
     admin: &super::config::AdminConfig,
 ) -> Result<AuthUser, AuthError> {
-    let user = state
+    let existing_user = state
         .db
         .get_user_by_email(&admin.email)
         .await
@@ -835,7 +835,7 @@ async fn get_or_create_admin_user(
             AuthError::unauthorized("Login failed")
         })?;
 
-    let user = if let Some(user) = user {
+    let user = if let Some(user) = existing_user {
         user
     } else {
         // Create admin user
@@ -844,7 +844,7 @@ async fn get_or_create_admin_user(
             AuthError::unauthorized("Login failed")
         })?;
 
-        state
+        let created_user = state
             .db
             .create_user(CreateUserRow {
                 email: admin.email.clone(),
@@ -860,13 +860,44 @@ async fn get_or_create_admin_user(
             .map_err(|e| {
                 tracing::error!("User creation error: {}", e);
                 AuthError::unauthorized("Login failed")
-            })?
+            })?;
+
+        // Add admin user to default organization
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to add admin user to default org: {}", e);
+                // Continue anyway
+            });
+
+        created_user
     };
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (for existing admin users not in any org)
+    let organizations = if organizations.is_empty() {
+        // Try to add user to default org
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, user.id)
+            .await;
+
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     Ok(AuthUser {
         id: user.id,
