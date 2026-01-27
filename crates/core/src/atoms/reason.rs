@@ -28,7 +28,7 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, OutputMessageCompletedData,
+    EventContext, EventRequest, LlmGenerationData, LlmRetryInfo, OutputMessageCompletedData,
     OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
     ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
     ToolDefinitionSummary,
@@ -885,12 +885,21 @@ where
         } else {
             Some(vec!["stop".to_string()])
         };
+        // Extract retry info from completion metadata (if retries occurred)
+        let retry_info = completion_metadata
+            .as_ref()
+            .and_then(|meta| meta.retry_metadata.as_ref())
+            .filter(|rm| rm.had_retries())
+            .map(|rm| LlmRetryInfo {
+                attempts: rm.attempts,
+                total_wait_ms: rm.total_retry_wait.as_millis() as u64,
+            });
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 session_id,
                 event_context,
-                LlmGenerationData::success_with_metadata(
+                LlmGenerationData::success_with_retry(
                     messages_for_event.clone(),
                     tools_summary,
                     Some(text.clone()).filter(|s| !s.is_empty()),
@@ -902,6 +911,7 @@ where
                     time_to_first_token_ms,
                     finish_reasons,
                     None, // response_id
+                    retry_info,
                 ),
             ))
             .await

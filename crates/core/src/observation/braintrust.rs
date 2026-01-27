@@ -1419,6 +1419,7 @@ mod tests {
                 error: None,
                 finish_reasons: Some(vec!["stop".to_string()]),
                 response_id: Some("resp_123".to_string()),
+                retry: None,
             },
         };
 
@@ -1630,6 +1631,7 @@ mod tests {
                 error: None,
                 finish_reasons: None,
                 response_id: None,
+                retry: None,
             },
         };
         let event = Event::new(
@@ -1891,6 +1893,7 @@ mod tests {
                 error: None,
                 finish_reasons: None,
                 response_id: None,
+                retry: None,
             },
         };
         let llm_event = Event::new(

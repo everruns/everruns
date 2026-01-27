@@ -51,6 +51,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
+pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
@@ -105,6 +106,9 @@ pub use llm_driver_registry::{
     ProviderConfig, ProviderType,
 };
 
+// LLM retry types re-exports
+pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
+
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
 pub use openai_protocol::OpenAIProtocolLlmDriver;
 
@@ -151,7 +155,7 @@ pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventBuilder,
     EventContext, EventData, EventRequest, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
-    LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata,
+    LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo, ModelMetadata,
     OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData, REASON_COMPLETED,
     REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,

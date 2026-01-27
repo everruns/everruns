@@ -456,6 +456,7 @@ impl LlmDriver for LlmSimDriver {
             cache_creation_tokens: None,
             model: Some(model_name),
             finish_reason: Some("stop".to_string()),
+            retry_metadata: None, // LlmSim doesn't implement retry
         })));
 
         Ok(Box::pin(stream::iter(events)))

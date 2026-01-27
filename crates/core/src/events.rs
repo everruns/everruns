@@ -780,6 +780,22 @@ pub struct LlmGenerationMetadata {
     /// Required for gen-ai semantic conventions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+
+    /// Retry information if rate limit retries occurred
+    /// Contains number of retries and total wait time
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<LlmRetryInfo>,
+}
+
+/// Information about rate limit retries during LLM generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmRetryInfo {
+    /// Number of retry attempts made (0 = succeeded on first try)
+    pub attempts: u32,
+
+    /// Total time spent waiting between retries in milliseconds
+    pub total_wait_ms: u64,
 }
 
 /// Data for llm.generation event
@@ -838,6 +854,7 @@ impl LlmGenerationData {
                 error: None,
                 finish_reasons,
                 response_id: None,
+                retry: None,
             },
         }
     }
@@ -871,6 +888,42 @@ impl LlmGenerationData {
                 error: None,
                 finish_reasons,
                 response_id,
+                retry: None,
+            },
+        }
+    }
+
+    /// Create a successful generation event with retry information
+    #[allow(clippy::too_many_arguments)]
+    pub fn success_with_retry(
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinitionSummary>,
+        text: Option<String>,
+        tool_calls: Vec<ToolCall>,
+        model: String,
+        provider: Option<String>,
+        usage: Option<TokenUsage>,
+        duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
+        finish_reasons: Option<Vec<String>>,
+        response_id: Option<String>,
+        retry: Option<LlmRetryInfo>,
+    ) -> Self {
+        Self {
+            messages,
+            tools,
+            output: LlmGenerationOutput { text, tool_calls },
+            metadata: LlmGenerationMetadata {
+                model,
+                provider,
+                usage,
+                duration_ms,
+                time_to_first_token_ms,
+                success: true,
+                error: None,
+                finish_reasons,
+                response_id,
+                retry,
             },
         }
     }
@@ -902,6 +955,7 @@ impl LlmGenerationData {
                 error: Some(error),
                 finish_reasons: Some(vec!["error".to_string()]),
                 response_id: None,
+                retry: None,
             },
         }
     }
