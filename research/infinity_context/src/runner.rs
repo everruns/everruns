@@ -203,8 +203,8 @@ async fn execute_with_agentic_loop(
         "naive_trim" => {
             builder = builder.capability(NaiveTrimCapability);
         }
-        _ => {
-            // baseline - no capability needed
+        id => {
+            anyhow::bail!("Unknown capability: {}", id);
         }
     }
 
@@ -308,25 +308,7 @@ fn build_system_prompt(capability: &dyn Capability) -> String {
 /// Get all available capabilities for evaluation
 pub fn all_capabilities() -> Vec<Arc<dyn Capability>> {
     vec![
-        Arc::new(BaselineCapability),
         Arc::new(NaiveTrimCapability),
         Arc::new(InfinityContextCapability),
     ]
-}
-
-/// Baseline capability - no filtering, passes all messages through
-pub struct BaselineCapability;
-
-impl Capability for BaselineCapability {
-    fn id(&self) -> &str {
-        "baseline"
-    }
-
-    fn name(&self) -> &str {
-        "baseline"
-    }
-
-    fn description(&self) -> &str {
-        "No context management - passes all messages through"
-    }
 }
