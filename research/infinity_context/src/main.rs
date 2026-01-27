@@ -6,8 +6,9 @@
 //! - Infinity: Trim + history query tool (proposed solution)
 //!
 //! Usage:
-//!   eval generate -o datasets/v1.jsonl     # Generate dataset
-//!   eval run -d datasets/v1.jsonl --save   # Run and save results
+//!   eval run --save                        # Run evals (dataset is in git)
+//!   eval run --model claude-sonnet-4-20250514 --save
+//!   eval generate                          # Regenerate dataset (rarely needed)
 
 pub mod capabilities;
 mod dataset;
@@ -50,7 +51,7 @@ enum Commands {
     /// Run evaluation against a dataset
     Run {
         /// Input dataset file (JSONL format)
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "datasets/infinity_context.jsonl")]
         dataset: PathBuf,
 
         /// Run a specific record by id
@@ -85,6 +86,9 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env from project root (two levels up from research/infinity_context)
+    let _ = dotenvy::from_filename("../../.env");
+
     let cli = Cli::parse();
 
     let filter = if cli.verbose {
