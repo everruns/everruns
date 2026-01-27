@@ -163,6 +163,45 @@ impl TurnResult {
 }
 
 // ============================================================================
+// Event Helpers
+// ============================================================================
+
+/// Extract messages from events
+///
+/// Processes `input.message` and `output.message.completed` events to extract
+/// the conversation history. Tool results from `tool.completed` events are
+/// also converted to messages.
+fn extract_messages_from_events(events: &[Event]) -> Vec<Message> {
+    events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::InputMessage(data) => Some(data.message.clone()),
+            EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+            EventData::ToolCompleted(data) => {
+                // Convert tool result to a Message with ToolResult content part
+                let result_str = data
+                    .result
+                    .as_ref()
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|p| p.as_text())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .unwrap_or_default();
+                Some(Message::tool_result(
+                    &data.tool_call_id,
+                    Some(serde_json::json!(result_str)),
+                    None,
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+// ============================================================================
 // Builder
 // ============================================================================
 
@@ -176,6 +215,7 @@ pub struct InMemoryAgenticLoopBuilder {
     tools: Vec<Box<dyn Tool>>,
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
+    seed_events: Vec<Event>,
 }
 
 impl Default for InMemoryAgenticLoopBuilder {
@@ -196,6 +236,7 @@ impl InMemoryAgenticLoopBuilder {
             tools: vec![],
             capabilities: vec![],
             max_iterations: 10,
+            seed_events: vec![],
         }
     }
 
@@ -308,6 +349,25 @@ impl InMemoryAgenticLoopBuilder {
         self
     }
 
+    /// Seed conversation history from events
+    ///
+    /// Messages are extracted from `input.message` and `output.message.completed` events
+    /// and stored in the message retriever. This allows replaying recorded conversations.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let events: Vec<Event> = load_events_from_dataset();
+    /// let runner = InMemoryAgenticLoop::builder()
+    ///     .seed_events(events)
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn seed_events(mut self, events: Vec<Event>) -> Self {
+        self.seed_events = events;
+        self
+    }
+
     /// Build the agentic loop
     pub async fn build(self) -> Result<InMemoryAgenticLoop> {
         // Create stores
@@ -360,6 +420,12 @@ impl InMemoryAgenticLoopBuilder {
             usage: None,
         };
         session_store.add_session(session).await;
+
+        // Seed messages from events if provided
+        if !self.seed_events.is_empty() {
+            let messages = extract_messages_from_events(&self.seed_events);
+            message_retriever.seed(session_id, messages).await;
+        }
 
         // Create provider store and driver registry
         let provider_store = InMemoryLlmProviderStore::new();

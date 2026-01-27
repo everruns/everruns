@@ -13,11 +13,10 @@ use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
 use crate::types::{EvalMetrics, ScenarioResult};
 use anyhow::Result;
 use everruns_core::Capability;
-use everruns_core::events::{Event, EventData, LLM_GENERATION, TOOL_COMPLETED};
+use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
-use everruns_core::message::Message;
 use everruns_core::traits::ModelWithProvider;
 use std::time::Instant;
 
@@ -119,44 +118,6 @@ fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
     std::env::var(key_name).map_err(|_| anyhow::anyhow!("{} not set", key_name))
 }
 
-// ============================================================================
-// Message Extraction
-// ============================================================================
-
-/// Extract messages from dataset record events
-fn extract_messages(record: &DatasetRecord) -> Vec<Message> {
-    record
-        .input
-        .events
-        .iter()
-        .filter_map(message_from_event)
-        .collect()
-}
-
-/// Extract a Message from a core Event
-fn message_from_event(event: &Event) -> Option<Message> {
-    match &event.data {
-        EventData::InputMessage(data) => Some(data.message.clone()),
-        EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
-        EventData::ToolCompleted(data) => {
-            // Convert tool result to a Message with ToolResult content part
-            let result_str = data
-                .result
-                .as_ref()
-                .map(|parts| {
-                    parts
-                        .iter()
-                        .filter_map(|p| p.as_text())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_default();
-            Some(Message::tool_result(&data.tool_call_id, Some(serde_json::json!(result_str)), None))
-        }
-        _ => None,
-    }
-}
-
 /// Convert expectations to LLM judge scorers
 fn expectations_to_scorers(expectations: &[String]) -> Vec<Scorer> {
     expectations
@@ -173,7 +134,6 @@ fn expectations_to_scorers(expectations: &[String]) -> Vec<Scorer> {
 /// Run a single scenario and return the result (without scoring)
 pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunResult {
     let start = Instant::now();
-    let messages = extract_messages(record);
 
     if config.dry_run {
         return RunResult {
@@ -181,14 +141,14 @@ pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunRes
             approach: config.approach,
             response: "[DRY RUN]".to_string(),
             metrics: EvalMetrics {
-                messages_in_context: messages.len(),
+                messages_in_context: record.input.events.len(),
                 ..Default::default()
             },
             error: None,
         };
     }
 
-    match execute_with_agentic_loop(config, record, &messages).await {
+    match execute_with_agentic_loop(config, record).await {
         Ok((response, metrics)) => RunResult {
             scenario_name: record.id.clone(),
             approach: config.approach,
@@ -273,7 +233,6 @@ fn create_judge_config() -> Option<JudgeConfig> {
 async fn execute_with_agentic_loop(
     config: &EvalConfig,
     record: &DatasetRecord,
-    messages: &[Message],
 ) -> Result<(String, EvalMetrics)> {
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
@@ -285,13 +244,14 @@ async fn execute_with_agentic_loop(
         base_url: None,
     };
 
-    // Build the agentic loop
+    // Build the agentic loop with seed events
     let mut builder = InMemoryAgenticLoop::builder()
         .agent_name("Eval Agent")
         .system_prompt(build_system_prompt(config.approach))
         .model(model)
         .driver_registry(create_driver_registry())
-        .max_iterations(10);
+        .max_iterations(10)
+        .seed_events(record.input.events.clone());
 
     // Add capability based on approach
     match config.approach {
@@ -307,23 +267,12 @@ async fn execute_with_agentic_loop(
     }
 
     let agentic_loop = builder.build().await?;
-    let session_id = agentic_loop.session_id();
-
-    // Seed all scenario messages into the retriever.
-    // The capability's message filter (if any) will determine what goes to the LLM.
-    // The query_history tool can access all messages via the retriever.
-    for msg in messages {
-        agentic_loop
-            .message_retriever()
-            .store(session_id, msg.clone())
-            .await?;
-    }
 
     // Run the turn with the task as user input
     let result = agentic_loop.run_turn(record.task.as_str()).await?;
 
     // Extract metrics from events (ground truth from actual execution)
-    let metrics = extract_metrics_from_events(&agentic_loop, messages.len()).await;
+    let metrics = extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
 
     Ok((result.response, metrics))
 }
