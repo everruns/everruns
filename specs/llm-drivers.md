@@ -295,6 +295,106 @@ pub struct LlmRetryInfo {
 2. **Exponential backoff**: When no `retry-after` header, uses exponential backoff with jitter
 3. **Rate limit type detection**: Distinguishes between request-based and token-based rate limits
 
+## Context Compaction (OpenAI Responses API)
+
+The `/v1/responses/compact` endpoint is a context-compression feature for the OpenAI Responses API. It reduces conversation context size when approaching the model's context window limit.
+
+### How It Works
+
+1. Send the current conversation window (the `input` items from `/v1/responses` calls)
+2. The endpoint returns a compacted window where:
+   - All prior **user messages** are kept verbatim
+   - Prior assistant messages, tool calls/results, and encrypted reasoning are replaced by one encrypted **compaction item**
+3. Use the returned `output` array as the `input` for the next `/v1/responses` call
+
+### LlmDriver Trait Methods
+
+```rust
+#[async_trait]
+pub trait LlmDriver: Send + Sync {
+    // ... existing methods ...
+
+    /// Check if this driver supports the compact endpoint
+    fn supports_compact(&self) -> bool {
+        false // Default: not supported
+    }
+
+    /// Compact a conversation to reduce context size
+    async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
+        Ok(None) // Default: not supported
+    }
+}
+```
+
+### Request Types
+
+```rust
+pub struct CompactRequest {
+    pub model: String,                     // Required
+    pub input: Vec<CompactInputItem>,      // Conversation items
+    pub previous_response_id: Option<String>, // Alternative to input
+    pub instructions: Option<String>,      // Optional system prompt
+}
+
+pub enum CompactInputItem {
+    Message { role: String, content: CompactContent },
+    FunctionCall { call_id: String, name: String, arguments: String },
+    FunctionCallOutput { call_id: String, output: String },
+    Compaction { encrypted_content: String }, // From previous compact
+}
+```
+
+### Response Types
+
+```rust
+pub struct CompactResponse {
+    pub output: Vec<CompactOutputItem>,
+    pub usage: Option<CompactUsage>,
+}
+
+pub enum CompactOutputItem {
+    Message { role: String, content: CompactContent }, // User messages kept
+    Compaction { encrypted_content: String },          // Encrypted context
+}
+```
+
+### Usage Example
+
+```rust
+use everruns_core::{CompactRequest, CompactInputItem, CompactContent};
+
+// Build compact request from conversation history
+let request = CompactRequest {
+    model: "gpt-4o".to_string(),
+    input: vec![
+        CompactInputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("Hello!".to_string()),
+        },
+        // ... more conversation items
+    ],
+    previous_response_id: None,
+    instructions: None,
+};
+
+// Check if driver supports compact
+if driver.supports_compact() {
+    let response = driver.compact(request).await?;
+    if let Some(compact_response) = response {
+        // Use compact_response.output as input for next /v1/responses call
+    }
+}
+```
+
+### Provider Support
+
+| Provider | Compact Support |
+|----------|----------------|
+| OpenAI (Responses API) | Yes |
+| OpenAI (Completions API) | No |
+| Anthropic | No |
+| LlmSim | No |
+
 ## Testing
 
 1. **Unit Tests**: Each driver MUST have tests for error detection functions

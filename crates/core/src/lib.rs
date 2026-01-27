@@ -114,7 +114,10 @@ pub use openai_protocol::OpenAIProtocolLlmDriver;
 
 // Open Responses Protocol driver (https://www.openresponses.org/)
 // Vendor-neutral API standard, recommended for new projects
-pub use openresponses_protocol::OpenResponsesProtocolLlmDriver;
+pub use openresponses_protocol::{
+    CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
+    CompactResponse, CompactUsage, OpenResponsesProtocolLlmDriver,
+};
 
 // Tool abstraction re-exports
 pub use tools::{
