@@ -4,37 +4,11 @@
 //! for eval-specific functionality.
 
 use chrono::{DateTime, Utc};
-use everruns_core::message::ContentPart;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Re-export core types
 pub use everruns_core::message::{Message, MessageRole};
-
-// ============================================================================
-// Token Estimation
-// ============================================================================
-
-/// Estimate token count from message content
-/// Uses character-based approximation: ~4 chars per token for English
-pub fn estimate_tokens(message: &Message) -> usize {
-    let content_len: usize = message
-        .content
-        .iter()
-        .map(|part| match part {
-            ContentPart::Text(t) => t.text.len(),
-            ContentPart::ToolCall(tc) => tc.name.len() + tc.arguments.to_string().len(),
-            ContentPart::ToolResult(tr) => {
-                tr.result.as_ref().map(|v| v.to_string().len()).unwrap_or(0)
-                    + tr.error.as_ref().map(|e| e.len()).unwrap_or(0)
-            }
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => 1000, // Images ~1k tokens
-        })
-        .sum();
-
-    // Rough approximation: 1 token ≈ 4 characters
-    content_len.div_ceil(4)
-}
 
 // ============================================================================
 // Context Strategy Configuration
@@ -66,32 +40,6 @@ impl Default for ContextStrategyConfig {
             context_budget_tokens: default_budget(),
             min_recent_messages: default_min_recent(),
         }
-    }
-}
-
-// ============================================================================
-// Message Extension Trait
-// ============================================================================
-
-/// Extension trait for Message with eval-specific helpers
-pub trait MessageExt {
-    /// Get text content as a single string
-    fn text_content(&self) -> String;
-    /// Estimate token count for this message
-    fn estimated_tokens(&self) -> usize;
-}
-
-impl MessageExt for Message {
-    fn text_content(&self) -> String {
-        self.content
-            .iter()
-            .filter_map(|part| part.as_text())
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    fn estimated_tokens(&self) -> usize {
-        estimate_tokens(self)
     }
 }
 
