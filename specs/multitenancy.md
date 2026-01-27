@@ -520,11 +520,89 @@ The `ResolvedOrg` extractor (`server/src/auth/middleware.rs`) derives org from t
 This approach eliminates redundancy (no need to specify org when API key already implies it) and provides cleaner URLs. The cookie-based approach for session auth works seamlessly with SSE (EventSource) since cookies are automatically sent with all requests.
 
 ### Anonymous Auth Mode (AUTH_MODE=none)
-When auth is disabled, the UI uses a hardcoded default organization:
+When auth is disabled, the system uses the default organization:
 - `public_id`: `org_00000000000000000000000000000001`
 - `name`: "Default Organization"
 
-The frontend `OrgProvider` handles this by returning `DEFAULT_ORG_MEMBERSHIP` when `!requiresAuth`.
+The backend `AuthUser::anonymous()` returns a user with the default org in their organizations list. The `ResolvedOrg` extractor uses this directly (no cookie needed for `AuthMethod::None`).
+
+### Org Cookie Initialization
+
+**Problem:** Race condition where UI components try to fetch org-scoped data before the org cookie is set.
+
+**Solution:** The org cookie is set automatically during authentication:
+
+1. **Login/Register/OAuth/Refresh endpoints:** `generate_token_response()` sets `everruns_org` cookie to user's first org
+2. **GET /v1/auth/me:** Sets `everruns_org` cookie if missing (fallback for edge cases)
+3. **Anonymous mode:** No cookie needed - `ResolvedOrg` uses default org from `AuthUser.organizations`
+
+**Cookie specification:**
+```
+Name: everruns_org
+Value: org_xxx (organization public_id)
+Path: /
+HttpOnly: false (allows JS to read for UI state sync)
+SameSite: Lax
+Secure: true
+```
+
+### UI Initialization Lifecycle
+
+**Problem:** Pages showing empty states instead of loading skeletons when org context isn't ready yet.
+
+**Root cause:** React Query returns `isLoading: false` when query is disabled (`enabled: false`). If org isn't ready, queries are disabled, and pages render empty states.
+
+**Solution:** Two-part fix:
+
+1. **Hooks include org loading state:**
+   ```typescript
+   export function useAgents() {
+     const { currentOrg, isLoading: orgLoading } = useOrg();
+     const query = useQuery({
+       queryKey: [...queryKeys.agents.list(), currentOrg?.public_id],
+       queryFn: () => listAgents(),
+       enabled: !!currentOrg,
+     });
+     // Return isLoading=true while org is initializing
+     return {
+       ...query,
+       isLoading: orgLoading || query.isLoading,
+     };
+   }
+   ```
+
+2. **Main layout shows global loader:**
+   ```typescript
+   // apps/ui/src/app/(main)/layout.tsx
+   const { isLoading: authLoading } = useAuth();
+   const { isLoading: orgLoading } = useOrg();
+   
+   if (authLoading || orgLoading) {
+     return <Loader />; // Spinner while initializing
+   }
+   ```
+
+**Affected hooks (all updated to include org loading):**
+- `useAgents`, `useAgent`
+- `useSessions`, `useSession`
+- `useCapabilities`, `useCapability`
+- `useLlmProviders`, `useLlmProvider`, `useLlmModels`, `useLlmProviderModels`, `useLlmModel`
+- `useMcpServers`, `useMcpServer`
+- `useOrganization`
+- `useFiles`, `useFile`, `useFileStat`
+
+**OrgProvider initialization flow:**
+1. `AuthProvider` fetches `/v1/auth/config` and `/v1/auth/me`
+2. `/v1/auth/me` returns user with organizations list (and sets org cookie if missing)
+3. `OrgProvider` waits for `authLoading` to become false
+4. `OrgProvider` initializes `currentOrg` from user's organizations
+5. Data hooks become enabled and fetch org-scoped data
+
+**Post-login flow:**
+1. Login API succeeds, sets auth + org cookies
+2. `useLogin` calls `refetchQueries` for user data
+3. `OrgProvider` sees organizations change, sets `currentOrg`
+4. Dashboard queries fire with org context ready
 
 ### System-Wide Resources
 Some resources remain system-wide (not org-scoped):
