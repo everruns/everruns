@@ -21,7 +21,7 @@ use super::{
     api_key::generate_api_key,
     config::AuthMode,
     jwt::hash_token,
-    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ResolvedOrg},
+    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME, ResolvedOrg},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
 use crate::api::common::ListResponse;
@@ -241,7 +241,20 @@ pub async fn login(
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -319,14 +332,18 @@ pub async fn register(
     // Fetch organization memberships (should include default org now)
     let organizations = fetch_user_organizations(&state.db, user.id)
         .await
-        .unwrap_or_else(|_| {
-            // Fallback to default org if fetch fails
-            vec![OrgMembership {
-                org_id: DEFAULT_ORG_ID,
-                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-                name: "Default Organization".to_string(),
-            }]
-        });
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -390,7 +407,20 @@ pub async fn refresh_token(
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -411,29 +441,50 @@ pub async fn logout(jar: CookieJar) -> CookieJar {
 }
 
 /// GET /v1/auth/me - Get current user info
-pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
-    let organizations = if user.organizations.is_empty() {
-        None
+/// Also sets everruns_org cookie if missing (using user's first org)
+pub async fn get_current_user(
+    user: AuthUser,
+    jar: CookieJar,
+) -> (CookieJar, Json<UserInfoResponse>) {
+    // Always return organizations array (middleware ensures at least default org)
+    let organizations = Some(
+        user.organizations
+            .iter()
+            .map(|o| OrgMembershipResponse {
+                public_id: o.public_id.clone(),
+                name: o.name.clone(),
+            })
+            .collect(),
+    );
+
+    // Set org cookie if missing (ensures subsequent API calls have org context)
+    let jar = if jar.get(ORG_COOKIE_NAME).is_none() {
+        if let Some(org) = user.organizations.first() {
+            let cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
+                .path("/")
+                .http_only(false) // Allow JS to read for UI state
+                .secure(true)
+                .same_site(SameSite::Lax)
+                .build();
+            jar.add(cookie)
+        } else {
+            jar
+        }
     } else {
-        Some(
-            user.organizations
-                .iter()
-                .map(|o| OrgMembershipResponse {
-                    public_id: o.public_id.clone(),
-                    name: o.name.clone(),
-                })
-                .collect(),
-        )
+        jar
     };
 
-    Json(UserInfoResponse {
-        id: user.id.to_string(),
-        email: user.email,
-        name: user.name,
-        roles: user.roles,
-        avatar_url: None,
-        organizations,
-    })
+    (
+        jar,
+        Json(UserInfoResponse {
+            id: user.id.to_string(),
+            email: user.email,
+            name: user.name,
+            roles: user.roles,
+            avatar_url: None,
+            organizations,
+        }),
+    )
 }
 
 /// GET /v1/auth/oauth/:provider - Redirect to OAuth provider
@@ -585,14 +636,18 @@ pub async fn oauth_callback(
     // Fetch organization memberships
     let organizations = fetch_user_organizations(&state.db, user.id)
         .await
-        .unwrap_or_else(|_| {
-            // Fallback to default org if fetch fails
-            vec![OrgMembership {
-                org_id: DEFAULT_ORG_ID,
-                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-                name: "Default Organization".to_string(),
-            }]
-        });
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (add_organization_member may have failed silently)
+    let organizations = if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     let auth_user = AuthUser {
         id: user.id,
@@ -777,7 +832,18 @@ async fn generate_token_response(
         ))
         .build();
 
-    let jar = jar.add(access_cookie).add(refresh_cookie);
+    let mut jar = jar.add(access_cookie).add(refresh_cookie);
+
+    // Set org cookie to user's first org (ensures org context for subsequent API calls)
+    if let Some(org) = user.organizations.first() {
+        let org_cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
+            .path("/")
+            .http_only(false) // Allow JS to read for UI state
+            .secure(true)
+            .same_site(SameSite::Lax)
+            .build();
+        jar = jar.add(org_cookie);
+    }
 
     Ok((
         jar,
@@ -795,7 +861,7 @@ async fn get_or_create_admin_user(
     state: &AuthState,
     admin: &super::config::AdminConfig,
 ) -> Result<AuthUser, AuthError> {
-    let user = state
+    let existing_user = state
         .db
         .get_user_by_email(&admin.email)
         .await
@@ -804,7 +870,7 @@ async fn get_or_create_admin_user(
             AuthError::unauthorized("Login failed")
         })?;
 
-    let user = if let Some(user) = user {
+    let user = if let Some(user) = existing_user {
         user
     } else {
         // Create admin user
@@ -813,7 +879,7 @@ async fn get_or_create_admin_user(
             AuthError::unauthorized("Login failed")
         })?;
 
-        state
+        let created_user = state
             .db
             .create_user(CreateUserRow {
                 email: admin.email.clone(),
@@ -829,13 +895,44 @@ async fn get_or_create_admin_user(
             .map_err(|e| {
                 tracing::error!("User creation error: {}", e);
                 AuthError::unauthorized("Login failed")
-            })?
+            })?;
+
+        // Add admin user to default organization
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to add admin user to default org: {}", e);
+                // Continue anyway
+            });
+
+        created_user
     };
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
     // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+
+    // Fallback to default org if empty (for existing admin users not in any org)
+    let organizations = if organizations.is_empty() {
+        // Try to add user to default org
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, user.id)
+            .await;
+
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
 
     Ok(AuthUser {
         id: user.id,

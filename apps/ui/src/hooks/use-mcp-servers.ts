@@ -18,26 +18,38 @@ import { useOrg } from "@/providers/org-provider";
 // MCP Server hooks
 
 export function useMcpServers() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: [...queryKeys.mcpServers.list(), org],
     queryFn: () => getMcpServers(),
     enabled: !!org,
     staleTime: 30000,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useMcpServer(serverId: string) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: [...queryKeys.mcpServers.detail(serverId), org],
     queryFn: () => getMcpServer(serverId),
     enabled: !!org && !!serverId,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useCreateMcpServer() {
@@ -59,7 +71,9 @@ export function useUpdateMcpServer(serverId: string) {
       updateMcpServer(serverId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.detail(serverId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers.detail(serverId),
+      });
     },
   });
 }

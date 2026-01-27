@@ -215,6 +215,22 @@ async fn validate_jwt_token(token: &str, auth_state: &AuthState) -> Result<AuthU
     // Fetch organization memberships for the user
     let organizations = fetch_user_organizations(&auth_state.db, user_id).await?;
 
+    // If user has no organizations (e.g., add_organization_member failed silently during
+    // registration), fall back to default organization to ensure UI can function
+    let organizations = if organizations.is_empty() {
+        tracing::warn!(
+            user_id = %user_id,
+            "User has no organizations, falling back to default org"
+        );
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    };
+
     Ok(AuthUser {
         id: user_id,
         email: claims.email,

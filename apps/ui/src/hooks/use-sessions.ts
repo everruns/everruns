@@ -13,7 +13,13 @@ import {
 } from "@/lib/api/sessions";
 import { getSseUrl } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event, PaginationParams } from "@/lib/api/types";
+import type {
+  CreateSessionRequest,
+  UpdateSessionRequest,
+  Controls,
+  Event,
+  PaginationParams,
+} from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 /**
@@ -21,49 +27,62 @@ import { useOrg } from "@/providers/org-provider";
  * Optionally filter by agentId.
  * Returns { data, total, offset, limit } for pagination controls.
  */
-export function useSessions(
-  agentId?: string,
-  params?: PaginationParams
-) {
-  const { currentOrg } = useOrg();
+export function useSessions(agentId?: string, params?: PaginationParams) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
-    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+  const query = useQuery({
+    queryKey: queryKeys.sessions.list(
+      org,
+      agentId,
+      params?.offset ?? 0,
+      params?.limit ?? 20,
+    ),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useSession(
   sessionId: string | undefined,
-  options?: { refetchInterval?: number | false }
+  options?: { refetchInterval?: number | false },
 ) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.sessions.detail(org, sessionId!),
     queryFn: () => getSession(sessionId!),
     enabled: !!org && !!sessionId,
     refetchInterval: options?.refetchInterval,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useCreateSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      request,
-    }: {
-      request: CreateSessionRequest;
-    }) => createSession(request),
+    mutationFn: ({ request }: { request: CreateSessionRequest }) =>
+      createSession(request),
     onSuccess: (_, { request }) => {
       // Invalidate sessions list - both all sessions and agent-specific
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
       if (request.agent_id) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.sessions.byAgent(request.agent_id) });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessions.byAgent(request.agent_id),
+        });
       }
     },
   });
@@ -95,11 +114,8 @@ export function useDeleteSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-    }: {
-      sessionId: string;
-    }) => deleteSession(sessionId),
+    mutationFn: ({ sessionId }: { sessionId: string }) =>
+      deleteSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
     },
@@ -141,7 +157,7 @@ export function useSendMessage() {
  */
 export function useEvents(
   sessionId: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean },
 ) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;

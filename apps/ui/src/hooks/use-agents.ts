@@ -13,29 +13,45 @@ import {
   updateAgent,
 } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateAgentRequest, PreviewAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
+import type {
+  CreateAgentRequest,
+  PreviewAgentRequest,
+  UpdateAgentRequest,
+} from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useAgents() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: [...queryKeys.agents.list(), org],
     queryFn: () => listAgents(),
     enabled: !!org,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useAgent(agentId: string | undefined) {
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: [...queryKeys.agents.detail(agentId!), org],
     queryFn: () => getAgent(agentId!),
     enabled: !!org && !!agentId,
   });
+
+  // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 export function useCreateAgent() {
@@ -62,7 +78,9 @@ export function useUpdateAgent() {
     }) => updateAgent(agentId, request),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agentId),
+      });
     },
   });
 }
