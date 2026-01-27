@@ -7,23 +7,75 @@
 //! - `llm.generation`: messages sent to LLM, token usage
 //! - `tool.completed`: tool execution results (e.g., query_history calls)
 
-use crate::capabilities::{Capability, InfinityContextCapability, NaiveTrimCapability};
+use crate::capabilities::{InfinityContextCapability, NaiveTrimCapability};
 use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
 use crate::types::{EvalMetrics, Scenario, ScenarioResult};
 use anyhow::Result;
+use everruns_core::Capability;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
-use std::sync::Arc;
 use std::time::Instant;
+
+/// Context management approach to evaluate
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Approach {
+    /// No context management - passes all messages through
+    Baseline,
+    /// Drop oldest messages to fit context budget
+    NaiveTrim,
+    /// Trim + history query tool for accessing excluded messages
+    InfinityContext,
+}
+
+impl Approach {
+    pub fn all() -> Vec<Approach> {
+        vec![Approach::Baseline, Approach::NaiveTrim, Approach::InfinityContext]
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Approach::Baseline => "baseline",
+            Approach::NaiveTrim => "naive_trim",
+            Approach::InfinityContext => "infinity_context",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Approach::Baseline => "No context management - passes all messages through",
+            Approach::NaiveTrim => "Drops oldest messages when context exceeds budget",
+            Approach::InfinityContext => "Trims context + provides history query tool",
+        }
+    }
+}
+
+impl std::fmt::Display for Approach {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl std::str::FromStr for Approach {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "baseline" => Ok(Approach::Baseline),
+            "naive_trim" => Ok(Approach::NaiveTrim),
+            "infinity_context" => Ok(Approach::InfinityContext),
+            _ => Err(anyhow::anyhow!("Unknown approach: {}. Valid: baseline, naive_trim, infinity_context", s)),
+        }
+    }
+}
 
 /// Evaluation configuration
 #[derive(Clone)]
 pub struct EvalConfig {
     pub model: String,
-    pub capability: Arc<dyn Capability>,
+    pub approach: Approach,
     pub dry_run: bool,
 }
 
@@ -31,7 +83,7 @@ pub struct EvalConfig {
 #[derive(Clone)]
 pub struct RunResult {
     pub scenario_name: String,
-    pub capability_name: String,
+    pub approach: Approach,
     pub response: String,
     pub metrics: EvalMetrics,
     pub error: Option<String>,
@@ -76,7 +128,7 @@ pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult
     if config.dry_run {
         return RunResult {
             scenario_name: scenario.name.clone(),
-            capability_name: config.capability.name().to_string(),
+            approach: config.approach,
             response: "[DRY RUN]".to_string(),
             metrics: EvalMetrics {
                 messages_in_context: scenario.messages.len(),
@@ -89,7 +141,7 @@ pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult
     match execute_with_agentic_loop(config, scenario).await {
         Ok((response, metrics)) => RunResult {
             scenario_name: scenario.name.clone(),
-            capability_name: config.capability.name().to_string(),
+            approach: config.approach,
             response,
             metrics: EvalMetrics {
                 latency_ms: start.elapsed().as_millis() as u64,
@@ -104,7 +156,7 @@ pub async fn run_scenario(config: &EvalConfig, scenario: &Scenario) -> RunResult
 
             RunResult {
                 scenario_name: scenario.name.clone(),
-                capability_name: config.capability.name().to_string(),
+                approach: config.approach,
                 response: String::new(),
                 metrics: EvalMetrics {
                     context_exceeded: is_context_error,
@@ -127,7 +179,7 @@ pub async fn score_result(scenario: &Scenario, run: &RunResult) -> ScenarioResul
     if let Some(err) = &run.error {
         return ScenarioResult {
             scenario_name: run.scenario_name.clone(),
-            strategy_name: run.capability_name.clone(),
+            strategy_name: run.approach.name().to_string(),
             score: 0.0,
             scores: vec![Score::new("error", 0.0).with_rationale(err.clone())],
             response: run.response.clone(),
@@ -149,7 +201,7 @@ pub async fn score_result(scenario: &Scenario, run: &RunResult) -> ScenarioResul
 
     ScenarioResult {
         scenario_name: run.scenario_name.clone(),
-        strategy_name: run.capability_name.clone(),
+        strategy_name: run.approach.name().to_string(),
         score,
         scores,
         response: run.response.clone(),
@@ -187,24 +239,24 @@ async fn execute_with_agentic_loop(
         base_url: None,
     };
 
-    // Build the agentic loop with the capability
+    // Build the agentic loop
     let mut builder = InMemoryAgenticLoop::builder()
         .agent_name("Eval Agent")
-        .system_prompt(build_system_prompt(config.capability.as_ref()))
+        .system_prompt(build_system_prompt(config.approach))
         .model(model)
         .driver_registry(create_driver_registry())
         .max_iterations(10);
 
-    // Add capability for tool registration and message filtering
-    match config.capability.id() {
-        "infinity_context" => {
-            builder = builder.capability(InfinityContextCapability);
+    // Add capability based on approach
+    match config.approach {
+        Approach::Baseline => {
+            // No capability - pass all messages through
         }
-        "naive_trim" => {
+        Approach::NaiveTrim => {
             builder = builder.capability(NaiveTrimCapability);
         }
-        id => {
-            anyhow::bail!("Unknown capability: {}", id);
+        Approach::InfinityContext => {
+            builder = builder.capability(InfinityContextCapability);
         }
     }
 
@@ -288,27 +340,18 @@ async fn extract_metrics_from_events(
     metrics
 }
 
-fn build_system_prompt(capability: &dyn Capability) -> String {
-    let mut prompt =
-        "You are a helpful assistant. Answer questions based on the conversation history."
-            .to_string();
+fn build_system_prompt(approach: Approach) -> String {
+    let base = "You are a helpful assistant. Answer questions based on the conversation history.";
 
-    if let Some(addition) = capability.system_prompt_addition() {
-        prompt.push_str("\n\n");
-        prompt.push_str(addition);
+    match approach {
+        Approach::Baseline | Approach::NaiveTrim => base.to_string(),
+        Approach::InfinityContext => {
+            // Add system prompt for infinity context capability
+            format!(
+                "{}\n\n{}",
+                base,
+                InfinityContextCapability.system_prompt_addition().unwrap_or("")
+            )
+        }
     }
-
-    prompt
-}
-
-// ============================================================================
-// Capability Registry
-// ============================================================================
-
-/// Get all available capabilities for evaluation
-pub fn all_capabilities() -> Vec<Arc<dyn Capability>> {
-    vec![
-        Arc::new(NaiveTrimCapability),
-        Arc::new(InfinityContextCapability),
-    ]
 }

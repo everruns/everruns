@@ -1,6 +1,6 @@
 //! Infinity Context Evaluation Framework
 //!
-//! Compares different context management capabilities for long conversations:
+//! Compares different context management approaches for long conversations:
 //! - Baseline: Send all messages (fails on long conversations)
 //! - Naive trim: Drop oldest messages (loses context)
 //! - Infinity: Trim + history query tool (proposed solution)
@@ -23,16 +23,16 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use dataset::{EvalResultRecord, RunMetadata};
 use metrics::aggregate_strategy_results;
+use runner::Approach;
 use types::{EvaluationResults, Scenario};
 
 #[derive(Parser)]
 #[command(name = "eval")]
-#[command(about = "Evaluate context management capabilities for long conversations")]
+#[command(about = "Evaluate context management approaches for long conversations")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -61,9 +61,9 @@ enum Commands {
         #[arg(short, long)]
         scenario: Option<String>,
 
-        /// Run with a specific capability only
+        /// Approach to evaluate (baseline, naive_trim, infinity_context)
         #[arg(long)]
-        capability: Option<String>,
+        approach: Option<String>,
 
         /// Model to use for evaluation
         #[arg(long, default_value = "gpt-5.2")]
@@ -108,13 +108,13 @@ async fn main() -> Result<()> {
         Commands::Run {
             dataset,
             scenario,
-            capability,
+            approach,
             model,
             dry_run,
             delay_ms,
             save,
             moniker,
-        } => cmd_run(dataset, scenario, capability, model, dry_run, delay_ms, save, moniker).await,
+        } => cmd_run(dataset, scenario, approach, model, dry_run, delay_ms, save, moniker).await,
     }
 }
 
@@ -210,7 +210,7 @@ fn generate_moniker(model: &str) -> String {
 async fn cmd_run(
     dataset_path: PathBuf,
     scenario_filter: Option<String>,
-    capability_filter: Option<String>,
+    approach_filter: Option<String>,
     model: String,
     dry_run: bool,
     delay_ms: u64,
@@ -259,52 +259,46 @@ async fn cmd_run(
     }
     println!();
 
-    // Get capabilities to evaluate
-    let capabilities: Vec<Arc<dyn capabilities::Capability>> =
-        if let Some(ref name) = capability_filter {
-            let all = runner::all_capabilities();
-            let cap = all
-                .into_iter()
-                .find(|c| c.name() == name)
-                .ok_or_else(|| anyhow::anyhow!("Unknown capability: {}", name))?;
-            vec![cap]
-        } else {
-            runner::all_capabilities()
-        };
+    // Get approaches to evaluate
+    let approaches: Vec<Approach> = if let Some(ref name) = approach_filter {
+        vec![name.parse()?]
+    } else {
+        Approach::all()
+    };
 
-    println!("{}", "Capabilities to evaluate:".bold());
-    for cap in &capabilities {
-        println!("  • {}", cap.name().bright_cyan());
+    println!("{}", "Approaches to evaluate:".bold());
+    for approach in &approaches {
+        println!("  • {}", approach.name().bright_cyan());
     }
     println!();
 
-    // Run evaluation for each capability
+    // Run evaluation for each approach
     let mut strategy_results = Vec::new();
 
-    for (cap_idx, capability) in capabilities.iter().enumerate() {
-        // Delay between capabilities
-        if cap_idx > 0 && delay_ms > 0 {
+    for (idx, approach) in approaches.iter().enumerate() {
+        // Delay between approaches
+        if idx > 0 && delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         }
 
         println!(
-            "{} Capability: {}",
+            "{} Approach: {}",
             "━".repeat(60).dimmed(),
-            capability.name().bright_cyan().bold()
+            approach.name().bright_cyan().bold()
         );
-        println!("  {}\n", capability.description().dimmed());
+        println!("  {}\n", approach.description().dimmed());
 
         let config = runner::EvalConfig {
             model: model.clone(),
-            capability: capability.clone(),
+            approach: *approach,
             dry_run,
         };
 
         // Phase 1: Run all scenarios
         let mut run_results = Vec::new();
-        for (idx, scenario) in scenarios.iter().enumerate() {
+        for (scenario_idx, scenario) in scenarios.iter().enumerate() {
             // Delay between scenarios
-            if idx > 0 && delay_ms > 0 {
+            if scenario_idx > 0 && delay_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             }
 
@@ -322,7 +316,7 @@ async fn cmd_run(
         }
 
         // Aggregate and print summary
-        let aggregated = aggregate_strategy_results(capability.name(), scenario_results);
+        let aggregated = aggregate_strategy_results(approach.name(), scenario_results);
         println!(
             "\n  {} Avg Score: {:.1}% ({}/{})\n",
             "→".bright_blue(),
@@ -347,7 +341,7 @@ async fn cmd_run(
 
     // Save results if requested
     if save {
-        save_results(&results, &dataset_path, &model, moniker, &capabilities)?;
+        save_results(&results, &dataset_path, &model, moniker, &approaches)?;
     }
 
     Ok(())
@@ -385,7 +379,7 @@ fn save_results(
     dataset_path: &PathBuf,
     model: &str,
     moniker: Option<String>,
-    capabilities: &[Arc<dyn capabilities::Capability>],
+    approaches: &[Approach],
 ) -> Result<()> {
     // Build filename: YYYYMMDD_HHMMSS__moniker.jsonl
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
@@ -420,8 +414,8 @@ fn save_results(
             .first()
             .map(|s| s.total_scenarios)
             .unwrap_or(0),
-        capability_count: capabilities.len(),
-        capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
+        capability_count: approaches.len(),
+        capabilities: approaches.iter().map(|a| a.name().to_string()).collect(),
     };
 
     dataset::write_results(&output_path, &metadata, &result_records)?;
