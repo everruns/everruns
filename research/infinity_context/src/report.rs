@@ -1,6 +1,6 @@
 //! Report generation for evaluation results
 
-use crate::types::{EvaluationResults, StrategyResults};
+use crate::runner::{ApproachResults, EvaluationResults};
 
 /// Generate a markdown report from evaluation results
 pub fn generate(results: &EvaluationResults) -> String {
@@ -17,48 +17,48 @@ pub fn generate(results: &EvaluationResults) -> String {
 
     // Summary table
     report.push_str("## Summary\n\n");
-    report.push_str("| Strategy | Avg Score | Passed | Avg Tokens | Avg Latency | Context Exceeded | History Queries |\n");
+    report.push_str("| Approach | Avg Score | Passed | Avg Tokens | Avg Latency | Context Exceeded | History Queries |\n");
     report.push_str("|----------|-----------|--------|------------|-------------|------------------|----------------|\n");
 
-    for strategy in &results.strategy_results {
+    for approach in &results.approach_results {
         report.push_str(&format!(
             "| {} | {:.1}% | {}/{} | {:.0} | {:.0}ms | {} | {:.1} |\n",
-            strategy.strategy_name,
-            strategy.accuracy(),
-            strategy.passed,
-            strategy.total_scenarios,
-            strategy.avg_tokens,
-            strategy.avg_latency_ms,
-            strategy.context_exceeded,
-            strategy.avg_history_queries
+            approach.approach_name,
+            approach.accuracy(),
+            approach.passed,
+            approach.total_records,
+            approach.avg_tokens,
+            approach.avg_latency_ms,
+            approach.context_exceeded,
+            approach.avg_history_queries
         ));
     }
 
     report.push('\n');
 
-    // Detailed results per strategy
+    // Detailed results per approach
     report.push_str("## Detailed Results\n\n");
 
-    for strategy in &results.strategy_results {
-        report.push_str(&format!("### {}\n\n", strategy.strategy_name));
+    for approach in &results.approach_results {
+        report.push_str(&format!("### {}\n\n", approach.approach_name));
         report.push_str(&format!(
-            "- **Total scenarios:** {}\n\
+            "- **Total records:** {}\n\
             - **Avg score:** {:.1}%\n\
             - **Passed (≥50%):** {}\n\
             - **Failed:** {}\n\
             - **Context exceeded:** {}\n\n",
-            strategy.total_scenarios,
-            strategy.accuracy(),
-            strategy.passed,
-            strategy.failed,
-            strategy.context_exceeded
+            approach.total_records,
+            approach.accuracy(),
+            approach.passed,
+            approach.failed,
+            approach.context_exceeded
         ));
 
-        // Per-scenario results table
-        report.push_str("| Scenario | Score | Tokens | Latency | Queries | Error |\n");
-        report.push_str("|----------|-------|--------|---------|---------|-------|\n");
+        // Per-record results table
+        report.push_str("| Record | Score | Tokens | Latency | Queries | Error |\n");
+        report.push_str("|--------|-------|--------|---------|---------|-------|\n");
 
-        for result in &strategy.scenario_results {
+        for result in &approach.record_results {
             let status = if result.score >= 0.8 {
                 format!("✅ {:.0}%", result.score * 100.0)
             } else if result.score >= 0.5 {
@@ -83,7 +83,7 @@ pub fn generate(results: &EvaluationResults) -> String {
 
             report.push_str(&format!(
                 "| {} | {} | {} | {}ms | {} | {} |\n",
-                result.scenario_name,
+                result.record_id,
                 status,
                 result.metrics.total_tokens,
                 result.metrics.latency_ms,
@@ -97,21 +97,21 @@ pub fn generate(results: &EvaluationResults) -> String {
 
     // Analysis section
     report.push_str("## Analysis\n\n");
-    report.push_str(&generate_analysis(&results.strategy_results));
+    report.push_str(&generate_analysis(&results.approach_results));
 
     report
 }
 
-/// Generate analysis text comparing strategies
-fn generate_analysis(strategies: &[StrategyResults]) -> String {
+/// Generate analysis text comparing approaches
+fn generate_analysis(approaches: &[ApproachResults]) -> String {
     let mut analysis = String::new();
 
-    // Find baseline and infinity strategies for comparison
-    let baseline = strategies.iter().find(|s| s.strategy_name == "baseline");
-    let naive = strategies.iter().find(|s| s.strategy_name == "naive_trim");
-    let infinity = strategies
+    // Find baseline and infinity approaches for comparison
+    let baseline = approaches.iter().find(|s| s.approach_name == "baseline");
+    let naive = approaches.iter().find(|s| s.approach_name == "naive_trim");
+    let infinity = approaches
         .iter()
-        .find(|s| s.strategy_name == "infinity_context");
+        .find(|s| s.approach_name == "infinity_context");
 
     if let (Some(baseline), Some(infinity)) = (baseline, infinity) {
         let score_improvement = infinity.avg_score - baseline.avg_score;
@@ -125,14 +125,13 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
 
         if baseline.context_exceeded > 0 {
             analysis.push_str(&format!(
-                "- Baseline failed on {} scenario(s) due to context limits\n",
+                "- Baseline failed on {} record(s) due to context limits\n",
                 baseline.context_exceeded
             ));
         }
 
         if infinity.context_exceeded == 0 && baseline.context_exceeded > 0 {
-            analysis
-                .push_str("- Infinity context handled all scenarios without context overflow\n");
+            analysis.push_str("- Infinity context handled all records without context overflow\n");
         }
     }
 
@@ -161,7 +160,7 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
 
         if infinity.avg_history_queries > 0.0 {
             analysis.push_str(&format!(
-                "- Average history queries per scenario: {:.1}\n",
+                "- Average history queries per record: {:.1}\n",
                 infinity.avg_history_queries
             ));
         }
@@ -174,19 +173,19 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     analysis.push_str("\n### Key Findings\n\n");
 
     // Generate key findings based on results
-    let best_strategy = strategies
+    let best_approach = approaches
         .iter()
         .max_by(|a, b| a.avg_score.partial_cmp(&b.avg_score).unwrap());
 
-    if let Some(best) = best_strategy {
+    if let Some(best) = best_approach {
         analysis.push_str(&format!(
-            "1. **Best performing strategy:** {} ({:.1}% avg score)\n",
-            best.strategy_name,
+            "1. **Best performing approach:** {} ({:.1}% avg score)\n",
+            best.approach_name,
             best.accuracy()
         ));
     }
 
-    let most_efficient = strategies
+    let most_efficient = approaches
         .iter()
         .filter(|s| s.avg_score > 0.5)
         .min_by(|a, b| a.avg_tokens.partial_cmp(&b.avg_tokens).unwrap());
@@ -194,11 +193,11 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     if let Some(efficient) = most_efficient {
         analysis.push_str(&format!(
             "2. **Most token-efficient (>50% score):** {} ({:.0} avg tokens)\n",
-            efficient.strategy_name, efficient.avg_tokens
+            efficient.approach_name, efficient.avg_tokens
         ));
     }
 
-    let fastest = strategies
+    let fastest = approaches
         .iter()
         .filter(|s| s.avg_score > 0.5)
         .min_by(|a, b| a.avg_latency_ms.partial_cmp(&b.avg_latency_ms).unwrap());
@@ -206,7 +205,7 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     if let Some(fast) = fastest {
         analysis.push_str(&format!(
             "3. **Fastest (>50% score):** {} ({:.0}ms avg latency)\n",
-            fast.strategy_name, fast.avg_latency_ms
+            fast.approach_name, fast.avg_latency_ms
         ));
     }
 

@@ -7,8 +7,7 @@
 //! the MessageRetriever directly for excluded messages.
 
 use super::naive_trim::calculate_message_limit;
-use super::{Capability, CapabilityStatus, MessageFilterProvider, MessageQuery};
-use crate::types::ContextStrategyConfig;
+use super::{Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterProvider, MessageQuery};
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::tools::{Tool, ToolExecutionResult};
@@ -371,15 +370,14 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::message_helpers;
 
     #[test]
     fn test_search_messages() {
         let messages = vec![
-            message_helpers::user("Let's discuss the API design"),
-            message_helpers::assistant("Sure, what about authentication?"),
-            message_helpers::user("We should use JWT tokens"),
-            message_helpers::assistant("JWT sounds good for the API"),
+            Message::user("Let's discuss the API design"),
+            Message::assistant("Sure, what about authentication?"),
+            Message::user("We should use JWT tokens"),
+            Message::assistant("JWT sounds good for the API"),
         ];
 
         let results = search_messages(&messages, "API", 10);
@@ -393,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_extract_text_content() {
-        let msg = message_helpers::user("Hello world");
+        let msg = Message::user("Hello world");
         assert_eq!(extract_text_content(&msg), "Hello world");
     }
 }

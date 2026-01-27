@@ -10,15 +10,21 @@
 use crate::capabilities::{InfinityContextCapability, NaiveTrimCapability};
 use crate::dataset::DatasetRecord;
 use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
-use crate::types::{EvalMetrics, ScenarioResult};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use everruns_core::Capability;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
+use serde::Serialize;
+use std::collections::HashMap;
 use std::time::Instant;
+
+// ============================================================================
+// Approach
+// ============================================================================
 
 /// Context management approach to evaluate
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +78,92 @@ impl std::str::FromStr for Approach {
     }
 }
 
+// ============================================================================
+// Result Types
+// ============================================================================
+
+/// Metrics collected during evaluation
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EvalMetrics {
+    /// Total tokens used (input + output)
+    pub total_tokens: usize,
+    /// Input tokens
+    pub input_tokens: usize,
+    /// Output tokens
+    pub output_tokens: usize,
+    /// Number of LLM calls made
+    pub llm_calls: usize,
+    /// Number of history queries made (for infinity strategy)
+    pub history_queries: usize,
+    /// Time to complete in milliseconds
+    pub latency_ms: u64,
+    /// Whether context was exceeded
+    pub context_exceeded: bool,
+    /// Messages included in context
+    pub messages_in_context: usize,
+    /// Messages excluded from context
+    pub messages_excluded: usize,
+}
+
+/// Result of running a single record with an approach
+#[derive(Debug, Clone, Serialize)]
+pub struct RecordResult {
+    pub record_id: String,
+    pub approach_name: String,
+    /// Aggregate score (0.0-1.0)
+    pub score: f64,
+    /// Individual scorer results
+    pub scores: Vec<Score>,
+    pub response: String,
+    pub metrics: EvalMetrics,
+    pub error: Option<String>,
+}
+
+impl RecordResult {
+    /// Returns true if aggregate score >= 0.5
+    pub fn passed(&self) -> bool {
+        self.score >= 0.5
+    }
+}
+
+/// Aggregated results across all records for an approach
+#[derive(Debug, Clone, Serialize)]
+pub struct ApproachResults {
+    pub approach_name: String,
+    pub total_records: usize,
+    /// Number of records with score >= 0.5
+    pub passed: usize,
+    /// Number of records with score < 0.5
+    pub failed: usize,
+    pub context_exceeded: usize,
+    /// Average score across all records (0.0-1.0)
+    pub avg_score: f64,
+    pub avg_tokens: f64,
+    pub avg_latency_ms: f64,
+    pub avg_history_queries: f64,
+    pub record_results: Vec<RecordResult>,
+}
+
+impl ApproachResults {
+    /// Average score as percentage (0-100)
+    pub fn accuracy(&self) -> f64 {
+        self.avg_score * 100.0
+    }
+}
+
+/// Full evaluation results
+#[derive(Debug, Clone, Serialize)]
+pub struct EvaluationResults {
+    pub timestamp: DateTime<Utc>,
+    pub model: String,
+    pub config: HashMap<String, String>,
+    pub approach_results: Vec<ApproachResults>,
+}
+
+// ============================================================================
+// Config & Intermediate Types
+// ============================================================================
+
 /// Evaluation configuration
 #[derive(Clone)]
 pub struct EvalConfig {
@@ -83,7 +175,7 @@ pub struct EvalConfig {
 /// Result of running a scenario (before scoring)
 #[derive(Clone)]
 pub struct RunResult {
-    pub scenario_name: String,
+    pub record_id: String,
     pub approach: Approach,
     pub response: String,
     pub metrics: EvalMetrics,
@@ -137,7 +229,7 @@ pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunRes
 
     if config.dry_run {
         return RunResult {
-            scenario_name: record.id.clone(),
+            record_id: record.id.clone(),
             approach: config.approach,
             response: "[DRY RUN]".to_string(),
             metrics: EvalMetrics {
@@ -150,7 +242,7 @@ pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunRes
 
     match execute_with_agentic_loop(config, record).await {
         Ok((response, metrics)) => RunResult {
-            scenario_name: record.id.clone(),
+            record_id: record.id.clone(),
             approach: config.approach,
             response,
             metrics: EvalMetrics {
@@ -165,7 +257,7 @@ pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunRes
                 || e.to_string().contains("maximum");
 
             RunResult {
-                scenario_name: record.id.clone(),
+                record_id: record.id.clone(),
                 approach: config.approach,
                 response: String::new(),
                 metrics: EvalMetrics {
@@ -184,12 +276,12 @@ pub async fn run_scenario(config: &EvalConfig, record: &DatasetRecord) -> RunRes
 // ============================================================================
 
 /// Score a run result against a record's expectations
-pub async fn score_result(record: &DatasetRecord, run: &RunResult) -> ScenarioResult {
+pub async fn score_result(record: &DatasetRecord, run: &RunResult) -> RecordResult {
     // If there was an error, return error score
     if let Some(err) = &run.error {
-        return ScenarioResult {
-            scenario_name: run.scenario_name.clone(),
-            strategy_name: run.approach.name().to_string(),
+        return RecordResult {
+            record_id: run.record_id.clone(),
+            approach_name: run.approach.name().to_string(),
             score: 0.0,
             scores: vec![Score::new("error", 0.0).with_rationale(err.clone())],
             response: run.response.clone(),
@@ -204,9 +296,9 @@ pub async fn score_result(record: &DatasetRecord, run: &RunResult) -> ScenarioRe
     let scores = evaluate_all(&scorers, &record.task, &run.response, judge_config.as_ref()).await;
     let score = aggregate_scores(&scores);
 
-    ScenarioResult {
-        scenario_name: run.scenario_name.clone(),
-        strategy_name: run.approach.name().to_string(),
+    RecordResult {
+        record_id: run.record_id.clone(),
+        approach_name: run.approach.name().to_string(),
         score,
         scores,
         response: run.response.clone(),
@@ -223,6 +315,54 @@ fn create_judge_config() -> Option<JudgeConfig> {
             model: "claude-3-5-haiku-20241022".to_string(),
             api_key,
         })
+}
+
+// ============================================================================
+// Aggregation
+// ============================================================================
+
+/// Aggregate results for a single approach across all records
+pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult>) -> ApproachResults {
+    let total = results.len();
+    let passed = results.iter().filter(|r| r.passed()).count();
+    let context_exceeded = results.iter().filter(|r| r.metrics.context_exceeded).count();
+
+    let avg_score = if total > 0 {
+        results.iter().map(|r| r.score).sum::<f64>() / total as f64
+    } else {
+        0.0
+    };
+
+    let avg_tokens = if total > 0 {
+        results.iter().map(|r| r.metrics.total_tokens).sum::<usize>() as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    let avg_latency = if total > 0 {
+        results.iter().map(|r| r.metrics.latency_ms).sum::<u64>() as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    let avg_queries = if total > 0 {
+        results.iter().map(|r| r.metrics.history_queries).sum::<usize>() as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    ApproachResults {
+        approach_name: approach_name.to_string(),
+        total_records: total,
+        passed,
+        failed: total - passed,
+        context_exceeded,
+        avg_score,
+        avg_tokens,
+        avg_latency_ms: avg_latency,
+        avg_history_queries: avg_queries,
+        record_results: results,
+    }
 }
 
 // ============================================================================

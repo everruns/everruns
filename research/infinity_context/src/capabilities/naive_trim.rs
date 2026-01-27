@@ -5,8 +5,9 @@
 //!
 //! Uses DB-level LIMIT instead of in-memory BatchTransform for scalability.
 
-use super::{Capability, CapabilityStatus, MessageFilterProvider, MessageQuery};
-use crate::types::ContextStrategyConfig;
+use super::{
+    Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterProvider, MessageQuery,
+};
 use serde_json::Value;
 use std::sync::Arc;
 

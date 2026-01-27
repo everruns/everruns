@@ -11,12 +11,10 @@
 
 pub mod capabilities;
 mod dataset;
-mod metrics;
 mod report;
 mod runner;
 mod scenarios;
 pub mod scorer;
-pub mod types;
 
 use anyhow::Result;
 use chrono::Utc;
@@ -26,9 +24,7 @@ use std::path::PathBuf;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use dataset::{DatasetRecord, EvalResultRecord, RunMetadata};
-use metrics::aggregate_strategy_results;
-use runner::Approach;
-use types::EvaluationResults;
+use runner::{Approach, EvaluationResults, aggregate_approach_results};
 
 #[derive(Parser)]
 #[command(name = "eval")]
@@ -57,9 +53,9 @@ enum Commands {
         #[arg(short, long)]
         dataset: PathBuf,
 
-        /// Run a specific scenario by name
+        /// Run a specific record by id
         #[arg(short, long)]
-        scenario: Option<String>,
+        record: Option<String>,
 
         /// Approach to evaluate (baseline, naive_trim, infinity_context)
         #[arg(long)]
@@ -73,7 +69,7 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
 
-        /// Delay in milliseconds between scenarios (helps avoid rate limits)
+        /// Delay in milliseconds between records (helps avoid rate limits)
         #[arg(long, default_value = "0")]
         delay_ms: u64,
 
@@ -107,14 +103,14 @@ async fn main() -> Result<()> {
         Commands::Generate { output } => cmd_generate(output).await,
         Commands::Run {
             dataset,
-            scenario,
+            record,
             approach,
             model,
             dry_run,
             delay_ms,
             save,
             moniker,
-        } => cmd_run(dataset, scenario, approach, model, dry_run, delay_ms, save, moniker).await,
+        } => cmd_run(dataset, record, approach, model, dry_run, delay_ms, save, moniker).await,
     }
 }
 
@@ -145,7 +141,7 @@ async fn cmd_generate(output: PathBuf) -> Result<()> {
 
     let records = scenarios::generate_synthetic();
 
-    println!("{}", "Generated scenarios:".bold());
+    println!("{}", "Generated records:".bold());
     for record in &records {
         let scenario_type = record.meta.scenario_type.as_deref().unwrap_or("unknown");
         println!(
@@ -209,7 +205,7 @@ fn generate_moniker(model: &str) -> String {
 #[allow(clippy::too_many_arguments)]
 async fn cmd_run(
     dataset_path: PathBuf,
-    scenario_filter: Option<String>,
+    record_filter: Option<String>,
     approach_filter: Option<String>,
     model: String,
     dry_run: bool,
@@ -225,18 +221,18 @@ async fn cmd_run(
 
     let mut records: Vec<DatasetRecord> = dataset::read_dataset(&dataset_path)?;
 
-    // Apply scenario filter
-    if let Some(ref name) = scenario_filter {
-        records.retain(|r| r.id == *name);
+    // Apply record filter
+    if let Some(ref id) = record_filter {
+        records.retain(|r| r.id == *id);
     }
 
     if records.is_empty() {
-        println!("{}", "No scenarios found!".bright_red());
+        println!("{}", "No records found!".bright_red());
         return Ok(());
     }
 
     println!(
-        "{} Found {} scenario(s)",
+        "{} Found {} record(s)",
         "✓".bright_green(),
         records.len()
     );
@@ -252,7 +248,7 @@ async fn cmd_run(
     }
     if delay_ms > 0 {
         println!(
-            "  Delay: {}ms between scenarios",
+            "  Delay: {}ms between records",
             delay_ms.to_string().bright_yellow()
         );
     }
@@ -272,7 +268,7 @@ async fn cmd_run(
     println!();
 
     // Run evaluation for each approach
-    let mut strategy_results = Vec::new();
+    let mut approach_results = Vec::new();
 
     for (idx, approach) in approaches.iter().enumerate() {
         // Delay between approaches
@@ -293,11 +289,11 @@ async fn cmd_run(
             dry_run,
         };
 
-        // Phase 1: Run all scenarios
+        // Phase 1: Run all records
         let mut run_results = Vec::new();
-        for (scenario_idx, record) in records.iter().enumerate() {
-            // Delay between scenarios
-            if scenario_idx > 0 && delay_ms > 0 {
+        for (record_idx, record) in records.iter().enumerate() {
+            // Delay between records
+            if record_idx > 0 && delay_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             }
 
@@ -308,30 +304,30 @@ async fn cmd_run(
 
         // Phase 2: Score all results
         println!("\n  {} Scoring results...", "→".bright_blue());
-        let mut scenario_results = Vec::new();
+        let mut record_results = Vec::new();
         for (record, run_result) in &run_results {
             let scored = runner::score_result(record, run_result).await;
-            scenario_results.push(scored);
+            record_results.push(scored);
         }
 
         // Aggregate and print summary
-        let aggregated = aggregate_strategy_results(approach.name(), scenario_results);
+        let aggregated = aggregate_approach_results(approach.name(), record_results);
         println!(
             "\n  {} Avg Score: {:.1}% ({}/{})\n",
             "→".bright_blue(),
             aggregated.accuracy(),
             aggregated.passed,
-            aggregated.total_scenarios
+            aggregated.total_records
         );
 
-        strategy_results.push(aggregated);
+        approach_results.push(aggregated);
     }
 
     let results = EvaluationResults {
         timestamp: Utc::now(),
         model: model.clone(),
         config: std::collections::HashMap::new(),
-        strategy_results,
+        approach_results,
     };
 
     // Print report
@@ -360,7 +356,7 @@ fn print_run_status(run: &runner::RunResult) {
     println!(
         "  {} {} (tokens: {}, latency: {}ms, queries: {})",
         status,
-        run.scenario_name,
+        run.record_id,
         run.metrics.total_tokens,
         run.metrics.latency_ms,
         run.metrics.history_queries
@@ -390,16 +386,16 @@ fn save_results(
 
     // Convert results to JSONL records
     let mut result_records = Vec::new();
-    for strategy_result in &results.strategy_results {
-        for scenario_result in &strategy_result.scenario_results {
+    for approach_result in &results.approach_results {
+        for record_result in &approach_result.record_results {
             result_records.push(EvalResultRecord {
-                id: scenario_result.scenario_name.clone(),
-                capability: scenario_result.strategy_name.clone(),
-                score: scenario_result.score,
-                scores: scenario_result.scores.clone(),
-                response: scenario_result.response.clone(),
-                error: scenario_result.error.clone(),
-                metrics: scenario_result.metrics.clone().into(),
+                id: record_result.record_id.clone(),
+                capability: record_result.approach_name.clone(),
+                score: record_result.score,
+                scores: record_result.scores.clone(),
+                response: record_result.response.clone(),
+                error: record_result.error.clone(),
+                metrics: record_result.metrics.clone().into(),
             });
         }
     }
@@ -409,9 +405,9 @@ fn save_results(
         model: model.to_string(),
         dataset: dataset_path.display().to_string(),
         scenario_count: results
-            .strategy_results
+            .approach_results
             .first()
-            .map(|s| s.total_scenarios)
+            .map(|s| s.total_records)
             .unwrap_or(0),
         capability_count: approaches.len(),
         capabilities: approaches.iter().map(|a| a.name().to_string()).collect(),

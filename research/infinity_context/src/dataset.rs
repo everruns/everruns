@@ -150,8 +150,8 @@ pub struct ResultMetrics {
     pub events_excluded: usize,
 }
 
-impl From<crate::types::EvalMetrics> for ResultMetrics {
-    fn from(m: crate::types::EvalMetrics) -> Self {
+impl From<crate::runner::EvalMetrics> for ResultMetrics {
+    fn from(m: crate::runner::EvalMetrics) -> Self {
         Self {
             total_tokens: m.total_tokens,
             input_tokens: m.input_tokens,
