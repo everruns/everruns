@@ -832,7 +832,18 @@ async fn generate_token_response(
         ))
         .build();
 
-    let jar = jar.add(access_cookie).add(refresh_cookie);
+    let mut jar = jar.add(access_cookie).add(refresh_cookie);
+
+    // Set org cookie to user's first org (ensures org context for subsequent API calls)
+    if let Some(org) = user.organizations.first() {
+        let org_cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
+            .path("/")
+            .http_only(false) // Allow JS to read for UI state
+            .secure(true)
+            .same_site(SameSite::Lax)
+            .build();
+        jar = jar.add(org_cookie);
+    }
 
     Ok((
         jar,
