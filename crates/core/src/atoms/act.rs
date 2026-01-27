@@ -35,6 +35,7 @@ use crate::events::{
     ToolStartedData,
 };
 use crate::message::ContentPart;
+use crate::message_retriever::MessageRetriever;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
 use crate::typed_id::AgentId;
@@ -107,6 +108,8 @@ where
     event_emitter: E,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileStore>>,
+    /// Optional message retriever for tools that query conversation history
+    message_retriever: Option<Arc<dyn MessageRetriever>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -120,6 +123,7 @@ where
             tool_executor,
             event_emitter,
             file_store: None,
+            message_retriever: None,
         }
     }
 
@@ -133,6 +137,36 @@ where
             tool_executor,
             event_emitter,
             file_store: Some(file_store),
+            message_retriever: None,
+        }
+    }
+
+    /// Create a new ActAtom with a message retriever for history-aware tools
+    pub fn with_message_retriever(
+        tool_executor: T,
+        event_emitter: E,
+        message_retriever: Arc<dyn MessageRetriever>,
+    ) -> Self {
+        Self {
+            tool_executor,
+            event_emitter,
+            file_store: None,
+            message_retriever: Some(message_retriever),
+        }
+    }
+
+    /// Create a new ActAtom with both file store and message retriever
+    pub fn with_stores(
+        tool_executor: T,
+        event_emitter: E,
+        file_store: Option<Arc<dyn SessionFileStore>>,
+        message_retriever: Option<Arc<dyn MessageRetriever>>,
+    ) -> Self {
+        Self {
+            tool_executor,
+            event_emitter,
+            file_store,
+            message_retriever,
         }
     }
 }
@@ -392,9 +426,15 @@ where
             };
         };
 
-        // Execute the tool
-        let result = if let Some(ref store) = self.file_store {
-            let tool_context = ToolContext::with_file_store(context.session_id, store.clone());
+        // Execute the tool with context if any stores are configured
+        let result = if self.file_store.is_some() || self.message_retriever.is_some() {
+            let mut tool_context = ToolContext::new(context.session_id);
+            if let Some(ref store) = self.file_store {
+                tool_context = tool_context.add_file_store(store.clone());
+            }
+            if let Some(ref retriever) = self.message_retriever {
+                tool_context = tool_context.with_message_retriever(retriever.clone());
+            }
             self.tool_executor
                 .execute_with_context(&tool_call, tool_def, &tool_context)
                 .await

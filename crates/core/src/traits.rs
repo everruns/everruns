@@ -365,9 +365,21 @@ impl ToolContext {
         }
     }
 
-    /// Add a message retriever to this context
+    /// Add a message retriever to this context (builder pattern)
     pub fn with_message_retriever(mut self, retriever: Arc<dyn MessageRetriever>) -> Self {
         self.message_retriever = Some(retriever);
+        self
+    }
+
+    /// Add a file store to this context (builder pattern)
+    pub fn add_file_store(mut self, file_store: Arc<dyn SessionFileStore>) -> Self {
+        self.file_store = Some(file_store);
+        self
+    }
+
+    /// Add a storage store to this context (builder pattern)
+    pub fn add_storage_store(mut self, storage_store: Arc<dyn SessionStorageStore>) -> Self {
+        self.storage_store = Some(storage_store);
         self
     }
 }

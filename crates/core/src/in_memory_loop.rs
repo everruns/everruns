@@ -422,7 +422,12 @@ impl InMemoryAgenticLoopBuilder {
             driver_registry,
             event_emitter.clone(),
         );
-        let act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone());
+        // Pass message_retriever to ActAtom so tools like query_history can access messages
+        let act_atom = ActAtom::with_message_retriever(
+            tool_registry.clone(),
+            event_emitter.clone(),
+            Arc::new(message_retriever.clone()),
+        );
 
         Ok(InMemoryAgenticLoop {
             agent_id,

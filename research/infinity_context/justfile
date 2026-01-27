@@ -1,0 +1,47 @@
+# Infinity Context Evaluations
+# Run from this directory: just <command>
+
+# Default: run evals
+default: eval
+
+# Run evaluations
+# Use --dry for dry-run mode (no LLM calls)
+eval *args:
+    cargo run --release -- --synthetic {{args}}
+
+# Generate fresh dataset
+generate:
+    cargo run -- generate -o datasets/infinity_context.jsonl
+
+# Run and save results
+eval-save *args:
+    cargo run --release -- --synthetic --save {{args}}
+
+# Run against all models (gpt-5.2 and opus-4.5)
+eval-all *args:
+    cargo run --release -- --synthetic --model gpt-5.2 --save {{args}}
+    cargo run --release -- --synthetic --model claude-opus-4-5-20251101 --save {{args}}
+
+# Run specific scenario
+scenario name *args:
+    cargo run --release -- --synthetic --scenario {{name}} {{args}}
+
+# Run specific capability
+capability name *args:
+    cargo run --release -- --synthetic --capability "{{name}}" {{args}}
+
+# Build release binary
+build:
+    cargo build --release
+
+# Run tests
+test:
+    cargo test
+
+# Format code
+fmt:
+    cargo fmt
+
+# Lint
+clippy:
+    cargo clippy -- -D warnings

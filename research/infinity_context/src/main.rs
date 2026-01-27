@@ -64,7 +64,7 @@ enum Commands {
         capability: Option<String>,
 
         /// Model to use for evaluation
-        #[arg(long, default_value = "claude-sonnet-4-20250514")]
+        #[arg(long, default_value = "gpt-5.2")]
         model: String,
 
         /// Context window size in tokens (default 50k to ensure scenarios exceed budget)

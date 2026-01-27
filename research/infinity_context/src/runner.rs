@@ -1,26 +1,27 @@
-//! Evaluation runner - executes scenarios against capabilities
+//! Evaluation runner - executes scenarios using InMemoryAgenticLoop
 //!
-//! Uses core's LLM driver and Capability infrastructure directly.
+//! Uses core's InMemoryAgenticLoop for realistic agentic evaluation.
+//! Each capability is tested with the full Reason→Act loop.
+//!
+//! Metrics are derived from events emitted during execution:
+//! - `llm.generation`: messages sent to LLM, token usage
+//! - `tool.completed`: tool execution results (e.g., query_history calls)
 
-use crate::capabilities::{Capability, MessageQuery};
+use crate::capabilities::{Capability, InfinityContextCapability, MessageQuery, NaiveTrimCapability};
 use crate::metrics::aggregate_strategy_results;
 use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
 use crate::types::{
-    ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario,
-    ScenarioResult,
+    ContextStrategyConfig, EvalMetrics, EvaluationResults, MessageExt, Scenario, ScenarioResult,
 };
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
-use everruns_core::llm_driver_registry::{
-    DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, ProviderConfig,
-    ProviderType,
-};
-use everruns_core::memory::InMemoryMessageRetriever;
-use everruns_core::tool_types::{BuiltinTool, ToolDefinition as CoreToolDefinition};
-use everruns_core::tools::Tool;
-use everruns_core::traits::ToolContext;
-use everruns_core::typed_id::SessionId;
+use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
+use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::llm_models::LlmProviderType;
+use everruns_core::message::Message;
+use everruns_core::traits::ModelWithProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -49,12 +50,21 @@ fn create_driver_registry() -> DriverRegistry {
     registry
 }
 
-fn get_provider_type(model: &str) -> ProviderType {
+fn get_provider_type(model: &str) -> LlmProviderType {
     if model.starts_with("claude") {
-        ProviderType::Anthropic
+        LlmProviderType::Anthropic
     } else {
-        ProviderType::OpenAI
+        LlmProviderType::Openai
     }
+}
+
+fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
+    let key_name = match provider_type {
+        LlmProviderType::Anthropic => "ANTHROPIC_API_KEY",
+        LlmProviderType::Openai | LlmProviderType::OpenaiCompletions => "OPENAI_API_KEY",
+        LlmProviderType::LlmSim => return Ok(String::new()),
+    };
+    std::env::var(key_name).map_err(|_| anyhow::anyhow!("{} not set", key_name))
 }
 
 // ============================================================================
@@ -68,7 +78,6 @@ pub async fn run_evaluation(
     capabilities: &[Arc<dyn Capability>],
 ) -> Result<EvaluationResults> {
     let budget_tokens = (config.context_window as f64 * config.budget_percent) as usize;
-    let driver_registry = create_driver_registry();
 
     println!(
         "\n{} Running {} scenario(s) against {} capability(ies)\n",
@@ -104,14 +113,8 @@ pub async fn run_evaluation(
             }
             is_first = false;
 
-            let result = run_single_scenario(
-                config,
-                scenario,
-                capability.as_ref(),
-                budget_tokens,
-                &driver_registry,
-            )
-            .await;
+            let result =
+                run_single_scenario(config, scenario, capability.as_ref(), budget_tokens).await;
 
             let status = if result.score >= 0.8 {
                 "✓".bright_green()
@@ -177,33 +180,30 @@ pub async fn run_evaluation(
 // ============================================================================
 
 struct PreparedContext {
-    messages: Vec<Message>,
-    excluded: Vec<Message>,
-    system_addition: Option<String>,
-    tools: Vec<Box<dyn Tool>>,
-    tool_definitions: Vec<CoreToolDefinition>,
+    /// Messages to include in context (sent to LLM)
+    visible_messages: Vec<Message>,
+    /// Estimated tokens for visible messages
     estimated_tokens: usize,
+    /// Total messages in scenario history (for calculating excluded count)
+    total_history_messages: usize,
 }
 
+/// Prepare context by applying capability's message filter
 fn prepare_context(
     capability: &dyn Capability,
     messages: &[Message],
     budget_tokens: usize,
 ) -> PreparedContext {
+    let total_history_messages = messages.len();
     let filter_provider = capability.message_filter_provider();
 
     // If no filter provider, pass all messages through (baseline)
     let Some(provider) = filter_provider else {
         let estimated_tokens: usize = messages.iter().map(|m| m.estimated_tokens()).sum();
-        let tools = capability.tools();
-        let tool_definitions = tools_to_definitions(&tools);
         return PreparedContext {
-            messages: messages.to_vec(),
-            excluded: vec![],
-            system_addition: capability.system_prompt_addition().map(String::from),
-            tools,
-            tool_definitions,
+            visible_messages: messages.to_vec(),
             estimated_tokens,
+            total_history_messages,
         };
     };
 
@@ -219,48 +219,26 @@ fn prepare_context(
     provider.apply_filters(&mut query, &config);
 
     // Apply limit from query (keep most recent N messages)
-    let (kept, excluded) = if let Some(limit) = query.limit {
+    let visible = if let Some(limit) = query.limit {
         let limit = limit.max(0) as usize;
         if messages.len() > limit {
             // Keep the most recent messages
             let split_point = messages.len() - limit;
-            (
-                messages[split_point..].to_vec(),
-                messages[..split_point].to_vec(),
-            )
+            messages[split_point..].to_vec()
         } else {
-            (messages.to_vec(), vec![])
+            messages.to_vec()
         }
     } else {
-        (messages.to_vec(), vec![])
+        messages.to_vec()
     };
 
-    let estimated_tokens: usize = kept.iter().map(|m| m.estimated_tokens()).sum();
-    let tools = capability.tools();
-    let tool_definitions = tools_to_definitions(&tools);
+    let estimated_tokens: usize = visible.iter().map(|m| m.estimated_tokens()).sum();
 
     PreparedContext {
-        messages: kept,
-        excluded,
-        system_addition: capability.system_prompt_addition().map(String::from),
-        tools,
-        tool_definitions,
+        visible_messages: visible,
         estimated_tokens,
+        total_history_messages,
     }
-}
-
-fn tools_to_definitions(tools: &[Box<dyn Tool>]) -> Vec<CoreToolDefinition> {
-    tools
-        .iter()
-        .map(|t| {
-            CoreToolDefinition::Builtin(BuiltinTool {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                parameters: t.parameters_schema(),
-                policy: Default::default(),
-            })
-        })
-        .collect()
 }
 
 // ============================================================================
@@ -272,7 +250,6 @@ async fn run_single_scenario(
     scenario: &Scenario,
     capability: &dyn Capability,
     budget_tokens: usize,
-    driver_registry: &DriverRegistry,
 ) -> ScenarioResult {
     let start = Instant::now();
     let prepared = prepare_context(capability, &scenario.messages, budget_tokens);
@@ -284,6 +261,8 @@ async fn run_single_scenario(
 
     // Fail immediately if context would be exceeded (simulates API rejection)
     if will_exceed {
+        let messages_excluded =
+            prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
         return ScenarioResult {
             scenario_name: scenario.name.clone(),
             strategy_name: capability.name().to_string(),
@@ -292,8 +271,8 @@ async fn run_single_scenario(
             response: String::new(),
             metrics: EvalMetrics {
                 context_exceeded: true,
-                messages_in_context: prepared.messages.len(),
-                messages_excluded: prepared.excluded.len(),
+                messages_in_context: prepared.visible_messages.len(),
+                messages_excluded,
                 total_tokens: prepared.estimated_tokens,
                 latency_ms: start.elapsed().as_millis() as u64,
                 ..Default::default()
@@ -305,10 +284,7 @@ async fn run_single_scenario(
         };
     }
 
-    let messages_in_context = prepared.messages.len();
-    let messages_excluded = prepared.excluded.len();
-
-    match execute_llm_calls(config, scenario, prepared, driver_registry).await {
+    match execute_with_agentic_loop(config, scenario, capability, prepared).await {
         Ok((response, metrics)) => {
             // Score the response using all scorers
             let judge_config = create_judge_config();
@@ -347,8 +323,6 @@ async fn run_single_scenario(
                 response: String::new(),
                 metrics: EvalMetrics {
                     context_exceeded: is_context_error,
-                    messages_in_context,
-                    messages_excluded,
                     latency_ms: start.elapsed().as_millis() as u64,
                     ..Default::default()
                 },
@@ -368,219 +342,153 @@ fn create_judge_config() -> Option<JudgeConfig> {
         })
 }
 
-async fn execute_llm_calls(
+/// Execute scenario using InMemoryAgenticLoop
+async fn execute_with_agentic_loop(
     config: &EvalConfig,
     scenario: &Scenario,
+    capability: &dyn Capability,
     prepared: PreparedContext,
-    driver_registry: &DriverRegistry,
 ) -> Result<(String, EvalMetrics)> {
-    let mut metrics = EvalMetrics {
-        messages_in_context: prepared.messages.len(),
-        messages_excluded: prepared.excluded.len(),
-        ..Default::default()
-    };
-
     let provider_type = get_provider_type(&config.model);
     let api_key = get_api_key(&provider_type)?;
-    let provider_config = ProviderConfig::new(provider_type).with_api_key(&api_key);
-    let driver = driver_registry.create_driver(&provider_config)?;
 
-    let mut llm_messages = build_llm_messages(&prepared, scenario);
-    let has_tools = !prepared.tool_definitions.is_empty();
-    let max_iterations = 5;
-    let mut final_response = String::new();
-
-    // Create tool context with excluded messages via InMemoryMessageRetriever
-    let session_id = SessionId::new();
-    let retriever = InMemoryMessageRetriever::new();
-    retriever.seed(session_id, prepared.excluded).await;
-    let tool_context = ToolContext::new(session_id).with_message_retriever(Arc::new(retriever));
-
-    for _iteration in 0..max_iterations {
-        let llm_config = LlmCallConfig {
-            model: config.model.clone(),
-            temperature: Some(0.0),
-            max_tokens: Some(4096),
-            tools: prepared.tool_definitions.clone(),
-            reasoning_effort: None,
-            metadata: HashMap::new(),
-        };
-
-        let response = driver
-            .chat_completion(llm_messages.clone(), &llm_config)
-            .await?;
-
-        metrics.llm_calls += 1;
-        if let Some(prompt) = response.metadata.prompt_tokens {
-            metrics.input_tokens += prompt as usize;
-        }
-        if let Some(completion) = response.metadata.completion_tokens {
-            metrics.output_tokens += completion as usize;
-        }
-        metrics.total_tokens = metrics.input_tokens + metrics.output_tokens;
-
-        if let Some(tool_calls) = response.tool_calls {
-            if !has_tools || tool_calls.is_empty() {
-                final_response = response.text;
-                break;
-            }
-
-            for tool_call in tool_calls {
-                metrics.history_queries += 1;
-
-                // Find and execute the tool using execute_with_context
-                let tool_result = execute_tool(
-                    &prepared.tools,
-                    &tool_call.name,
-                    &tool_call.arguments,
-                    &tool_context,
-                )
-                .await;
-
-                llm_messages.push(LlmMessage {
-                    role: LlmMessageRole::Assistant,
-                    content: LlmMessageContent::Text(response.text.clone()),
-                    tool_calls: Some(vec![tool_call.clone()]),
-                    tool_call_id: None,
-                    thinking: None,
-                    thinking_signature: None,
-                });
-
-                llm_messages.push(LlmMessage {
-                    role: LlmMessageRole::Tool,
-                    content: LlmMessageContent::Text(tool_result),
-                    tool_calls: None,
-                    tool_call_id: Some(tool_call.id),
-                    thinking: None,
-                    thinking_signature: None,
-                });
-            }
-
-            // Delay between tool call iterations to avoid rate limits
-            if config.inter_call_delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(config.inter_call_delay_ms))
-                    .await;
-            }
-        } else {
-            final_response = response.text;
-            break;
-        }
-    }
-
-    Ok((final_response, metrics))
-}
-
-/// Execute a tool by name using execute_with_context
-async fn execute_tool(
-    tools: &[Box<dyn Tool>],
-    name: &str,
-    arguments: &serde_json::Value,
-    context: &ToolContext,
-) -> String {
-    use everruns_core::tools::ToolExecutionResult;
-
-    for tool in tools {
-        if tool.name() == name {
-            let result = tool.execute_with_context(arguments.clone(), context).await;
-            return match result {
-                ToolExecutionResult::Success(value) => value.to_string(),
-                ToolExecutionResult::ToolError(msg) => format!("Error: {}", msg),
-                ToolExecutionResult::InternalError(err) => {
-                    format!("Internal error: {}", err.message)
-                }
-            };
-        }
-    }
-    format!("Unknown tool: {}", name)
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-fn get_api_key(provider_type: &ProviderType) -> Result<String> {
-    let key_name = match provider_type {
-        ProviderType::Anthropic => "ANTHROPIC_API_KEY",
-        ProviderType::OpenAI | ProviderType::OpenAICompletions => "OPENAI_API_KEY",
-        ProviderType::LlmSim => return Ok(String::new()),
+    let model = ModelWithProvider {
+        model: config.model.clone(),
+        provider_type,
+        api_key: Some(api_key),
+        base_url: None,
     };
-    std::env::var(key_name).map_err(|_| anyhow::anyhow!("{} not set", key_name))
+
+    // Build the agentic loop
+    // We add capability based on ID to get proper tool registration
+    let mut builder = InMemoryAgenticLoop::builder()
+        .agent_name("Eval Agent")
+        .system_prompt(build_system_prompt(capability))
+        .model(model)
+        .driver_registry(create_driver_registry())
+        .max_iterations(10);
+
+    // Add capability if it provides tools (infinity_context has query_history)
+    match capability.id() {
+        "infinity_context" => {
+            builder = builder.capability(InfinityContextCapability);
+        }
+        "naive_trim" => {
+            builder = builder.capability(NaiveTrimCapability);
+        }
+        _ => {
+            // baseline and others - no capability needed
+        }
+    }
+
+    let agentic_loop = builder.build().await?;
+    let session_id = agentic_loop.session_id();
+
+    // Seed ALL messages into the retriever for query_history tool access.
+    // Calculate how many excluded messages we have.
+    let excluded_count =
+        prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
+
+    // Seed excluded messages first (older history) - these won't be in LLM context
+    // but will be accessible via query_history tool
+    if excluded_count > 0 {
+        // We need to reconstruct excluded messages from scenario
+        // They are the first N messages where N = total - visible
+        let excluded_messages = &scenario.messages[..excluded_count];
+        for msg in excluded_messages {
+            agentic_loop
+                .message_retriever()
+                .store(session_id, msg.clone())
+                .await?;
+        }
+    }
+
+    // Seed visible messages (recent context - these are what the LLM sees)
+    for msg in &prepared.visible_messages {
+        agentic_loop
+            .message_retriever()
+            .store(session_id, msg.clone())
+            .await?;
+    }
+
+    // Run the turn with the task as user input
+    let result = agentic_loop.run_turn(scenario.task.as_str()).await?;
+
+    // Extract metrics from events (ground truth from actual execution)
+    let metrics = extract_metrics_from_events(&agentic_loop, prepared.total_history_messages).await;
+
+    Ok((result.response, metrics))
 }
 
-fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<LlmMessage> {
-    let mut messages = Vec::new();
+/// Extract evaluation metrics from events emitted during execution.
+///
+/// This provides ground truth metrics based on what actually happened:
+/// - `llm.generation` events: messages sent to LLM, token usage, call count
+/// - `tool.completed` events: query_history tool usage
+async fn extract_metrics_from_events(
+    agentic_loop: &InMemoryAgenticLoop,
+    total_history_messages: usize,
+) -> EvalMetrics {
+    let mut metrics = EvalMetrics::default();
 
-    let mut system_content =
+    // Extract from llm.generation events
+    let llm_events = agentic_loop.events_by_type(LLM_GENERATION).await;
+    metrics.llm_calls = llm_events.len();
+
+    for event in &llm_events {
+        if let EventData::LlmGeneration(data) = &event.data {
+            // Token usage from the LLM call
+            if let Some(usage) = &data.metadata.usage {
+                metrics.input_tokens += usage.input_tokens as usize;
+                metrics.output_tokens += usage.output_tokens as usize;
+                metrics.total_tokens += usage.total_tokens() as usize;
+            }
+
+            // Messages in context from first LLM call (before any tool results added)
+            // This represents what the capability initially sent to the LLM
+            if metrics.messages_in_context == 0 {
+                // Count non-system messages to match our scenario message count
+                metrics.messages_in_context = data
+                    .messages
+                    .iter()
+                    .filter(|m| !matches!(m.role, everruns_core::message::MessageRole::System))
+                    .count();
+            }
+        }
+    }
+
+    // Calculate excluded messages: total history - what was in first LLM context
+    // Subtract 1 for the task message that run_turn adds
+    let context_without_task = metrics.messages_in_context.saturating_sub(1);
+    metrics.messages_excluded = total_history_messages.saturating_sub(context_without_task);
+
+    // Extract query_history tool calls from tool.completed events
+    let tool_events = agentic_loop.events_by_type(TOOL_COMPLETED).await;
+    metrics.history_queries = tool_events
+        .iter()
+        .filter(|e| {
+            if let EventData::ToolCompleted(data) = &e.data {
+                data.tool_name == "query_history"
+            } else {
+                false
+            }
+        })
+        .count();
+
+    metrics
+}
+
+fn build_system_prompt(capability: &dyn Capability) -> String {
+    let mut prompt =
         "You are a helpful assistant. Answer questions based on the conversation history."
             .to_string();
-    if let Some(ref addition) = prepared.system_addition {
-        system_content.push_str("\n\n");
-        system_content.push_str(addition);
+
+    if let Some(addition) = capability.system_prompt_addition() {
+        prompt.push_str("\n\n");
+        prompt.push_str(addition);
     }
 
-    messages.push(LlmMessage {
-        role: LlmMessageRole::System,
-        content: LlmMessageContent::Text(system_content),
-        tool_calls: None,
-        tool_call_id: None,
-        thinking: None,
-        thinking_signature: None,
-    });
-
-    for msg in &prepared.messages {
-        let role = match msg.role {
-            crate::types::MessageRole::User => LlmMessageRole::User,
-            crate::types::MessageRole::Assistant => LlmMessageRole::Assistant,
-            crate::types::MessageRole::ToolResult => LlmMessageRole::Tool,
-            crate::types::MessageRole::System => LlmMessageRole::System,
-        };
-
-        // For tool result messages, extract tool_call_id from content
-        // This is required for OpenAI Responses API which uses FunctionCallOutput
-        let tool_call_id = if msg.role == crate::types::MessageRole::ToolResult {
-            msg.tool_call_id().map(|s| s.to_string())
-        } else {
-            None
-        };
-
-        // For assistant messages, extract tool calls from content
-        // This is required for OpenAI Responses API which uses FunctionCall items
-        let tool_calls = if msg.role == crate::types::MessageRole::Assistant && msg.has_tool_calls()
-        {
-            Some(
-                msg.tool_calls()
-                    .into_iter()
-                    .map(|tc| everruns_core::tool_types::ToolCall {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: tc.arguments.clone(),
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        messages.push(LlmMessage {
-            role,
-            content: LlmMessageContent::Text(msg.text_content()),
-            tool_calls,
-            tool_call_id,
-            thinking: None,
-            thinking_signature: None,
-        });
-    }
-
-    messages.push(LlmMessage {
-        role: LlmMessageRole::User,
-        content: LlmMessageContent::Text(scenario.task.clone()),
-        tool_calls: None,
-        tool_call_id: None,
-        thinking: None,
-        thinking_signature: None,
-    });
-
-    messages
+    prompt
 }
 
 fn create_dry_run_result(
@@ -601,6 +509,9 @@ fn create_dry_run_result(
         )
     };
 
+    let messages_excluded =
+        prepared.total_history_messages.saturating_sub(prepared.visible_messages.len());
+
     ScenarioResult {
         scenario_name: scenario.name.clone(),
         strategy_name: capability.name().to_string(),
@@ -615,8 +526,8 @@ fn create_dry_run_result(
             history_queries: 0,
             latency_ms: 0,
             context_exceeded: will_exceed,
-            messages_in_context: prepared.messages.len(),
-            messages_excluded: prepared.excluded.len(),
+            messages_in_context: prepared.visible_messages.len(),
+            messages_excluded,
         },
         error: if will_exceed {
             Some("Context would exceed limit".to_string())
@@ -634,8 +545,8 @@ fn create_dry_run_result(
 pub fn all_capabilities() -> Vec<Arc<dyn Capability>> {
     vec![
         Arc::new(BaselineCapability),
-        Arc::new(crate::capabilities::NaiveTrimCapability),
-        Arc::new(crate::capabilities::InfinityContextCapability),
+        Arc::new(NaiveTrimCapability),
+        Arc::new(InfinityContextCapability),
     ]
 }
 
