@@ -233,7 +233,7 @@ Messages are converted to OpenAI-compatible format before sending to Braintrust:
 
 | Internal Role | OpenAI Role | Notes |
 |--------------|-------------|-------|
-| `agent` | `assistant` | Assistant responses |
+| `agent` | `assistant` | Agent responses (mapped to OpenAI "assistant" role) |
 | `tool_result` | `tool` | Includes `tool_call_id` at message level |
 | `system` | `system` | No change |
 | `user` | `user` | No change |

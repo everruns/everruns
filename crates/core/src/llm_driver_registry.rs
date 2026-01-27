@@ -456,7 +456,7 @@ impl From<&crate::message::Message> for LlmMessage {
         let role = match msg.role {
             crate::message::MessageRole::System => LlmMessageRole::System,
             crate::message::MessageRole::User => LlmMessageRole::User,
-            crate::message::MessageRole::Assistant => LlmMessageRole::Assistant,
+            crate::message::MessageRole::Agent => LlmMessageRole::Assistant,
             crate::message::MessageRole::ToolResult => LlmMessageRole::Tool,
         };
 
@@ -522,7 +522,7 @@ impl LlmMessage {
         let role = match msg.role {
             MessageRole::System => LlmMessageRole::System,
             MessageRole::User => LlmMessageRole::User,
-            MessageRole::Assistant => LlmMessageRole::Assistant,
+            MessageRole::Agent => LlmMessageRole::Assistant,
             MessageRole::ToolResult => LlmMessageRole::Tool,
         };
 

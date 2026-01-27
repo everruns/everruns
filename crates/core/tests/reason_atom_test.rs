@@ -573,7 +573,7 @@ async fn test_reason_atom_handles_llm_error() {
     // Verify an error message was stored for the user
     let messages = message_retriever.load(session_id.into()).await.unwrap();
     assert_eq!(messages.len(), 2, "Should have user + error message");
-    assert_eq!(messages[1].role, everruns_core::MessageRole::Assistant);
+    assert_eq!(messages[1].role, everruns_core::MessageRole::Agent);
     assert!(
         messages[1].text().unwrap().contains("error"),
         "Stored message should be an error message"
@@ -598,6 +598,108 @@ async fn test_reason_atom_handles_llm_error() {
         reason_completed.is_some(),
         "Should emit reason.completed event"
     );
+}
+
+#[tokio::test]
+async fn test_reason_atom_emits_output_message_completed_on_success() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
+        setup_test_environment().await;
+
+    // Add a user message
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![Message::user("What is the capital of France?")],
+        )
+        .await;
+
+    // Create a driver with a fixed response
+    let driver_registry =
+        create_custom_driver_registry(LlmSimConfig::fixed("The capital of France is Paris."));
+
+    // Use an in-memory event emitter to capture events
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        agent_id: agent_id.into(),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert_eq!(result.text, "The capital of France is Paris.");
+
+    // Verify events were emitted
+    let events = event_emitter.events().await;
+    assert!(!events.is_empty(), "Events should have been emitted");
+
+    // Check for output.message.started event
+    let has_output_started = events
+        .iter()
+        .any(|e| e.event_type == "output.message.started");
+    assert!(
+        has_output_started,
+        "Should emit output.message.started event"
+    );
+
+    // Check for output.message.completed event (the final message)
+    let output_completed = events
+        .iter()
+        .find(|e| e.event_type == "output.message.completed");
+    assert!(
+        output_completed.is_some(),
+        "Should emit output.message.completed event on success"
+    );
+
+    // Verify the completed event has the correct message
+    if let Some(event) = output_completed {
+        if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
+            assert_eq!(data.message.text(), Some("The capital of France is Paris."));
+            assert_eq!(data.message.role, everruns_core::MessageRole::Agent);
+        } else {
+            panic!("Expected OutputMessageCompleted data");
+        }
+    }
+
+    // Check for reason.started and reason.completed events
+    let has_reason_started = events.iter().any(|e| e.event_type == "reason.started");
+    assert!(has_reason_started, "Should emit reason.started event");
+
+    let reason_completed = events.iter().find(|e| e.event_type == "reason.completed");
+    assert!(
+        reason_completed.is_some(),
+        "Should emit reason.completed event"
+    );
+
+    // Verify reason.completed shows success
+    if let Some(event) = reason_completed
+        && let everruns_core::EventData::ReasonCompleted(data) = &event.data
+    {
+        assert!(data.success, "reason.completed should indicate success");
+    }
+
+    // Check for llm.generation event
+    let has_llm_generation = events.iter().any(|e| e.event_type == "llm.generation");
+    assert!(has_llm_generation, "Should emit llm.generation event");
 }
 
 #[tokio::test]

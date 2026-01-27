@@ -925,7 +925,7 @@ mod tests {
 
         let conv = runner.conversation_string().await.unwrap();
         assert!(conv.contains("[User]"));
-        assert!(conv.contains("[Assistant]"));
+        assert!(conv.contains("[Agent]"));
         assert!(conv.contains("Hi"));
         assert!(conv.contains("Hello!"));
     }

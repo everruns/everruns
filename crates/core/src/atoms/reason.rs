@@ -62,7 +62,7 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
         result.push(msg.clone());
 
         // After an assistant message with tool calls, add cancelled results for any missing ones
-        if msg.role == MessageRole::Assistant && msg.has_tool_calls() {
+        if msg.role == MessageRole::Agent && msg.has_tool_calls() {
             for tc in msg.tool_calls() {
                 // Look for a matching tool result in ALL subsequent messages
                 let has_result = messages[(i + 1)..]

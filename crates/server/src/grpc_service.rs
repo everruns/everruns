@@ -679,7 +679,7 @@ impl WorkerService for WorkerServiceImpl {
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),
             ),
-            MessageRole::Assistant => EventRequest::new(
+            MessageRole::Agent => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
                 OutputMessageCompletedData::new(message.clone()),

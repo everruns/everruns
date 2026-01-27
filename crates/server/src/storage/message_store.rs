@@ -72,7 +72,7 @@ impl DbMessageRetriever {
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),
             ),
-            MessageRole::Assistant => EventRequest::new(
+            MessageRole::Agent => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 OutputMessageCompletedData::new(message.clone()),
@@ -407,7 +407,7 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::Assistant);
+        assert_eq!(parsed.role, MessageRole::Agent);
         assert_eq!(parsed.text(), Some("Hello from agent!"));
     }
 
