@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useAuth } from "@/providers/auth-provider";
+import { useOrg } from "@/providers/org-provider";
 import { Loader2 } from "lucide-react";
 
 interface MainLayoutProps {
@@ -13,16 +14,20 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, requiresAuth } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
+  const { isLoading: orgLoading } = useOrg();
+
+  // Combined loading state - wait for both auth and org to initialize
+  const isLoading = authLoading || orgLoading;
 
   // Redirect to login if auth is required but user is not authenticated
   useEffect(() => {
-    if (!isLoading && requiresAuth && !isAuthenticated) {
+    if (!authLoading && requiresAuth && !isAuthenticated) {
       router.replace("/login");
     }
-  }, [isLoading, requiresAuth, isAuthenticated, router]);
+  }, [authLoading, requiresAuth, isAuthenticated, router]);
 
-  // Show loading state while checking auth
+  // Show loading state while checking auth and initializing org
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -39,7 +44,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+      <main className="flex-1 overflow-auto bg-background bg-brand-dots">
+        {children}
+      </main>
     </div>
   );
 }
