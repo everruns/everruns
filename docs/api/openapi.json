@@ -4177,6 +4177,17 @@
             ],
             "description": "Unique response identifier from the LLM provider\nRequired for gen-ai semantic conventions"
           },
+          "retry": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmRetryInfo",
+                "description": "Retry information if rate limit retries occurred\nContains number of retries and total wait time"
+              }
+            ]
+          },
           "success": {
             "type": "boolean",
             "description": "Whether the generation was successful"
@@ -4635,6 +4646,28 @@
           "anthropic",
           "llmsim"
         ]
+      },
+      "LlmRetryInfo": {
+        "type": "object",
+        "description": "Information about rate limit retries during LLM generation",
+        "required": [
+          "attempts",
+          "total_wait_ms"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of retry attempts made (0 = succeeded on first try)",
+            "minimum": 0
+          },
+          "total_wait_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total time spent waiting between retries in milliseconds",
+            "minimum": 0
+          }
+        }
       },
       "McpServer": {
         "type": "object",
