@@ -193,6 +193,8 @@ CREATE TABLE llm_providers (
     -- Provider-specific settings
     settings JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    -- Model discovery sync tracking
+    last_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -205,6 +207,7 @@ CREATE TRIGGER update_llm_providers_updated_at BEFORE UPDATE ON llm_providers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 COMMENT ON COLUMN llm_providers.settings IS 'Provider-specific settings as JSON.';
+COMMENT ON COLUMN llm_providers.last_synced_at IS 'Last time models were synced from provider API';
 
 -- ============================================
 -- LLM Models
@@ -220,6 +223,10 @@ CREATE TABLE llm_models (
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    -- Model discovery fields
+    source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'discovered', 'predefined')),
+    last_seen_at TIMESTAMPTZ,
+    provider_metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -233,11 +240,17 @@ CREATE UNIQUE INDEX idx_llm_models_provider_model ON llm_models(provider_id, mod
 CREATE UNIQUE INDEX idx_llm_models_default ON llm_models(is_default) WHERE is_default = TRUE;
 -- Index for favorite model queries
 CREATE INDEX idx_llm_models_favorite ON llm_models(is_favorite) WHERE is_favorite = TRUE;
+-- Index for model discovery
+CREATE INDEX idx_llm_models_source ON llm_models(source);
+CREATE INDEX idx_llm_models_last_seen ON llm_models(last_seen_at) WHERE last_seen_at IS NOT NULL;
 
 CREATE TRIGGER update_llm_models_updated_at BEFORE UPDATE ON llm_models
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 COMMENT ON COLUMN llm_models.is_favorite IS 'Whether this model is marked as a favorite for quick access';
+COMMENT ON COLUMN llm_models.source IS 'How the model was added: manual, discovered, or predefined';
+COMMENT ON COLUMN llm_models.last_seen_at IS 'Last time model was seen in provider API response';
+COMMENT ON COLUMN llm_models.provider_metadata IS 'Raw metadata from provider API response';
 
 -- ============================================
 -- Agents (configuration for agentic loop)
@@ -303,6 +316,7 @@ COMMENT ON COLUMN agent_capabilities.config IS 'Per-agent capability configurati
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     title VARCHAR(255),
     tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
@@ -313,14 +327,19 @@ CREATE TABLE sessions (
     total_cache_read_tokens BIGINT NOT NULL DEFAULT 0,
     total_cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_sessions_agent_id ON sessions(agent_id);
+CREATE INDEX idx_sessions_org_id ON sessions(org_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
 CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 CREATE INDEX idx_sessions_tags ON sessions USING GIN(tags);
+
+CREATE TRIGGER update_sessions_updated_at BEFORE UPDATE ON sessions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 COMMENT ON COLUMN sessions.total_input_tokens IS 'Denormalized: sum of input_tokens from llm_generations';
 COMMENT ON COLUMN sessions.total_output_tokens IS 'Denormalized: sum of output_tokens from llm_generations';
@@ -474,6 +493,78 @@ CREATE INDEX idx_session_files_name ON session_files(session_id, (substring(path
 -- Auto-update updated_at
 CREATE TRIGGER update_session_files_updated_at
     BEFORE UPDATE ON session_files
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- Session Key/Value Storage
+-- ============================================
+
+-- Simple key/value storage scoped to sessions.
+-- Use case: Agents can persist data across turns within a session.
+CREATE TABLE session_key_values (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+
+    -- Key name (unique per session)
+    key VARCHAR(255) NOT NULL,
+
+    -- Value (stored as text, can be JSON)
+    value TEXT NOT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Unique key per session
+    CONSTRAINT session_key_values_unique_key UNIQUE (session_id, key)
+);
+
+-- Index for listing all keys in a session
+CREATE INDEX idx_session_key_values_session_id ON session_key_values(session_id);
+
+-- Index for key lookup
+CREATE INDEX idx_session_key_values_key ON session_key_values(session_id, key);
+
+-- Auto-update updated_at
+CREATE TRIGGER update_session_key_values_updated_at
+    BEFORE UPDATE ON session_key_values
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- Session Secret Storage (Encrypted)
+-- ============================================
+
+-- Encrypted secret storage scoped to sessions.
+-- Use case: Agents can securely store sensitive data like API keys, tokens, etc.
+-- Secrets are encrypted using envelope encryption (AES-256-GCM).
+CREATE TABLE session_secrets (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+
+    -- Secret name (unique per session)
+    name VARCHAR(255) NOT NULL,
+
+    -- Encrypted value (JSON-encoded EncryptedPayload from encryption.rs)
+    -- Contains: version, alg, key_id, dek_wrapped, nonce, ciphertext
+    value_encrypted BYTEA NOT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Unique name per session
+    CONSTRAINT session_secrets_unique_name UNIQUE (session_id, name)
+);
+
+-- Index for listing all secrets in a session
+CREATE INDEX idx_session_secrets_session_id ON session_secrets(session_id);
+
+-- Index for secret name lookup
+CREATE INDEX idx_session_secrets_name ON session_secrets(session_id, name);
+
+-- Auto-update updated_at
+CREATE TRIGGER update_session_secrets_updated_at
+    BEFORE UPDATE ON session_secrets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================

@@ -106,9 +106,14 @@ CREATE TABLE durable_task_queue (
 );
 
 -- Efficient polling query - CRITICAL for 1000 workers
--- Partial index on pending status + ordering by priority/visibility
+-- Leads with ORDER BY columns for efficient LIMIT + FOR UPDATE SKIP LOCKED
+-- The claim_task query uses:
+--   WHERE status = 'pending' AND activity_type = ANY($1) AND visible_at <= NOW()
+--   ORDER BY priority DESC, visible_at
+--   LIMIT $2
+--   FOR UPDATE SKIP LOCKED
 CREATE INDEX idx_durable_task_queue_pending
-    ON durable_task_queue(activity_type, priority DESC, visible_at)
+    ON durable_task_queue(priority DESC, visible_at, activity_type)
     WHERE status = 'pending';
 
 -- For heartbeat monitoring
