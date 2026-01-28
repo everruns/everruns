@@ -36,6 +36,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
 use crate::openai_protocol::is_openai_request_too_large;
+use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
@@ -584,10 +585,25 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             async move {
                 match result {
                     Ok(event) => {
-                        // Parse the event type and data
                         let event_data = &event.data;
 
-                        // Parse as generic JSON to get the event type
+                        // Try to parse as typed StreamingEvent first for type safety
+                        if let Ok(streaming_event) =
+                            serde_json::from_str::<StreamingEvent>(event_data)
+                        {
+                            return Ok(handle_streaming_event(
+                                streaming_event,
+                                &input_tokens,
+                                &output_tokens,
+                                &cache_read_tokens,
+                                &accumulated_tool_calls,
+                                &finish_reason,
+                                model,
+                                retry_metadata_for_done,
+                            ));
+                        }
+
+                        // Fallback: parse as generic JSON for backwards compatibility
                         let parsed: std::result::Result<Value, _> =
                             serde_json::from_str(event_data);
 
@@ -609,19 +625,20 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
                                     Some("response.function_call_arguments.delta") => {
                                         // Function call arguments delta
-                                        if let (Some(call_id), Some(delta)) = (
-                                            json.get("call_id").and_then(|c| c.as_str()),
+                                        if let (Some(item_id), Some(delta)) = (
+                                            json.get("item_id").and_then(|c| c.as_str()),
                                             json.get("delta").and_then(|d| d.as_str()),
                                         ) {
                                             let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            // Find or create accumulator for this call_id
+                                            // Find or create accumulator for this item_id
                                             if let Some(tc) =
-                                                acc.iter_mut().find(|t| t.id == call_id)
+                                                acc.iter_mut().find(|t| t.id == item_id)
                                             {
                                                 tc.arguments.push_str(delta);
                                             } else {
                                                 acc.push(ToolCallAccumulator {
-                                                    id: call_id.to_string(),
+                                                    id: item_id.to_string(),
+                                                    call_id: String::new(),
                                                     name: String::new(),
                                                     arguments: delta.to_string(),
                                                 });
@@ -636,6 +653,11 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             && item.get("type").and_then(|t| t.as_str())
                                                 == Some("function_call")
                                         {
+                                            let id = item
+                                                .get("id")
+                                                .and_then(|c| c.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
                                             let call_id = item
                                                 .get("call_id")
                                                 .and_then(|c| c.as_str())
@@ -648,13 +670,13 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                                 .to_string();
 
                                             let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            if let Some(tc) =
-                                                acc.iter_mut().find(|t| t.id == call_id)
-                                            {
+                                            if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
                                                 tc.name = name;
+                                                tc.call_id = call_id;
                                             } else {
                                                 acc.push(ToolCallAccumulator {
-                                                    id: call_id,
+                                                    id,
+                                                    call_id,
                                                     name,
                                                     arguments: String::new(),
                                                 });
@@ -680,7 +702,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                                             serde_json::from_str(&tc.arguments)
                                                                 .unwrap_or(json!({}));
                                                         ToolCall {
-                                                            id: tc.id.clone(),
+                                                            id: tc.call_id.clone(),
                                                             name: tc.name.clone(),
                                                             arguments,
                                                         }
@@ -823,9 +845,151 @@ impl std::fmt::Debug for OpenResponsesProtocolLlmDriver {
 /// Accumulator for tool call arguments during streaming
 #[derive(Clone, Default)]
 struct ToolCallAccumulator {
+    /// Item ID in the stream
     id: String,
+    /// Unique call ID for the function call
+    call_id: String,
+    /// Function name
     name: String,
+    /// Accumulated JSON arguments
     arguments: String,
+}
+
+/// Handle typed streaming events from the OpenResponses API
+#[allow(clippy::too_many_arguments)]
+fn handle_streaming_event(
+    event: StreamingEvent,
+    input_tokens: &Mutex<u32>,
+    output_tokens: &Mutex<u32>,
+    cache_read_tokens: &Mutex<Option<u32>>,
+    accumulated_tool_calls: &Mutex<Vec<ToolCallAccumulator>>,
+    finish_reason: &Mutex<Option<String>>,
+    model: String,
+    retry_metadata: Option<Arc<RetryMetadata>>,
+) -> LlmStreamEvent {
+    match event {
+        StreamingEvent::OutputTextDelta { delta, .. } => LlmStreamEvent::TextDelta(delta),
+
+        StreamingEvent::ReasoningDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+
+        StreamingEvent::ReasoningSummaryDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+
+        StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
+            let mut acc = accumulated_tool_calls.lock().unwrap();
+            if let Some(tc) = acc.iter_mut().find(|t| t.id == item_id) {
+                tc.arguments.push_str(&delta);
+            } else {
+                acc.push(ToolCallAccumulator {
+                    id: item_id,
+                    call_id: String::new(),
+                    name: String::new(),
+                    arguments: delta,
+                });
+            }
+            LlmStreamEvent::TextDelta(String::new())
+        }
+
+        StreamingEvent::OutputItemAdded { item, .. } => {
+            if let Some(types::OutputItem::FunctionCall {
+                id, call_id, name, ..
+            }) = item
+            {
+                let mut acc = accumulated_tool_calls.lock().unwrap();
+                if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
+                    tc.name = name;
+                    tc.call_id = call_id;
+                } else {
+                    acc.push(ToolCallAccumulator {
+                        id,
+                        call_id,
+                        name,
+                        arguments: String::new(),
+                    });
+                }
+            }
+            LlmStreamEvent::TextDelta(String::new())
+        }
+
+        StreamingEvent::OutputItemDone { item, .. } => {
+            if let Some(types::OutputItem::FunctionCall { .. }) = item {
+                let acc = accumulated_tool_calls.lock().unwrap();
+                if !acc.is_empty() {
+                    let tool_calls: Vec<ToolCall> = acc
+                        .iter()
+                        .filter(|tc| !tc.name.is_empty())
+                        .map(|tc| {
+                            let arguments: Value =
+                                serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
+                            ToolCall {
+                                id: tc.call_id.clone(),
+                                name: tc.name.clone(),
+                                arguments,
+                            }
+                        })
+                        .collect();
+
+                    if !tool_calls.is_empty() {
+                        *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                        return LlmStreamEvent::ToolCalls(tool_calls);
+                    }
+                }
+            }
+            LlmStreamEvent::TextDelta(String::new())
+        }
+
+        StreamingEvent::ResponseCompleted { response, .. } => {
+            // Extract usage
+            if let Some(usage) = &response.usage {
+                *input_tokens.lock().unwrap() = usage.input_tokens;
+                *output_tokens.lock().unwrap() = usage.output_tokens;
+                if let Some(details) = &usage.input_tokens_details {
+                    *cache_read_tokens.lock().unwrap() = Some(details.cached_tokens);
+                }
+            }
+
+            let reason = match response.status {
+                types::ResponseStatus::Completed => {
+                    let existing = finish_reason.lock().unwrap().clone();
+                    existing.unwrap_or_else(|| "stop".to_string())
+                }
+                types::ResponseStatus::Failed => "error".to_string(),
+                types::ResponseStatus::Cancelled => "stop".to_string(),
+                _ => "stop".to_string(),
+            };
+
+            let input = *input_tokens.lock().unwrap();
+            let output = *output_tokens.lock().unwrap();
+            let cached = *cache_read_tokens.lock().unwrap();
+
+            LlmStreamEvent::Done(LlmCompletionMetadata {
+                total_tokens: Some(input + output),
+                prompt_tokens: Some(input),
+                completion_tokens: Some(output),
+                cache_read_tokens: cached,
+                cache_creation_tokens: None,
+                model: Some(model),
+                finish_reason: Some(reason),
+                retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
+            })
+        }
+
+        StreamingEvent::Error { error, .. } => {
+            let msg = if let Some(code) = &error.code {
+                format!("{}: {}", code, error.message)
+            } else {
+                error.message
+            };
+            LlmStreamEvent::Error(msg)
+        }
+
+        StreamingEvent::RefusalDelta { delta, .. } => {
+            // Treat refusal as an error message
+            LlmStreamEvent::Error(format!("Model refused: {}", delta))
+        }
+
+        // All other events: emit empty delta to maintain stream continuity
+        _ => LlmStreamEvent::TextDelta(String::new()),
+    }
 }
 
 // ============================================================================
