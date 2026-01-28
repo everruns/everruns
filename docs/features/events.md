@@ -21,7 +21,7 @@ Every action during a session - from user messages to LLM responses to tool exec
 Subscribe to real-time events via Server-Sent Events:
 
 ```bash
-curl -N "https://api.everruns.com/v1/agents/{agent_id}/sessions/{session_id}/sse" \
+curl -N "https://api.everruns.com/v1/sessions/{session_id}/sse" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
@@ -30,8 +30,99 @@ curl -N "https://api.everruns.com/v1/agents/{agent_id}/sessions/{session_id}/sse
 Alternatively, poll for events with pagination:
 
 ```bash
-curl "https://api.everruns.com/v1/agents/{agent_id}/sessions/{session_id}/events?since_id={last_event_id}" \
+curl "https://api.everruns.com/v1/sessions/{session_id}/events?since_id={last_event_id}" \
   -H "Authorization: Bearer $API_KEY"
+```
+
+## SSE Connection Management
+
+### Connection Lifecycle Events
+
+SSE streams include special lifecycle events for connection management:
+
+| Event | Description |
+|-------|-------------|
+| `connected` | Sent immediately when the stream is established |
+| `disconnecting` | Sent before the server gracefully closes the connection |
+
+### Connection Cycling
+
+To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:
+
+| Stream Type | Cycle Interval |
+|-------------|----------------|
+| Session events | 5 minutes |
+| Durable monitoring | 10 minutes |
+
+Before closing, the server sends a `disconnecting` event:
+
+```json
+{
+  "event": "disconnecting",
+  "data": "{\"reason\":\"connection_cycle\",\"retry_ms\":100}"
+}
+```
+
+Clients should reconnect immediately using the `since_id` of the last received event. This ensures no events are missed during the transition.
+
+### Retry Hints
+
+Each SSE event includes a `retry:` field that hints how long clients should wait before reconnecting if the connection is unexpectedly lost:
+
+| Situation | Retry Hint |
+|-----------|------------|
+| Active streaming (new events) | 100ms |
+| Idle (no new events) | Increases with backoff up to 500ms |
+| After `disconnecting` event | 100ms (immediate reconnect) |
+
+The EventSource API automatically uses this hint for reconnection timing.
+
+### Resuming Streams
+
+Use the `since_id` query parameter to resume from the last received event:
+
+```bash
+curl -N "https://api.everruns.com/v1/sessions/{session_id}/sse?since_id={last_event_id}" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+Event IDs are UUID v7 (monotonically increasing by timestamp), ensuring reliable ordering and no duplicate events on reconnection.
+
+### JavaScript Example
+
+```javascript
+function connectSSE(sessionId, lastEventId) {
+  const url = new URL(`/v1/sessions/${sessionId}/sse`, API_BASE);
+  if (lastEventId) {
+    url.searchParams.set('since_id', lastEventId);
+  }
+
+  const eventSource = new EventSource(url, { withCredentials: true });
+
+  eventSource.addEventListener('connected', () => {
+    console.log('SSE connected');
+  });
+
+  eventSource.addEventListener('disconnecting', (event) => {
+    const data = JSON.parse(event.data);
+    console.log('SSE disconnecting, reconnecting in', data.retry_ms, 'ms');
+    eventSource.close();
+    setTimeout(() => connectSSE(sessionId, lastEventId), data.retry_ms);
+  });
+
+  eventSource.addEventListener('input.message', (event) => {
+    const eventData = JSON.parse(event.data);
+    lastEventId = eventData.id;
+    // Handle event...
+  });
+
+  // Handle other event types...
+
+  eventSource.onerror = () => {
+    eventSource.close();
+    setTimeout(() => connectSSE(sessionId, lastEventId), 2000);
+  };
+}
 ```
 
 ## Event Categories

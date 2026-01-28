@@ -28,11 +28,12 @@ use futures::{
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc, time::Duration};
+use tokio::time::Instant;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::common::ErrorResponse;
-use super::sse::SseStreamConfig;
+use super::sse::{DisconnectReason, SseStreamConfig};
 
 /// App state for durable routes
 #[derive(Clone)]
@@ -1156,11 +1157,32 @@ struct WorkflowSnapshot {
 }
 
 /// GET /v1/durable/sse - Stream global durable state (SSE)
+///
+/// Establishes a Server-Sent Events (SSE) connection for real-time durable system monitoring.
+///
+/// ## Connection Lifecycle Events
+///
+/// - **connected**: Sent immediately when the stream is established.
+/// - **snapshot**: Sent when system state changes (health, workers, workflows, tasks, DLQ, circuit breakers).
+/// - **disconnecting**: Sent before the server closes the connection for graceful cycling.
+///   Data: `{"reason":"connection_cycle","retry_ms":1000}`
+///
+/// ## Connection Cycling
+///
+/// Connections are automatically cycled every 10 minutes. Before closing, the server sends
+/// a `disconnecting` event so clients can reconnect seamlessly.
+///
+/// ## Retry Hints
+///
+/// Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:
+/// - During active updates: 1000ms
+/// - During idle periods: increases with backoff up to 20000ms
+/// - After `disconnecting` event: 1000ms
 #[utoipa::path(
     get,
     path = "/v1/durable/sse",
     responses(
-        (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
+        (status = 200, description = "SSE event stream with 'connected', 'snapshot', and 'disconnecting' events", content_type = "text/event-stream"),
         (status = 503, description = "Durable store not available")
     ),
     tag = "durable"
@@ -1177,189 +1199,247 @@ pub async fn stream_durable_sse(
 
     // Use monitoring config (relaxed polling for dashboards)
     let config = SseStreamConfig::monitoring();
+    let connection_start = Instant::now();
+
+    // Stream state machine
+    #[derive(Clone)]
+    enum StreamPhase {
+        SendConnected,
+        Polling,
+        SendDisconnecting,
+        Closed,
+    }
 
     #[derive(Clone)]
     struct StreamState {
+        phase: StreamPhase,
         backoff_ms: u64,
-        sent_connected: bool,
         config: SseStreamConfig,
+        connection_start: Instant,
         // Track last snapshot hash to detect changes
         last_hash: Option<u64>,
     }
 
     let initial_state = StreamState {
+        phase: StreamPhase::SendConnected,
         backoff_ms: config.min_backoff_ms,
-        sent_connected: false,
         config,
+        connection_start,
         last_hash: None,
     };
 
     let stream = stream::unfold((state, initial_state), |(state, stream_state)| async move {
-        // Send initial "connected" event
-        if !stream_state.sent_connected {
-            tracing::debug!("Durable SSE: sending connected event");
-            let connected_event = Ok(SseEvent::default()
-                .event("connected")
-                .data(r#"{"status":"connected"}"#));
-            let new_state = StreamState {
-                sent_connected: true,
-                ..stream_state
-            };
-            return Some((stream::iter(vec![connected_event]), (state, new_state)));
-        }
+        match stream_state.phase {
+            StreamPhase::Closed => None,
 
-        // Fetch current state
-        let store = match state.get_store() {
-            Ok(s) => s,
-            Err(_) => return None,
-        };
+            StreamPhase::SendDisconnecting => {
+                tracing::info!(
+                    duration_secs = stream_state.connection_start.elapsed().as_secs(),
+                    "Durable SSE: connection cycling, sending disconnecting event"
+                );
+                let disconnect_data = format!(
+                    r#"{{"reason":"{}","retry_ms":{}}}"#,
+                    DisconnectReason::ConnectionCycle.as_str(),
+                    stream_state.config.disconnect_retry_ms
+                );
+                let disconnecting_event = Ok(SseEvent::default()
+                    .event("disconnecting")
+                    .data(disconnect_data)
+                    .retry(stream_state.config.disconnect_retry()));
 
-        // Fetch all data in parallel-ish manner
-        let health = match store.get_system_health().await {
-            Ok(h) => HealthResponse::from(h),
-            Err(e) => {
-                tracing::error!("Failed to fetch health: {}", e);
-                return None;
+                let new_state = StreamState {
+                    phase: StreamPhase::Closed,
+                    ..stream_state
+                };
+                Some((stream::iter(vec![disconnecting_event]), (state, new_state)))
             }
-        };
 
-        let workers: Vec<WorkerResponse> = match store.list_workers(WorkerFilter::default()).await {
-            Ok(w) => w.into_iter().map(WorkerResponse::from).collect(),
-            Err(e) => {
-                tracing::error!("Failed to fetch workers: {}", e);
-                return None;
+            StreamPhase::SendConnected => {
+                tracing::debug!("Durable SSE: sending connected event");
+                let connected_event = Ok(SseEvent::default()
+                    .event("connected")
+                    .data(r#"{"status":"connected"}"#)
+                    .retry(stream_state.config.retry_hint(stream_state.backoff_ms)));
+                let new_state = StreamState {
+                    phase: StreamPhase::Polling,
+                    ..stream_state
+                };
+                Some((stream::iter(vec![connected_event]), (state, new_state)))
             }
-        };
 
-        let workflows_data = match store
-            .list_workflows(
-                WorkflowFilter::default(),
-                Pagination {
-                    offset: 0,
-                    limit: 100,
-                },
-            )
-            .await
-        {
-            Ok(w) => w,
-            Err(e) => {
-                tracing::error!("Failed to fetch workflows: {}", e);
-                return None;
+            StreamPhase::Polling => {
+                // Check for connection cycling
+                if stream_state.connection_start.elapsed()
+                    > stream_state.config.max_connection_duration()
+                {
+                    let new_state = StreamState {
+                        phase: StreamPhase::SendDisconnecting,
+                        ..stream_state
+                    };
+                    return Some((stream::iter(vec![]), (state, new_state)));
+                }
+
+                // Fetch current state
+                let store = match state.get_store() {
+                    Ok(s) => s,
+                    Err(_) => return None,
+                };
+
+                // Fetch all data in parallel-ish manner
+                let health = match store.get_system_health().await {
+                    Ok(h) => HealthResponse::from(h),
+                    Err(e) => {
+                        tracing::error!("Failed to fetch health: {}", e);
+                        return None;
+                    }
+                };
+
+                let workers: Vec<WorkerResponse> =
+                    match store.list_workers(WorkerFilter::default()).await {
+                        Ok(w) => w.into_iter().map(WorkerResponse::from).collect(),
+                        Err(e) => {
+                            tracing::error!("Failed to fetch workers: {}", e);
+                            return None;
+                        }
+                    };
+
+                let workflows_data = match store
+                    .list_workflows(
+                        WorkflowFilter::default(),
+                        Pagination {
+                            offset: 0,
+                            limit: 100,
+                        },
+                    )
+                    .await
+                {
+                    Ok(w) => w,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch workflows: {}", e);
+                        return None;
+                    }
+                };
+                let workflows = WorkflowsListResponse {
+                    total: workflows_data.len(),
+                    data: workflows_data
+                        .into_iter()
+                        .map(WorkflowResponse::from)
+                        .collect(),
+                };
+
+                let tasks_data = match store
+                    .list_tasks(
+                        TaskFilter::default(),
+                        Pagination {
+                            offset: 0,
+                            limit: 100,
+                        },
+                    )
+                    .await
+                {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch tasks: {}", e);
+                        return None;
+                    }
+                };
+                let tasks = TasksListResponse {
+                    total: tasks_data.len(),
+                    data: tasks_data.into_iter().map(TaskResponse::from).collect(),
+                };
+
+                let dlq_data = match store
+                    .list_dlq(
+                        DlqFilter::default(),
+                        Pagination {
+                            offset: 0,
+                            limit: 100,
+                        },
+                    )
+                    .await
+                {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch DLQ: {}", e);
+                        return None;
+                    }
+                };
+                let dlq = DlqListResponse {
+                    total: dlq_data.len(),
+                    data: dlq_data.into_iter().map(DlqEntryResponse::from).collect(),
+                };
+
+                let cb_data = match store.list_circuit_breakers().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch circuit breakers: {}", e);
+                        return None;
+                    }
+                };
+                let circuit_breakers = CircuitBreakersListResponse {
+                    total: cb_data.len(),
+                    data: cb_data
+                        .into_iter()
+                        .map(CircuitBreakerResponse::from)
+                        .collect(),
+                };
+
+                let snapshot = DurableSnapshot {
+                    health,
+                    workers,
+                    workflows,
+                    tasks,
+                    dlq,
+                    circuit_breakers,
+                };
+
+                // Simple hash based on key metrics to detect changes
+                let current_hash = {
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    snapshot.health.status.hash(&mut hasher);
+                    snapshot.health.active_workers.hash(&mut hasher);
+                    snapshot.health.running_workflows.hash(&mut hasher);
+                    snapshot.health.pending_tasks.hash(&mut hasher);
+                    snapshot.health.dlq_size.hash(&mut hasher);
+                    snapshot.workers.len().hash(&mut hasher);
+                    snapshot.workflows.total.hash(&mut hasher);
+                    snapshot.tasks.total.hash(&mut hasher);
+                    snapshot.dlq.total.hash(&mut hasher);
+                    snapshot.circuit_breakers.total.hash(&mut hasher);
+                    hasher.finish()
+                };
+
+                // Only send if changed or first snapshot
+                let has_changes = stream_state.last_hash != Some(current_hash);
+
+                if has_changes {
+                    let json =
+                        serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
+                    let new_backoff = stream_state.config.min_backoff_ms;
+                    let event = Ok(SseEvent::default()
+                        .event("snapshot")
+                        .data(json)
+                        .retry(stream_state.config.retry_hint(new_backoff)));
+
+                    let new_state = StreamState {
+                        phase: StreamPhase::Polling,
+                        backoff_ms: new_backoff,
+                        last_hash: Some(current_hash),
+                        ..stream_state
+                    };
+                    Some((stream::iter(vec![event]), (state, new_state)))
+                } else {
+                    // No changes, wait with backoff
+                    tokio::time::sleep(Duration::from_millis(stream_state.backoff_ms)).await;
+                    let new_backoff = stream_state.config.next_backoff(stream_state.backoff_ms);
+                    let new_state = StreamState {
+                        backoff_ms: new_backoff,
+                        ..stream_state
+                    };
+                    Some((stream::iter(vec![]), (state, new_state)))
+                }
             }
-        };
-        let workflows = WorkflowsListResponse {
-            total: workflows_data.len(),
-            data: workflows_data
-                .into_iter()
-                .map(WorkflowResponse::from)
-                .collect(),
-        };
-
-        let tasks_data = match store
-            .list_tasks(
-                TaskFilter::default(),
-                Pagination {
-                    offset: 0,
-                    limit: 100,
-                },
-            )
-            .await
-        {
-            Ok(t) => t,
-            Err(e) => {
-                tracing::error!("Failed to fetch tasks: {}", e);
-                return None;
-            }
-        };
-        let tasks = TasksListResponse {
-            total: tasks_data.len(),
-            data: tasks_data.into_iter().map(TaskResponse::from).collect(),
-        };
-
-        let dlq_data = match store
-            .list_dlq(
-                DlqFilter::default(),
-                Pagination {
-                    offset: 0,
-                    limit: 100,
-                },
-            )
-            .await
-        {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::error!("Failed to fetch DLQ: {}", e);
-                return None;
-            }
-        };
-        let dlq = DlqListResponse {
-            total: dlq_data.len(),
-            data: dlq_data.into_iter().map(DlqEntryResponse::from).collect(),
-        };
-
-        let cb_data = match store.list_circuit_breakers().await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to fetch circuit breakers: {}", e);
-                return None;
-            }
-        };
-        let circuit_breakers = CircuitBreakersListResponse {
-            total: cb_data.len(),
-            data: cb_data
-                .into_iter()
-                .map(CircuitBreakerResponse::from)
-                .collect(),
-        };
-
-        let snapshot = DurableSnapshot {
-            health,
-            workers,
-            workflows,
-            tasks,
-            dlq,
-            circuit_breakers,
-        };
-
-        // Simple hash based on key metrics to detect changes
-        let current_hash = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            snapshot.health.status.hash(&mut hasher);
-            snapshot.health.active_workers.hash(&mut hasher);
-            snapshot.health.running_workflows.hash(&mut hasher);
-            snapshot.health.pending_tasks.hash(&mut hasher);
-            snapshot.health.dlq_size.hash(&mut hasher);
-            snapshot.workers.len().hash(&mut hasher);
-            snapshot.workflows.total.hash(&mut hasher);
-            snapshot.tasks.total.hash(&mut hasher);
-            snapshot.dlq.total.hash(&mut hasher);
-            snapshot.circuit_breakers.total.hash(&mut hasher);
-            hasher.finish()
-        };
-
-        // Only send if changed or first snapshot
-        let has_changes = stream_state.last_hash != Some(current_hash);
-
-        if has_changes {
-            let json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
-            let event = Ok(SseEvent::default().event("snapshot").data(json));
-
-            let new_state = StreamState {
-                backoff_ms: stream_state.config.min_backoff_ms,
-                last_hash: Some(current_hash),
-                ..stream_state
-            };
-            Some((stream::iter(vec![event]), (state, new_state)))
-        } else {
-            // No changes, wait with backoff
-            tokio::time::sleep(Duration::from_millis(stream_state.backoff_ms)).await;
-            let new_backoff = stream_state.config.next_backoff(stream_state.backoff_ms);
-            let new_state = StreamState {
-                backoff_ms: new_backoff,
-                ..stream_state
-            };
-            Some((stream::iter(vec![]), (state, new_state)))
         }
     })
     .flatten();
@@ -1368,6 +1448,24 @@ pub async fn stream_durable_sse(
 }
 
 /// GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)
+///
+/// Establishes a Server-Sent Events (SSE) connection for real-time workflow monitoring.
+///
+/// ## Connection Lifecycle Events
+///
+/// - **connected**: Sent immediately when the stream is established.
+/// - **snapshot**: Sent when workflow state or events change.
+/// - **disconnecting**: Sent before the server closes the connection for graceful cycling.
+///   Data: `{"reason":"connection_cycle","retry_ms":1000}`
+///
+/// ## Connection Cycling
+///
+/// Connections are automatically cycled every 10 minutes. Before closing, the server sends
+/// a `disconnecting` event so clients can reconnect seamlessly.
+///
+/// ## Retry Hints
+///
+/// Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing.
 #[utoipa::path(
     get,
     path = "/v1/durable/workflows/{workflow_id}/sse",
@@ -1375,7 +1473,7 @@ pub async fn stream_durable_sse(
         ("workflow_id" = Uuid, Path, description = "Workflow ID")
     ),
     responses(
-        (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
+        (status = 200, description = "SSE event stream with 'connected', 'snapshot', and 'disconnecting' events", content_type = "text/event-stream"),
         (status = 404, description = "Workflow not found"),
         (status = 503, description = "Durable store not available")
     ),
@@ -1414,103 +1512,158 @@ pub async fn stream_workflow_sse(
 
     // Use monitoring config
     let config = SseStreamConfig::monitoring();
+    let connection_start = Instant::now();
+
+    // Stream state machine
+    #[derive(Clone)]
+    enum StreamPhase {
+        SendConnected,
+        Polling,
+        SendDisconnecting,
+        Closed,
+    }
 
     #[derive(Clone)]
     struct StreamState {
+        phase: StreamPhase,
         workflow_id: Uuid,
         backoff_ms: u64,
-        sent_connected: bool,
         config: SseStreamConfig,
+        connection_start: Instant,
         last_event_count: usize,
         last_status: Option<String>,
     }
 
     let initial_state = StreamState {
+        phase: StreamPhase::SendConnected,
         workflow_id,
         backoff_ms: config.min_backoff_ms,
-        sent_connected: false,
         config,
+        connection_start,
         last_event_count: 0,
         last_status: None,
     };
 
     let stream = stream::unfold((state, initial_state), |(state, stream_state)| async move {
-        // Send initial "connected" event
-        if !stream_state.sent_connected {
-            tracing::debug!(workflow_id = %stream_state.workflow_id, "Workflow SSE: sending connected event");
-            let connected_event = Ok(SseEvent::default()
-                .event("connected")
-                .data(r#"{"status":"connected"}"#));
-            let new_state = StreamState {
-                sent_connected: true,
-                ..stream_state
-            };
-            return Some((stream::iter(vec![connected_event]), (state, new_state)));
-        }
+        match stream_state.phase {
+            StreamPhase::Closed => None,
 
-        let store = match state.get_store() {
-            Ok(s) => s,
-            Err(_) => return None,
-        };
+            StreamPhase::SendDisconnecting => {
+                tracing::info!(
+                    workflow_id = %stream_state.workflow_id,
+                    duration_secs = stream_state.connection_start.elapsed().as_secs(),
+                    "Workflow SSE: connection cycling, sending disconnecting event"
+                );
+                let disconnect_data = format!(
+                    r#"{{"reason":"{}","retry_ms":{}}}"#,
+                    DisconnectReason::ConnectionCycle.as_str(),
+                    stream_state.config.disconnect_retry_ms
+                );
+                let disconnecting_event = Ok(SseEvent::default()
+                    .event("disconnecting")
+                    .data(disconnect_data)
+                    .retry(stream_state.config.disconnect_retry()));
 
-        // Fetch workflow
-        let workflows = match store
-            .list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 1000 })
-            .await
-        {
-            Ok(w) => w,
-            Err(e) => {
-                tracing::error!("Failed to fetch workflows: {}", e);
-                return None;
+                let new_state = StreamState {
+                    phase: StreamPhase::Closed,
+                    ..stream_state
+                };
+                Some((stream::iter(vec![disconnecting_event]), (state, new_state)))
             }
-        };
 
-        let workflow = match workflows.into_iter().find(|w| w.id == stream_state.workflow_id) {
-            Some(w) => WorkflowResponse::from(w),
-            None => {
-                // Workflow deleted, end stream
-                return None;
+            StreamPhase::SendConnected => {
+                tracing::debug!(workflow_id = %stream_state.workflow_id, "Workflow SSE: sending connected event");
+                let connected_event = Ok(SseEvent::default()
+                    .event("connected")
+                    .data(r#"{"status":"connected"}"#)
+                    .retry(stream_state.config.retry_hint(stream_state.backoff_ms)));
+                let new_state = StreamState {
+                    phase: StreamPhase::Polling,
+                    ..stream_state
+                };
+                Some((stream::iter(vec![connected_event]), (state, new_state)))
             }
-        };
 
-        // Fetch events
-        let events: Vec<WorkflowEventResponse> =
-            match store.get_workflow_events(stream_state.workflow_id).await {
-                Ok(e) => e.into_iter().map(WorkflowEventResponse::from).collect(),
-                Err(e) => {
-                    tracing::error!("Failed to fetch workflow events: {}", e);
-                    return None;
+            StreamPhase::Polling => {
+                // Check for connection cycling
+                if stream_state.connection_start.elapsed() > stream_state.config.max_connection_duration() {
+                    let new_state = StreamState {
+                        phase: StreamPhase::SendDisconnecting,
+                        ..stream_state
+                    };
+                    return Some((stream::iter(vec![]), (state, new_state)));
                 }
-            };
 
-        // Detect changes
-        let status_changed = stream_state.last_status.as_ref() != Some(&workflow.status);
-        let events_changed = events.len() != stream_state.last_event_count;
-        let has_changes = status_changed || events_changed;
+                let store = match state.get_store() {
+                    Ok(s) => s,
+                    Err(_) => return None,
+                };
 
-        if has_changes {
-            let new_status = workflow.status.clone();
-            let event_count = events.len();
-            let snapshot = WorkflowSnapshot { workflow, events };
-            let json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
-            let event = Ok(SseEvent::default().event("snapshot").data(json));
+                // Fetch workflow
+                let workflows = match store
+                    .list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 1000 })
+                    .await
+                {
+                    Ok(w) => w,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch workflows: {}", e);
+                        return None;
+                    }
+                };
 
-            let new_state = StreamState {
-                backoff_ms: stream_state.config.min_backoff_ms,
-                last_event_count: event_count,
-                last_status: Some(new_status),
-                ..stream_state
-            };
-            Some((stream::iter(vec![event]), (state, new_state)))
-        } else {
-            // No changes, wait with backoff
-            tokio::time::sleep(Duration::from_millis(stream_state.backoff_ms)).await;
-            let new_backoff = stream_state.config.next_backoff(stream_state.backoff_ms);
-            let new_state = StreamState {
-                backoff_ms: new_backoff,
-                ..stream_state
-            };
-            Some((stream::iter(vec![]), (state, new_state)))
+                let workflow = match workflows.into_iter().find(|w| w.id == stream_state.workflow_id) {
+                    Some(w) => WorkflowResponse::from(w),
+                    None => {
+                        // Workflow deleted, end stream
+                        return None;
+                    }
+                };
+
+                // Fetch events
+                let events: Vec<WorkflowEventResponse> =
+                    match store.get_workflow_events(stream_state.workflow_id).await {
+                        Ok(e) => e.into_iter().map(WorkflowEventResponse::from).collect(),
+                        Err(e) => {
+                            tracing::error!("Failed to fetch workflow events: {}", e);
+                            return None;
+                        }
+                    };
+
+                // Detect changes
+                let status_changed = stream_state.last_status.as_ref() != Some(&workflow.status);
+                let events_changed = events.len() != stream_state.last_event_count;
+                let has_changes = status_changed || events_changed;
+
+                if has_changes {
+                    let new_status = workflow.status.clone();
+                    let event_count = events.len();
+                    let new_backoff = stream_state.config.min_backoff_ms;
+                    let snapshot = WorkflowSnapshot { workflow, events };
+                    let json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
+                    let event = Ok(SseEvent::default()
+                        .event("snapshot")
+                        .data(json)
+                        .retry(stream_state.config.retry_hint(new_backoff)));
+
+                    let new_state = StreamState {
+                        phase: StreamPhase::Polling,
+                        backoff_ms: new_backoff,
+                        last_event_count: event_count,
+                        last_status: Some(new_status),
+                        ..stream_state
+                    };
+                    Some((stream::iter(vec![event]), (state, new_state)))
+                } else {
+                    // No changes, wait with backoff
+                    tokio::time::sleep(Duration::from_millis(stream_state.backoff_ms)).await;
+                    let new_backoff = stream_state.config.next_backoff(stream_state.backoff_ms);
+                    let new_state = StreamState {
+                        backoff_ms: new_backoff,
+                        ..stream_state
+                    };
+                    Some((stream::iter(vec![]), (state, new_state)))
+                }
+            }
         }
     })
     .flatten();
