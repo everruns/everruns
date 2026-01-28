@@ -116,7 +116,8 @@ pub use openai_protocol::OpenAIProtocolLlmDriver;
 // Vendor-neutral API standard, recommended for new projects
 pub use openresponses_protocol::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, OpenResponsesProtocolLlmDriver,
+    CompactResponse, CompactUsage, OpenResponsesProtocolLlmDriver, compact_output_to_messages,
+    messages_to_compact_input,
 };
 
 // Tool abstraction re-exports
@@ -158,8 +159,8 @@ pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventBuilder,
     EventContext, EventData, EventRequest, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
-    LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo, ModelMetadata,
-    OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
+    LlmCompactionInfo, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo,
+    ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData, REASON_COMPLETED,
     REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
     ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,

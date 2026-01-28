@@ -1420,6 +1420,7 @@ mod tests {
                 finish_reasons: Some(vec!["stop".to_string()]),
                 response_id: Some("resp_123".to_string()),
                 retry: None,
+                compaction: None,
             },
         };
 
@@ -1632,6 +1633,7 @@ mod tests {
                 finish_reasons: None,
                 response_id: None,
                 retry: None,
+                compaction: None,
             },
         };
         let event = Event::new(
@@ -1894,6 +1896,7 @@ mod tests {
                 finish_reasons: None,
                 response_id: None,
                 retry: None,
+                compaction: None,
             },
         };
         let llm_event = Event::new(

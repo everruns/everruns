@@ -785,6 +785,11 @@ pub struct LlmGenerationMetadata {
     /// Contains number of retries and total wait time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry: Option<LlmRetryInfo>,
+
+    /// Compaction information if context was compressed before generation
+    /// Occurs when the conversation context exceeded the model's limit
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compaction: Option<LlmCompactionInfo>,
 }
 
 /// Information about rate limit retries during LLM generation
@@ -796,6 +801,45 @@ pub struct LlmRetryInfo {
 
     /// Total time spent waiting between retries in milliseconds
     pub total_wait_ms: u64,
+}
+
+/// Information about context compaction performed before LLM generation
+///
+/// When the conversation context exceeds the model's limit, compaction is
+/// automatically triggered to compress the context before retrying.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmCompactionInfo {
+    /// Whether compaction was performed
+    pub compacted: bool,
+
+    /// Number of input tokens before compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens_before: Option<u32>,
+
+    /// Number of input tokens after compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens_after: Option<u32>,
+
+    /// Duration of the compaction operation in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+impl LlmCompactionInfo {
+    /// Create info for a successful compaction
+    pub fn new(
+        input_tokens_before: Option<u32>,
+        input_tokens_after: Option<u32>,
+        duration_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            compacted: true,
+            input_tokens_before,
+            input_tokens_after,
+            duration_ms,
+        }
+    }
 }
 
 /// Data for llm.generation event
@@ -855,6 +899,7 @@ impl LlmGenerationData {
                 finish_reasons,
                 response_id: None,
                 retry: None,
+                compaction: None,
             },
         }
     }
@@ -889,6 +934,7 @@ impl LlmGenerationData {
                 finish_reasons,
                 response_id,
                 retry: None,
+                compaction: None,
             },
         }
     }
@@ -924,6 +970,7 @@ impl LlmGenerationData {
                 finish_reasons,
                 response_id,
                 retry,
+                compaction: None,
             },
         }
     }
@@ -956,8 +1003,23 @@ impl LlmGenerationData {
                 finish_reasons: Some(vec!["error".to_string()]),
                 response_id: None,
                 retry: None,
+                compaction: None,
             },
         }
+    }
+
+    /// Set compaction info on this generation event
+    ///
+    /// Call this when context was compacted before a successful retry.
+    pub fn with_compaction(mut self, compaction: LlmCompactionInfo) -> Self {
+        self.metadata.compaction = Some(compaction);
+        self
+    }
+
+    /// Set retry info on this generation event
+    pub fn with_retry(mut self, retry: LlmRetryInfo) -> Self {
+        self.metadata.retry = Some(retry);
+        self
     }
 }
 

@@ -35,6 +35,7 @@ use crate::llm_driver_registry::{
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
+use crate::openai_protocol::is_openai_request_too_large;
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
@@ -310,6 +311,15 @@ impl OpenResponsesProtocolLlmDriver {
 
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
+
+            // Check if this is a request-too-large error (context length exceeded)
+            if is_openai_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(format!(
+                    "OpenAI Responses compact API ({}): {}",
+                    status, error_text
+                )));
+            }
+
             let error_msg = format!(
                 "OpenAI Responses compact API error ({}): {}",
                 status, error_text
@@ -513,6 +523,15 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
+
+            // Check if this is a request-too-large error (context length exceeded)
+            if is_openai_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(format!(
+                    "OpenAI Responses API ({}): {}",
+                    status, error_text
+                )));
+            }
+
             let error_msg = format!("OpenAI Responses API error ({}): {}", status, error_text);
 
             // If we exhausted retries, include that in the error message
@@ -919,6 +938,205 @@ pub struct CompactUsage {
     pub output_tokens: Option<u32>,
     /// Total tokens used
     pub total_tokens: Option<u32>,
+}
+
+// ============================================================================
+// Compaction Conversion Utilities
+// ============================================================================
+
+impl CompactInputItem {
+    /// Convert an LlmMessage to CompactInputItem(s)
+    ///
+    /// An assistant message with tool_calls is expanded into multiple items:
+    /// one Message for the text content and one FunctionCall for each tool call.
+    pub fn from_llm_message(msg: &LlmMessage) -> Vec<Self> {
+        let mut items = Vec::new();
+
+        let role = match msg.role {
+            LlmMessageRole::System => "developer",
+            LlmMessageRole::User => "user",
+            LlmMessageRole::Assistant => "assistant",
+            LlmMessageRole::Tool => "tool",
+        };
+
+        // Handle tool result messages differently
+        if msg.role == LlmMessageRole::Tool
+            && let Some(tool_call_id) = &msg.tool_call_id
+        {
+            let output = match &msg.content {
+                LlmMessageContent::Text(text) => text.clone(),
+                LlmMessageContent::Parts(parts) => parts
+                    .iter()
+                    .filter_map(|p| match p {
+                        LlmContentPart::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""),
+            };
+            items.push(CompactInputItem::FunctionCallOutput {
+                call_id: tool_call_id.clone(),
+                output,
+            });
+            return items;
+        }
+
+        // Add message content (if non-empty)
+        let content = Self::content_from_llm_message(msg);
+        let has_content = match &content {
+            CompactContent::Text(t) => !t.is_empty(),
+            CompactContent::Parts(p) => !p.is_empty(),
+        };
+
+        if has_content || msg.tool_calls.is_none() {
+            items.push(CompactInputItem::Message {
+                role: role.to_string(),
+                content,
+            });
+        }
+
+        // Add function calls for assistant messages
+        if msg.role == LlmMessageRole::Assistant
+            && let Some(tool_calls) = &msg.tool_calls
+        {
+            for tc in tool_calls {
+                items.push(CompactInputItem::FunctionCall {
+                    call_id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.to_string(),
+                });
+            }
+        }
+
+        items
+    }
+
+    /// Convert LlmMessageContent to CompactContent
+    fn content_from_llm_message(msg: &LlmMessage) -> CompactContent {
+        match &msg.content {
+            LlmMessageContent::Text(text) => CompactContent::Text(text.clone()),
+            LlmMessageContent::Parts(parts) => {
+                let compact_parts: Vec<CompactContentPart> = parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        LlmContentPart::Text { text } => {
+                            Some(CompactContentPart::InputText { text: text.clone() })
+                        }
+                        LlmContentPart::Image { url } => {
+                            // URL is already in data URL format (data:image/png;base64,...)
+                            Some(CompactContentPart::InputImage {
+                                image_url: url.clone(),
+                            })
+                        }
+                        LlmContentPart::Audio { .. } => None, // Audio not supported in compact
+                    })
+                    .collect();
+                if compact_parts.len() == 1
+                    && let CompactContentPart::InputText { text } = &compact_parts[0]
+                {
+                    return CompactContent::Text(text.clone());
+                }
+                CompactContent::Parts(compact_parts)
+            }
+        }
+    }
+}
+
+impl CompactOutputItem {
+    /// Convert a CompactOutputItem to LlmMessage
+    ///
+    /// Compaction items are converted to a special system message containing
+    /// the encrypted context that will be included in subsequent requests.
+    pub fn to_llm_message(&self) -> Option<LlmMessage> {
+        match self {
+            CompactOutputItem::Message { role, content } => {
+                let llm_role = match role.as_str() {
+                    "user" => LlmMessageRole::User,
+                    "assistant" => LlmMessageRole::Assistant,
+                    "developer" | "system" => LlmMessageRole::System,
+                    "tool" => LlmMessageRole::Tool,
+                    _ => LlmMessageRole::User, // Default to user
+                };
+
+                let llm_content = match content {
+                    CompactContent::Text(text) => LlmMessageContent::Text(text.clone()),
+                    CompactContent::Parts(parts) => {
+                        let llm_parts: Vec<LlmContentPart> = parts
+                            .iter()
+                            .map(|p| match p {
+                                CompactContentPart::InputText { text } => {
+                                    LlmContentPart::Text { text: text.clone() }
+                                }
+                                CompactContentPart::InputImage { image_url } => {
+                                    // Pass the URL directly - it's already in data URL format
+                                    LlmContentPart::Image {
+                                        url: image_url.clone(),
+                                    }
+                                }
+                            })
+                            .collect();
+                        LlmMessageContent::Parts(llm_parts)
+                    }
+                };
+
+                Some(LlmMessage {
+                    role: llm_role,
+                    content: llm_content,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    thinking: None,
+                    thinking_signature: None,
+                })
+            }
+            CompactOutputItem::Compaction { .. } => {
+                // Compaction items are handled separately - they're passed as-is
+                // to the next request, not converted to messages
+                None
+            }
+        }
+    }
+}
+
+/// Convert a slice of LlmMessages to CompactInputItems
+pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputItem> {
+    messages
+        .iter()
+        .flat_map(CompactInputItem::from_llm_message)
+        .collect()
+}
+
+/// Convert CompactResponse output to LlmMessages plus any compaction items
+///
+/// Returns a tuple of (regular messages, compaction items).
+/// The compaction items should be preserved and included in subsequent compact requests.
+pub fn compact_output_to_messages(
+    output: &[CompactOutputItem],
+) -> (Vec<LlmMessage>, Vec<CompactInputItem>) {
+    let mut messages = Vec::new();
+    let mut compaction_items = Vec::new();
+
+    for item in output {
+        match item {
+            CompactOutputItem::Message { role, content } => {
+                if let Some(msg) = item.to_llm_message() {
+                    messages.push(msg);
+                } else {
+                    // Re-add as compact input for next request
+                    compaction_items.push(CompactInputItem::Message {
+                        role: role.clone(),
+                        content: content.clone(),
+                    });
+                }
+            }
+            CompactOutputItem::Compaction { encrypted_content } => {
+                compaction_items.push(CompactInputItem::Compaction {
+                    encrypted_content: encrypted_content.clone(),
+                });
+            }
+        }
+    }
+
+    (messages, compaction_items)
 }
 
 // ============================================================================

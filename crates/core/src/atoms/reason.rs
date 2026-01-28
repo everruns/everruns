@@ -28,10 +28,10 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, LlmRetryInfo, OutputMessageCompletedData,
-    OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
-    ToolDefinitionSummary,
+    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
+    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData,
+    ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -39,6 +39,9 @@ use crate::llm_driver_registry::{
 };
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
+use crate::openresponses_protocol::{
+    CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
+};
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
@@ -645,9 +648,129 @@ where
         // Track LLM call timing
         let llm_start = Instant::now();
 
-        let mut stream = llm_driver
-            .chat_completion_stream(llm_messages, &llm_config)
-            .await?;
+        // Try LLM call with automatic compaction on RequestTooLarge
+        let mut compaction_info: Option<LlmCompactionInfo> = None;
+        let mut llm_messages_for_call = llm_messages.clone();
+
+        let mut stream = match llm_driver
+            .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+            .await
+        {
+            Ok(stream) => stream,
+            Err(e) if e.is_request_too_large() && llm_driver.supports_compact() => {
+                // Context too large - try compacting
+                tracing::info!(
+                    session_id = %session_id,
+                    turn_id = %context.turn_id,
+                    "ReasonAtom: context too large, attempting compaction"
+                );
+
+                let compact_start = Instant::now();
+
+                // Convert messages to compact input format
+                // Skip the system message (index 0) as it's passed separately as instructions
+                let messages_to_compact = if has_system_prompt {
+                    &llm_messages_for_call[1..]
+                } else {
+                    &llm_messages_for_call[..]
+                };
+
+                let compact_input = messages_to_compact_input(messages_to_compact);
+                let input_count = compact_input.len();
+
+                // Build compact request
+                let compact_request = CompactRequest {
+                    model: runtime_agent.model.clone(),
+                    input: compact_input,
+                    previous_response_id: None,
+                    instructions: if has_system_prompt {
+                        Some(runtime_agent.system_prompt.clone())
+                    } else {
+                        None
+                    },
+                };
+
+                // Call compact endpoint
+                let compact_response =
+                    llm_driver.compact(compact_request).await?.ok_or_else(|| {
+                        AgentLoopError::llm("Compaction failed: driver returned None".to_string())
+                    })?;
+
+                let compact_duration_ms = compact_start.elapsed().as_millis() as u64;
+
+                // Convert compacted output to messages
+                let (compacted_messages, compaction_items) =
+                    compact_output_to_messages(&compact_response.output);
+
+                // Track compaction token usage
+                let input_tokens_after = compact_response
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.output_tokens);
+
+                tracing::info!(
+                    session_id = %session_id,
+                    turn_id = %context.turn_id,
+                    input_items = input_count,
+                    output_items = compact_response.output.len(),
+                    compaction_items = compaction_items.len(),
+                    duration_ms = compact_duration_ms,
+                    "ReasonAtom: compaction completed"
+                );
+
+                // Record compaction info for event
+                compaction_info = Some(LlmCompactionInfo::new(
+                    Some(input_count as u32),
+                    input_tokens_after,
+                    Some(compact_duration_ms),
+                ));
+
+                // Rebuild messages for retry
+                // Start with system prompt if present
+                let mut compacted_llm_messages = Vec::new();
+                if has_system_prompt {
+                    compacted_llm_messages.push(llm_messages_for_call[0].clone());
+                }
+
+                // Add compacted messages
+                compacted_llm_messages.extend(compacted_messages);
+
+                // Add compaction items as a special message if present
+                // These contain encrypted context that the model needs
+                for item in compaction_items {
+                    if let CompactInputItem::Compaction { encrypted_content } = item {
+                        // Add as a system message containing the encrypted context
+                        // This preserves the latent context for the model
+                        compacted_llm_messages.push(LlmMessage {
+                            role: LlmMessageRole::System,
+                            content: LlmMessageContent::Text(format!(
+                                "[COMPACTED_CONTEXT:{}]",
+                                encrypted_content
+                            )),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            thinking: None,
+                            thinking_signature: None,
+                        });
+                    }
+                }
+
+                llm_messages_for_call = compacted_llm_messages;
+
+                // Retry with compacted messages
+                tracing::info!(
+                    session_id = %session_id,
+                    turn_id = %context.turn_id,
+                    message_count = llm_messages_for_call.len(),
+                    "ReasonAtom: retrying LLM call with compacted context"
+                );
+
+                llm_driver
+                    .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                    .await?
+            }
+            Err(e) => return Err(e),
+        };
 
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
@@ -894,25 +1017,33 @@ where
                 attempts: rm.attempts,
                 total_wait_ms: rm.total_retry_wait.as_millis() as u64,
             });
+        // Build LlmGenerationData with retry and compaction info
+        let mut generation_data = LlmGenerationData::success_with_retry(
+            messages_for_event.clone(),
+            tools_summary,
+            Some(text.clone()).filter(|s| !s.is_empty()),
+            tool_calls.clone(),
+            runtime_agent.model.clone(),
+            Some(model_with_provider.provider_type.to_string()),
+            usage.clone(),
+            Some(llm_duration_ms),
+            time_to_first_token_ms,
+            finish_reasons,
+            None, // response_id
+            retry_info,
+        );
+
+        // Add compaction info if compaction was performed
+        if let Some(info) = compaction_info {
+            generation_data = generation_data.with_compaction(info);
+        }
+
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 session_id,
                 event_context,
-                LlmGenerationData::success_with_retry(
-                    messages_for_event.clone(),
-                    tools_summary,
-                    Some(text.clone()).filter(|s| !s.is_empty()),
-                    tool_calls.clone(),
-                    runtime_agent.model.clone(),
-                    Some(model_with_provider.provider_type.to_string()),
-                    usage.clone(),
-                    Some(llm_duration_ms),
-                    time_to_first_token_ms,
-                    finish_reasons,
-                    None, // response_id
-                    retry_info,
-                ),
+                generation_data,
             ))
             .await
         {
