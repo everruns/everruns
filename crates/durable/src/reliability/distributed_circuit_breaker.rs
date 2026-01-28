@@ -25,6 +25,9 @@ use tokio::sync::RwLock;
 use super::{CircuitBreakerConfig, CircuitState};
 use crate::persistence::{StoreError, WorkflowEventStore};
 
+#[cfg(feature = "failpoints")]
+use fail::fail_point;
+
 /// Error types for circuit breaker operations
 #[derive(Debug, Error)]
 pub enum CircuitBreakerError {
@@ -228,6 +231,13 @@ impl DistributedCircuitBreaker {
     async fn record_failure(&self) -> Result<(), CircuitBreakerError> {
         let state = self.get_state().await?;
 
+        #[cfg(feature = "failpoints")]
+        fail_point!("circuit_breaker_record_failure_before_update", |_| {
+            Err(CircuitBreakerError::Store(StoreError::Database(
+                "injected: record_failure".into(),
+            )))
+        });
+
         match state.state {
             CircuitState::Closed => {
                 let new_failure_count = state.failure_count + 1;
@@ -277,6 +287,13 @@ impl DistributedCircuitBreaker {
         }
 
         // Cache miss or stale, fetch from database
+        #[cfg(feature = "failpoints")]
+        fail_point!("circuit_breaker_get_state_db_fetch", |_| {
+            Err(CircuitBreakerError::Store(StoreError::Database(
+                "injected: get_state db fetch".into(),
+            )))
+        });
+
         let db_state = self.store.get_circuit_breaker(&self.key).await?;
 
         let cached = match db_state {
@@ -323,6 +340,13 @@ impl DistributedCircuitBreaker {
 
     /// Transition to Open state
     async fn transition_to_open(&self) -> Result<(), CircuitBreakerError> {
+        #[cfg(feature = "failpoints")]
+        fail_point!("circuit_breaker_transition_to_open", |_| {
+            Err(CircuitBreakerError::Store(StoreError::Database(
+                "injected: transition_to_open".into(),
+            )))
+        });
+
         self.store
             .update_circuit_breaker(&self.key, CircuitState::Open, 0, 0)
             .await?;
