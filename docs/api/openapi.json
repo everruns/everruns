@@ -4093,6 +4093,46 @@
           }
         }
       },
+      "LlmCompactionInfo": {
+        "type": "object",
+        "description": "Information about context compaction performed before LLM generation\n\nWhen the conversation context exceeds the model's limit, compaction is\nautomatically triggered to compress the context before retrying.",
+        "required": [
+          "compacted"
+        ],
+        "properties": {
+          "compacted": {
+            "type": "boolean",
+            "description": "Whether compaction was performed"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of the compaction operation in milliseconds",
+            "minimum": 0
+          },
+          "input_tokens_after": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of input tokens after compaction",
+            "minimum": 0
+          },
+          "input_tokens_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of input tokens before compaction",
+            "minimum": 0
+          }
+        }
+      },
       "LlmGenerationData": {
         "type": "object",
         "description": "Data for llm.generation event\n\nEmitted after each LLM API call to provide full visibility into\nthe messages sent to the model and the response received.",
@@ -4134,6 +4174,17 @@
           "success"
         ],
         "properties": {
+          "compaction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmCompactionInfo",
+                "description": "Compaction information if context was compressed before generation\nOccurs when the conversation context exceeded the model's limit"
+              }
+            ]
+          },
           "duration_ms": {
             "type": [
               "integer",

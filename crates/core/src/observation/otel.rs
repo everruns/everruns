@@ -398,6 +398,7 @@ mod tests {
                 finish_reasons: Some(vec!["stop".to_string()]),
                 response_id: Some("resp_123".to_string()),
                 retry: None,
+                compaction: None,
             },
         };
 
@@ -444,6 +445,7 @@ mod tests {
                 finish_reasons: Some(vec!["tool_calls".to_string()]),
                 response_id: Some("resp_456".to_string()),
                 retry: None,
+                compaction: None,
             },
         };
 
@@ -478,6 +480,7 @@ mod tests {
                 finish_reasons: None, // No finish reasons
                 response_id: None,    // No response ID
                 retry: None,
+                compaction: None,
             },
         };
 

@@ -18,6 +18,7 @@ use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage,
     LlmResponseStream, ProviderType,
 };
+use everruns_core::{CompactRequest, CompactResponse};
 
 use crate::types::OpenAiModelsResponse;
 
@@ -94,6 +95,32 @@ impl OpenAILlmDriver {
     pub fn uses_custom_url(&self) -> bool {
         self.uses_custom_url
     }
+
+    /// Compact a conversation to reduce context size
+    ///
+    /// This method calls the /v1/responses/compact endpoint to compress the conversation
+    /// history. User messages are kept verbatim, while assistant messages, tool calls,
+    /// and tool results are replaced by an encrypted compaction item.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The compact request containing the model and input items
+    ///
+    /// # Returns
+    ///
+    /// Returns a `CompactResponse` containing the compacted output items.
+    /// The output can be used directly as input for the next /v1/responses call.
+    pub async fn compact_conversation(&self, request: CompactRequest) -> Result<CompactResponse> {
+        self.inner.compact(request).await
+    }
+
+    /// Check if this driver supports the compact endpoint
+    ///
+    /// Returns true for OpenAI's Responses API. Custom endpoints may or may not
+    /// support compaction.
+    pub fn can_compact(&self) -> bool {
+        self.inner.supports_compact()
+    }
 }
 
 #[async_trait]
@@ -113,6 +140,14 @@ impl LlmDriver for OpenAILlmDriver {
         }
 
         list_openai_models(self.inner.client(), self.inner.api_key()).await
+    }
+
+    fn supports_compact(&self) -> bool {
+        self.inner.supports_compact()
+    }
+
+    async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
+        Ok(Some(self.inner.compact(request).await?))
     }
 }
 

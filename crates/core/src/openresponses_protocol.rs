@@ -35,6 +35,7 @@ use crate::llm_driver_registry::{
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
+use crate::openai_protocol::is_openai_request_too_large;
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
@@ -203,6 +204,166 @@ impl OpenResponsesProtocolLlmDriver {
             .collect()
     }
 
+    /// Compact a conversation to reduce context size
+    ///
+    /// This method calls the /v1/responses/compact endpoint to compress the conversation
+    /// history. User messages are kept verbatim, while assistant messages, tool calls,
+    /// and tool results are replaced by an encrypted compaction item.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The compact request containing the model and input items
+    ///
+    /// # Returns
+    ///
+    /// Returns a `CompactResponse` containing the compacted output items.
+    /// The output can be used directly as input for the next /v1/responses call.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use everruns_core::{OpenResponsesProtocolLlmDriver, CompactRequest, CompactInputItem, CompactContent};
+    ///
+    /// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key");
+    ///
+    /// let request = CompactRequest {
+    ///     model: "gpt-4o".to_string(),
+    ///     input: vec![
+    ///         CompactInputItem::Message {
+    ///             role: "user".to_string(),
+    ///             content: CompactContent::Text("Hello!".to_string()),
+    ///         },
+    ///     ],
+    ///     previous_response_id: None,
+    ///     instructions: None,
+    /// };
+    ///
+    /// let response = driver.compact(request).await?;
+    /// // Use response.output as input for the next /v1/responses call
+    /// ```
+    pub async fn compact(&self, request: CompactRequest) -> Result<CompactResponse> {
+        // Build the compact endpoint URL
+        // Replace /v1/responses with /v1/responses/compact
+        let compact_url = if self.api_url.ends_with("/responses") {
+            format!("{}/compact", self.api_url)
+        } else if self.api_url.ends_with("/responses/") {
+            format!("{}compact", self.api_url)
+        } else {
+            // Custom URL - just append /compact
+            format!("{}/compact", self.api_url.trim_end_matches('/'))
+        };
+
+        // Retry loop for rate limit (429) and transient errors
+        let mut retry_metadata = RetryMetadata::default();
+        let mut last_error: Option<String> = None;
+
+        let response = loop {
+            let response = self
+                .client
+                .post(&compact_url)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| {
+                    AgentLoopError::llm(format!("Failed to send compact request: {}", e))
+                })?;
+
+            let status = response.status();
+
+            if status.is_success() {
+                break response;
+            }
+
+            // Check if this is a retryable error
+            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
+            {
+                let rate_limit_info = if is_rate_limit_status(status) {
+                    Some(RateLimitInfo::from_openai_headers(response.headers()))
+                } else {
+                    None
+                };
+
+                let error_text = response.text().await.unwrap_or_default();
+
+                let wait_duration = rate_limit_info
+                    .as_ref()
+                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
+                    .unwrap_or_else(|| {
+                        self.retry_config.calculate_backoff(retry_metadata.attempts)
+                    });
+
+                tracing::warn!(
+                    status = %status,
+                    attempt = retry_metadata.attempts + 1,
+                    max_retries = self.retry_config.max_retries,
+                    wait_secs = wait_duration.as_secs_f64(),
+                    "OpenResponsesDriver: compact rate limit or transient error, retrying"
+                );
+
+                retry_metadata.record_retry(wait_duration, rate_limit_info);
+                last_error = Some(error_text);
+
+                tokio::time::sleep(wait_duration).await;
+                continue;
+            }
+
+            // Non-retryable error or max retries exceeded
+            let error_text = response.text().await.unwrap_or_default();
+
+            // Check if this is a request-too-large error (context length exceeded)
+            if is_openai_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(format!(
+                    "OpenAI Responses compact API ({}): {}",
+                    status, error_text
+                )));
+            }
+
+            let error_msg = format!(
+                "OpenAI Responses compact API error ({}): {}",
+                status, error_text
+            );
+
+            if retry_metadata.attempts > 0 {
+                return Err(AgentLoopError::llm(format!(
+                    "{} (after {} retries, last error: {})",
+                    error_msg,
+                    retry_metadata.attempts,
+                    last_error.unwrap_or_default()
+                )));
+            }
+
+            return Err(AgentLoopError::llm(error_msg));
+        };
+
+        if retry_metadata.had_retries() {
+            tracing::info!(
+                attempts = retry_metadata.attempts,
+                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
+                "OpenResponsesDriver: compact request succeeded after retries"
+            );
+        }
+
+        // Parse the response
+        let compact_response: CompactResponse = response
+            .json()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to parse compact response: {}", e)))?;
+
+        Ok(compact_response)
+    }
+
+    /// Check if this driver supports the compact endpoint
+    ///
+    /// Returns true for OpenAI's Responses API. Custom endpoints may or may not
+    /// support compaction.
+    pub fn supports_compact(&self) -> bool {
+        // We assume compact is supported for the default OpenAI endpoint
+        // For custom endpoints, callers should try and handle errors gracefully
+        self.api_url.starts_with("https://api.openai.com/")
+    }
+
     /// Build input items from messages, extracting system/developer instructions
     ///
     /// Handles the conversion of assistant messages with tool_calls into separate
@@ -362,6 +523,15 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
+
+            // Check if this is a request-too-large error (context length exceeded)
+            if is_openai_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(format!(
+                    "OpenAI Responses API ({}): {}",
+                    status, error_text
+                )));
+            }
+
             let error_msg = format!("OpenAI Responses API error ({}): {}", status, error_text);
 
             // If we exhausted retries, include that in the error message
@@ -620,6 +790,21 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
         Ok(converted_stream)
     }
+
+    fn supports_compact(&self) -> bool {
+        // Delegate to the inherent method
+        OpenResponsesProtocolLlmDriver::supports_compact(self)
+    }
+
+    async fn compact(
+        &self,
+        request: crate::openresponses_protocol::CompactRequest,
+    ) -> Result<Option<crate::openresponses_protocol::CompactResponse>> {
+        // Delegate to the inherent method and wrap in Some
+        Ok(Some(
+            OpenResponsesProtocolLlmDriver::compact(self, request).await?,
+        ))
+    }
 }
 
 impl std::fmt::Debug for OpenResponsesProtocolLlmDriver {
@@ -641,6 +826,317 @@ struct ToolCallAccumulator {
     id: String,
     name: String,
     arguments: String,
+}
+
+// ============================================================================
+// Compact Endpoint Types (Public API)
+// ============================================================================
+
+/// Request for the /v1/responses/compact endpoint
+///
+/// This endpoint compacts a conversation by replacing prior assistant messages,
+/// tool calls, and tool results with an encrypted compaction item that preserves
+/// latent context but is opaque. User messages are kept verbatim.
+#[derive(Debug, Clone, Serialize)]
+pub struct CompactRequest {
+    /// Model to use for compaction (required)
+    pub model: String,
+    /// Input items to compact (the current conversation window)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub input: Vec<CompactInputItem>,
+    /// Previous response ID (optional, alternative to input)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_response_id: Option<String>,
+    /// System instructions (optional, applies only to the compaction request)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+}
+
+/// Input item for compact request
+///
+/// These are the same types as ResponsesInputItem but exposed publicly
+/// for callers to construct compact requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum CompactInputItem {
+    /// A message (user, assistant, or developer)
+    #[serde(rename = "message")]
+    Message {
+        role: String,
+        content: CompactContent,
+    },
+    /// A function call from the assistant
+    #[serde(rename = "function_call")]
+    FunctionCall {
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    /// Output from a function call
+    #[serde(rename = "function_call_output")]
+    FunctionCallOutput { call_id: String, output: String },
+    /// A compaction item (from a previous compact call)
+    #[serde(rename = "compaction")]
+    Compaction { encrypted_content: String },
+}
+
+/// Content for compact input items
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CompactContent {
+    /// Simple text content
+    Text(String),
+    /// Array of content parts
+    Parts(Vec<CompactContentPart>),
+}
+
+/// Content part for compact input
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum CompactContentPart {
+    /// Text content
+    #[serde(rename = "input_text")]
+    InputText { text: String },
+    /// Image content
+    #[serde(rename = "input_image")]
+    InputImage { image_url: String },
+}
+
+/// Response from the /v1/responses/compact endpoint
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompactResponse {
+    /// The compacted output items
+    pub output: Vec<CompactOutputItem>,
+    /// Token usage information
+    pub usage: Option<CompactUsage>,
+}
+
+/// Output item from compact response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum CompactOutputItem {
+    /// A user message (kept verbatim)
+    #[serde(rename = "message")]
+    Message {
+        role: String,
+        content: CompactContent,
+    },
+    /// An encrypted compaction item
+    #[serde(rename = "compaction")]
+    Compaction {
+        /// Encrypted content that preserves latent context
+        encrypted_content: String,
+    },
+}
+
+/// Token usage from compact response
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompactUsage {
+    /// Input tokens processed
+    pub input_tokens: Option<u32>,
+    /// Output tokens generated
+    pub output_tokens: Option<u32>,
+    /// Total tokens used
+    pub total_tokens: Option<u32>,
+}
+
+// ============================================================================
+// Compaction Conversion Utilities
+// ============================================================================
+
+impl CompactInputItem {
+    /// Convert an LlmMessage to CompactInputItem(s)
+    ///
+    /// An assistant message with tool_calls is expanded into multiple items:
+    /// one Message for the text content and one FunctionCall for each tool call.
+    pub fn from_llm_message(msg: &LlmMessage) -> Vec<Self> {
+        let mut items = Vec::new();
+
+        let role = match msg.role {
+            LlmMessageRole::System => "developer",
+            LlmMessageRole::User => "user",
+            LlmMessageRole::Assistant => "assistant",
+            LlmMessageRole::Tool => "tool",
+        };
+
+        // Handle tool result messages differently
+        if msg.role == LlmMessageRole::Tool
+            && let Some(tool_call_id) = &msg.tool_call_id
+        {
+            let output = match &msg.content {
+                LlmMessageContent::Text(text) => text.clone(),
+                LlmMessageContent::Parts(parts) => parts
+                    .iter()
+                    .filter_map(|p| match p {
+                        LlmContentPart::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""),
+            };
+            items.push(CompactInputItem::FunctionCallOutput {
+                call_id: tool_call_id.clone(),
+                output,
+            });
+            return items;
+        }
+
+        // Add message content (if non-empty)
+        let content = Self::content_from_llm_message(msg);
+        let has_content = match &content {
+            CompactContent::Text(t) => !t.is_empty(),
+            CompactContent::Parts(p) => !p.is_empty(),
+        };
+
+        if has_content || msg.tool_calls.is_none() {
+            items.push(CompactInputItem::Message {
+                role: role.to_string(),
+                content,
+            });
+        }
+
+        // Add function calls for assistant messages
+        if msg.role == LlmMessageRole::Assistant
+            && let Some(tool_calls) = &msg.tool_calls
+        {
+            for tc in tool_calls {
+                items.push(CompactInputItem::FunctionCall {
+                    call_id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.to_string(),
+                });
+            }
+        }
+
+        items
+    }
+
+    /// Convert LlmMessageContent to CompactContent
+    fn content_from_llm_message(msg: &LlmMessage) -> CompactContent {
+        match &msg.content {
+            LlmMessageContent::Text(text) => CompactContent::Text(text.clone()),
+            LlmMessageContent::Parts(parts) => {
+                let compact_parts: Vec<CompactContentPart> = parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        LlmContentPart::Text { text } => {
+                            Some(CompactContentPart::InputText { text: text.clone() })
+                        }
+                        LlmContentPart::Image { url } => {
+                            // URL is already in data URL format (data:image/png;base64,...)
+                            Some(CompactContentPart::InputImage {
+                                image_url: url.clone(),
+                            })
+                        }
+                        LlmContentPart::Audio { .. } => None, // Audio not supported in compact
+                    })
+                    .collect();
+                if compact_parts.len() == 1
+                    && let CompactContentPart::InputText { text } = &compact_parts[0]
+                {
+                    return CompactContent::Text(text.clone());
+                }
+                CompactContent::Parts(compact_parts)
+            }
+        }
+    }
+}
+
+impl CompactOutputItem {
+    /// Convert a CompactOutputItem to LlmMessage
+    ///
+    /// Compaction items are converted to a special system message containing
+    /// the encrypted context that will be included in subsequent requests.
+    pub fn to_llm_message(&self) -> Option<LlmMessage> {
+        match self {
+            CompactOutputItem::Message { role, content } => {
+                let llm_role = match role.as_str() {
+                    "user" => LlmMessageRole::User,
+                    "assistant" => LlmMessageRole::Assistant,
+                    "developer" | "system" => LlmMessageRole::System,
+                    "tool" => LlmMessageRole::Tool,
+                    _ => LlmMessageRole::User, // Default to user
+                };
+
+                let llm_content = match content {
+                    CompactContent::Text(text) => LlmMessageContent::Text(text.clone()),
+                    CompactContent::Parts(parts) => {
+                        let llm_parts: Vec<LlmContentPart> = parts
+                            .iter()
+                            .map(|p| match p {
+                                CompactContentPart::InputText { text } => {
+                                    LlmContentPart::Text { text: text.clone() }
+                                }
+                                CompactContentPart::InputImage { image_url } => {
+                                    // Pass the URL directly - it's already in data URL format
+                                    LlmContentPart::Image {
+                                        url: image_url.clone(),
+                                    }
+                                }
+                            })
+                            .collect();
+                        LlmMessageContent::Parts(llm_parts)
+                    }
+                };
+
+                Some(LlmMessage {
+                    role: llm_role,
+                    content: llm_content,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    thinking: None,
+                    thinking_signature: None,
+                })
+            }
+            CompactOutputItem::Compaction { .. } => {
+                // Compaction items are handled separately - they're passed as-is
+                // to the next request, not converted to messages
+                None
+            }
+        }
+    }
+}
+
+/// Convert a slice of LlmMessages to CompactInputItems
+pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputItem> {
+    messages
+        .iter()
+        .flat_map(CompactInputItem::from_llm_message)
+        .collect()
+}
+
+/// Convert CompactResponse output to LlmMessages plus any compaction items
+///
+/// Returns a tuple of (regular messages, compaction items).
+/// The compaction items should be preserved and included in subsequent compact requests.
+pub fn compact_output_to_messages(
+    output: &[CompactOutputItem],
+) -> (Vec<LlmMessage>, Vec<CompactInputItem>) {
+    let mut messages = Vec::new();
+    let mut compaction_items = Vec::new();
+
+    for item in output {
+        match item {
+            CompactOutputItem::Message { role, content } => {
+                if let Some(msg) = item.to_llm_message() {
+                    messages.push(msg);
+                } else {
+                    // Re-add as compact input for next request
+                    compaction_items.push(CompactInputItem::Message {
+                        role: role.clone(),
+                        content: content.clone(),
+                    });
+                }
+            }
+            CompactOutputItem::Compaction { encrypted_content } => {
+                compaction_items.push(CompactInputItem::Compaction {
+                    encrypted_content: encrypted_content.clone(),
+                });
+            }
+        }
+    }
+
+    (messages, compaction_items)
 }
 
 // ============================================================================
@@ -1035,5 +1531,168 @@ mod tests {
         let json = serde_json::to_value(&input[2]).unwrap();
         assert_eq!(json["type"], "function_call");
         assert_eq!(json["call_id"], "call_abc");
+    }
+
+    // ========================================================================
+    // Compact endpoint tests
+    // ========================================================================
+
+    #[test]
+    fn test_compact_request_serialization() {
+        let request = CompactRequest {
+            model: "gpt-4o".to_string(),
+            input: vec![
+                CompactInputItem::Message {
+                    role: "user".to_string(),
+                    content: CompactContent::Text("Hello!".to_string()),
+                },
+                CompactInputItem::Message {
+                    role: "assistant".to_string(),
+                    content: CompactContent::Text("Hi there!".to_string()),
+                },
+            ],
+            previous_response_id: None,
+            instructions: Some("Be helpful".to_string()),
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["model"], "gpt-4o");
+        assert_eq!(json["instructions"], "Be helpful");
+        assert!(json["input"].is_array());
+        assert_eq!(json["input"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_compact_input_item_message_serialization() {
+        let item = CompactInputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("Test message".to_string()),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "message");
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "Test message");
+    }
+
+    #[test]
+    fn test_compact_input_item_function_call_serialization() {
+        let item = CompactInputItem::FunctionCall {
+            call_id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: r#"{"city":"NYC"}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_123");
+        assert_eq!(json["name"], "get_weather");
+        assert_eq!(json["arguments"], r#"{"city":"NYC"}"#);
+    }
+
+    #[test]
+    fn test_compact_input_item_compaction_serialization() {
+        let item = CompactInputItem::Compaction {
+            encrypted_content: "encrypted_data_here".to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "compaction");
+        assert_eq!(json["encrypted_content"], "encrypted_data_here");
+    }
+
+    #[test]
+    fn test_compact_output_item_deserialization() {
+        let json = r#"{
+            "type": "message",
+            "role": "user",
+            "content": "Hello"
+        }"#;
+
+        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
+        match item {
+            CompactOutputItem::Message { role, content } => {
+                assert_eq!(role, "user");
+                match content {
+                    CompactContent::Text(text) => assert_eq!(text, "Hello"),
+                    _ => panic!("Expected text content"),
+                }
+            }
+            _ => panic!("Expected Message item"),
+        }
+    }
+
+    #[test]
+    fn test_compact_output_compaction_deserialization() {
+        let json = r#"{
+            "type": "compaction",
+            "encrypted_content": "abc123encrypted"
+        }"#;
+
+        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
+        match item {
+            CompactOutputItem::Compaction { encrypted_content } => {
+                assert_eq!(encrypted_content, "abc123encrypted");
+            }
+            _ => panic!("Expected Compaction item"),
+        }
+    }
+
+    #[test]
+    fn test_compact_response_deserialization() {
+        let json = r#"{
+            "output": [
+                {"type": "message", "role": "user", "content": "Hello"},
+                {"type": "compaction", "encrypted_content": "xyz789"}
+            ],
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150
+            }
+        }"#;
+
+        let response: CompactResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.output.len(), 2);
+        assert!(response.usage.is_some());
+        let usage = response.usage.unwrap();
+        assert_eq!(usage.input_tokens, Some(100));
+        assert_eq!(usage.output_tokens, Some(50));
+        assert_eq!(usage.total_tokens, Some(150));
+    }
+
+    #[test]
+    fn test_compact_content_parts_serialization() {
+        let content = CompactContent::Parts(vec![
+            CompactContentPart::InputText {
+                text: "Check this image".to_string(),
+            },
+            CompactContentPart::InputImage {
+                image_url: "data:image/png;base64,abc".to_string(),
+            },
+        ]);
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert!(json.is_array());
+        assert_eq!(json[0]["type"], "input_text");
+        assert_eq!(json[0]["text"], "Check this image");
+        assert_eq!(json[1]["type"], "input_image");
+    }
+
+    #[test]
+    fn test_supports_compact_default_url() {
+        let driver = OpenResponsesProtocolLlmDriver::new("test-key");
+        // Default URL is OpenAI, should support compact
+        assert!(driver.supports_compact());
+    }
+
+    #[test]
+    fn test_supports_compact_custom_url() {
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url(
+            "test-key",
+            "https://custom.api.com/v1/responses",
+        );
+        // Custom URL, compact support unknown
+        assert!(!driver.supports_compact());
     }
 }

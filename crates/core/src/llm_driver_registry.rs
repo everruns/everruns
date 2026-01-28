@@ -15,6 +15,7 @@
 // specific provider implementations.
 
 use crate::error::{AgentLoopError, Result};
+use crate::openresponses_protocol::{CompactRequest, CompactResponse};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
@@ -158,6 +159,43 @@ pub trait LlmDriver: Send + Sync {
         // Default: not supported. Providers override if they support listing.
         Ok(None)
     }
+
+    /// Check if this driver supports the compact endpoint
+    ///
+    /// The compact endpoint compresses conversation history by replacing
+    /// assistant messages, tool calls, and tool results with an encrypted
+    /// compaction item. User messages are kept verbatim.
+    ///
+    /// Returns `true` if the driver supports compaction, `false` otherwise.
+    /// Currently only supported by OpenAI's Responses API.
+    fn supports_compact(&self) -> bool {
+        // Default: not supported
+        false
+    }
+
+    /// Compact a conversation to reduce context size
+    ///
+    /// This method compresses conversation history by calling the provider's
+    /// compact endpoint. User messages are kept verbatim, while assistant
+    /// messages, tool calls, and tool results are replaced by an encrypted
+    /// compaction item that preserves latent context but is opaque.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The compact request containing the model and input items
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Some(response))` if compaction succeeded,
+    /// `Ok(None)` if compaction is not supported by this driver,
+    /// or `Err` if an error occurred.
+    ///
+    /// The response contains the compacted output items which can be used
+    /// directly as input for the next chat completion call.
+    async fn compact(&self, _request: CompactRequest) -> Result<Option<CompactResponse>> {
+        // Default: not supported
+        Ok(None)
+    }
 }
 
 /// Implement LlmDriver for Box<dyn LlmDriver> to allow dynamic dispatch
@@ -181,6 +219,14 @@ impl LlmDriver for Box<dyn LlmDriver> {
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
         (**self).list_models().await
+    }
+
+    fn supports_compact(&self) -> bool {
+        (**self).supports_compact()
+    }
+
+    async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
+        (**self).compact(request).await
     }
 }
 
