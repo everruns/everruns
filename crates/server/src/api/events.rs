@@ -17,13 +17,14 @@ use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse};
-use super::sse::SseStreamConfig;
+use super::sse::{DisconnectReason, SseStreamConfig};
 use crate::services::EventService;
 use futures::{
     StreamExt,
     stream::{self, Stream},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
+use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::services::SessionService;
@@ -97,6 +98,37 @@ pub fn routes(state: AppState) -> Router {
 // ============================================
 
 /// GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)
+///
+/// Establishes a Server-Sent Events (SSE) connection for real-time event streaming.
+///
+/// ## Connection Lifecycle Events
+///
+/// - **connected**: Sent immediately when the stream is established.
+///   Data: `{"status":"connected"}`
+///
+/// - **disconnecting**: Sent before the server closes the connection for graceful cycling.
+///   Data: `{"reason":"connection_cycle","retry_ms":100}`
+///   Clients should reconnect immediately using the `since_id` of the last received event.
+///
+/// ## Connection Cycling
+///
+/// Connections are automatically cycled every 5 minutes to prevent stale connections
+/// through proxies and load balancers. Before closing, the server sends a `disconnecting`
+/// event so clients can reconnect seamlessly without missing events.
+///
+/// ## Retry Hints
+///
+/// Each SSE event includes a `retry:` field (in milliseconds) that hints how long
+/// clients should wait before reconnecting if the connection is lost:
+/// - During active streaming: 100ms (fast reconnect)
+/// - During idle periods: increases with backoff up to 500ms
+/// - After `disconnecting` event: 100ms (immediate reconnect)
+///
+/// ## Resuming Streams
+///
+/// Use the `since_id` query parameter to resume from a specific event. The server
+/// will only send events with IDs greater than the specified value. Event IDs are
+/// UUID v7 (monotonically increasing), ensuring reliable ordering.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/sse",
@@ -105,7 +137,7 @@ pub fn routes(state: AppState) -> Router {
         EventsQuery
     ),
     responses(
-        (status = 200, description = "Event stream", content_type = "text/event-stream"),
+        (status = 200, description = "Event stream. Includes 'connected' on open, domain events during streaming, and 'disconnecting' before graceful close.", content_type = "text/event-stream"),
         (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
@@ -160,101 +192,167 @@ pub async fn stream_sse(
 
     // Use realtime config for session events (fast updates for interactive UX)
     let config = SseStreamConfig::realtime();
+    let connection_start = Instant::now();
 
-    // State for stream: (last_id, backoff_ms, sent_connected, exclude_types)
+    // Stream state machine
+    #[derive(Clone)]
+    enum StreamPhase {
+        /// Initial phase - send connected event
+        SendConnected,
+        /// Normal operation - poll for events
+        Polling,
+        /// Send disconnecting event then close
+        SendDisconnecting,
+        /// Stream has ended
+        Closed,
+    }
+
     #[derive(Clone)]
     struct StreamState {
+        phase: StreamPhase,
         last_id: Option<Uuid>,
         backoff_ms: u64,
-        sent_connected: bool,
         config: SseStreamConfig,
         exclude_types: Vec<String>,
+        connection_start: Instant,
     }
 
     let initial_state = StreamState {
+        phase: StreamPhase::SendConnected,
         last_id: initial_since_id,
         backoff_ms: config.min_backoff_ms,
-        sent_connected: false,
         config,
         exclude_types,
+        connection_start,
     };
 
     // Create stream that replays events from database
     // Uses since_id (UUID v7) for tracking - monotonically increasing
     // SSE format: event: <type>, data: <full core::Event JSON>, id: <event UUID>
-    // Includes exponential backoff (100ms → 10s) when no new events
+    // Features:
+    // - Exponential backoff (100ms → 500ms) when no new events
+    // - Connection cycling: graceful close after max_connection_duration with "disconnecting" event
+    // - Retry hints: SSE `retry:` field hints reconnection timing based on backoff
     let stream = stream::unfold(initial_state, move |state| {
         let event_service = event_service.clone();
         async move {
-            // Send initial "connected" event on first iteration
-            if !state.sent_connected {
-                tracing::debug!(session_id = %session_id, "SSE: sending connected event");
-                let connected_event = Ok(SseEvent::default()
-                    .event("connected")
-                    .data(r#"{"status":"connected"}"#));
-                let new_state = StreamState {
-                    sent_connected: true,
-                    ..state
-                };
-                return Some((stream::iter(vec![connected_event]), new_state));
-            }
-
-            // Fetch events since last ID
-            tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
-            match event_service.list(session_id, None, state.last_id, &state.exclude_types).await {
-                Ok(events) if !events.is_empty() => {
-                    // Get the last event ID for next iteration (extract UUID for db query)
-                    let new_last_id = Some(events.last().unwrap().id.uuid());
-
-                    tracing::debug!(
-                        session_id = %session_id,
-                        last_id = ?state.last_id,
-                        new_last_id = ?new_last_id,
-                        event_count = events.len(),
-                        "SSE: fetched events"
-                    );
-
-                    // Convert events to SSE format with full Event as data
-                    let sse_events: Vec<Result<SseEvent, Infallible>> = events
-                        .into_iter()
-                        .map(|event| {
-                            let event_type = event.event_type.clone();
-                            let event_id = event.id.to_string();
-                            let json =
-                                serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
-
-                            Ok(SseEvent::default()
-                                .event(&event_type)
-                                .data(json)
-                                .id(event_id))
-                        })
-                        .collect();
-
-                    // Reset backoff on new events
-                    let new_state = StreamState {
-                        last_id: new_last_id,
-                        backoff_ms: state.config.min_backoff_ms,
-                        sent_connected: true,
-                        config: state.config,
-                        exclude_types: state.exclude_types,
-                    };
-                    Some((stream::iter(sse_events), new_state))
+            match state.phase {
+                StreamPhase::Closed => {
+                    // Stream has ended
+                    None
                 }
-                Ok(_) => {
-                    // No new events, wait with exponential backoff
-                    tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
 
-                    // Increase backoff for next iteration (double, up to max)
-                    let new_backoff = state.config.next_backoff(state.backoff_ms);
+                StreamPhase::SendDisconnecting => {
+                    // Send disconnecting event and close
+                    tracing::info!(
+                        session_id = %session_id,
+                        duration_secs = state.connection_start.elapsed().as_secs(),
+                        "SSE: connection cycling, sending disconnecting event"
+                    );
+                    let disconnect_data = format!(
+                        r#"{{"reason":"{}","retry_ms":{}}}"#,
+                        DisconnectReason::ConnectionCycle.as_str(),
+                        state.config.disconnect_retry_ms
+                    );
+                    let disconnecting_event = Ok(SseEvent::default()
+                        .event("disconnecting")
+                        .data(disconnect_data)
+                        .retry(state.config.disconnect_retry()));
+
                     let new_state = StreamState {
-                        backoff_ms: new_backoff,
+                        phase: StreamPhase::Closed,
                         ..state
                     };
-                    Some((stream::iter(vec![]), new_state))
+                    Some((stream::iter(vec![disconnecting_event]), new_state))
                 }
-                Err(e) => {
-                    tracing::error!("Failed to fetch events: {}", e);
-                    None
+
+                StreamPhase::SendConnected => {
+                    // Send initial "connected" event
+                    tracing::debug!(session_id = %session_id, "SSE: sending connected event");
+                    let connected_event = Ok(SseEvent::default()
+                        .event("connected")
+                        .data(r#"{"status":"connected"}"#)
+                        .retry(state.config.retry_hint(state.backoff_ms)));
+
+                    let new_state = StreamState {
+                        phase: StreamPhase::Polling,
+                        ..state
+                    };
+                    Some((stream::iter(vec![connected_event]), new_state))
+                }
+
+                StreamPhase::Polling => {
+                    // Check for connection cycling - graceful close after max duration
+                    if state.connection_start.elapsed() > state.config.max_connection_duration() {
+                        let new_state = StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            ..state
+                        };
+                        // Recurse immediately to send disconnecting event
+                        return Some((stream::iter(vec![]), new_state));
+                    }
+
+                    // Fetch events since last ID
+                    tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
+                    match event_service.list(session_id, None, state.last_id, &state.exclude_types).await {
+                        Ok(events) if !events.is_empty() => {
+                            // Get the last event ID for next iteration
+                            let new_last_id = Some(events.last().unwrap().id.uuid());
+                            let new_backoff = state.config.min_backoff_ms; // Reset backoff
+
+                            tracing::debug!(
+                                session_id = %session_id,
+                                last_id = ?state.last_id,
+                                new_last_id = ?new_last_id,
+                                event_count = events.len(),
+                                "SSE: fetched events"
+                            );
+
+                            // Convert events to SSE format with retry hint
+                            let retry_duration = state.config.retry_hint(new_backoff);
+                            let sse_events: Vec<Result<SseEvent, Infallible>> = events
+                                .into_iter()
+                                .map(|event| {
+                                    let event_type = event.event_type.clone();
+                                    let event_id = event.id.to_string();
+                                    let json = serde_json::to_string(&event)
+                                        .unwrap_or_else(|_| "{}".to_string());
+
+                                    Ok(SseEvent::default()
+                                        .event(&event_type)
+                                        .data(json)
+                                        .id(event_id)
+                                        .retry(retry_duration))
+                                })
+                                .collect();
+
+                            let new_state = StreamState {
+                                phase: StreamPhase::Polling,
+                                last_id: new_last_id,
+                                backoff_ms: new_backoff,
+                                config: state.config,
+                                exclude_types: state.exclude_types,
+                                connection_start: state.connection_start,
+                            };
+                            Some((stream::iter(sse_events), new_state))
+                        }
+                        Ok(_) => {
+                            // No new events, wait with exponential backoff
+                            tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
+
+                            // Increase backoff for next iteration
+                            let new_backoff = state.config.next_backoff(state.backoff_ms);
+                            let new_state = StreamState {
+                                backoff_ms: new_backoff,
+                                ..state
+                            };
+                            Some((stream::iter(vec![]), new_state))
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to fetch events: {}", e);
+                            None
+                        }
+                    }
                 }
             }
         }

@@ -979,6 +979,56 @@ data: {"id":"...","type":"reason.started","ts":"...","session_id":"...","context
 
 The SSE `event` field matches the `type` field in the event payload.
 
+### SSE Connection Lifecycle
+
+SSE streams include special lifecycle events for connection management:
+
+| Event | Description |
+|-------|-------------|
+| `connected` | Sent immediately when the stream is established. Data: `{"status":"connected"}` |
+| `disconnecting` | Sent before graceful close. Data: `{"reason":"connection_cycle","retry_ms":100}` |
+
+### Connection Cycling
+
+To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:
+
+| Stream Type | Cycle Interval | Backoff Range |
+|-------------|----------------|---------------|
+| Session events (realtime) | 5 minutes | 100ms → 500ms |
+| Durable monitoring | 10 minutes | 1000ms → 20000ms |
+
+Before closing, the server sends a `disconnecting` event so clients can reconnect immediately using `since_id`. This ensures no events are missed.
+
+### Retry Hints
+
+Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:
+
+| Situation | Session Events | Durable Monitoring |
+|-----------|---------------|-------------------|
+| Active (new events) | 100ms | 1000ms |
+| Idle (backoff max) | 500ms | 20000ms |
+| After `disconnecting` | 100ms | 1000ms |
+
+The EventSource API automatically uses this hint.
+
+### SDK Implementation Requirements
+
+SDKs MUST:
+1. Track the last received event ID (`lastEventId`)
+2. Handle `disconnecting` event by reconnecting with `since_id` parameter
+3. Handle `onerror` with exponential backoff (EventSource default behavior)
+4. Use `retry:` hint for reconnection timing
+
+Example client implementation:
+
+```javascript
+eventSource.addEventListener('disconnecting', (event) => {
+  const data = JSON.parse(event.data);
+  eventSource.close();
+  setTimeout(() => reconnect(lastEventId), data.retry_ms);
+});
+```
+
 ## Filtering
 
 Events can be filtered by:

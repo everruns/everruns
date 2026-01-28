@@ -97,6 +97,26 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
         setError(null);
       });
 
+      // Listen for "disconnecting" event for graceful connection cycling
+      eventSource.addEventListener("disconnecting", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const retryMs = data.retry_ms ?? 1000;
+          console.debug("Durable SSE disconnecting, reconnecting in", retryMs, "ms");
+          cleanup();
+          setTimeout(() => {
+            if (isEnabled) {
+              connectSSE();
+            }
+          }, retryMs);
+        } catch {
+          cleanup();
+          if (isEnabled) {
+            connectSSE();
+          }
+        }
+      });
+
       eventSource.addEventListener("snapshot", (event) => {
         try {
           const snapshot: DurableSnapshot = JSON.parse(event.data);
@@ -188,6 +208,26 @@ export function useWorkflowSSE(
       eventSource.addEventListener("connected", () => {
         setIsConnected(true);
         setError(null);
+      });
+
+      // Listen for "disconnecting" event for graceful connection cycling
+      eventSource.addEventListener("disconnecting", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const retryMs = data.retry_ms ?? 1000;
+          console.debug("Workflow SSE disconnecting, reconnecting in", retryMs, "ms");
+          cleanup();
+          setTimeout(() => {
+            if (isEnabled && workflowId) {
+              connectSSE();
+            }
+          }, retryMs);
+        } catch {
+          cleanup();
+          if (isEnabled && workflowId) {
+            connectSSE();
+          }
+        }
       });
 
       eventSource.addEventListener("snapshot", (event) => {

@@ -211,6 +211,28 @@ export function useEvents(
         setError(null);
       });
 
+      // Listen for "disconnecting" event for graceful connection cycling
+      // Server sends this before closing to allow immediate reconnect with since_id
+      eventSource.addEventListener("disconnecting", (messageEvent) => {
+        try {
+          const data = JSON.parse(messageEvent.data);
+          const retryMs = data.retry_ms ?? 100;
+          console.debug("SSE disconnecting event received, reconnecting in", retryMs, "ms");
+          cleanup();
+          setTimeout(() => {
+            if (isEnabled) {
+              connectSSE();
+            }
+          }, retryMs);
+        } catch {
+          // Fallback: reconnect immediately
+          cleanup();
+          if (isEnabled) {
+            connectSSE();
+          }
+        }
+      });
+
       // Fallback: onopen may fire, but "connected" event is more reliable
       eventSource.onopen = () => {
         setError(null);
