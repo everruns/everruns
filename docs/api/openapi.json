@@ -1915,6 +1915,7 @@
           "events"
         ],
         "summary": "GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)",
+        "description": "Establishes a Server-Sent Events (SSE) connection for real-time event streaming.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n  Data: `{\"status\":\"connected\"}`\n\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":100}`\n  Clients should reconnect immediately using the `since_id` of the last received event.\n\n## Connection Cycling\n\nConnections are automatically cycled every 5 minutes to prevent stale connections\nthrough proxies and load balancers. Before closing, the server sends a `disconnecting`\nevent so clients can reconnect seamlessly without missing events.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints how long\nclients should wait before reconnecting if the connection is lost:\n- During active streaming: 100ms (fast reconnect)\n- During idle periods: increases with backoff up to 500ms\n- After `disconnecting` event: 100ms (immediate reconnect)\n\n## Resuming Streams\n\nUse the `since_id` query parameter to resume from a specific event. The server\nwill only send events with IDs greater than the specified value. Event IDs are\nUUID v7 (monotonically increasing), ensuring reliable ordering.",
         "operationId": "stream_sse",
         "parameters": [
           {
@@ -1956,7 +1957,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Event stream",
+            "description": "Event stream. Includes 'connected' on open, domain events during streaming, and 'disconnecting' before graceful close.",
             "content": {
               "text/event-stream": {}
             }
