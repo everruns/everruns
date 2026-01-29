@@ -8,8 +8,8 @@ import {
   DropdownMenuPositioner,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
@@ -39,14 +39,15 @@ export function EventFilter({
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-56">
-          <DropdownMenuLabel>Event Filters</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuCheckboxItem
-            checked={hideDeltaEvents}
-            onCheckedChange={onHideDeltaEventsChange}
-          >
-            Hide streaming events
-          </DropdownMenuCheckboxItem>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Event Filters</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem
+              checked={hideDeltaEvents}
+              onCheckedChange={onHideDeltaEventsChange}
+            >
+              Hide streaming events
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenuPositioner>
     </DropdownMenu>
