@@ -338,8 +338,9 @@ fn build_otlp_tracer(
     resource: Resource,
 ) -> Result<(SdkTracerProvider, opentelemetry_sdk::trace::Tracer), opentelemetry::trace::TraceError>
 {
+    // Use HTTP OTLP instead of gRPC - more reliable with Docker DNS
     let exporter = SpanExporter::builder()
-        .with_tonic()
+        .with_http()
         .with_endpoint(endpoint)
         .with_timeout(Duration::from_secs(10))
         .build()?;

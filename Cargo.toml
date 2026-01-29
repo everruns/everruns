@@ -58,7 +58,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OpenTelemetry
 opentelemetry = "0.28"
 opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
+opentelemetry-otlp = { version = "0.28", features = ["http-proto", "reqwest-client"] }
 tracing-opentelemetry = "0.29"
 
 # OpenAPI documentation
