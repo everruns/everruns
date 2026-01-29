@@ -49,7 +49,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 - `smoke-test/` - API and UI smoke testing
 - `no-docker-setup/` - PostgreSQL setup for cloud agents
-- `ui-screenshots/` - Playwright screenshots for PR comments
+- `ui-screenshots/` - agent-browser screenshots for PR comments
 
 ### Test Cases
 

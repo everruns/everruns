@@ -137,7 +137,7 @@ Example:
 ```bash
 .claude/skills/ui-screenshots/scripts/take-screenshot.sh \
   http://localhost:9100/dev/components \
-  apps/ui/e2e/screenshots/custom.png
+  /tmp/screenshot.png
 ```
 
 ### upload-screenshot.sh
@@ -151,7 +151,7 @@ Upload screenshot to Cloudinary and add PR comment:
 Example:
 ```bash
 .claude/skills/ui-screenshots/scripts/upload-screenshot.sh \
-  apps/ui/e2e/screenshots/dev-components-full.png \
+  /tmp/screenshot.png \
   195 \
   "Dev components page showing message and tool call rendering"
 ```
