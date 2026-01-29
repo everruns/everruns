@@ -4,11 +4,7 @@ import { useState } from "react";
 import { X, Loader2, AlertCircle, ImageIcon, Download } from "lucide-react";
 import type { PendingImage } from "@/lib/api/images";
 import { getThumbnailUrl, getImageUrl } from "@/lib/api/images";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
 interface ImageAttachmentsProps {
@@ -38,9 +34,7 @@ interface ImageAttachmentItemProps {
 
 function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
   // Use thumbnail URL if uploaded, otherwise use object URL preview
-  const displayUrl = image.imageId
-    ? getThumbnailUrl(image.imageId)
-    : image.previewUrl;
+  const displayUrl = image.imageId ? getThumbnailUrl(image.imageId) : image.previewUrl;
 
   return (
     <div className="relative group">
@@ -53,11 +47,7 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displayUrl}
-              alt={image.filename}
-              className="w-full h-full object-cover"
-            />
+            <img src={displayUrl} alt={image.filename} className="w-full h-full object-cover" />
             {image.status === "uploading" && (
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 text-white animate-spin" />
@@ -107,11 +97,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
   return (
     <>
       <div className="inline-block">
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="block cursor-pointer"
-        >
+        <button type="button" onClick={() => setIsOpen(true)} className="block cursor-pointer">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={thumbnailUrl}

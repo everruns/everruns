@@ -4,13 +4,7 @@ import { cloneElement, isValidElement, type ComponentProps, type ReactNode } fro
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import {
-  Info,
-  Lightbulb,
-  AlertTriangle,
-  AlertCircle,
-  ShieldAlert,
-} from "lucide-react";
+import { Info, Lightbulb, AlertTriangle, AlertCircle, ShieldAlert } from "lucide-react";
 
 // GitHub-style alert types
 type AlertType = "note" | "tip" | "important" | "warning" | "caution";
@@ -28,35 +22,35 @@ const alertConfigs: Record<AlertType, AlertConfig> = {
     icon: Info,
     bgClass: "bg-blue-50 dark:bg-blue-950/30",
     borderClass: "border-blue-400 dark:border-blue-600",
-    textColor: "#1e40af",  // blue-800
+    textColor: "#1e40af", // blue-800
     titleColor: "#1d4ed8", // blue-700
   },
   tip: {
     icon: Lightbulb,
     bgClass: "bg-green-50 dark:bg-green-950/30",
     borderClass: "border-green-400 dark:border-green-600",
-    textColor: "#166534",  // green-800
+    textColor: "#166534", // green-800
     titleColor: "#15803d", // green-700
   },
   important: {
     icon: AlertCircle,
     bgClass: "bg-purple-50 dark:bg-purple-950/30",
     borderClass: "border-purple-400 dark:border-purple-600",
-    textColor: "#6b21a8",  // purple-800
+    textColor: "#6b21a8", // purple-800
     titleColor: "#7e22ce", // purple-700
   },
   warning: {
     icon: AlertTriangle,
     bgClass: "bg-yellow-50 dark:bg-yellow-950/30",
     borderClass: "border-yellow-400 dark:border-yellow-600",
-    textColor: "#854d0e",  // yellow-800
+    textColor: "#854d0e", // yellow-800
     titleColor: "#a16207", // yellow-700
   },
   caution: {
     icon: ShieldAlert,
     bgClass: "bg-red-50 dark:bg-red-950/30",
     borderClass: "border-red-400 dark:border-red-600",
-    textColor: "#991b1b",  // red-800
+    textColor: "#991b1b", // red-800
     titleColor: "#b91c1c", // red-700
   },
 };
@@ -163,25 +157,13 @@ function parseGitHubAlert(children: ReactNode): {
 /**
  * GitHub-style alert component
  */
-function GitHubAlert({
-  type,
-  children,
-}: {
-  type: AlertType;
-  children: ReactNode;
-}) {
+function GitHubAlert({ type, children }: { type: AlertType; children: ReactNode }) {
   const config = alertConfigs[type];
   const Icon = config.icon;
   const title = type.charAt(0).toUpperCase() + type.slice(1);
 
   return (
-    <div
-      className={cn(
-        "my-4 border-l-4 p-4",
-        config.bgClass,
-        config.borderClass
-      )}
-    >
+    <div className={cn("my-4 border-l-4 p-4", config.bgClass, config.borderClass)}>
       <div
         className="flex items-center gap-2 font-semibold mb-1"
         style={{ color: config.titleColor }}
@@ -230,7 +212,7 @@ export function Markdown({ content, className, variant = "default" }: MarkdownPr
           "markdown-body",
           variant === "default" && "bg-muted p-4",
           variant === "compact" && "bg-transparent p-0",
-          className
+          className,
         )}
       >
         <ReactMarkdown

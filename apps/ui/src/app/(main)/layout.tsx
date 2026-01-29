@@ -44,9 +44,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 overflow-auto bg-background bg-brand-dots">
-        {children}
-      </main>
+      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
     </div>
   );
 }

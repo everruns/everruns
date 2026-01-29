@@ -32,12 +32,7 @@ export function useSessions(agentId?: string, params?: PaginationParams) {
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: queryKeys.sessions.list(
-      org,
-      agentId,
-      params?.offset ?? 0,
-      params?.limit ?? 20,
-    ),
+    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org,
   });
@@ -74,8 +69,7 @@ export function useCreateSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ request }: { request: CreateSessionRequest }) =>
-      createSession(request),
+    mutationFn: ({ request }: { request: CreateSessionRequest }) => createSession(request),
     onSuccess: (_, { request }) => {
       // Invalidate sessions list - both all sessions and agent-specific
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
@@ -94,13 +88,8 @@ export function useUpdateSession() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      request,
-    }: {
-      sessionId: string;
-      request: UpdateSessionRequest;
-    }) => updateSession(sessionId, request),
+    mutationFn: ({ sessionId, request }: { sessionId: string; request: UpdateSessionRequest }) =>
+      updateSession(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
       queryClient.invalidateQueries({
@@ -114,8 +103,7 @@ export function useDeleteSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ sessionId }: { sessionId: string }) =>
-      deleteSession(sessionId),
+    mutationFn: ({ sessionId }: { sessionId: string }) => deleteSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
     },
@@ -155,10 +143,7 @@ export function useSendMessage() {
  * Falls back to initial fetch + SSE reconnection for reliability.
  * The enabled option controls whether to connect to SSE (useful for inactive sessions).
  */
-export function useEvents(
-  sessionId: string | undefined,
-  options?: { enabled?: boolean },
-) {
+export function useEvents(sessionId: string | undefined, options?: { enabled?: boolean }) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 

@@ -22,12 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkflows, useCancelWorkflow, useTasks, useDlq, useRequeueDlqEntry } from "@/hooks";
 import type { DurableWorkflow, WorkflowStatus, DurableTask, DlqEntry } from "@/lib/api/types";
 import {
@@ -103,7 +98,13 @@ function getStatusBadgeVariant(status: WorkflowStatus) {
   }
 }
 
-function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCancel: (id: string) => void }) {
+function WorkflowRow({
+  workflow,
+  onCancel,
+}: {
+  workflow: DurableWorkflow;
+  onCancel: (id: string) => void;
+}) {
   return (
     <TableRow>
       <TableCell>
@@ -122,9 +123,7 @@ function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCanc
             <TooltipTrigger className="text-sm text-muted-foreground">
               {formatDistanceToNow(new Date(workflow.created_at), { addSuffix: true })}
             </TooltipTrigger>
-            <TooltipContent>
-              {new Date(workflow.created_at).toLocaleString()}
-            </TooltipContent>
+            <TooltipContent>{new Date(workflow.created_at).toLocaleString()}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -135,9 +134,7 @@ function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCanc
               <TooltipTrigger className="text-sm text-muted-foreground">
                 {formatDistanceToNow(new Date(workflow.started_at), { addSuffix: true })}
               </TooltipTrigger>
-              <TooltipContent>
-                {new Date(workflow.started_at).toLocaleString()}
-              </TooltipContent>
+              <TooltipContent>{new Date(workflow.started_at).toLocaleString()}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -151,9 +148,7 @@ function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCanc
               <TooltipTrigger className="text-sm text-muted-foreground">
                 {formatDistanceToNow(new Date(workflow.completed_at), { addSuffix: true })}
               </TooltipTrigger>
-              <TooltipContent>
-                {new Date(workflow.completed_at).toLocaleString()}
-              </TooltipContent>
+              <TooltipContent>{new Date(workflow.completed_at).toLocaleString()}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -181,11 +176,7 @@ function WorkflowRow({ workflow, onCancel }: { workflow: DurableWorkflow; onCanc
             </Button>
           </Link>
           {workflow.status === "running" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onCancel(workflow.id)}
-            >
+            <Button variant="outline" size="sm" onClick={() => onCancel(workflow.id)}>
               Cancel
             </Button>
           )}
@@ -205,7 +196,15 @@ function TaskRow({ task }: { task: DurableTask }) {
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={task.status === "pending" ? "outline" : task.status === "claimed" ? "secondary" : "default"}>
+        <Badge
+          variant={
+            task.status === "pending"
+              ? "outline"
+              : task.status === "claimed"
+                ? "secondary"
+                : "default"
+          }
+        >
           {task.status}
         </Badge>
       </TableCell>
@@ -213,7 +212,9 @@ function TaskRow({ task }: { task: DurableTask }) {
         <Badge variant="outline">{task.priority}</Badge>
       </TableCell>
       <TableCell>
-        <span className="text-sm">{task.attempt}/{task.max_attempts}</span>
+        <span className="text-sm">
+          {task.attempt}/{task.max_attempts}
+        </span>
       </TableCell>
       <TableCell>
         {task.claimed_by ? (
@@ -230,9 +231,7 @@ function TaskRow({ task }: { task: DurableTask }) {
             <TooltipTrigger className="text-sm text-muted-foreground">
               {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true })}
             </TooltipTrigger>
-            <TooltipContent>
-              {new Date(task.scheduled_at).toLocaleString()}
-            </TooltipContent>
+            <TooltipContent>{new Date(task.scheduled_at).toLocaleString()}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -277,9 +276,7 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
             <TooltipTrigger className="text-sm text-muted-foreground">
               {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
             </TooltipTrigger>
-            <TooltipContent>
-              {new Date(entry.dead_at).toLocaleString()}
-            </TooltipContent>
+            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -309,8 +306,17 @@ export default function WorkflowsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const workflowParams = statusFilter !== "all" ? { status: statusFilter } : undefined;
-  const { data: workflowsData, isLoading: workflowsLoading, error: workflowsError, refetch: refetchWorkflows } = useWorkflows(workflowParams);
-  const { data: tasksData, isLoading: tasksLoading, refetch: refetchTasks } = useTasks({ limit: 50 });
+  const {
+    data: workflowsData,
+    isLoading: workflowsLoading,
+    error: workflowsError,
+    refetch: refetchWorkflows,
+  } = useWorkflows(workflowParams);
+  const {
+    data: tasksData,
+    isLoading: tasksLoading,
+    refetch: refetchTasks,
+  } = useTasks({ limit: 50 });
   const { data: dlqData, isLoading: dlqLoading, refetch: refetchDlq } = useDlq({ limit: 50 });
   const cancelMutation = useCancelWorkflow();
   const requeueMutation = useRequeueDlqEntry();
@@ -354,9 +360,10 @@ export default function WorkflowsPage() {
 
   const workflows = workflowsData?.data || [];
   const filteredWorkflows = searchQuery
-    ? workflows.filter(w =>
-        w.workflow_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        w.id.toLowerCase().includes(searchQuery.toLowerCase())
+    ? workflows.filter(
+        (w) =>
+          w.workflow_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          w.id.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : workflows;
 
@@ -387,13 +394,15 @@ export default function WorkflowsPage() {
               "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
               activeTab === "workflows"
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Workflow className="h-4 w-4" />
             Workflows
             {workflows.length > 0 && (
-              <Badge variant="secondary" className="ml-1">{workflowsData?.total || 0}</Badge>
+              <Badge variant="secondary" className="ml-1">
+                {workflowsData?.total || 0}
+              </Badge>
             )}
           </button>
           <button
@@ -402,13 +411,15 @@ export default function WorkflowsPage() {
               "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
               activeTab === "tasks"
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <ListTodo className="h-4 w-4" />
             Tasks
             {tasks.length > 0 && (
-              <Badge variant="secondary" className="ml-1">{tasksData?.total || 0}</Badge>
+              <Badge variant="secondary" className="ml-1">
+                {tasksData?.total || 0}
+              </Badge>
             )}
           </button>
           <button
@@ -417,13 +428,15 @@ export default function WorkflowsPage() {
               "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
               activeTab === "dlq"
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Inbox className="h-4 w-4" />
             Dead Letter Queue
             {dlqEntries.length > 0 && (
-              <Badge variant="destructive" className="ml-1">{dlqData?.total || 0}</Badge>
+              <Badge variant="destructive" className="ml-1">
+                {dlqData?.total || 0}
+              </Badge>
             )}
           </button>
         </div>
@@ -549,7 +562,8 @@ export default function WorkflowsPage() {
                     <ListTodo className="h-12 w-12 mb-4" />
                     <h3 className="text-lg font-medium mb-2">No Tasks in Queue</h3>
                     <p className="text-sm text-center max-w-md">
-                      The task queue is empty. Tasks will appear here when workflows schedule activities.
+                      The task queue is empty. Tasks will appear here when workflows schedule
+                      activities.
                     </p>
                   </div>
                 )}
@@ -571,9 +585,7 @@ export default function WorkflowsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Dead Letter Queue</CardTitle>
-                <CardDescription>
-                  Tasks that have exhausted all retry attempts
-                </CardDescription>
+                <CardDescription>Tasks that have exhausted all retry attempts</CardDescription>
               </CardHeader>
               <CardContent>
                 {!dlqLoading && dlqEntries.length > 0 ? (
@@ -591,11 +603,7 @@ export default function WorkflowsPage() {
                       </TableHeader>
                       <TableBody>
                         {dlqEntries.map((entry) => (
-                          <DlqRow
-                            key={entry.id}
-                            entry={entry}
-                            onRequeue={handleRequeue}
-                          />
+                          <DlqRow key={entry.id} entry={entry} onRequeue={handleRequeue} />
                         ))}
                       </TableBody>
                     </Table>

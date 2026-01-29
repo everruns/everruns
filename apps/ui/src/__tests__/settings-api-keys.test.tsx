@@ -79,9 +79,7 @@ describe("ApiKeysPage", () => {
     render(<ApiKeysPage />, { wrapper });
 
     expect(screen.getByText("API Keys")).toBeInTheDocument();
-    expect(
-      screen.getByText("Manage your API keys for programmatic access.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Manage your API keys for programmatic access.")).toBeInTheDocument();
   });
 
   it("renders API key rows with correct data", () => {
@@ -133,7 +131,7 @@ describe("ApiKeysPage", () => {
 
     expect(screen.getByText("No API keys")).toBeInTheDocument();
     expect(
-      screen.getByText("Create an API key to access the Everruns API programmatically.")
+      screen.getByText("Create an API key to access the Everruns API programmatically."),
     ).toBeInTheDocument();
   });
 
@@ -164,7 +162,9 @@ describe("ApiKeysPage", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText("Create a new API key for programmatic access to the Everruns API.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Create a new API key for programmatic access to the Everruns API."),
+      ).toBeInTheDocument();
     });
   });
 
@@ -177,7 +177,9 @@ describe("ApiKeysPage", () => {
 
     expect(screen.getByText("Authentication Disabled")).toBeInTheDocument();
     expect(
-      screen.getByText("API keys are only available when authentication is enabled. Contact your administrator to enable authentication.")
+      screen.getByText(
+        "API keys are only available when authentication is enabled. Contact your administrator to enable authentication.",
+      ),
     ).toBeInTheDocument();
   });
 

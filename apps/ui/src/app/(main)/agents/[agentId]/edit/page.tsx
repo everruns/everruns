@@ -3,12 +3,7 @@
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  useAgent,
-  useUpdateAgent,
-  useDeleteAgent,
-  useCapabilities,
-} from "@/hooks";
+import { useAgent, useUpdateAgent, useDeleteAgent, useCapabilities } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,11 +26,7 @@ interface FormData {
   default_model_id: string;
 }
 
-export default function EditAgentPage({
-  params,
-}: {
-  params: Promise<{ agentId: string }>;
-}) {
+export default function EditAgentPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
   const router = useRouter();
 
@@ -45,8 +36,7 @@ export default function EditAgentPage({
   const deleteAgent = useDeleteAgent();
 
   // Capabilities data
-  const { data: allCapabilities, isLoading: capabilitiesLoading } =
-    useCapabilities();
+  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("edit");
@@ -71,15 +61,12 @@ export default function EditAgentPage({
   // Merge initial values with user changes
   const formData = useMemo(
     () => ({ ...initialFormData, ...formChanges }),
-    [initialFormData, formChanges]
+    [initialFormData, formChanges],
   );
 
-  const handleFormChange = useCallback(
-    (field: keyof FormData, value: string) => {
-      setFormChanges((prev) => ({ ...prev, [field]: value }));
-    },
-    []
-  );
+  const handleFormChange = useCallback((field: keyof FormData, value: string) => {
+    setFormChanges((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
   // Capabilities state - now included directly in agent response
   // Use full AgentCapabilityConfig objects to preserve per-agent config
@@ -87,9 +74,7 @@ export default function EditAgentPage({
     return agent?.capabilities ?? [];
   }, [agent?.capabilities]);
 
-  const [localCapabilities, setLocalCapabilities] = useState<
-    AgentCapabilityConfig[] | null
-  >(null);
+  const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
 
   // Capabilities change handler
@@ -232,9 +217,7 @@ export default function EditAgentPage({
                         id="description"
                         placeholder="Describe what this agent does..."
                         value={formData.description}
-                        onChange={(e) =>
-                          handleFormChange("description", e.target.value)
-                        }
+                        onChange={(e) => handleFormChange("description", e.target.value)}
                         rows={2}
                       />
                     </div>
@@ -247,9 +230,7 @@ export default function EditAgentPage({
                         value={formData.tags}
                         onChange={(e) => handleFormChange("tags", e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Comma-separated list of tags
-                      </p>
+                      <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
                     </div>
 
                     <div className="space-y-2">
@@ -270,9 +251,7 @@ export default function EditAgentPage({
                         id="system_prompt"
                         placeholder="You are a helpful assistant..."
                         value={formData.system_prompt}
-                        onChange={(value) =>
-                          handleFormChange("system_prompt", value)
-                        }
+                        onChange={(value) => handleFormChange("system_prompt", value)}
                         required
                       />
                       <p className="text-xs text-muted-foreground">
@@ -286,9 +265,7 @@ export default function EditAgentPage({
                 <Card className="border-destructive/50">
                   <CardHeader>
                     <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>
-                      Irreversible actions that affect this agent
-                    </CardDescription>
+                    <CardDescription>Irreversible actions that affect this agent</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between">
@@ -334,19 +311,13 @@ export default function EditAgentPage({
                     <Save className="w-4 h-4 mr-2" />
                     {isSaving ? "Saving..." : "Save Changes"}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => router.back()}
-                  >
+                  <Button type="button" variant="outline" onClick={() => router.back()}>
                     Cancel
                   </Button>
                 </div>
 
                 {updateAgent.error && (
-                  <p className="text-sm text-destructive">
-                    Error: {updateAgent.error.message}
-                  </p>
+                  <p className="text-sm text-destructive">Error: {updateAgent.error.message}</p>
                 )}
               </div>
             </div>
@@ -368,9 +339,7 @@ export default function EditAgentPage({
               <Card>
                 <CardHeader>
                   <CardTitle>Agent Summary</CardTitle>
-                  <CardDescription>
-                    Current configuration
-                  </CardDescription>
+                  <CardDescription>Current configuration</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -379,12 +348,15 @@ export default function EditAgentPage({
                   </div>
                   <div>
                     <p className="text-sm font-medium">Description</p>
-                    <p className="text-sm text-muted-foreground">{formData.description || "(not set)"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formData.description || "(not set)"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Capabilities</p>
                     <p className="text-sm text-muted-foreground">
-                      {selectedCapabilities.length} capabilit{selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
+                      {selectedCapabilities.length} capabilit
+                      {selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
                     </p>
                   </div>
                 </CardContent>
@@ -393,8 +365,8 @@ export default function EditAgentPage({
               <Card className="border-dashed">
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground text-center">
-                    This preview shows what the final agent will look like after applying all capabilities.
-                    Switch to the Edit tab to make changes.
+                    This preview shows what the final agent will look like after applying all
+                    capabilities. Switch to the Edit tab to make changes.
                   </p>
                 </CardContent>
               </Card>

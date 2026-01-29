@@ -4,11 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
-import {
-  formatArguments,
-  getFullText,
-  type ToolCallContent,
-} from "./tool-call-utils";
+import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
 
 interface ToolCallCardFromEventProps {
   toolCall: ToolCallContent;
@@ -41,11 +37,15 @@ export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFrom
     );
   }
 
-  const statusIcon = isComplete
-    ? hasError
-      ? <span className="text-red-600 text-xs">✗</span>
-      : <Check className="h-3 w-3 text-green-600/80" />
-    : <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />;
+  const statusIcon = isComplete ? (
+    hasError ? (
+      <span className="text-red-600 text-xs">✗</span>
+    ) : (
+      <Check className="h-3 w-3 text-green-600/80" />
+    )
+  ) : (
+    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+  );
 
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
   const hasOutput = fullText.length > 0;
@@ -60,11 +60,7 @@ export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFrom
       </div>
 
       {/* Error message */}
-      {hasError && (
-        <div className="text-red-600 ml-4 mt-0.5">
-          Error: {toolResult?.error}
-        </div>
-      )}
+      {hasError && <div className="text-red-600 ml-4 mt-0.5">Error: {toolResult?.error}</div>}
 
       {/* Expanded output */}
       {isExpanded && hasOutput && (
@@ -79,7 +75,11 @@ export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFrom
           onClick={() => setIsExpanded(!isExpanded)}
           className="ml-4 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/80 flex items-center gap-0.5"
         >
-          {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+          {isExpanded ? (
+            <ChevronDown className="h-2.5 w-2.5" />
+          ) : (
+            <ChevronRight className="h-2.5 w-2.5" />
+          )}
           {isExpanded ? "hide" : "output"}
         </button>
       )}

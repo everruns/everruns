@@ -26,7 +26,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: allCapabilities } = useCapabilities();
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, { limit: 5 });
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, {
+    limit: 5,
+  });
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
 
@@ -78,10 +80,7 @@ export default function DashboardPage() {
       <div className="p-6 space-y-6">
         <StatsCards agents={agents} sessions={sessions} />
         <div className="grid gap-6 md:grid-cols-2">
-          <AgentListWidget
-            agents={agents}
-            allCapabilities={allCapabilities}
-          />
+          <AgentListWidget agents={agents} allCapabilities={allCapabilities} />
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -108,11 +107,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <RecentSessions
-          sessions={sessions}
-          agents={agents}
-          models={llmModels}
-        />
+        <RecentSessions sessions={sessions} agents={agents} models={llmModels} />
       </div>
 
       {/* New Session Dialog */}
@@ -120,9 +115,7 @@ export default function DashboardPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
-            <DialogDescription>
-              Select an agent to start a new conversation.
-            </DialogDescription>
+            <DialogDescription>Select an agent to start a new conversation.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <AgentSelect
@@ -132,10 +125,7 @@ export default function DashboardPage() {
             />
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setNewSessionDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setNewSessionDialogOpen(false)}>
               Cancel
             </Button>
             <Button

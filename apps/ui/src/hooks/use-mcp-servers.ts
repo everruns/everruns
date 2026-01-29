@@ -9,10 +9,7 @@ import {
   deleteMcpServer,
 } from "@/lib/api/mcp-servers";
 import { queryKeys } from "@/lib/query-keys";
-import type {
-  CreateMcpServerRequest,
-  UpdateMcpServerRequest,
-} from "@/lib/api/types";
+import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 // MCP Server hooks
@@ -67,8 +64,7 @@ export function useUpdateMcpServer(serverId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateMcpServerRequest) =>
-      updateMcpServer(serverId, data),
+    mutationFn: (data: UpdateMcpServerRequest) => updateMcpServer(serverId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
       queryClient.invalidateQueries({

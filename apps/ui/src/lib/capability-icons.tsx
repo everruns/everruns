@@ -50,7 +50,7 @@ const McpIcon = forwardRef<SVGSVGElement, SVGProps<SVGSVGElement>>(
         strokeLinecap="round"
       />
     </svg>
-  )
+  ),
 );
 McpIcon.displayName = "McpIcon";
 

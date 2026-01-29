@@ -8,31 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionCard } from "@/components/session/session-card";
-import {
-  ArrowLeft,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { ArrowLeft, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider } from "@/lib/api/types";
 
 const PAGE_SIZE = 20;
 
-export default function SessionsListPage({
-  params,
-}: {
-  params: Promise<{ agentId: string }>;
-}) {
+export default function SessionsListPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
   const router = useRouter();
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
 
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
-    agentId,
-    { offset, limit: PAGE_SIZE }
-  );
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
+    offset,
+    limit: PAGE_SIZE,
+  });
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
 

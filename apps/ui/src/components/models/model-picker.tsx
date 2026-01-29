@@ -94,11 +94,7 @@ export function ModelPicker({
       <SelectContent>
         <SelectItem value="none">{placeholder}</SelectItem>
         {sortedModels.map((model) => (
-          <ModelSelectItem
-            key={model.id}
-            model={model}
-            showFavoriteToggle={showFavoriteToggle}
-          />
+          <ModelSelectItem key={model.id} model={model} showFavoriteToggle={showFavoriteToggle} />
         ))}
       </SelectContent>
     </Select>
@@ -124,24 +120,18 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["llm-models"] });
         },
-      }
+      },
     );
   };
 
   return (
     <SelectItem value={model.id}>
       <div className="flex items-center gap-2 w-full">
-        <ProviderIcon
-          providerType={model.provider_type}
-          size="sm"
-          showBackground={false}
-        />
+        <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
         <span className="flex-1">
           {model.display_name} ({model.provider_name})
         </span>
-        {model.is_favorite && (
-          <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-        )}
+        {model.is_favorite && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />}
         {showFavoriteToggle && (
           <Button
             variant="ghost"
@@ -153,9 +143,7 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
             <Star
               className={cn(
                 "w-4 h-4",
-                model.is_favorite
-                  ? "fill-yellow-400 text-yellow-400"
-                  : "text-muted-foreground"
+                model.is_favorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground",
               )}
             />
           </Button>
@@ -188,7 +176,7 @@ export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps)
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["llm-models"] });
         },
-      }
+      },
     );
   };
 
@@ -209,7 +197,7 @@ export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps)
           iconSize,
           model.is_favorite
             ? "fill-yellow-400 text-yellow-400"
-            : "text-muted-foreground hover:text-yellow-400"
+            : "text-muted-foreground hover:text-yellow-400",
         )}
       />
     </Button>

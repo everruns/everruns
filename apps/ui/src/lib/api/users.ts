@@ -11,9 +11,7 @@ export async function listUsers(query?: ListUsersQuery): Promise<User[]> {
     params.set("search", query.search);
   }
 
-  const url = params.toString()
-    ? `/v1/users?${params.toString()}`
-    : `/v1/users`;
+  const url = params.toString() ? `/v1/users?${params.toString()}` : `/v1/users`;
 
   const response = await api.get<ListResponse<User>>(url);
   return response.data.data;

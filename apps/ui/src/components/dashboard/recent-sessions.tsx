@@ -32,12 +32,24 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
   const getStatusBadge = (session: Session) => {
     switch (session.status) {
       case "active":
-        return <Badge variant="default" className="text-xs">Running</Badge>;
+        return (
+          <Badge variant="default" className="text-xs">
+            Running
+          </Badge>
+        );
       case "idle":
-        return <Badge variant="secondary" className="text-xs">Idle</Badge>;
+        return (
+          <Badge variant="secondary" className="text-xs">
+            Idle
+          </Badge>
+        );
       case "started":
       default:
-        return <Badge variant="outline" className="text-xs">New</Badge>;
+        return (
+          <Badge variant="outline" className="text-xs">
+            New
+          </Badge>
+        );
     }
   };
 
@@ -112,12 +124,13 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                           {model.display_name}
                         </span>
                       )}
-                      {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
-                        <span className="flex items-center gap-1">
-                          <Zap className="w-3 h-3" />
-                          {formatTotalTokens(session.usage)}
-                        </span>
-                      )}
+                      {session.usage &&
+                        (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+                          <span className="flex items-center gap-1">
+                            <Zap className="w-3 h-3" />
+                            {formatTotalTokens(session.usage)}
+                          </span>
+                        )}
                     </div>
                   </div>
                 </Link>

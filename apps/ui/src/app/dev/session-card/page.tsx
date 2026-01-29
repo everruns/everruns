@@ -35,13 +35,7 @@ function ShowcaseSection({
   );
 }
 
-function ShowcaseItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -59,9 +53,12 @@ const sampleSessions = {
     id: "019234ab-cdef-7890-1234-567890abcdef",
     organization_id: "org_default",
     agent_id: "agent-123",
-    title: "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
-    preview: "Can you help me implement OAuth 2.0 authentication with support for Google and GitHub?",
-    output_preview: "I'll help you implement OAuth 2.0 authentication. Let me start by setting up the provider configurations...",
+    title:
+      "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
+    preview:
+      "Can you help me implement OAuth 2.0 authentication with support for Google and GitHub?",
+    output_preview:
+      "I'll help you implement OAuth 2.0 authentication. Let me start by setting up the provider configurations...",
     tags: ["auth", "oauth"],
     model_id: "model-uuid-anthropic",
     status: "active" as const,
@@ -82,7 +79,8 @@ const sampleSessions = {
     agent_id: "agent-123",
     title: "Completed code review for the API endpoints",
     preview: "Please review the changes in src/api/routes.ts and check for any issues",
-    output_preview: "I've reviewed the changes and found 3 potential issues: 1) Missing error handling in the auth middleware...",
+    output_preview:
+      "I've reviewed the changes and found 3 potential issues: 1) Missing error handling in the auth middleware...",
     tags: ["review"],
     model_id: "model-uuid-openai",
     status: "idle" as const,
@@ -119,7 +117,8 @@ const sampleSessions = {
     agent_id: "agent-123",
     title: null,
     preview: "Help me debug this failing test in the authentication module",
-    output_preview: "The test is failing because the mock user doesn't have the required permissions. Try updating the fixture...",
+    output_preview:
+      "The test is failing because the mock user doesn't have the required permissions. Try updating the fixture...",
     tags: ["debug"],
     model_id: "model-uuid-anthropic",
     status: "idle" as const,
@@ -139,8 +138,10 @@ const sampleSessions = {
     organization_id: "org_default",
     agent_id: "agent-123",
     title: "Investigating the performance bottleneck in the database query layer",
-    preview: "I noticed our API is slow when fetching related entities. Can you investigate the database query layer and identify the bottleneck?",
-    output_preview: "After analyzing the query patterns, I found the N+1 problem in the entity loader. Here's a fix using batch loading...",
+    preview:
+      "I noticed our API is slow when fetching related entities. Can you investigate the database query layer and identify the bottleneck?",
+    output_preview:
+      "After analyzing the query patterns, I found the N+1 problem in the entity loader. Here's a fix using batch loading...",
     tags: ["performance", "database", "optimization"],
     model_id: "model-uuid-anthropic",
     status: "active" as const,
@@ -233,37 +234,26 @@ export default function DevSessionCardPage() {
               description="Different states and configurations of the SessionCard component (components/session/session-card.tsx)"
             >
               <ShowcaseItem label="Running Session">
-                <SessionCard
-                  session={sampleSessions.running}
-                                    model={sampleModels.anthropic}
-                />
+                <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
               </ShowcaseItem>
 
               <ShowcaseItem label="Idle Session">
-                <SessionCard
-                  session={sampleSessions.idle}
-                                    model={sampleModels.openai}
-                />
+                <SessionCard session={sampleSessions.idle} model={sampleModels.openai} />
               </ShowcaseItem>
 
               <ShowcaseItem label="New Session (No Title or Preview)">
-                <SessionCard
-                  session={sampleSessions.new}
-                                  />
+                <SessionCard session={sampleSessions.new} />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Preview Only (No Title)">
                 <SessionCard
                   session={sampleSessions.withPreviewOnly}
-                                    model={sampleModels.anthropic}
+                  model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Title and Preview">
-                <SessionCard
-                  session={sampleSessions.longSummary}
-                                    model={sampleModels.anthropic}
-                />
+                <SessionCard session={sampleSessions.longSummary} model={sampleModels.anthropic} />
               </ShowcaseItem>
             </ShowcaseSection>
 
@@ -274,17 +264,9 @@ export default function DevSessionCardPage() {
             >
               <ShowcaseItem label="Multiple Sessions (Stacked)">
                 <div className="space-y-2">
-                  <SessionCard
-                    session={sampleSessions.running}
-                                        model={sampleModels.anthropic}
-                  />
-                  <SessionCard
-                    session={sampleSessions.idle}
-                                        model={sampleModels.openai}
-                  />
-                  <SessionCard
-                    session={sampleSessions.new}
-                                      />
+                  <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
+                  <SessionCard session={sampleSessions.idle} model={sampleModels.openai} />
+                  <SessionCard session={sampleSessions.new} />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>
@@ -297,17 +279,19 @@ export default function DevSessionCardPage() {
               <ShowcaseItem label="With Delete Button (as used in sessions list)">
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
-                    <SessionCard
-                      session={sampleSessions.running}
-                                            model={sampleModels.anthropic}
-                    />
+                    <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
                   </div>
                   <button
                     className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
                     type="button"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                   </button>
                 </div>

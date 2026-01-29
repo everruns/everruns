@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -28,17 +22,8 @@ import {
   useUpdateMcpServer,
   useDeleteMcpServer,
 } from "@/hooks/use-mcp-servers";
-import {
-  Plus,
-  Plug,
-  Trash2,
-  Key,
-  Globe,
-} from "lucide-react";
-import type {
-  McpServer,
-  CreateMcpServerRequest,
-} from "@/lib/api/types";
+import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
+import type { McpServer, CreateMcpServerRequest } from "@/lib/api/types";
 
 function McpServerCard({
   server,
@@ -66,9 +51,7 @@ function McpServerCard({
         <Badge
           variant="outline"
           className={
-            server.status === "active"
-              ? "bg-green-100 text-green-800"
-              : "bg-gray-100 text-gray-800"
+            server.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
           }
         >
           {server.status}
@@ -78,9 +61,7 @@ function McpServerCard({
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground truncate">
-              {server.url}
-            </span>
+            <span className="text-muted-foreground truncate">{server.url}</span>
           </div>
           <div className="flex items-center gap-2">
             <Key className="h-4 w-4 text-muted-foreground" />
@@ -150,7 +131,8 @@ function AddMcpServerDialog({
         <DialogHeader>
           <DialogTitle>Add MCP Server</DialogTitle>
           <DialogDescription>
-            Configure a new MCP server connection. Currently only HTTP (Streamable HTTP) servers are supported.
+            Configure a new MCP server connection. Currently only HTTP (Streamable HTTP) servers are
+            supported.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -169,7 +151,9 @@ function AddMcpServerDialog({
             <Textarea
               id="description"
               value={description}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setDescription(e.target.value)
+              }
               placeholder="Atlassian MCP Server for Jira and Confluence"
               rows={2}
             />
@@ -232,9 +216,7 @@ function SetApiKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {server?.api_key_set ? "Update" : "Set"} API Key
-          </DialogTitle>
+          <DialogTitle>{server?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
           <DialogDescription>
             {server?.api_key_set
               ? "Enter a new API key to replace the existing one."
@@ -309,7 +291,8 @@ export default function McpServersPage() {
           <div>
             <h2 className="text-xl font-semibold">MCP Servers</h2>
             <p className="text-sm text-muted-foreground">
-              Configure Model Context Protocol (MCP) servers to extend agent capabilities with external tools and resources.
+              Configure Model Context Protocol (MCP) servers to extend agent capabilities with
+              external tools and resources.
             </p>
           </div>
           <Button onClick={() => setAddServerOpen(true)}>

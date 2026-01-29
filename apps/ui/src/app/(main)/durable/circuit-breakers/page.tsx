@@ -17,14 +17,7 @@ import { useCircuitBreakers } from "@/hooks";
 import { forceOpenCircuitBreaker, forceCloseCircuitBreaker, deleteCircuitBreaker } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  Zap,
-  ZapOff,
-  Trash2,
-  ShieldAlert,
-  ShieldCheck,
-  Clock,
-} from "lucide-react";
+import { Zap, ZapOff, Trash2, ShieldAlert, ShieldCheck, Clock } from "lucide-react";
 import type { CircuitBreaker, CircuitBreakerState } from "@/lib/api/types";
 
 function getStateBadgeVariant(state: CircuitBreakerState) {
@@ -146,8 +139,8 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
                   <DialogHeader>
                     <DialogTitle>Force Open Circuit Breaker?</DialogTitle>
                     <DialogDescription>
-                      This will immediately block all calls through the &quot;{breaker.key}&quot; circuit.
-                      Use this to proactively protect against a known issue.
+                      This will immediately block all calls through the &quot;{breaker.key}&quot;
+                      circuit. Use this to proactively protect against a known issue.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -193,18 +186,15 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
               <DialogHeader>
                 <DialogTitle>Reset Circuit Breaker?</DialogTitle>
                 <DialogDescription>
-                  This will delete the circuit breaker state for &quot;{breaker.key}&quot;.
-                  A new circuit breaker will be created automatically when needed.
+                  This will delete the circuit breaker state for &quot;{breaker.key}&quot;. A new
+                  circuit breaker will be created automatically when needed.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={() => deleteMutation.mutate()}
-                  disabled={deleteMutation.isPending}
-                >
+                <Button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
                   {deleteMutation.isPending ? "Resetting..." : "Reset"}
                 </Button>
               </DialogFooter>
@@ -254,9 +244,9 @@ export default function CircuitBreakersPage() {
   }
 
   const circuitBreakers = data?.data || [];
-  const openBreakers = circuitBreakers.filter(cb => cb.state === "open");
-  const closedBreakers = circuitBreakers.filter(cb => cb.state === "closed");
-  const halfOpenBreakers = circuitBreakers.filter(cb => cb.state === "half_open");
+  const openBreakers = circuitBreakers.filter((cb) => cb.state === "open");
+  const closedBreakers = circuitBreakers.filter((cb) => cb.state === "closed");
+  const halfOpenBreakers = circuitBreakers.filter((cb) => cb.state === "half_open");
 
   return (
     <>
@@ -350,8 +340,8 @@ export default function CircuitBreakersPage() {
               <Zap className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No Circuit Breakers</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md">
-                Circuit breakers are created automatically when protected operations
-                are executed. Check back after running some workflows.
+                Circuit breakers are created automatically when protected operations are executed.
+                Check back after running some workflows.
               </p>
             </CardContent>
           </Card>
@@ -364,16 +354,25 @@ export default function CircuitBreakersPage() {
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              Circuit breakers protect against cascading failures when external services (like LLM providers) are unavailable.
+              Circuit breakers protect against cascading failures when external services (like LLM
+              providers) are unavailable.
             </p>
             <ul className="list-disc list-inside space-y-1">
-              <li><strong>Closed:</strong> Normal operation - calls are allowed through</li>
-              <li><strong>Open:</strong> Service failing - calls are rejected immediately</li>
-              <li><strong>Half-Open:</strong> Testing recovery - allowing one call to check if service is back</li>
+              <li>
+                <strong>Closed:</strong> Normal operation - calls are allowed through
+              </li>
+              <li>
+                <strong>Open:</strong> Service failing - calls are rejected immediately
+              </li>
+              <li>
+                <strong>Half-Open:</strong> Testing recovery - allowing one call to check if service
+                is back
+              </li>
             </ul>
             <p className="pt-2">
-              Use <strong>Force Open</strong> to proactively block calls when you know a service has issues.
-              Use <strong>Force Close</strong> to immediately allow calls after a service recovers.
+              Use <strong>Force Open</strong> to proactively block calls when you know a service has
+              issues. Use <strong>Force Close</strong> to immediately allow calls after a service
+              recovers.
             </p>
           </CardContent>
         </Card>

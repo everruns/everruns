@@ -119,7 +119,7 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(
-      screen.getByText("Configure the LLM providers that your agents can use.")
+      screen.getByText("Configure the LLM providers that your agents can use."),
     ).toBeInTheDocument();
   });
 
@@ -128,7 +128,7 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(
-      screen.getByText("Manage the models available from your configured providers.")
+      screen.getByText("Manage the models available from your configured providers."),
     ).toBeInTheDocument();
   });
 
@@ -173,7 +173,7 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("No providers configured")).toBeInTheDocument();
     expect(
-      screen.getByText("Add an LLM provider to start using AI models with your agents.")
+      screen.getByText("Add an LLM provider to start using AI models with your agents."),
     ).toBeInTheDocument();
   });
 

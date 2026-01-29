@@ -13,19 +13,8 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Plus,
-  Search,
-  ChevronRight,
-  Plug,
-  Link,
-  Lock,
-} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Search, ChevronRight, Plug, Link, Lock } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { cn } from "@/lib/utils";
@@ -50,9 +39,7 @@ export function CapabilityDialog({
 }: CapabilityDialogProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(
-    new Set()
-  );
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   // Filter and group capabilities
   const { availableCapabilities, groupedCapabilities } = useMemo(() => {
@@ -66,7 +53,7 @@ export function CapabilityDialog({
             c.name.toLowerCase().includes(query) ||
             c.description.toLowerCase().includes(query) ||
             c.id.toLowerCase().includes(query) ||
-            (c.category && c.category.toLowerCase().includes(query))
+            (c.category && c.category.toLowerCase().includes(query)),
         )
       : available;
 
@@ -113,12 +100,7 @@ export function CapabilityDialog({
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       <DialogTrigger
         render={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-          >
+          <Button type="button" variant="outline" size="sm" disabled={disabled}>
             <Plus className="w-4 h-4 mr-1" />
             Add
           </Button>
@@ -148,17 +130,13 @@ export function CapabilityDialog({
         <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
           {groupedCapabilities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchQuery
-                ? "No capabilities match your search"
-                : "No capabilities available"}
+              {searchQuery ? "No capabilities match your search" : "No capabilities available"}
             </div>
           ) : (
             <div className="space-y-4 py-2">
               {groupedCapabilities.map(({ category, capabilities: caps }) => {
                 const isCollapsed = collapsedCategories.has(category);
-                const selectedInCategory = caps.filter((c) =>
-                  selectedIds.has(c.id)
-                ).length;
+                const selectedInCategory = caps.filter((c) => selectedIds.has(c.id)).length;
 
                 return (
                   <div key={category}>
@@ -169,10 +147,7 @@ export function CapabilityDialog({
                       className="flex items-center gap-2 w-full py-1 text-sm font-medium text-muted-foreground hover:text-foreground"
                     >
                       <ChevronRight
-                        className={cn(
-                          "w-4 h-4 transition-transform",
-                          !isCollapsed && "rotate-90"
-                        )}
+                        className={cn("w-4 h-4 transition-transform", !isCollapsed && "rotate-90")}
                       />
                       {category}
                       <Badge variant="secondary" className="ml-auto">
@@ -197,14 +172,12 @@ export function CapabilityDialog({
                                 "flex items-start gap-3 p-2 rounded-md cursor-pointer transition-colors",
                                 isSelected
                                   ? "bg-primary/10 border border-primary/20"
-                                  : "hover:bg-muted/50"
+                                  : "hover:bg-muted/50",
                               )}
                             >
                               <Checkbox
                                 checked={isSelected}
-                                onCheckedChange={(checked) =>
-                                  onToggle(cap.id, checked as boolean)
-                                }
+                                onCheckedChange={(checked) => onToggle(cap.id, checked as boolean)}
                                 disabled={isSelected && isRequired}
                                 className="mt-0.5"
                               />
@@ -213,7 +186,10 @@ export function CapabilityDialog({
                                 <div className="flex items-center gap-2 text-sm font-medium">
                                   {cap.name}
                                   {cap.is_mcp && (
-                                    <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 gap-1">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs px-1.5 py-0 h-5 gap-1"
+                                    >
                                       <Plug className="w-3 h-3" />
                                       MCP
                                     </Badge>
@@ -221,26 +197,42 @@ export function CapabilityDialog({
                                   {hasDependencies && (
                                     <Tooltip>
                                       <TooltipTrigger>
-                                        <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1">
+                                        <Badge
+                                          variant="secondary"
+                                          className="text-xs px-1.5 py-0 h-5 gap-1"
+                                        >
                                           <Link className="w-3 h-3" />
                                           Requires
                                         </Badge>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Depends on: {cap.dependencies?.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                                        <p>
+                                          Depends on:{" "}
+                                          {cap.dependencies
+                                            ?.map((d) => getCapability(d)?.name ?? d)
+                                            .join(", ")}
+                                        </p>
                                       </TooltipContent>
                                     </Tooltip>
                                   )}
                                   {isRequired && (
                                     <Tooltip>
                                       <TooltipTrigger>
-                                        <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1">
+                                        <Badge
+                                          variant="secondary"
+                                          className="text-xs px-1.5 py-0 h-5 gap-1"
+                                        >
                                           <Lock className="w-3 h-3" />
                                           Required
                                         </Badge>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Required by: {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                                        <p>
+                                          Required by:{" "}
+                                          {dependents
+                                            .map((d) => getCapability(d)?.name ?? d)
+                                            .join(", ")}
+                                        </p>
                                       </TooltipContent>
                                     </Tooltip>
                                   )}

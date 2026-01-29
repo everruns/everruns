@@ -5,14 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  File,
-  X,
-  Save,
-  Edit3,
-  Lock,
-  Download,
-} from "lucide-react";
+import { File, X, Save, Edit3, Lock, Download } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { useFile, useUpdateFile } from "@/hooks/use-session-files";
 import { formatFileSize, getFileExtension } from "@/lib/api/session-files";
@@ -86,9 +79,7 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <FileIcon extension={extension} />
-            <CardTitle className="text-sm font-medium truncate">
-              {file.name}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium truncate">{file.name}</CardTitle>
             {file.is_readonly && (
               <Badge variant="outline" className="text-xs shrink-0">
                 <Lock className="h-3 w-3 mr-1" />
@@ -143,20 +134,12 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={onClose}
-              title="Close"
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Close">
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground truncate">
-          {file.path}
-        </div>
+        <div className="text-xs text-muted-foreground truncate">{file.path}</div>
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         {isLoading ? (

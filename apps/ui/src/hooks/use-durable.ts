@@ -131,10 +131,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
           queryClient.setQueryData(["durable", "workflows", undefined], snapshot.workflows);
           queryClient.setQueryData(["durable", "tasks", undefined], snapshot.tasks);
           queryClient.setQueryData(["durable", "dlq", undefined], snapshot.dlq);
-          queryClient.setQueryData(
-            ["durable", "circuit-breakers"],
-            snapshot.circuit_breakers
-          );
+          queryClient.setQueryData(["durable", "circuit-breakers"], snapshot.circuit_breakers);
         } catch (e) {
           console.error("Failed to parse durable SSE snapshot:", e);
         }
@@ -169,10 +166,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
  * Connect to workflow-specific SSE stream for real-time workflow updates.
  * Updates the specific workflow and its events in React Query cache.
  */
-export function useWorkflowSSE(
-  workflowId: string | undefined,
-  options?: { enabled?: boolean }
-) {
+export function useWorkflowSSE(workflowId: string | undefined, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const eventSourceRef = useRef<EventSource | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -236,14 +230,8 @@ export function useWorkflowSSE(
           const snapshot: WorkflowSnapshot = JSON.parse(event.data);
 
           // Update workflow and events caches
-          queryClient.setQueryData(
-            ["durable", "workflow", workflowId],
-            snapshot.workflow
-          );
-          queryClient.setQueryData(
-            ["durable", "workflow", workflowId, "events"],
-            snapshot.events
-          );
+          queryClient.setQueryData(["durable", "workflow", workflowId], snapshot.workflow);
+          queryClient.setQueryData(["durable", "workflow", workflowId, "events"], snapshot.events);
         } catch (e) {
           console.error("Failed to parse workflow SSE snapshot:", e);
         }

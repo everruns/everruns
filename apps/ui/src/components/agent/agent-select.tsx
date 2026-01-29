@@ -54,19 +54,15 @@ export function AgentSelect({
     onValueChange(newValue === "all" ? "" : newValue);
   };
 
-  const displayValue = value ? agentMap.get(value)?.name : (includeAll ? allLabel : undefined);
+  const displayValue = value ? agentMap.get(value)?.name : includeAll ? allLabel : undefined;
 
   return (
     <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
       <SelectTrigger className={className}>
-        <SelectValue placeholder={placeholder}>
-          {displayValue}
-        </SelectValue>
+        <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {includeAll && (
-          <SelectItem value="all">{allLabel}</SelectItem>
-        )}
+        {includeAll && <SelectItem value="all">{allLabel}</SelectItem>}
         {agents.map((agent) => (
           <SelectItem key={agent.id} value={agent.id}>
             {agent.name}

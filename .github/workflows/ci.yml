@@ -193,6 +193,9 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-
             ${{ runner.os }}-nextjs-
 
+      - name: Format check
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
 

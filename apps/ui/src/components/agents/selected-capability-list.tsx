@@ -2,24 +2,9 @@
 
 import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  ChevronUp,
-  ChevronDown,
-  X,
-  Plug,
-  Lock,
-  Settings,
-} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronUp, ChevronDown, X, Plug, Lock, Settings } from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { cn } from "@/lib/utils";
@@ -47,9 +32,7 @@ export function SelectedCapabilityList({
   onMoveDown,
 }: SelectedCapabilityListProps) {
   // Track which capability settings are expanded
-  const [expandedSettings, setExpandedSettings] = useState<Set<CapabilityId>>(
-    new Set()
-  );
+  const [expandedSettings, setExpandedSettings] = useState<Set<CapabilityId>>(new Set());
 
   const toggleSettings = useCallback((capabilityId: CapabilityId) => {
     setExpandedSettings((prev) => {
@@ -114,9 +97,7 @@ export function SelectedCapabilityList({
                 </div>
 
                 {/* Position indicator */}
-                <span className="text-xs text-muted-foreground w-4 text-center">
-                  {index + 1}
-                </span>
+                <span className="text-xs text-muted-foreground w-4 text-center">{index + 1}</span>
 
                 {/* Icon and name */}
                 <IconComponent className="w-4 h-4 shrink-0" />
@@ -131,13 +112,19 @@ export function SelectedCapabilityList({
                   {isRequired && (
                     <Tooltip>
                       <TooltipTrigger>
-                        <Badge variant="secondary" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
+                        <Badge
+                          variant="secondary"
+                          className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0"
+                        >
                           <Lock className="w-2.5 h-2.5" />
                           Required
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Required by: {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                        <p>
+                          Required by:{" "}
+                          {dependents.map((d) => getCapability(d)?.name ?? d).join(", ")}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -152,7 +139,7 @@ export function SelectedCapabilityList({
                       className={cn(
                         "text-muted-foreground hover:text-foreground p-1 transition-colors",
                         isSettingsExpanded && "text-foreground",
-                        hasConfigValues && !isSettingsExpanded && "text-primary"
+                        hasConfigValues && !isSettingsExpanded && "text-primary",
                       )}
                       aria-label="Toggle settings"
                     >
@@ -170,7 +157,10 @@ export function SelectedCapabilityList({
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Cannot remove: required by {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                      <p>
+                        Cannot remove: required by{" "}
+                        {dependents.map((d) => getCapability(d)?.name ?? d).join(", ")}
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 ) : (

@@ -17,11 +17,7 @@ import {
 import { SessionCard } from "@/components/session/session-card";
 import { AgentSelect } from "@/components/agent/agent-select";
 import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
-import {
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 
 const PAGE_SIZE = 20;
@@ -37,7 +33,7 @@ export default function SessionsPage() {
   const { data: agents, isLoading: agentsLoading } = useAgents();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
     selectedAgentId || undefined, // Pass undefined to get all sessions
-    { offset, limit: PAGE_SIZE }
+    { offset, limit: PAGE_SIZE },
   );
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
@@ -98,11 +94,7 @@ export default function SessionsPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Sessions</h1>
-        <Button
-          variant="accent"
-          onClick={handleOpenNewSessionDialog}
-          disabled={!agents?.length}
-        >
+        <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!agents?.length}>
           <Plus className="w-4 h-4 mr-2" />
           New Session
         </Button>
@@ -112,18 +104,13 @@ export default function SessionsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>
-              {selectedAgentId
-                ? agentMap.get(selectedAgentId)?.name || "Agent"
-                : "All Agents"}
+              {selectedAgentId ? agentMap.get(selectedAgentId)?.name || "Agent" : "All Agents"}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {totalSessions} session{totalSessions !== 1 ? "s" : ""}
             </p>
           </div>
-          <AgentFilterMenu
-            value={selectedAgentId}
-            onValueChange={handleAgentFilterChange}
-          />
+          <AgentFilterMenu value={selectedAgentId} onValueChange={handleAgentFilterChange} />
         </CardHeader>
         <CardContent>
           {sessionsLoading || agentsLoading ? (
@@ -192,9 +179,7 @@ export default function SessionsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
-            <DialogDescription>
-              Select an agent to start a new conversation.
-            </DialogDescription>
+            <DialogDescription>Select an agent to start a new conversation.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <AgentSelect
@@ -204,10 +189,7 @@ export default function SessionsPage() {
             />
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setNewSessionDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setNewSessionDialogOpen(false)}>
               Cancel
             </Button>
             <Button

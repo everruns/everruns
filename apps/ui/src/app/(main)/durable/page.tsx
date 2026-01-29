@@ -81,8 +81,8 @@ export default function DurableDashboardPage() {
               <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">Durable API Not Available</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md">
-                The durable execution API endpoints are not yet available.
-                This dashboard will show worker and workflow information once the backend is ready.
+                The durable execution API endpoints are not yet available. This dashboard will show
+                worker and workflow information once the backend is ready.
               </p>
             </CardContent>
           </Card>
@@ -137,7 +137,10 @@ export default function DurableDashboardPage() {
               </CardHeader>
               <CardContent>
                 {stat.isBadge ? (
-                  <Badge variant={getHealthBadgeVariant(String(stat.value))} className="text-lg px-3 py-1">
+                  <Badge
+                    variant={getHealthBadgeVariant(String(stat.value))}
+                    className="text-lg px-3 py-1"
+                  >
                     {String(stat.value).toUpperCase()}
                   </Badge>
                 ) : (
@@ -150,40 +153,47 @@ export default function DurableDashboardPage() {
         </div>
 
         {/* Alert for issues */}
-        {health && (health.dlq_size > 0 || (health.open_circuit_breakers && health.open_circuit_breakers.length > 0)) && (
-          <Card className="border-yellow-500/50 bg-yellow-500/5">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                <CardTitle className="text-base">Attention Required</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {health.dlq_size > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">
-                    <Inbox className="h-4 w-4 inline mr-2" />
-                    {health.dlq_size} items in dead letter queue
-                  </span>
-                  <Link href="/durable/workflows?tab=dlq">
-                    <Button variant="outline" size="sm">View DLQ</Button>
-                  </Link>
+        {health &&
+          (health.dlq_size > 0 ||
+            (health.open_circuit_breakers && health.open_circuit_breakers.length > 0)) && (
+            <Card className="border-yellow-500/50 bg-yellow-500/5">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                  <CardTitle className="text-base">Attention Required</CardTitle>
                 </div>
-              )}
-              {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">
-                    <Zap className="h-4 w-4 inline mr-2" />
-                    {health.open_circuit_breakers.length} circuit breakers open: {health.open_circuit_breakers.join(", ")}
-                  </span>
-                  <Link href="/durable/circuit-breakers">
-                    <Button variant="outline" size="sm">Manage</Button>
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {health.dlq_size > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">
+                      <Inbox className="h-4 w-4 inline mr-2" />
+                      {health.dlq_size} items in dead letter queue
+                    </span>
+                    <Link href="/durable/workflows?tab=dlq">
+                      <Button variant="outline" size="sm">
+                        View DLQ
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+                {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">
+                      <Zap className="h-4 w-4 inline mr-2" />
+                      {health.open_circuit_breakers.length} circuit breakers open:{" "}
+                      {health.open_circuit_breakers.join(", ")}
+                    </span>
+                    <Link href="/durable/circuit-breakers">
+                      <Button variant="outline" size="sm">
+                        Manage
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
         {/* Main content grid */}
         <div className="grid gap-6 md:grid-cols-2">
@@ -195,7 +205,9 @@ export default function DurableDashboardPage() {
                 <CardDescription>Active worker pool status</CardDescription>
               </div>
               <Link href="/durable/workers">
-                <Button variant="outline" size="sm">View All</Button>
+                <Button variant="outline" size="sm">
+                  View All
+                </Button>
               </Link>
             </CardHeader>
             <CardContent>
@@ -204,9 +216,11 @@ export default function DurableDashboardPage() {
                   {/* Capacity bar */}
                   {(() => {
                     // Compute summary from workers if not provided
-                    const totalLoad = workersData.summary?.total_load ??
+                    const totalLoad =
+                      workersData.summary?.total_load ??
                       workersData.data.reduce((sum, w) => sum + w.current_load, 0);
-                    const totalCapacity = workersData.summary?.total_capacity ??
+                    const totalCapacity =
+                      workersData.summary?.total_capacity ??
                       workersData.data.reduce((sum, w) => sum + w.max_concurrency, 0);
                     return (
                       <div>
@@ -220,9 +234,9 @@ export default function DurableDashboardPage() {
                           <div
                             className="h-full bg-primary transition-all"
                             style={{
-                              width: `${totalCapacity > 0
-                                ? (totalLoad / totalCapacity) * 100
-                                : 0}%`,
+                              width: `${
+                                totalCapacity > 0 ? (totalLoad / totalCapacity) * 100 : 0
+                              }%`,
                             }}
                           />
                         </div>
@@ -240,8 +254,11 @@ export default function DurableDashboardPage() {
                         <div className="flex items-center gap-2">
                           <div
                             className={`w-2 h-2 rounded-full ${
-                              worker.status === "active" ? "bg-green-500" :
-                              worker.status === "draining" ? "bg-yellow-500" : "bg-red-500"
+                              worker.status === "active"
+                                ? "bg-green-500"
+                                : worker.status === "draining"
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
                             }`}
                           />
                           <span className="text-sm font-medium truncate max-w-[150px]">
@@ -252,7 +269,10 @@ export default function DurableDashboardPage() {
                           <span className="text-xs text-muted-foreground">
                             {worker.current_load}/{worker.max_concurrency}
                           </span>
-                          <Badge variant={worker.accepting_tasks ? "default" : "secondary"} className="text-xs">
+                          <Badge
+                            variant={worker.accepting_tasks ? "default" : "secondary"}
+                            className="text-xs"
+                          >
                             {worker.accepting_tasks ? "accepting" : "busy"}
                           </Badge>
                         </div>
@@ -277,7 +297,9 @@ export default function DurableDashboardPage() {
                 <CardDescription>Latest workflow executions</CardDescription>
               </div>
               <Link href="/durable/workflows">
-                <Button variant="outline" size="sm">View All</Button>
+                <Button variant="outline" size="sm">
+                  View All
+                </Button>
               </Link>
             </CardHeader>
             <CardContent>
@@ -315,24 +337,29 @@ export default function DurableDashboardPage() {
         </div>
 
         {/* Task Queue by Type */}
-        {health && health.queue_depth_by_type && Object.keys(health.queue_depth_by_type).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Task Queue by Type</CardTitle>
-              <CardDescription>Pending tasks grouped by activity type</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-4">
-                {Object.entries(health.queue_depth_by_type).map(([type, count]) => (
-                  <div key={type} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <span className="text-sm font-medium">{type}</span>
-                    <Badge variant="outline">{count}</Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {health &&
+          health.queue_depth_by_type &&
+          Object.keys(health.queue_depth_by_type).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Task Queue by Type</CardTitle>
+                <CardDescription>Pending tasks grouped by activity type</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-4">
+                  {Object.entries(health.queue_depth_by_type).map(([type, count]) => (
+                    <div
+                      key={type}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    >
+                      <span className="text-sm font-medium">{type}</span>
+                      <Badge variant="outline">{count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
       </div>
     </>
   );

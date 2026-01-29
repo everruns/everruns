@@ -21,9 +21,18 @@ export function ThinkingIndicator({ className, model }: ThinkingIndicatorProps) 
       <span className="text-xs text-muted-foreground/60">thinking</span>
       {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
       <span className="flex gap-0.5 ml-0.5">
-        <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-        <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-        <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+        <span
+          className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+          style={{ animationDelay: "0ms" }}
+        />
+        <span
+          className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+          style={{ animationDelay: "150ms" }}
+        />
+        <span
+          className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+          style={{ animationDelay: "300ms" }}
+        />
       </span>
     </div>
   );

@@ -127,16 +127,14 @@ export default function MembersPage() {
         <section>
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Members</h2>
-            <p className="text-sm text-muted-foreground">
-              View and manage team members.
-            </p>
+            <p className="text-sm text-muted-foreground">View and manage team members.</p>
           </div>
           <Card className="p-8 text-center">
             <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
             <p className="text-muted-foreground">
-              Member management is only available when authentication is enabled.
-              Contact your administrator to enable authentication.
+              Member management is only available when authentication is enabled. Contact your
+              administrator to enable authentication.
             </p>
           </Card>
         </section>
@@ -150,9 +148,7 @@ export default function MembersPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold">Members</h2>
-            <p className="text-sm text-muted-foreground">
-              View and manage team members.
-            </p>
+            <p className="text-sm text-muted-foreground">View and manage team members.</p>
           </div>
         </div>
 

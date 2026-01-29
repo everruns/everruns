@@ -22,9 +22,7 @@ export { listEvents } from "./events";
  * Create a new session for an agent.
  * Sessions are direct children of organizations, with agent_id specifying which agent works in the session.
  */
-export async function createSession(
-  request: CreateSessionRequest
-): Promise<Session> {
+export async function createSession(request: CreateSessionRequest): Promise<Session> {
   const response = await api.post<Session>("/v1/sessions", request);
   return response.data;
 }
@@ -34,7 +32,7 @@ export async function createSession(
  * @param agentId - Optional filter by agent ID
  */
 export async function listSessions(
-  params?: PaginationParams & { agentId?: string }
+  params?: PaginationParams & { agentId?: string },
 ): Promise<PaginatedResponse<Session>> {
   const searchParams = new URLSearchParams();
   if (params?.agentId) {
@@ -59,12 +57,9 @@ export async function getSession(sessionId: string): Promise<Session> {
 
 export async function updateSession(
   sessionId: string,
-  request: UpdateSessionRequest
+  request: UpdateSessionRequest,
 ): Promise<Session> {
-  const response = await api.patch<Session>(
-    `/v1/sessions/${sessionId}`,
-    request
-  );
+  const response = await api.patch<Session>(`/v1/sessions/${sessionId}`, request);
   return response.data;
 }
 

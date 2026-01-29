@@ -10,11 +10,7 @@ import {
   createApiKey,
   deleteApiKey,
 } from "@/lib/api/auth";
-import type {
-  LoginRequest,
-  RegisterRequest,
-  CreateApiKeyRequest,
-} from "@/lib/api/types";
+import type { LoginRequest, RegisterRequest, CreateApiKeyRequest } from "@/lib/api/types";
 
 // Query keys
 export const authKeys = {

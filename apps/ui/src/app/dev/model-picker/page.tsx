@@ -38,13 +38,7 @@ function ShowcaseSection({
   );
 }
 
-function ShowcaseItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -88,11 +82,7 @@ function ModelList() {
                 key={model.id}
                 className="flex items-center gap-3 p-2 rounded-md border bg-muted/30"
               >
-                <ProviderIcon
-                  providerType={model.provider_type}
-                  size="sm"
-                  showBackground={false}
-                />
+                <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>
                   <div className="text-xs text-muted-foreground">
@@ -116,15 +106,8 @@ function ModelList() {
           <h4 className="text-sm font-medium text-muted-foreground">Other Models</h4>
           <div className="space-y-1">
             {otherModels.map((model) => (
-              <div
-                key={model.id}
-                className="flex items-center gap-3 p-2 rounded-md border"
-              >
-                <ProviderIcon
-                  providerType={model.provider_type}
-                  size="sm"
-                  showBackground={false}
-                />
+              <div key={model.id} className="flex items-center gap-3 p-2 rounded-md border">
+                <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>
                   <div className="text-xs text-muted-foreground">
@@ -218,12 +201,7 @@ export default function DevModelPickerPage() {
 
               <ShowcaseItem label="Disabled State">
                 <div className="max-w-md">
-                  <ModelPicker
-                    value=""
-                    onChange={() => {}}
-                    placeholder="Select a model"
-                    disabled
-                  />
+                  <ModelPicker value="" onChange={() => {}} placeholder="Select a model" disabled />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>
@@ -245,7 +223,7 @@ export default function DevModelPickerPage() {
             >
               <ShowcaseItem label="Code Example">
                 <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto">
-{`import { ModelPicker } from "@/components/models/model-picker";
+                  {`import { ModelPicker } from "@/components/models/model-picker";
 
 function MyComponent() {
   const [modelId, setModelId] = useState("");
@@ -263,7 +241,7 @@ function MyComponent() {
 
               <ShowcaseItem label="FavoriteToggle Example">
                 <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto">
-{`import { FavoriteToggle } from "@/components/models/model-picker";
+                  {`import { FavoriteToggle } from "@/components/models/model-picker";
 
 function ModelRow({ model }) {
   return (

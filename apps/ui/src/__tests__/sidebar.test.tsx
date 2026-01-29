@@ -112,13 +112,16 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
-    const navLinks = screen.getAllByRole("link").filter(
-      link => link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard")
-    );
+    const navLinks = screen
+      .getAllByRole("link")
+      .filter(
+        (link) =>
+          link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
+      );
     // Filter to only nav items (Dashboard, Agents, Capabilities, Settings)
     const navItems = ["Dashboard", "Agents", "Capabilities", "Settings"];
-    const foundNavLinks = navLinks.filter(link =>
-      navItems.some(item => link.textContent?.includes(item))
+    const foundNavLinks = navLinks.filter((link) =>
+      navItems.some((item) => link.textContent?.includes(item)),
     );
     expect(foundNavLinks).toHaveLength(4);
   });

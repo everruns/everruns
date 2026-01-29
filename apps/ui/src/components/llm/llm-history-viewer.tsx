@@ -33,7 +33,11 @@ function TextContentPart({ text }: { text: string }) {
   return <p className="text-sm whitespace-pre-wrap">{text}</p>;
 }
 
-function ToolCallContentPart({ toolCall }: { toolCall: { id: string; name: string; arguments: Record<string, unknown> } }) {
+function ToolCallContentPart({
+  toolCall,
+}: {
+  toolCall: { id: string; name: string; arguments: Record<string, unknown> };
+}) {
   return (
     <div className="border rounded-md p-2 bg-muted/50">
       <div className="flex items-center gap-2 mb-1">
@@ -48,7 +52,15 @@ function ToolCallContentPart({ toolCall }: { toolCall: { id: string; name: strin
   );
 }
 
-function ToolResultContentPart({ toolCallId, result, error }: { toolCallId: string; result?: unknown; error?: string }) {
+function ToolResultContentPart({
+  toolCallId,
+  result,
+  error,
+}: {
+  toolCallId: string;
+  result?: unknown;
+  error?: string;
+}) {
   // Format the result for display
   const formatResult = (value: unknown): string => {
     if (value === undefined || value === null) {
@@ -70,7 +82,14 @@ function ToolResultContentPart({ toolCallId, result, error }: { toolCallId: stri
   const formattedResult = formatResult(result);
 
   return (
-    <div className={cn("border rounded-md p-2", error ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900")}>
+    <div
+      className={cn(
+        "border rounded-md p-2",
+        error
+          ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"
+          : "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900",
+      )}
+    >
       <div className="flex items-center gap-2 mb-1">
         {error ? (
           <XCircle className="w-3 h-3 text-red-500" />
@@ -105,9 +124,19 @@ function ContentPartRenderer({ part }: { part: ContentPart }) {
     case "text":
       return <TextContentPart text={part.text} />;
     case "tool_call":
-      return <ToolCallContentPart toolCall={{ id: part.id, name: part.name, arguments: part.arguments }} />;
+      return (
+        <ToolCallContentPart
+          toolCall={{ id: part.id, name: part.name, arguments: part.arguments }}
+        />
+      );
     case "tool_result":
-      return <ToolResultContentPart toolCallId={part.tool_call_id} result={part.result} error={part.error} />;
+      return (
+        <ToolResultContentPart
+          toolCallId={part.tool_call_id}
+          result={part.result}
+          error={part.error}
+        />
+      );
     case "image_file":
       return <ImageContentPart imageId={part.image_id} filename={part.filename} />;
     case "image":
@@ -242,7 +271,9 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
               {metadata.success ? (
                 <>
                   <CheckCircle className="w-3 h-3 text-green-500" />
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">Success</span>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    Success
+                  </span>
                 </>
               ) : (
                 <>
@@ -334,18 +365,14 @@ export function LlmHistoryViewer({
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm">
           <Badge variant="outline">{metadata.model}</Badge>
-          <span className="text-muted-foreground">
-            {messages.length} messages
-          </span>
+          <span className="text-muted-foreground">{messages.length} messages</span>
           {metadata.usage && (
             <span className="text-muted-foreground">
               {formatTokens(metadata.usage.input_tokens + metadata.usage.output_tokens)} tokens
             </span>
           )}
           {metadata.duration_ms !== undefined && (
-            <span className="text-muted-foreground">
-              {formatDuration(metadata.duration_ms)}
-            </span>
+            <span className="text-muted-foreground">{formatDuration(metadata.duration_ms)}</span>
           )}
         </div>
         <div className="space-y-2">
@@ -372,7 +399,9 @@ export function LlmHistoryViewer({
       {(eventId || timestamp) && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="font-mono">llm.generation</Badge>
+            <Badge variant="outline" className="font-mono">
+              llm.generation
+            </Badge>
             {eventId && (
               <span className="text-xs text-muted-foreground font-mono">
                 {eventId.slice(0, 8)}...
@@ -393,9 +422,7 @@ export function LlmHistoryViewer({
       {/* Messages */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">
-            Input Messages ({messages.length})
-          </CardTitle>
+          <CardTitle className="text-sm">Input Messages ({messages.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollArea style={{ maxHeight }} className="p-4">

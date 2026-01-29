@@ -90,9 +90,7 @@ export default function ThinkingComponentsPage() {
                 Shorter wavelengths (blue light) scatter more than longer wavelengths (red light),
                 with scattering intensity proportional to 1/wavelength^4.
               </p>
-              <p>
-                We see blue rather than violet (which scatters even more) because:
-              </p>
+              <p>We see blue rather than violet (which scatters even more) because:</p>
               <ul>
                 <li>The sun emits less violet light than blue</li>
                 <li>Our eyes are more sensitive to blue</li>

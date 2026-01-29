@@ -2,28 +2,18 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api } from "./client";
-import type {
-  Message,
-  CreateMessageRequest,
-  ListResponse,
-  Controls,
-} from "./types";
+import type { Message, CreateMessageRequest, ListResponse, Controls } from "./types";
 
 export async function createMessage(
   sessionId: string,
-  request: CreateMessageRequest
+  request: CreateMessageRequest,
 ): Promise<Message> {
-  const response = await api.post<Message>(
-    `/v1/sessions/${sessionId}/messages`,
-    request
-  );
+  const response = await api.post<Message>(`/v1/sessions/${sessionId}/messages`, request);
   return response.data;
 }
 
 export async function listMessages(sessionId: string): Promise<Message[]> {
-  const response = await api.get<ListResponse<Message>>(
-    `/v1/sessions/${sessionId}/messages`
-  );
+  const response = await api.get<ListResponse<Message>>(`/v1/sessions/${sessionId}/messages`);
   return response.data.data;
 }
 
@@ -31,7 +21,7 @@ export async function listMessages(sessionId: string): Promise<Message[]> {
 export async function sendUserMessage(
   sessionId: string,
   content: string,
-  controls?: Controls
+  controls?: Controls,
 ): Promise<Message> {
   return createMessage(sessionId, {
     message: {
@@ -55,9 +45,11 @@ export async function sendUserMessageWithImages(
   sessionId: string,
   text: string,
   images: ImageAttachment[],
-  controls?: Controls
+  controls?: Controls,
 ): Promise<Message> {
-  const content: Array<{ type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }> = [];
+  const content: Array<
+    { type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }
+  > = [];
 
   // Add text content if provided
   if (text.trim()) {

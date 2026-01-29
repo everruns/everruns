@@ -4,11 +4,7 @@ import Link from "next/link";
 import { Info, MessageSquare, Loader2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -79,7 +75,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
       <TooltipTrigger
         className={cn(
           "p-0.5 rounded transition-colors flex-shrink-0",
-          "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80"
+          "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
         )}
         aria-label="Session info"
         onClick={(e) => e.preventDefault()} // Prevent link navigation when clicking info
@@ -122,12 +118,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
  * SessionCard displays a session with status, summary, and metadata.
  * Designed for use in session lists and overview pages.
  */
-export function SessionCard({
-  session,
-  agentName,
-  model,
-  summary,
-}: SessionCardProps) {
+export function SessionCard({ session, agentName, model, summary }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
@@ -177,23 +168,20 @@ export function SessionCard({
           )}
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             <span>{formatRelativeTime(session.created_at)}</span>
-            {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
-              <span className="flex items-center gap-1" title="Token usage">
-                <Zap className="w-3 h-3" />
-                {formatTotalTokens(session.usage)}
-              </span>
-            )}
+            {session.usage &&
+              (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+                <span className="flex items-center gap-1" title="Token usage">
+                  <Zap className="w-3 h-3" />
+                  {formatTotalTokens(session.usage)}
+                </span>
+              )}
           </div>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
         {model && (
           <Badge variant="outline" className="gap-1 text-xs">
-            <ProviderIcon
-              providerType={model.provider_type}
-              size="sm"
-              showBackground={false}
-            />
+            <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
             {model.display_name}
           </Badge>
         )}

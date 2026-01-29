@@ -13,12 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkers, useDrainWorker, useResumeWorker } from "@/hooks";
 import type { DurableWorker, WorkerStatus } from "@/lib/api/types";
 import {
@@ -99,9 +94,8 @@ function WorkerRow({
   onDrain: (id: string) => void;
   onResume: (id: string) => void;
 }) {
-  const loadPercentage = worker.max_concurrency > 0
-    ? (worker.current_load / worker.max_concurrency) * 100
-    : 0;
+  const loadPercentage =
+    worker.max_concurrency > 0 ? (worker.current_load / worker.max_concurrency) * 100 : 0;
 
   return (
     <TableRow>
@@ -123,14 +117,19 @@ function WorkerRow({
       <TableCell>
         <div className="space-y-1">
           <div className="flex items-center justify-between text-sm">
-            <span>{worker.current_load}/{worker.max_concurrency}</span>
+            <span>
+              {worker.current_load}/{worker.max_concurrency}
+            </span>
             <span className="text-muted-foreground text-xs">{loadPercentage.toFixed(0)}%</span>
           </div>
           <div className="h-1.5 bg-muted rounded-full overflow-hidden w-20">
             <div
               className={`h-full transition-all ${
-                loadPercentage > 80 ? "bg-red-500" :
-                loadPercentage > 60 ? "bg-yellow-500" : "bg-green-500"
+                loadPercentage > 80
+                  ? "bg-red-500"
+                  : loadPercentage > 60
+                    ? "bg-yellow-500"
+                    : "bg-green-500"
               }`}
               style={{ width: `${loadPercentage}%` }}
             />
@@ -152,9 +151,7 @@ function WorkerRow({
                   <span className="text-xs">No</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>
-                {worker.backpressure_reason || "Under backpressure"}
-              </TooltipContent>
+              <TooltipContent>{worker.backpressure_reason || "Under backpressure"}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -190,29 +187,19 @@ function WorkerRow({
             <TooltipTrigger className="text-sm text-muted-foreground">
               {formatDistanceToNow(new Date(worker.last_heartbeat_at), { addSuffix: true })}
             </TooltipTrigger>
-            <TooltipContent>
-              {new Date(worker.last_heartbeat_at).toLocaleString()}
-            </TooltipContent>
+            <TooltipContent>{new Date(worker.last_heartbeat_at).toLocaleString()}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
       <TableCell>
         {worker.status === "active" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onDrain(worker.id)}
-          >
+          <Button variant="outline" size="sm" onClick={() => onDrain(worker.id)}>
             <Pause className="h-3 w-3 mr-1" />
             Drain
           </Button>
         )}
         {worker.status === "draining" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onResume(worker.id)}
-          >
+          <Button variant="outline" size="sm" onClick={() => onResume(worker.id)}>
             <Play className="h-3 w-3 mr-1" />
             Resume
           </Button>
@@ -337,9 +324,7 @@ export default function WorkersPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Worker Pool</CardTitle>
-              <CardDescription>
-                All registered workers and their current status
-              </CardDescription>
+              <CardDescription>All registered workers and their current status</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" />
@@ -381,7 +366,8 @@ export default function WorkersPage() {
                 <Server className="h-12 w-12 mb-4" />
                 <h3 className="text-lg font-medium mb-2">No Workers Connected</h3>
                 <p className="text-sm text-center max-w-md">
-                  No workers have registered with the system. Start a worker process to begin processing tasks.
+                  No workers have registered with the system. Start a worker process to begin
+                  processing tasks.
                 </p>
               </div>
             )}

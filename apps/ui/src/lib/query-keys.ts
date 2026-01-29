@@ -25,8 +25,7 @@ export const queryKeys = {
     list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
       ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
-    detail: (org?: string, sessionId?: string) =>
-      ["session", org, sessionId] as const,
+    detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
   },
 
   // Event queries (events are session-level, no longer need agentId)
@@ -40,8 +39,7 @@ export const queryKeys = {
     all: ["llm-providers"] as const,
     list: () => ["llm-providers"] as const,
     detail: (providerId: string) => ["llm-providers", providerId] as const,
-    models: (providerId: string) =>
-      ["llm-providers", providerId, "models"] as const,
+    models: (providerId: string) => ["llm-providers", providerId, "models"] as const,
   },
 
   // LLM Model queries
@@ -54,10 +52,8 @@ export const queryKeys = {
   // Session files queries
   sessionFiles: {
     all: ["session-files"] as const,
-    list: (sessionId: string, path?: string) =>
-      ["session-files", sessionId, path ?? "/"] as const,
-    detail: (sessionId: string, path: string) =>
-      ["session-file", sessionId, path] as const,
+    list: (sessionId: string, path?: string) => ["session-files", sessionId, path ?? "/"] as const,
+    detail: (sessionId: string, path: string) => ["session-file", sessionId, path] as const,
   },
 
   // User queries

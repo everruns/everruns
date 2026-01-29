@@ -4,12 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Boxes, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
@@ -20,10 +15,7 @@ interface AgentListWidgetProps {
   allCapabilities?: Capability[];
 }
 
-export function AgentListWidget({
-  agents,
-  allCapabilities,
-}: AgentListWidgetProps) {
+export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProps) {
   const activeAgents = agents.filter((a) => a.status === "active").slice(0, 5);
 
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
@@ -100,10 +92,7 @@ export function AgentListWidget({
                       </div>
                     </div>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-100 text-green-800"
-                  >
+                  <Badge variant="outline" className="bg-green-100 text-green-800">
                     Active
                   </Badge>
                 </Link>

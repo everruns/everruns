@@ -2,9 +2,34 @@ import { File, FileText } from "lucide-react";
 
 /** Text file extensions that should use FileText icon */
 const TEXT_EXTENSIONS = [
-  "txt", "md", "json", "js", "ts", "tsx", "jsx", "css", "html",
-  "py", "rs", "go", "yml", "yaml", "toml", "sh", "bash", "zsh",
-  "c", "cpp", "h", "hpp", "java", "rb", "php", "sql", "xml", "csv",
+  "txt",
+  "md",
+  "json",
+  "js",
+  "ts",
+  "tsx",
+  "jsx",
+  "css",
+  "html",
+  "py",
+  "rs",
+  "go",
+  "yml",
+  "yaml",
+  "toml",
+  "sh",
+  "bash",
+  "zsh",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "java",
+  "rb",
+  "php",
+  "sql",
+  "xml",
+  "csv",
 ];
 
 export interface FileIconProps {

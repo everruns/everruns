@@ -32,19 +32,11 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const {
-    data: config,
-    isLoading: configLoading,
-    error: configError,
-  } = useAuthConfig();
+  const { data: config, isLoading: configLoading, error: configError } = useAuthConfig();
 
   // Always fetch user - this also sets the org cookie if missing
   // In "none" mode, returns anonymous user with default org
-  const {
-    data: user,
-    isLoading: userLoading,
-    error: userError,
-  } = useCurrentUser(!!config);
+  const { data: user, isLoading: userLoading, error: userError } = useCurrentUser(!!config);
 
   // Determine if authentication is required based on mode
   const requiresAuth = config ? config.mode !== "none" : false;

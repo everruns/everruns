@@ -15,25 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  useApiKeys,
-  useCreateApiKey,
-  useDeleteApiKey,
-} from "@/hooks/use-auth";
+import { useApiKeys, useCreateApiKey, useDeleteApiKey } from "@/hooks/use-auth";
 import { useAuth } from "@/providers/auth-provider";
-import {
-  Plus,
-  Key,
-  Trash2,
-  Copy,
-  Check,
-  Clock,
-  ShieldAlert,
-} from "lucide-react";
-import type {
-  ApiKeyListItem,
-  CreateApiKeyRequest,
-} from "@/lib/api/types";
+import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
+import type { ApiKeyListItem, CreateApiKeyRequest } from "@/lib/api/types";
 
 function ApiKeyRow({
   apiKey,
@@ -53,9 +38,7 @@ function ApiKeyRow({
         <Key className="h-5 w-5 text-muted-foreground" />
         <div>
           <div className="font-medium">{apiKey.name}</div>
-          <div className="text-sm text-muted-foreground font-mono">
-            {apiKey.key_prefix}...
-          </div>
+          <div className="text-sm text-muted-foreground font-mono">{apiKey.key_prefix}...</div>
         </div>
       </div>
       <div className="flex items-center gap-4">
@@ -133,13 +116,13 @@ function CreateApiKeyDialog({
               id="expires-in"
               type="number"
               value={expiresInDays}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExpiresInDays(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setExpiresInDays(e.target.value)
+              }
               placeholder="30"
               min="1"
             />
-            <p className="text-xs text-muted-foreground">
-              Leave empty for no expiration
-            </p>
+            <p className="text-xs text-muted-foreground">Leave empty for no expiration</p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -184,9 +167,7 @@ function ShowApiKeyDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="bg-muted p-3 rounded-md font-mono text-sm break-all">
-            {apiKey}
-          </div>
+          <div className="bg-muted p-3 rounded-md font-mono text-sm break-all">{apiKey}</div>
           <Button onClick={handleCopy} className="w-full" variant="outline">
             {copied ? (
               <>
@@ -243,8 +224,8 @@ export default function ApiKeysPage() {
             <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
             <p className="text-muted-foreground">
-              API keys are only available when authentication is enabled.
-              Contact your administrator to enable authentication.
+              API keys are only available when authentication is enabled. Contact your administrator
+              to enable authentication.
             </p>
           </Card>
         </section>

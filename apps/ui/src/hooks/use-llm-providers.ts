@@ -75,8 +75,7 @@ export function useUpdateLlmProvider(providerId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateLlmProviderRequest) =>
-      updateLlmProvider(providerId, data),
+    mutationFn: (data: UpdateLlmProviderRequest) => updateLlmProvider(providerId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
       queryClient.invalidateQueries({
@@ -168,8 +167,7 @@ export function useCreateLlmModel(providerId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateLlmModelRequest) =>
-      createLlmModel(providerId, data),
+    mutationFn: (data: CreateLlmModelRequest) => createLlmModel(providerId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
       queryClient.invalidateQueries({
