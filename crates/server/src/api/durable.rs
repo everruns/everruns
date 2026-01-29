@@ -183,8 +183,23 @@ pub struct WorkerResponse {
     pub current_load: u32,
     pub status: String,
     pub accepting_tasks: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backpressure_reason: Option<String>,
     pub started_at: DateTime<Utc>,
     pub last_heartbeat_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    /// Total tasks completed by this worker
+    pub tasks_completed: u64,
+    /// Total tasks failed by this worker
+    pub tasks_failed: u64,
+    /// Average task duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_task_duration_ms: Option<u64>,
 }
 
 impl From<WorkerInfo> for WorkerResponse {
@@ -197,8 +212,15 @@ impl From<WorkerInfo> for WorkerResponse {
             current_load: w.current_load,
             status: w.status,
             accepting_tasks: w.accepting_tasks,
+            backpressure_reason: w.backpressure_reason,
             started_at: w.started_at,
             last_heartbeat_at: w.last_heartbeat_at,
+            hostname: w.hostname,
+            version: w.version,
+            metadata: w.metadata,
+            tasks_completed: w.tasks_completed,
+            tasks_failed: w.tasks_failed,
+            avg_task_duration_ms: w.avg_task_duration_ms,
         }
     }
 }

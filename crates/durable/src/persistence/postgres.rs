@@ -863,13 +863,29 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     #[instrument(skip(self))]
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
         // Only show workers with recent heartbeat (within 60 seconds)
+        // Join with task queue to compute completed/failed counts
         let query = r#"
-            SELECT id, worker_group, activity_types, max_concurrency, current_load,
-                   status, started_at, last_heartbeat_at, accepting_tasks
-            FROM durable_workers
-            WHERE last_heartbeat_at > NOW() - INTERVAL '60 seconds'
-              AND ($1::text IS NULL OR status = $1)
-              AND ($2::text IS NULL OR worker_group = $2)
+            SELECT w.id, w.worker_group, w.activity_types, w.max_concurrency, w.current_load,
+                   w.status, w.started_at, w.last_heartbeat_at, w.accepting_tasks,
+                   w.backpressure_reason, w.hostname, w.version, w.metadata,
+                   COALESCE(stats.tasks_completed, 0) AS tasks_completed,
+                   COALESCE(stats.tasks_failed, 0) AS tasks_failed,
+                   stats.avg_task_duration_ms
+            FROM durable_workers w
+            LEFT JOIN (
+                SELECT claimed_by,
+                       COUNT(*) FILTER (WHERE status = 'completed') AS tasks_completed,
+                       COUNT(*) FILTER (WHERE status IN ('failed', 'dead')) AS tasks_failed,
+                       AVG(EXTRACT(EPOCH FROM (heartbeat_at - claimed_at)) * 1000)
+                           FILTER (WHERE status = 'completed' AND claimed_at IS NOT NULL AND heartbeat_at IS NOT NULL)
+                           AS avg_task_duration_ms
+                FROM durable_task_queue
+                WHERE claimed_by IS NOT NULL
+                GROUP BY claimed_by
+            ) stats ON stats.claimed_by = w.id
+            WHERE w.last_heartbeat_at > NOW() - INTERVAL '60 seconds'
+              AND ($1::text IS NULL OR w.status = $1)
+              AND ($2::text IS NULL OR w.worker_group = $2)
             "#;
 
         let rows = sqlx::query(query)
@@ -892,8 +908,17 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 current_load: row.get::<i32, _>("current_load") as u32,
                 status: row.get("status"),
                 accepting_tasks: row.get("accepting_tasks"),
+                backpressure_reason: row.get("backpressure_reason"),
                 started_at: row.get("started_at"),
                 last_heartbeat_at: row.get("last_heartbeat_at"),
+                hostname: row.get("hostname"),
+                version: row.get("version"),
+                metadata: row.get("metadata"),
+                tasks_completed: row.get::<i64, _>("tasks_completed") as u64,
+                tasks_failed: row.get::<i64, _>("tasks_failed") as u64,
+                avg_task_duration_ms: row
+                    .get::<Option<f64>, _>("avg_task_duration_ms")
+                    .map(|v| v as u64),
             })
             .collect();
 

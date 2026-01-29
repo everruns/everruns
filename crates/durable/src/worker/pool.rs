@@ -365,8 +365,15 @@ impl WorkerPool {
             current_load: 0,
             status: "active".to_string(),
             accepting_tasks: true,
+            backpressure_reason: None,
             started_at: Utc::now(),
             last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
         };
 
         self.store.register_worker(worker_info).await?;
