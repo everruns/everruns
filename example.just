@@ -35,3 +35,7 @@ stop:
 # Reset example docker-compose-full (removes volumes)
 reset:
     cd examples && docker compose -f docker-compose-full.yaml down -v
+
+# Follow logs from example docker-compose-full
+logs *args:
+    cd examples && docker compose -f docker-compose-full.yaml logs -f {{args}}
