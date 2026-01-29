@@ -259,8 +259,18 @@ pub struct WorkerInfo {
     pub current_load: u32,
     pub status: String,
     pub accepting_tasks: bool,
+    pub backpressure_reason: Option<String>,
     pub started_at: DateTime<Utc>,
     pub last_heartbeat_at: DateTime<Utc>,
+    pub hostname: Option<String>,
+    pub version: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    /// Total tasks completed by this worker
+    pub tasks_completed: u64,
+    /// Total tasks failed by this worker
+    pub tasks_failed: u64,
+    /// Average task duration in milliseconds
+    pub avg_task_duration_ms: Option<u64>,
 }
 
 /// Filter for listing DLQ entries

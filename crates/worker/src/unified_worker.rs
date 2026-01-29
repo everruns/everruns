@@ -180,8 +180,15 @@ where
             current_load: 0,
             status: "active".to_string(),
             accepting_tasks: true,
+            backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
         };
         if let Err(e) = self.store.register_worker(worker_info).await {
             warn!(error = %e, "Failed to register worker (will continue anyway)");

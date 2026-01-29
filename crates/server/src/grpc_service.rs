@@ -1499,8 +1499,15 @@ impl WorkerService for WorkerServiceImpl {
             current_load: 0,
             status: "active".to_string(),
             accepting_tasks: true,
+            backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
         };
 
         store.register_worker(worker_info).await.map_err(|e| {
