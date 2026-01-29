@@ -408,6 +408,8 @@ Administrative endpoints for monitoring and managing the durable execution engin
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/durable/workers` | List registered workers |
+| POST | `/v1/durable/workers/{id}/drain` | Drain worker (stop accepting tasks) |
+| POST | `/v1/durable/workers/{id}/resume` | Resume draining worker |
 | GET | `/v1/durable/workflows` | List workflows |
 | GET | `/v1/durable/workflows/{id}` | Get workflow details |
 | GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
