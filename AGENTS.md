@@ -29,6 +29,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/mcp-servers.md` - MCP server registration
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
+- `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
