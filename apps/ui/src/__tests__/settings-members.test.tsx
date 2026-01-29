@@ -67,9 +67,7 @@ describe("MembersPage", () => {
     render(<MembersPage />, { wrapper });
 
     expect(screen.getByText("Members")).toBeInTheDocument();
-    expect(
-      screen.getByText("View and manage team members.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("View and manage team members.")).toBeInTheDocument();
   });
 
   it("renders user cards with correct data", () => {
@@ -97,9 +95,7 @@ describe("MembersPage", () => {
   it("renders search input", () => {
     render(<MembersPage />, { wrapper });
 
-    expect(
-      screen.getByPlaceholderText("Search by name or email...")
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search by name or email...")).toBeInTheDocument();
   });
 
   it("shows loading skeleton when loading", () => {
@@ -148,7 +144,7 @@ describe("MembersPage", () => {
 
     expect(screen.getByText("Authentication Disabled")).toBeInTheDocument();
     expect(
-      screen.getByText(/Member management is only available when authentication is enabled/)
+      screen.getByText(/Member management is only available when authentication is enabled/),
     ).toBeInTheDocument();
   });
 

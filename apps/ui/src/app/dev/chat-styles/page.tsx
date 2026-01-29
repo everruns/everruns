@@ -4,7 +4,20 @@ import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Circle, CheckCircle2, CircleDot, ListTodo, Info, ImageIcon } from "lucide-react";
+import {
+  Bot,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Loader2,
+  Circle,
+  CheckCircle2,
+  CircleDot,
+  ListTodo,
+  Info,
+  ImageIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -35,14 +48,20 @@ type ThinkingItem = { role: "thinking"; model?: string };
 type ConversationItem = UserItem | AgentItem | ToolItem | ThinkingItem;
 
 // Info icon component
-function MessageInfo({ meta, variant = "default" }: { meta?: MessageMeta; variant?: "default" | "light" }) {
+function MessageInfo({
+  meta,
+  variant = "default",
+}: {
+  meta?: MessageMeta;
+  variant?: "default" | "light";
+}) {
   if (!meta) return null;
   return (
     <Tooltip>
       <TooltipTrigger
         className={cn(
           "p-0.5 rounded opacity-40 hover:opacity-70 transition-opacity",
-          variant === "light" ? "text-white" : "text-muted-foreground"
+          variant === "light" ? "text-white" : "text-muted-foreground",
         )}
       >
         <Info className="h-3 w-3" />
@@ -51,7 +70,11 @@ function MessageInfo({ meta, variant = "default" }: { meta?: MessageMeta; varian
         {meta.id && <div>ID: {meta.id}</div>}
         {meta.model && <div>Model: {meta.model}</div>}
         {meta.time && <div>Time: {meta.time}</div>}
-        {meta.tokens && <div>Tokens: {meta.tokens.input} in / {meta.tokens.output} out</div>}
+        {meta.tokens && (
+          <div>
+            Tokens: {meta.tokens.input} in / {meta.tokens.output} out
+          </div>
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -62,7 +85,10 @@ function ImagePlaceholder({ count = 1 }: { count?: number }) {
   return (
     <div className="flex gap-1 mt-1.5">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="w-16 h-12 bg-muted/50 rounded border border-border/50 flex items-center justify-center">
+        <div
+          key={i}
+          className="w-16 h-12 bg-muted/50 rounded border border-border/50 flex items-center justify-center"
+        >
           <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
         </div>
       ))}
@@ -72,8 +98,21 @@ function ImagePlaceholder({ count = 1 }: { count?: number }) {
 
 // Sample conversation data
 const sampleConversation: ConversationItem[] = [
-  { role: "user", content: "Can you list the files in my project and run the tests?", meta: { id: "msg_01", time: "2:34 PM" } },
-  { role: "agent", content: "I'll check the project structure and run the test suite for you.", meta: { id: "msg_02", model: "claude-3-5-sonnet", tokens: { input: 156, output: 42 }, time: "2:34 PM" } },
+  {
+    role: "user",
+    content: "Can you list the files in my project and run the tests?",
+    meta: { id: "msg_01", time: "2:34 PM" },
+  },
+  {
+    role: "agent",
+    content: "I'll check the project structure and run the test suite for you.",
+    meta: {
+      id: "msg_02",
+      model: "claude-3-5-sonnet",
+      tokens: { input: 156, output: 42 },
+      time: "2:34 PM",
+    },
+  },
   {
     role: "tool",
     calls: [
@@ -87,13 +126,36 @@ const sampleConversation: ConversationItem[] = [
         name: "bash",
         args: 'command: "cargo test"',
         status: "completed" as const,
-        result: "running 24 tests\ntest storage::tests::test_create ... ok\ntest api::tests::test_health ... ok\n\ntest result: ok. 24 passed",
+        result:
+          "running 24 tests\ntest storage::tests::test_create ... ok\ntest api::tests::test_health ... ok\n\ntest result: ok. 24 passed",
       },
     ],
   },
-  { role: "agent", content: "Your project has 3 files and all 24 tests passed successfully.", meta: { id: "msg_03", model: "claude-3-5-sonnet", tokens: { input: 892, output: 28 }, time: "2:35 PM" } },
-  { role: "user", content: "Great! Now create a todo list for the remaining tasks.", meta: { id: "msg_04", time: "2:36 PM" } },
-  { role: "agent", content: "I'll create a task list to track the remaining work.", meta: { id: "msg_05", model: "claude-3-5-sonnet", tokens: { input: 1024, output: 35 }, time: "2:36 PM" } },
+  {
+    role: "agent",
+    content: "Your project has 3 files and all 24 tests passed successfully.",
+    meta: {
+      id: "msg_03",
+      model: "claude-3-5-sonnet",
+      tokens: { input: 892, output: 28 },
+      time: "2:35 PM",
+    },
+  },
+  {
+    role: "user",
+    content: "Great! Now create a todo list for the remaining tasks.",
+    meta: { id: "msg_04", time: "2:36 PM" },
+  },
+  {
+    role: "agent",
+    content: "I'll create a task list to track the remaining work.",
+    meta: {
+      id: "msg_05",
+      model: "claude-3-5-sonnet",
+      tokens: { input: 1024, output: 35 },
+      time: "2:36 PM",
+    },
+  },
   {
     role: "tool",
     calls: [
@@ -110,13 +172,37 @@ const sampleConversation: ConversationItem[] = [
       },
     ],
   },
-  { role: "agent", content: "I've created a task list. The code review is done and I'm currently running the tests.", meta: { id: "msg_06", model: "claude-3-5-sonnet", tokens: { input: 1256, output: 48 }, time: "2:36 PM" } },
+  {
+    role: "agent",
+    content:
+      "I've created a task list. The code review is done and I'm currently running the tests.",
+    meta: {
+      id: "msg_06",
+      model: "claude-3-5-sonnet",
+      tokens: { input: 1256, output: 48 },
+      time: "2:36 PM",
+    },
+  },
 ];
 
 // Conversation with images
 const imageConversation: ConversationItem[] = [
-  { role: "user", content: "Here's a screenshot of the error I'm seeing:", images: ["error.png", "console.png"], meta: { id: "msg_img", time: "3:15 PM" } },
-  { role: "agent", content: "I can see the issue - the error shows a null pointer exception. Let me fix that.", meta: { id: "msg_resp", model: "claude-3-5-sonnet", tokens: { input: 2048, output: 156 }, time: "3:15 PM" } },
+  {
+    role: "user",
+    content: "Here's a screenshot of the error I'm seeing:",
+    images: ["error.png", "console.png"],
+    meta: { id: "msg_img", time: "3:15 PM" },
+  },
+  {
+    role: "agent",
+    content: "I can see the issue - the error shows a null pointer exception. Let me fix that.",
+    meta: {
+      id: "msg_resp",
+      model: "claude-3-5-sonnet",
+      tokens: { input: 2048, output: 156 },
+      time: "3:15 PM",
+    },
+  },
 ];
 
 // Tool call with executing state
@@ -145,7 +231,15 @@ const thinkingConversation: ConversationItem[] = [
 // Current Style (Option A)
 // ============================================
 
-function CurrentUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
+function CurrentUserMessage({
+  content,
+  images,
+  meta,
+}: {
+  content: string;
+  images?: string[];
+  meta?: MessageMeta;
+}) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
@@ -188,14 +282,22 @@ function CurrentToolCall({ call }: { call: ToolCallData }) {
         <div className="space-y-0.5 ml-6">
           {call.todos?.map((todo, i) => (
             <div key={i} className="flex items-center gap-2">
-              {todo.status === "completed" && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
+              {todo.status === "completed" && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+              )}
               {todo.status === "in_progress" && <CircleDot className="h-3.5 w-3.5 text-blue-600" />}
-              {todo.status === "pending" && <Circle className="h-3.5 w-3.5 text-muted-foreground" />}
-              <span className={cn(
-                "text-sm",
-                todo.status === "completed" && "text-muted-foreground line-through",
-                todo.status === "in_progress" && "font-medium"
-              )}>{todo.content}</span>
+              {todo.status === "pending" && (
+                <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+              <span
+                className={cn(
+                  "text-sm",
+                  todo.status === "completed" && "text-muted-foreground line-through",
+                  todo.status === "in_progress" && "font-medium",
+                )}
+              >
+                {todo.content}
+              </span>
             </div>
           ))}
         </div>
@@ -213,9 +315,15 @@ function CurrentToolCall({ call }: { call: ToolCallData }) {
         <div>&gt; ... executing ...</div>
       ) : call.result ? (
         <div>
-          <div className="whitespace-pre-wrap">&gt; {String(call.result).substring(0, 100)}{String(call.result).length > 100 ? "..." : ""}</div>
+          <div className="whitespace-pre-wrap">
+            &gt; {String(call.result).substring(0, 100)}
+            {String(call.result).length > 100 ? "..." : ""}
+          </div>
           {String(call.result).length > 100 && (
-            <button onClick={() => setExpanded(!expanded)} className="text-xs text-blue-600 hover:underline">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-blue-600 hover:underline"
+            >
               {expanded ? "show less" : "> see more..."}
             </button>
           )}
@@ -236,9 +344,18 @@ function CurrentThinking({ model }: { model?: string }) {
             <span className="text-sm text-muted-foreground">Thinking</span>
             {model && <span className="text-xs text-muted-foreground/60">with {model}</span>}
             <span className="flex gap-0.5 ml-1">
-              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              <span
+                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
+                style={{ animationDelay: "0ms" }}
+              />
+              <span
+                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
+                style={{ animationDelay: "150ms" }}
+              />
+              <span
+                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
+                style={{ animationDelay: "300ms" }}
+              />
             </span>
           </div>
         </div>
@@ -251,7 +368,15 @@ function CurrentThinking({ model }: { model?: string }) {
 // Option B: Flat Agent, Boxed User
 // ============================================
 
-function FlatUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
+function FlatUserMessage({
+  content,
+  images,
+  meta,
+}: {
+  content: string;
+  images?: string[];
+  meta?: MessageMeta;
+}) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl px-4 py-2.5">
@@ -288,13 +413,21 @@ function FlatToolCall({ call }: { call: ToolCallData }) {
           {call.todos?.map((todo, i) => (
             <div key={i} className="flex items-center gap-2">
               {todo.status === "completed" && <Check className="h-3.5 w-3.5 text-green-600" />}
-              {todo.status === "in_progress" && <Loader2 className="h-3.5 w-3.5 text-blue-600 animate-spin" />}
-              {todo.status === "pending" && <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />}
-              <span className={cn(
-                todo.status === "completed" && "text-muted-foreground",
-                todo.status === "in_progress" && "text-foreground",
-                todo.status === "pending" && "text-muted-foreground"
-              )}>{todo.content}</span>
+              {todo.status === "in_progress" && (
+                <Loader2 className="h-3.5 w-3.5 text-blue-600 animate-spin" />
+              )}
+              {todo.status === "pending" && (
+                <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
+              )}
+              <span
+                className={cn(
+                  todo.status === "completed" && "text-muted-foreground",
+                  todo.status === "in_progress" && "text-foreground",
+                  todo.status === "pending" && "text-muted-foreground",
+                )}
+              >
+                {todo.content}
+              </span>
             </div>
           ))}
         </div>
@@ -302,16 +435,23 @@ function FlatToolCall({ call }: { call: ToolCallData }) {
     );
   }
 
-  const statusIcon = call.status === "executing"
-    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-    : <Check className="h-3.5 w-3.5 text-green-600" />;
+  const statusIcon =
+    call.status === "executing" ? (
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+    ) : (
+      <Check className="h-3.5 w-3.5 text-green-600" />
+    );
 
   return (
     <div className="text-sm text-muted-foreground">
       <div className="flex items-center gap-1.5">
         {statusIcon}
         <span className="font-mono text-xs">{call.name}</span>
-        {call.args && <span className="text-muted-foreground/60 text-xs truncate max-w-[300px]">{call.args}</span>}
+        {call.args && (
+          <span className="text-muted-foreground/60 text-xs truncate max-w-[300px]">
+            {call.args}
+          </span>
+        )}
       </div>
       {expanded && call.result && (
         <pre className="text-xs bg-muted/30 p-2 rounded mt-1 ml-5">{call.result}</pre>
@@ -345,7 +485,15 @@ function FlatThinking({ model }: { model?: string }) {
 // Option C: Minimal - subtle everything
 // ============================================
 
-function MinimalUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
+function MinimalUserMessage({
+  content,
+  images,
+  meta,
+}: {
+  content: string;
+  images?: string[];
+  meta?: MessageMeta;
+}) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
@@ -383,9 +531,9 @@ function MinimalToolCall({ call }: { call: ToolCallData }) {
             {todo.status === "completed" && <span className="text-green-600">✓</span>}
             {todo.status === "in_progress" && <span className="text-blue-600">○</span>}
             {todo.status === "pending" && <span className="text-muted-foreground/40">○</span>}
-            <span className={cn(
-              todo.status === "completed" && "line-through opacity-60"
-            )}>{todo.content}</span>
+            <span className={cn(todo.status === "completed" && "line-through opacity-60")}>
+              {todo.content}
+            </span>
           </div>
         ))}
       </div>
@@ -397,7 +545,9 @@ function MinimalToolCall({ call }: { call: ToolCallData }) {
   return (
     <div className="text-xs text-muted-foreground/70 pl-1">
       <span className="inline-flex items-center gap-1">
-        <span className={call.status === "executing" ? "text-muted-foreground" : "text-green-600"}>{status}</span>
+        <span className={call.status === "executing" ? "text-muted-foreground" : "text-green-600"}>
+          {status}
+        </span>
         <span className="font-mono">{call.name}</span>
         {call.args && <span className="opacity-60">{call.args}</span>}
         {call.result && String(call.result).length > 30 && (
@@ -407,7 +557,9 @@ function MinimalToolCall({ call }: { call: ToolCallData }) {
         )}
       </span>
       {expanded && call.result && (
-        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">{call.result}</pre>
+        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">
+          {call.result}
+        </pre>
       )}
     </div>
   );
@@ -420,9 +572,18 @@ function MinimalThinking({ model }: { model?: string }) {
         <span className="text-xs text-muted-foreground/60">thinking</span>
         {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
         <span className="flex gap-0.5 ml-0.5">
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
         </span>
       </div>
     </div>
@@ -433,7 +594,15 @@ function MinimalThinking({ model }: { model?: string }) {
 // Option D: Minimal + Icon
 // ============================================
 
-function MinimalIconUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
+function MinimalIconUserMessage({
+  content,
+  images,
+  meta,
+}: {
+  content: string;
+  images?: string[];
+  meta?: MessageMeta;
+}) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
@@ -472,18 +641,21 @@ function MinimalIconToolCall({ call }: { call: ToolCallData }) {
             {todo.status === "completed" && <span className="text-green-600">✓</span>}
             {todo.status === "in_progress" && <span className="text-blue-600">○</span>}
             {todo.status === "pending" && <span className="text-muted-foreground/40">○</span>}
-            <span className={cn(
-              todo.status === "completed" && "line-through opacity-60"
-            )}>{todo.content}</span>
+            <span className={cn(todo.status === "completed" && "line-through opacity-60")}>
+              {todo.content}
+            </span>
           </div>
         ))}
       </div>
     );
   }
 
-  const statusIcon = call.status === "executing"
-    ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
-    : <Check className="h-3 w-3 text-green-600/80" />;
+  const statusIcon =
+    call.status === "executing" ? (
+      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+    ) : (
+      <Check className="h-3 w-3 text-green-600/80" />
+    );
 
   return (
     <div className="text-xs text-muted-foreground/70 ml-6">
@@ -493,14 +665,20 @@ function MinimalIconToolCall({ call }: { call: ToolCallData }) {
         {call.args && <span className="opacity-60">{call.args}</span>}
       </div>
       {expanded && call.result && (
-        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight ml-4">{call.result}</pre>
+        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight ml-4">
+          {call.result}
+        </pre>
       )}
       {call.result && String(call.result).length > 30 && (
         <button
           onClick={() => setExpanded(!expanded)}
           className="ml-4 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/80 flex items-center gap-0.5"
         >
-          {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+          {expanded ? (
+            <ChevronDown className="h-2.5 w-2.5" />
+          ) : (
+            <ChevronRight className="h-2.5 w-2.5" />
+          )}
           {expanded ? "hide" : "output"}
         </button>
       )}
@@ -516,9 +694,18 @@ function MinimalIconThinking({ model }: { model?: string }) {
         <span className="text-xs text-muted-foreground/60">thinking</span>
         {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
         <span className="flex gap-0.5 ml-0.5">
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <span
+            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
         </span>
       </div>
     </div>
@@ -533,10 +720,30 @@ type StyleOption = "current" | "flat" | "minimal" | "minimal-icon";
 
 function renderConversation(conversation: ConversationItem[], style: StyleOption) {
   const components = {
-    current: { User: CurrentUserMessage, Agent: CurrentAgentMessage, Tool: CurrentToolCall, Thinking: CurrentThinking },
-    flat: { User: FlatUserMessage, Agent: FlatAgentMessage, Tool: FlatToolCall, Thinking: FlatThinking },
-    minimal: { User: MinimalUserMessage, Agent: MinimalAgentMessage, Tool: MinimalToolCall, Thinking: MinimalThinking },
-    "minimal-icon": { User: MinimalIconUserMessage, Agent: MinimalIconAgentMessage, Tool: MinimalIconToolCall, Thinking: MinimalIconThinking },
+    current: {
+      User: CurrentUserMessage,
+      Agent: CurrentAgentMessage,
+      Tool: CurrentToolCall,
+      Thinking: CurrentThinking,
+    },
+    flat: {
+      User: FlatUserMessage,
+      Agent: FlatAgentMessage,
+      Tool: FlatToolCall,
+      Thinking: FlatThinking,
+    },
+    minimal: {
+      User: MinimalUserMessage,
+      Agent: MinimalAgentMessage,
+      Tool: MinimalToolCall,
+      Thinking: MinimalThinking,
+    },
+    "minimal-icon": {
+      User: MinimalIconUserMessage,
+      Agent: MinimalIconAgentMessage,
+      Tool: MinimalIconToolCall,
+      Thinking: MinimalIconThinking,
+    },
   };
 
   const { User, Agent, Tool, Thinking } = components[style];
@@ -580,10 +787,26 @@ export default function ChatStylesPage() {
   }
 
   const styles: { id: StyleOption; name: string; description: string }[] = [
-    { id: "current", name: "Current", description: "Existing design with backgrounds for both user and agent" },
-    { id: "flat", name: "Flat Agent", description: "User bubble, agent on flat background, compact tools" },
-    { id: "minimal", name: "Minimal", description: "Subtle borders, completely flat, inline tools" },
-    { id: "minimal-icon", name: "Minimal + Icon", description: "Minimal style with robot icon for agent messages" },
+    {
+      id: "current",
+      name: "Current",
+      description: "Existing design with backgrounds for both user and agent",
+    },
+    {
+      id: "flat",
+      name: "Flat Agent",
+      description: "User bubble, agent on flat background, compact tools",
+    },
+    {
+      id: "minimal",
+      name: "Minimal",
+      description: "Subtle borders, completely flat, inline tools",
+    },
+    {
+      id: "minimal-icon",
+      name: "Minimal + Icon",
+      description: "Minimal style with robot icon for agent messages",
+    },
   ];
 
   return (
@@ -601,7 +824,9 @@ export default function ChatStylesPage() {
           <p className="text-muted-foreground mt-1 text-sm">
             Compare different chat styling approaches
           </p>
-          <Badge variant="outline" className="mt-2">Development Mode</Badge>
+          <Badge variant="outline" className="mt-2">
+            Development Mode
+          </Badge>
         </div>
 
         {/* Style selector */}
@@ -614,7 +839,7 @@ export default function ChatStylesPage() {
                 "px-3 py-1.5 rounded-md text-sm transition-colors",
                 selectedStyle === style.id
                   ? "bg-primary text-primary-foreground"
-                  : "bg-muted hover:bg-muted/80"
+                  : "bg-muted hover:bg-muted/80",
               )}
             >
               {style.name}
@@ -632,7 +857,9 @@ export default function ChatStylesPage() {
           <div className="border rounded-lg bg-background">
             {/* Main conversation */}
             <div className="p-4 space-y-4">
-              <div className="text-xs text-muted-foreground text-center mb-6">Full Conversation</div>
+              <div className="text-xs text-muted-foreground text-center mb-6">
+                Full Conversation
+              </div>
               {renderConversation(sampleConversation, selectedStyle)}
             </div>
 

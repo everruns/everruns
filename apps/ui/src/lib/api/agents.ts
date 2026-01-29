@@ -26,10 +26,7 @@ export async function getAgent(agentId: string): Promise<Agent> {
   return response.data;
 }
 
-export async function updateAgent(
-  agentId: string,
-  request: UpdateAgentRequest
-): Promise<Agent> {
+export async function updateAgent(agentId: string, request: UpdateAgentRequest): Promise<Agent> {
   const response = await api.patch<Agent>(`/v1/agents/${agentId}`, request);
   return response.data;
 }
@@ -68,12 +65,7 @@ export async function importAgent(markdown: string): Promise<Agent> {
   return response.json();
 }
 
-export async function previewAgent(
-  request: PreviewAgentRequest
-): Promise<AgentPreviewResponse> {
-  const response = await api.post<AgentPreviewResponse>(
-    "/v1/agents/preview",
-    request
-  );
+export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
+  const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
   return response.data;
 }

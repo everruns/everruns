@@ -18,10 +18,7 @@ interface EventFilterProps {
   onHideDeltaEventsChange: (hide: boolean) => void;
 }
 
-export function EventFilter({
-  hideDeltaEvents,
-  onHideDeltaEventsChange,
-}: EventFilterProps) {
+export function EventFilter({ hideDeltaEvents, onHideDeltaEventsChange }: EventFilterProps) {
   const activeFilterCount = hideDeltaEvents ? 1 : 0;
 
   return (

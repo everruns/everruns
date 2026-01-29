@@ -1,11 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Event, OutputMessageCompletedData, TokenUsage } from "@/lib/api/types";
 
@@ -44,7 +40,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
           "p-0.5 rounded transition-colors flex-shrink-0",
           variant === "light"
             ? "text-white/50 hover:text-white hover:bg-white/10"
-            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80"
+            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
         )}
         aria-label="Message info"
       >
@@ -71,7 +67,9 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
           {usage && (
             <>
               <dt className="text-muted-foreground">Tokens</dt>
-              <dd>{usage.input_tokens} in / {usage.output_tokens} out</dd>
+              <dd>
+                {usage.input_tokens} in / {usage.output_tokens} out
+              </dd>
             </>
           )}
         </dl>

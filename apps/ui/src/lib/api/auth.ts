@@ -32,9 +32,7 @@ export async function login(request: LoginRequest): Promise<TokenResponse> {
 /**
  * Register a new user
  */
-export async function register(
-  request: RegisterRequest
-): Promise<TokenResponse> {
+export async function register(request: RegisterRequest): Promise<TokenResponse> {
   const { data } = await api.post<TokenResponse>("/v1/auth/register", request);
   return data;
 }
@@ -83,9 +81,7 @@ export async function listApiKeys(): Promise<ApiKeyListItem[]> {
 /**
  * Create a new API key
  */
-export async function createApiKey(
-  request: CreateApiKeyRequest
-): Promise<ApiKeyResponse> {
+export async function createApiKey(request: CreateApiKeyRequest): Promise<ApiKeyResponse> {
   const { data } = await api.post<ApiKeyResponse>("/v1/auth/api-keys", request);
   return data;
 }

@@ -8,21 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineMarkdown } from "@/components/ui/markdown";
-import {
-  ArrowLeft,
-  CircleOff,
-  Wrench,
-  FileText,
-  Code,
-  Link as LinkIcon,
-} from "lucide-react";
+import { ArrowLeft, CircleOff, Wrench, FileText, Code, Link as LinkIcon } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
-function getStatusBadgeVariant(
-  status: CapabilityStatus
-): "default" | "secondary" | "outline" {
+function getStatusBadgeVariant(status: CapabilityStatus): "default" | "secondary" | "outline" {
   switch (status) {
     case "available":
       return "default";
@@ -58,10 +49,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
             </div>
           </div>
           {tool.policy && (
-            <Badge
-              variant={tool.policy === "auto" ? "default" : "secondary"}
-              className="text-xs"
-            >
+            <Badge variant={tool.policy === "auto" ? "default" : "secondary"} className="text-xs">
               {tool.policy === "auto" ? "Auto" : "Requires Approval"}
             </Badge>
           )}
@@ -96,9 +84,7 @@ export default function CapabilityDetailPage({
   const { data: allCapabilities } = useCapabilities();
 
   // Create a map of capability ID to capability for resolving dependency names
-  const capabilityMap = new Map(
-    (allCapabilities || []).map((c) => [c.id, c])
-  );
+  const capabilityMap = new Map((allCapabilities || []).map((c) => [c.id, c]));
 
   if (isLoading) {
     return (
@@ -163,10 +149,7 @@ export default function CapabilityDetailPage({
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <InlineMarkdown
-                content={capability.description}
-                className="text-muted-foreground"
-              />
+              <InlineMarkdown content={capability.description} className="text-muted-foreground" />
             </CardContent>
           </Card>
 
@@ -221,10 +204,7 @@ export default function CapabilityDetailPage({
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium">Status</p>
-                <Badge
-                  variant={getStatusBadgeVariant(capability.status)}
-                  className="mt-1"
-                >
+                <Badge variant={getStatusBadgeVariant(capability.status)} className="mt-1">
                   {getStatusLabel(capability.status)}
                 </Badge>
               </div>

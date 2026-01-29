@@ -12,17 +12,14 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public statusText: string,
-    message?: string
+    message?: string,
   ) {
     super(message || `API Error: ${status} ${statusText}`);
     this.name = "ApiError";
   }
 }
 
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<{ data: T }> {
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<{ data: T }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -101,7 +98,7 @@ export function getApiBaseUrl(): string {
 export function getBackendUrl(): string {
   // In browser, use window.location to construct the proxy URL
   // OAuth will go through /api/v1/auth/oauth which gets proxied
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     return window.location.origin + API_BASE;
   }
   return API_BASE;
@@ -118,17 +115,16 @@ export function getBackendUrl(): string {
  */
 export function getDirectBackendUrl(): string {
   // Use NEXT_PUBLIC_API_URL if explicitly set
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   // In development, connect directly to backend (Next.js rewrites buffer SSE)
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:9000';
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:9000";
   }
   // In production, use origin + /api (reverse proxy handles SSE correctly)
-  if (typeof window !== 'undefined') {
-    return window.location.origin + '/api';
+  if (typeof window !== "undefined") {
+    return window.location.origin + "/api";
   }
-  return '/api';
+  return "/api";
 }
-

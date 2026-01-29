@@ -21,16 +21,14 @@ export async function getMcpServer(serverId: string): Promise<McpServer> {
   return response.data;
 }
 
-export async function createMcpServer(
-  data: CreateMcpServerRequest
-): Promise<McpServer> {
+export async function createMcpServer(data: CreateMcpServerRequest): Promise<McpServer> {
   const response = await api.post<McpServer>("/v1/mcp-servers", data);
   return response.data;
 }
 
 export async function updateMcpServer(
   serverId: string,
-  data: UpdateMcpServerRequest
+  data: UpdateMcpServerRequest,
 ): Promise<McpServer> {
   const response = await api.patch<McpServer>(`/v1/mcp-servers/${serverId}`, data);
   return response.data;

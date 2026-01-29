@@ -150,15 +150,21 @@ export function isTextPart(part: ContentPart): part is { type: "text"; text: str
   return part.type === "text";
 }
 
-export function isToolCallPart(part: ContentPart): part is { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> } {
+export function isToolCallPart(
+  part: ContentPart,
+): part is { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> } {
   return part.type === "tool_call";
 }
 
-export function isToolResultPart(part: ContentPart): part is { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string } {
+export function isToolResultPart(
+  part: ContentPart,
+): part is { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string } {
   return part.type === "tool_result";
 }
 
-export function isImageFilePart(part: ContentPart): part is { type: "image_file"; image_id: string; filename?: string } {
+export function isImageFilePart(
+  part: ContentPart,
+): part is { type: "image_file"; image_id: string; filename?: string } {
   return part.type === "image_file";
 }
 
@@ -229,15 +235,17 @@ export function createTextMessageRequest(text: string, controls?: Controls): Cre
 export function getTextFromContent(content: ContentPart[]): string {
   return content
     .filter(isTextPart)
-    .map(part => part.text)
+    .map((part) => part.text)
     .join("\n");
 }
 
 // Helper function to get tool calls from content parts
-export function getToolCallsFromContent(content: ContentPart[]): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
+export function getToolCallsFromContent(
+  content: ContentPart[],
+): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
   return content
     .filter(isToolCallPart)
-    .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
+    .map((part) => ({ id: part.id, name: part.name, arguments: part.arguments }));
 }
 
 // ============================================
@@ -641,10 +649,7 @@ export interface RefreshTokenRequest {
 // LLM Provider types
 // ============================================
 
-export type LlmProviderType =
-  | "openai"
-  | "openai_completions"
-  | "anthropic";
+export type LlmProviderType = "openai" | "openai_completions" | "anthropic";
 
 export type LlmProviderStatus = "active" | "disabled";
 export type LlmModelStatus = "active" | "disabled";
@@ -1209,14 +1214,9 @@ export interface ImageUploadResponse {
 }
 
 /** Allowed image content types */
-export const ALLOWED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-] as const;
+export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 
-export type AllowedImageType = typeof ALLOWED_IMAGE_TYPES[number];
+export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 
 /** Maximum image size in bytes (100 MB) */
 export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;

@@ -27,12 +27,8 @@ export default function StoragePage() {
 
       try {
         const [keysRes, secretsRes] = await Promise.all([
-          api.get<ListResponse<KeyValueInfo>>(
-            `/v1/sessions/${sessionId}/storage/keys`
-          ),
-          api.get<ListResponse<SecretInfo>>(
-            `/v1/sessions/${sessionId}/storage/secrets`
-          ),
+          api.get<ListResponse<KeyValueInfo>>(`/v1/sessions/${sessionId}/storage/keys`),
+          api.get<ListResponse<SecretInfo>>(`/v1/sessions/${sessionId}/storage/secrets`),
         ]);
 
         setKeyValues(keysRes.data.data);
@@ -81,9 +77,7 @@ export default function StoragePage() {
             <Key className="h-5 w-5" />
             Key-Value Storage
           </CardTitle>
-          <CardDescription>
-            Session-scoped key-value pairs stored by the agent
-          </CardDescription>
+          <CardDescription>Session-scoped key-value pairs stored by the agent</CardDescription>
         </CardHeader>
         <CardContent>
           {keyValues.length === 0 ? (
@@ -91,10 +85,7 @@ export default function StoragePage() {
           ) : (
             <div className="space-y-3">
               {keyValues.map((kv) => (
-                <div
-                  key={kv.key}
-                  className="border rounded-lg p-3 space-y-2"
-                >
+                <div key={kv.key} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className="font-mono">
                       {kv.key}
@@ -139,9 +130,7 @@ export default function StoragePage() {
                     <Badge variant="secondary" className="font-mono">
                       {secret.name}
                     </Badge>
-                    <span className="text-muted-foreground text-sm">
-                      (encrypted)
-                    </span>
+                    <span className="text-muted-foreground text-sm">(encrypted)</span>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />

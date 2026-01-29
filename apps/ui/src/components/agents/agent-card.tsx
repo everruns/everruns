@@ -4,12 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
@@ -47,9 +42,7 @@ export function AgentCard({
           </CardTitle>
           <CopyButton value={agent.id} />
         </div>
-        <Badge variant={agent.status === "active" ? "default" : "secondary"}>
-          {agent.status}
-        </Badge>
+        <Badge variant={agent.status === "active" ? "default" : "secondary"}>{agent.status}</Badge>
       </CardHeader>
       <CardContent>
         {agent.description ? (
@@ -57,9 +50,7 @@ export function AgentCard({
             <InlineMarkdown content={agent.description} />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground mb-3 italic">
-            No description provided
-          </p>
+          <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
         )}
 
         {/* Capabilities display */}
@@ -79,9 +70,7 @@ export function AgentCard({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="font-medium">{cap.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {cap.description}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{cap.description}</p>
                     </TooltipContent>
                   </Tooltip>
                 );

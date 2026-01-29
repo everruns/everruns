@@ -51,9 +51,7 @@ export default function OrganisationPage() {
         <section>
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Organisation</h2>
-            <p className="text-sm text-muted-foreground">
-              Manage organisation settings.
-            </p>
+            <p className="text-sm text-muted-foreground">Manage organisation settings.</p>
           </div>
           <Card className="p-8 text-center">
             <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
@@ -70,9 +68,7 @@ export default function OrganisationPage() {
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-semibold">Organisation</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage organisation settings.
-          </p>
+          <p className="text-sm text-muted-foreground">Manage organisation settings.</p>
         </div>
 
         {isLoading ? (

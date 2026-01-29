@@ -30,10 +30,7 @@ export function useCapabilityDependencies({
   selected,
 }: UseCapabilityDependenciesProps): UseCapabilityDependenciesReturn {
   // Get selected capability IDs for quick lookup
-  const selectedIds = useMemo(
-    () => new Set(selected.map((c) => c.ref)),
-    [selected]
-  );
+  const selectedIds = useMemo(() => new Set(selected.map((c) => c.ref)), [selected]);
 
   // Create a map of capability ID to capability for fast lookup
   const capabilityMap = useMemo(() => {
@@ -47,7 +44,7 @@ export function useCapabilityDependencies({
   // Get capability info by ID
   const getCapability = useCallback(
     (id: CapabilityId): Capability | undefined => capabilityMap.get(id),
-    [capabilityMap]
+    [capabilityMap],
   );
 
   // Get all dependencies for a capability (recursively)
@@ -74,7 +71,7 @@ export function useCapabilityDependencies({
       }
       return deps;
     },
-    [getCapability]
+    [getCapability],
   );
 
   // Check which selected capabilities depend on a given capability
@@ -90,7 +87,7 @@ export function useCapabilityDependencies({
       }
       return dependents;
     },
-    [selected, getAllDependencies]
+    [selected, getAllDependencies],
   );
 
   // Check if a capability can be removed (no dependents require it)
@@ -98,7 +95,7 @@ export function useCapabilityDependencies({
     (capId: CapabilityId): boolean => {
       return getDependents(capId).length === 0;
     },
-    [getDependents]
+    [getDependents],
   );
 
   return {

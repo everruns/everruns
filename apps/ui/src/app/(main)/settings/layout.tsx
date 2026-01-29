@@ -63,7 +63,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                     "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
                     isActive
                       ? "bg-accent/10 text-accent-foreground border-accent"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
                   )}
                 >
                   <item.icon className="h-4 w-4" />

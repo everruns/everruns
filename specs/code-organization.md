@@ -44,6 +44,35 @@ gRPC:  Handler    → Service → Repository → Database
 - Service returns domain types
 - Transport converts to response format
 
+## Formatting
+
+### Rust
+
+Use `rustfmt` (standard Rust formatter):
+
+```bash
+cargo fmt           # Format all Rust code
+cargo fmt --check   # Check formatting (CI)
+```
+
+### UI (JavaScript/TypeScript)
+
+Use `oxfmt` (Rust-powered formatter from Oxc project):
+
+```bash
+cd apps/ui
+npm run format        # Format all UI code
+npm run format:check  # Check formatting (CI)
+```
+
+Config: `apps/ui/oxfmt.json` (100 char width, single quotes, trailing commas)
+
+### Running All Formatters
+
+```bash
+just fmt  # Runs cargo fmt + oxfmt + oxlint --fix
+```
+
 ## Error Handling
 
 **API errors:**

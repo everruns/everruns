@@ -35,9 +35,7 @@ export default function AgentsPage() {
         router.push(`/agents/${agent.id}`);
       } catch (err) {
         console.error("Failed to import agent:", err);
-        setImportError(
-          err instanceof Error ? err.message : "Failed to import agent"
-        );
+        setImportError(err instanceof Error ? err.message : "Failed to import agent");
       }
 
       // Reset file input
@@ -45,15 +43,13 @@ export default function AgentsPage() {
         fileInputRef.current.value = "";
       }
     },
-    [importAgent, router]
+    [importAgent, router],
   );
 
   if (error) {
     return (
       <div className="container mx-auto p-6">
-        <div className="text-red-500">
-          Error loading agents: {error.message}
-        </div>
+        <div className="text-red-500">Error loading agents: {error.message}</div>
       </div>
     );
   }
@@ -70,11 +66,7 @@ export default function AgentsPage() {
             accept=".md,.yaml,.yml,.json"
             className="hidden"
           />
-          <Button
-            variant="outline"
-            onClick={handleImportClick}
-            disabled={importAgent.isPending}
-          >
+          <Button variant="outline" onClick={handleImportClick} disabled={importAgent.isPending}>
             <Upload className="w-4 h-4 mr-2" />
             {importAgent.isPending ? "Importing..." : "Import"}
           </Button>

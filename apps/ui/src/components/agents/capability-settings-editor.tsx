@@ -72,11 +72,7 @@ interface DockerContainerEditorProps {
   disabled?: boolean;
 }
 
-function DockerContainerEditor({
-  config,
-  onChange,
-  disabled,
-}: DockerContainerEditorProps) {
+function DockerContainerEditor({ config, onChange, disabled }: DockerContainerEditorProps) {
   const handleImageChange = (value: string) => {
     // Only set the value if it's different from default, to keep config clean
     const newConfig = { ...config };
@@ -112,9 +108,7 @@ function DockerContainerEditor({
           disabled={disabled}
           className="h-8 text-sm"
         />
-        <p className="text-xs text-muted-foreground">
-          Custom base image for the container
-        </p>
+        <p className="text-xs text-muted-foreground">Custom base image for the container</p>
       </div>
 
       <div className="space-y-1.5">

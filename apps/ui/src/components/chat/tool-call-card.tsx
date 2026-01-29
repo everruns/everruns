@@ -26,9 +26,10 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
     ? extractToolCallContent(toolCall.content)
     : (toolCall.content as unknown as ToolCallContent);
 
-  const resultContent = toolResult?.content && Array.isArray(toolResult.content)
-    ? extractToolResultContent(toolResult.content)
-    : (toolResult?.content as unknown as ToolResultContent | undefined);
+  const resultContent =
+    toolResult?.content && Array.isArray(toolResult.content)
+      ? extractToolResultContent(toolResult.content)
+      : (toolResult?.content as unknown as ToolResultContent | undefined);
 
   const isComplete = !!toolResult;
   const hasError = resultContent?.error !== undefined && resultContent?.error !== null;
@@ -39,9 +40,8 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
   }
 
   const argsPreview = formatArguments(content.arguments);
-  const resultPreview = resultContent?.result !== undefined
-    ? getResultPreview(resultContent.result)
-    : null;
+  const resultPreview =
+    resultContent?.result !== undefined ? getResultPreview(resultContent.result) : null;
 
   // Special rendering for write_todos tool
   if (isWriteTodosTool(content.name)) {
@@ -68,14 +68,10 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
       {/* Result or executing state */}
       {isComplete ? (
         hasError ? (
-          <div className="text-red-600">
-            &gt; Error: {resultContent?.error}
-          </div>
+          <div className="text-red-600">&gt; Error: {resultContent?.error}</div>
         ) : resultPreview ? (
           <div className="space-y-0.5">
-            <div className="whitespace-pre-wrap">
-              &gt; {resultPreview.preview}
-            </div>
+            <div className="whitespace-pre-wrap">&gt; {resultPreview.preview}</div>
             {(resultPreview.hasMore || isExpanded) && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -92,9 +88,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
           </div>
         ) : null
       ) : (
-        <div>
-          &gt; ... executing ...
-        </div>
+        <div>&gt; ... executing ...</div>
       )}
     </div>
   );

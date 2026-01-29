@@ -34,13 +34,7 @@ function ShowcaseSection({
   );
 }
 
-function ShowcaseItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -198,11 +192,15 @@ export default function DevSessionComponentsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-bold">Example Session</h2>
-                      <p className="text-sm text-muted-foreground">Started Jan 15, 2026, 10:30 AM</p>
+                      <p className="text-sm text-muted-foreground">
+                        Started Jan 15, 2026, 10:30 AM
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <TokenUsageBadge usage={sampleUsageData.medium} />
-                      <Badge variant="outline" className="gap-1">claude-sonnet-4</Badge>
+                      <Badge variant="outline" className="gap-1">
+                        claude-sonnet-4
+                      </Badge>
                       <Badge variant="secondary">Ready</Badge>
                     </div>
                   </div>
@@ -218,16 +216,24 @@ export default function DevSessionComponentsPage() {
               <ShowcaseItem label="Session Status">
                 <div className="flex items-center gap-4">
                   <Badge variant="secondary">pending</Badge>
-                  <Badge variant="default" className="bg-blue-500">running</Badge>
-                  <Badge variant="outline" className="border-green-500 text-green-600">completed</Badge>
+                  <Badge variant="default" className="bg-blue-500">
+                    running
+                  </Badge>
+                  <Badge variant="outline" className="border-green-500 text-green-600">
+                    completed
+                  </Badge>
                   <Badge variant="destructive">failed</Badge>
-                  <Badge variant="outline" className="border-yellow-500 text-yellow-600">cancelled</Badge>
+                  <Badge variant="outline" className="border-yellow-500 text-yellow-600">
+                    cancelled
+                  </Badge>
                 </div>
               </ShowcaseItem>
 
               <ShowcaseItem label="Agent Status">
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="border-green-500 text-green-600">active</Badge>
+                  <Badge variant="outline" className="border-green-500 text-green-600">
+                    active
+                  </Badge>
                   <Badge variant="secondary">inactive</Badge>
                   <Badge variant="destructive">error</Badge>
                 </div>
@@ -261,12 +267,16 @@ export default function DevSessionComponentsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-bold">Production Debug Session</h2>
-                      <p className="text-sm text-muted-foreground">Created 2 hours ago by user@example.com</p>
+                      <p className="text-sm text-muted-foreground">
+                        Created 2 hours ago by user@example.com
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <TokenUsageBadge usage={sampleUsageData.large} />
                       <Badge variant="outline">o1-preview</Badge>
-                      <Badge variant="default" className="bg-blue-500">running</Badge>
+                      <Badge variant="default" className="bg-blue-500">
+                        running
+                      </Badge>
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t flex items-center gap-4 text-sm text-muted-foreground">

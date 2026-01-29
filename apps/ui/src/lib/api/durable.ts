@@ -73,9 +73,7 @@ export interface ListWorkflowsParams {
   offset?: number;
 }
 
-export async function listWorkflows(
-  params?: ListWorkflowsParams
-): Promise<WorkflowsResponse> {
+export async function listWorkflows(params?: ListWorkflowsParams): Promise<WorkflowsResponse> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
   if (params?.workflow_type) searchParams.set("workflow_type", params.workflow_type);
@@ -89,17 +87,13 @@ export async function listWorkflows(
 }
 
 export async function getWorkflow(workflowId: string): Promise<DurableWorkflow> {
-  const response = await api.get<DurableWorkflow>(
-    `/v1/durable/workflows/${workflowId}`
-  );
+  const response = await api.get<DurableWorkflow>(`/v1/durable/workflows/${workflowId}`);
   return response.data;
 }
 
-export async function getWorkflowEvents(
-  workflowId: string
-): Promise<WorkflowEvent[]> {
+export async function getWorkflowEvents(workflowId: string): Promise<WorkflowEvent[]> {
   const response = await api.get<WorkflowEventsResponse>(
-    `/v1/durable/workflows/${workflowId}/events`
+    `/v1/durable/workflows/${workflowId}/events`,
   );
   return response.data.data;
 }
@@ -111,7 +105,7 @@ export async function cancelWorkflow(workflowId: string): Promise<void> {
 export async function signalWorkflow(
   workflowId: string,
   signalType: string,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
 ): Promise<void> {
   await api.post(`/v1/durable/workflows/${workflowId}/signal`, {
     signal_type: signalType,
@@ -171,9 +165,7 @@ export async function listDlq(params?: ListDlqParams): Promise<DlqResponse> {
 }
 
 export async function requeueDlqEntry(dlqId: string): Promise<string> {
-  const response = await api.post<{ task_id: string }>(
-    `/v1/durable/dlq/${dlqId}/requeue`
-  );
+  const response = await api.post<{ task_id: string }>(`/v1/durable/dlq/${dlqId}/requeue`);
   return response.data.task_id;
 }
 

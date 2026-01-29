@@ -31,13 +31,8 @@ export function CapabilitySelector({
   disabled,
   label = "Capabilities",
 }: CapabilitySelectorProps) {
-  const {
-    selectedIds,
-    getCapability,
-    getAllDependencies,
-    getDependents,
-    canRemove,
-  } = useCapabilityDependencies({ capabilities, selected });
+  const { selectedIds, getCapability, getAllDependencies, getDependents, canRemove } =
+    useCapabilityDependencies({ capabilities, selected });
 
   // Handle toggling a capability (with automatic dependency handling)
   const handleToggle = useCallback(
@@ -67,7 +62,7 @@ export function CapabilitySelector({
         }
       }
     },
-    [selected, onChange, getAllDependencies, canRemove]
+    [selected, onChange, getAllDependencies, canRemove],
   );
 
   const handleRemove = useCallback(
@@ -76,44 +71,34 @@ export function CapabilitySelector({
         onChange(selected.filter((c) => c.ref !== capabilityId));
       }
     },
-    [selected, onChange, canRemove]
+    [selected, onChange, canRemove],
   );
 
   const handleConfigChange = useCallback(
     (capabilityId: CapabilityId, newConfig: Record<string, unknown>) => {
-      onChange(
-        selected.map((c) =>
-          c.ref === capabilityId ? { ...c, config: newConfig } : c
-        )
-      );
+      onChange(selected.map((c) => (c.ref === capabilityId ? { ...c, config: newConfig } : c)));
     },
-    [selected, onChange]
+    [selected, onChange],
   );
 
   const moveUp = useCallback(
     (index: number) => {
       if (index === 0) return;
       const newSelected = [...selected];
-      [newSelected[index - 1], newSelected[index]] = [
-        newSelected[index],
-        newSelected[index - 1],
-      ];
+      [newSelected[index - 1], newSelected[index]] = [newSelected[index], newSelected[index - 1]];
       onChange(newSelected);
     },
-    [selected, onChange]
+    [selected, onChange],
   );
 
   const moveDown = useCallback(
     (index: number) => {
       if (index === selected.length - 1) return;
       const newSelected = [...selected];
-      [newSelected[index], newSelected[index + 1]] = [
-        newSelected[index + 1],
-        newSelected[index],
-      ];
+      [newSelected[index], newSelected[index + 1]] = [newSelected[index + 1], newSelected[index]];
       onChange(newSelected);
     },
-    [selected, onChange]
+    [selected, onChange],
   );
 
   return (
@@ -143,9 +128,7 @@ export function CapabilitySelector({
 
       {/* Coming soon indicator */}
       {capabilities.some((c) => c.status === "coming_soon") && (
-        <p className="text-xs text-muted-foreground">
-          More capabilities coming soon
-        </p>
+        <p className="text-xs text-muted-foreground">More capabilities coming soon</p>
       )}
     </div>
   );

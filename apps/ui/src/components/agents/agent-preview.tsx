@@ -29,7 +29,7 @@ export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) 
         onSuccess: (data) => {
           setPreview(data);
         },
-      }
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [systemPrompt, JSON.stringify(capabilities)]);
@@ -94,9 +94,7 @@ export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) 
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[400px] rounded-md border p-4 bg-muted/50">
-            <pre className="text-sm whitespace-pre-wrap font-mono">
-              {preview.system_prompt}
-            </pre>
+            <pre className="text-sm whitespace-pre-wrap font-mono">{preview.system_prompt}</pre>
           </ScrollArea>
         </CardContent>
       </Card>
@@ -111,9 +109,7 @@ export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) 
               {preview.tools.length}
             </Badge>
           </CardTitle>
-          <CardDescription>
-            Tools the agent can use from the enabled capabilities
-          </CardDescription>
+          <CardDescription>Tools the agent can use from the enabled capabilities</CardDescription>
         </CardHeader>
         <CardContent>
           {preview.tools.length === 0 ? (

@@ -6,17 +6,11 @@ import { api, getDirectBackendUrl } from "./client";
 import type { Event, ListResponse } from "./types";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
-export const DEFAULT_EXCLUDED_EVENTS = [
-  "output.message.delta",
-  "reason.thinking.delta",
-];
+export const DEFAULT_EXCLUDED_EVENTS = ["output.message.delta", "reason.thinking.delta"];
 
 // List events for a session (polling alternative to SSE)
 // Optional exclude parameter to filter out event types (e.g., delta events)
-export async function listEvents(
-  sessionId: string,
-  exclude?: string[]
-): Promise<Event[]> {
+export async function listEvents(sessionId: string, exclude?: string[]): Promise<Event[]> {
   const params = new URLSearchParams();
   if (exclude) {
     for (const type of exclude) {
@@ -25,7 +19,7 @@ export async function listEvents(
   }
   const queryString = params.toString();
   const response = await api.get<ListResponse<Event>>(
-    `/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`
+    `/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`,
   );
   return response.data.data;
 }
@@ -35,11 +29,7 @@ export async function listEvents(
 // Uses since_id for incremental updates (UUID v7 monotonically increasing)
 // Optional exclude parameter to filter out event types (e.g., delta events)
 // Note: Org is sent via everruns_org cookie (EventSource sends cookies automatically)
-export function getSseUrl(
-  sessionId: string,
-  sinceId?: string,
-  exclude?: string[]
-): string {
+export function getSseUrl(sessionId: string, sinceId?: string, exclude?: string[]): string {
   const baseUrl = getDirectBackendUrl();
   const params = new URLSearchParams();
   if (sinceId) {

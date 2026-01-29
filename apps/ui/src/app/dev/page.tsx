@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette, Gauge } from "lucide-react";
+import {
+  FlaskConical,
+  MessageSquare,
+  LayoutList,
+  ArrowRight,
+  Star,
+  FileText,
+  Palette,
+  Gauge,
+} from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";

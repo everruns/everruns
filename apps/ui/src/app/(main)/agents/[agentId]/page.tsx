@@ -1,7 +1,14 @@
 "use client";
 
 import { use, useMemo, useCallback, useState } from "react";
-import { useAgent, useSessions, useCreateSession, useCapabilities, useLlmModels, useExportAgent } from "@/hooks";
+import {
+  useAgent,
+  useSessions,
+  useCreateSession,
+  useCapabilities,
+  useLlmModels,
+  useExportAgent,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,15 +21,7 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
-import {
-  ArrowLeft,
-  Plus,
-  Pencil,
-  Download,
-  Zap,
-  Eye,
-  LayoutDashboard,
-} from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Download, Zap, Eye, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -43,17 +42,15 @@ function totalTokens(usage: TokenUsage): number {
   return usage.input_tokens + usage.output_tokens;
 }
 
-export default function AgentDetailPage({
-  params,
-}: {
-  params: Promise<{ agentId: string }>;
-}) {
+export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   // Fetch only top 10 sessions for the overview
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, { limit: 10 });
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
+    limit: 10,
+  });
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
   const hasMoreSessions = totalSessions > 10;
@@ -143,19 +140,13 @@ export default function AgentDetailPage({
           <h1 className="text-2xl font-bold flex items-center gap-2">
             {agent.name}
             <CopyButton value={agent.id} />
-            <Badge
-              variant={agent.status === "active" ? "default" : "secondary"}
-            >
+            <Badge variant={agent.status === "active" ? "default" : "secondary"}>
               {agent.status}
             </Badge>
           </h1>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            disabled={exportAgent.isPending}
-          >
+          <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
             <Download className="w-4 h-4 mr-2" />
             {exportAgent.isPending ? "Exporting..." : "Export"}
           </Button>
@@ -186,173 +177,175 @@ export default function AgentDetailPage({
 
         <TabsContent value="overview">
           <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MarkdownDisplay content={agent.system_prompt} />
-            </CardContent>
-          </Card>
+            <div className="lg:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Prompt</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MarkdownDisplay content={agent.system_prompt} />
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Sessions</CardTitle>
-              {hasMoreSessions && (
-                <Link
-                  href={`/agents/${agentId}/sessions`}
-                  className="text-sm text-muted-foreground hover:text-foreground"
-                >
-                  View all {totalSessions} sessions →
-                </Link>
-              )}
-            </CardHeader>
-            <CardContent>
-              {sessionsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                </div>
-              ) : sessions.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground">
-                  No sessions yet. Start a new session to begin chatting.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {sessions.map((session) => (
-                    <SessionCard
-                      key={session.id}
-                      session={session}
-                      model={session.model_id ? modelMap.get(session.model_id) : undefined}
-                    />
-                  ))}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Sessions</CardTitle>
                   {hasMoreSessions && (
                     <Link
                       href={`/agents/${agentId}/sessions`}
-                      className="flex items-center justify-center p-3 rounded-md border border-dashed hover:bg-muted transition-colors text-muted-foreground"
+                      className="text-sm text-muted-foreground hover:text-foreground"
                     >
-                      View all {totalSessions} sessions
+                      View all {totalSessions} sessions →
                     </Link>
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                </CardHeader>
+                <CardContent>
+                  {sessionsLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-12 w-full" />
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  ) : sessions.length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">
+                      No sessions yet. Start a new session to begin chatting.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {sessions.map((session) => (
+                        <SessionCard
+                          key={session.id}
+                          session={session}
+                          model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                        />
+                      ))}
+                      {hasMoreSessions && (
+                        <Link
+                          href={`/agents/${agentId}/sessions`}
+                          className="flex items-center justify-center p-3 rounded-md border border-dashed hover:bg-muted transition-colors text-muted-foreground"
+                        >
+                          View all {totalSessions} sessions
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Capabilities</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {agentCapabilities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No capabilities enabled.{" "}
-                  <Link href={`/agents/${agentId}/edit`} className="text-primary hover:underline">
-                    Add some
-                  </Link>
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {agentCapabilities.map((capConfig) => {
-                    const cap = getCapabilityInfo(capConfig.ref);
-                    if (!cap) return null;
-                    const IconComponent = getCapabilityIcon(cap.icon);
-
-                    return (
-                      <div
-                        key={capConfig.ref}
-                        className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capabilities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {agentCapabilities.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No capabilities enabled.{" "}
+                      <Link
+                        href={`/agents/${agentId}/edit`}
+                        className="text-primary hover:underline"
                       >
-                        <IconComponent className="w-4 h-4" />
+                        Add some
+                      </Link>
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {agentCapabilities.map((capConfig) => {
+                        const cap = getCapabilityInfo(capConfig.ref);
+                        if (!cap) return null;
+                        const IconComponent = getCapabilityIcon(cap.icon);
+
+                        return (
+                          <div
+                            key={capConfig.ref}
+                            className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+                          >
+                            <IconComponent className="w-4 h-4" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{cap.name}</p>
+                              <p className="text-xs text-muted-foreground">{cap.description}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Configuration</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {defaultModel && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Default Model</p>
+                      <div className="flex items-center gap-2">
+                        <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
+                        <span className="text-sm">{defaultModel.display_name}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {agent.description && (
+                    <div>
+                      <p className="text-sm font-medium">Description</p>
+                      <div className="text-sm text-muted-foreground">
+                        <InlineMarkdown content={agent.description} />
+                      </div>
+                    </div>
+                  )}
+
+                  {agent.tags.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Tags</p>
+                      <div className="flex flex-wrap gap-1">
+                        {agent.tags.map((tag) => (
+                          <Badge key={tag} variant="outline">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {agent.usage && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Token Usage</p>
+                      <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
+                        <Zap className="w-4 h-4 text-yellow-500" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium">{cap.name}</p>
+                          <p className="text-sm font-medium">
+                            {formatTokens(totalTokens(agent.usage))} total
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            {cap.description}
+                            {formatTokens(agent.usage.input_tokens)} input /{" "}
+                            {formatTokens(agent.usage.output_tokens)} output
+                            {agent.usage.cache_read_tokens &&
+                              ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
                           </p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {defaultModel && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Default Model</p>
-                  <div className="flex items-center gap-2">
-                    <ProviderIcon
-                      providerType={defaultModel.provider_type}
-                      size="sm"
-                    />
-                    <span className="text-sm">{defaultModel.display_name}</span>
-                  </div>
-                </div>
-              )}
-
-              {agent.description && (
-                <div>
-                  <p className="text-sm font-medium">Description</p>
-                  <div className="text-sm text-muted-foreground">
-                    <InlineMarkdown content={agent.description} />
-                  </div>
-                </div>
-              )}
-
-              {agent.tags.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Tags</p>
-                  <div className="flex flex-wrap gap-1">
-                    {agent.tags.map((tag) => (
-                      <Badge key={tag} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {agent.usage && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Token Usage</p>
-                  <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
-                    <Zap className="w-4 h-4 text-yellow-500" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{formatTokens(totalTokens(agent.usage))} total</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatTokens(agent.usage.input_tokens)} input / {formatTokens(agent.usage.output_tokens)} output
-                        {agent.usage.cache_read_tokens && ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
-                      </p>
                     </div>
+                  )}
+
+                  <div>
+                    <p className="text-sm font-medium">Created</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(agent.created_at).toLocaleString()}
+                    </p>
                   </div>
-                </div>
-              )}
 
-              <div>
-                <p className="text-sm font-medium">Created</p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(agent.created_at).toLocaleString()}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium">Updated</p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(agent.updated_at).toLocaleString()}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                  <div>
+                    <p className="text-sm font-medium">Updated</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(agent.updated_at).toLocaleString()}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 

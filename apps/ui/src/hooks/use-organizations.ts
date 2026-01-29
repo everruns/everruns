@@ -30,8 +30,7 @@ export function useUpdateOrganization() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (data: UpdateOrganizationRequest) =>
-      updateOrganization(org!, data),
+    mutationFn: (data: UpdateOrganizationRequest) => updateOrganization(org!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       if (org) {

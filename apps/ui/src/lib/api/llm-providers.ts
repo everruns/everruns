@@ -25,16 +25,14 @@ export async function getLlmProvider(providerId: string): Promise<LlmProvider> {
   return response.data;
 }
 
-export async function createLlmProvider(
-  data: CreateLlmProviderRequest
-): Promise<LlmProvider> {
+export async function createLlmProvider(data: CreateLlmProviderRequest): Promise<LlmProvider> {
   const response = await api.post<LlmProvider>("/v1/llm-providers", data);
   return response.data;
 }
 
 export async function updateLlmProvider(
   providerId: string,
-  data: UpdateLlmProviderRequest
+  data: UpdateLlmProviderRequest,
 ): Promise<LlmProvider> {
   const response = await api.patch<LlmProvider>(`/v1/llm-providers/${providerId}`, data);
   return response.data;
@@ -44,11 +42,9 @@ export async function deleteLlmProvider(providerId: string): Promise<void> {
   await api.delete(`/v1/llm-providers/${providerId}`);
 }
 
-export async function syncProviderModels(
-  providerId: string
-): Promise<SyncModelsResponse> {
+export async function syncProviderModels(providerId: string): Promise<SyncModelsResponse> {
   const response = await api.post<SyncModelsResponse>(
-    `/v1/llm-providers/${providerId}/sync-models`
+    `/v1/llm-providers/${providerId}/sync-models`,
   );
   return response.data;
 }
@@ -59,9 +55,7 @@ export async function getLlmModels(): Promise<LlmModelWithProvider[]> {
   return response.data.data;
 }
 
-export async function getLlmProviderModels(
-  providerId: string
-): Promise<LlmModel[]> {
+export async function getLlmProviderModels(providerId: string): Promise<LlmModel[]> {
   const response = await api.get<ListResponse<LlmModel>>(`/v1/llm-providers/${providerId}/models`);
   return response.data.data;
 }
@@ -73,7 +67,7 @@ export async function getLlmModel(modelId: string): Promise<LlmModelWithProvider
 
 export async function createLlmModel(
   providerId: string,
-  data: CreateLlmModelRequest
+  data: CreateLlmModelRequest,
 ): Promise<LlmModel> {
   const response = await api.post<LlmModel>(`/v1/llm-providers/${providerId}/models`, data);
   return response.data;
@@ -81,7 +75,7 @@ export async function createLlmModel(
 
 export async function updateLlmModel(
   modelId: string,
-  data: UpdateLlmModelRequest
+  data: UpdateLlmModelRequest,
 ): Promise<LlmModel> {
   const response = await api.patch<LlmModel>(`/v1/llm-models/${modelId}`, data);
   return response.data;

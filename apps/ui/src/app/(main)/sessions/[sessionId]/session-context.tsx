@@ -68,7 +68,9 @@ interface SessionContextValue {
   cancelCurrentTurn: UseMutationResult<void, Error, void, unknown>;
   // Utility functions
   getMessageText: (data: InputMessageData | OutputMessageCompletedData) => string;
-  getToolCalls: (data: OutputMessageCompletedData) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  getToolCalls: (
+    data: OutputMessageCompletedData,
+  ) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -153,9 +155,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     onError: (_error, _variables, context) => {
       // Only remove optimistic event on error
       if (context?.optimisticId) {
-        setOptimisticEvents((prev) =>
-          prev.filter((e) => e.id !== context.optimisticId)
-        );
+        setOptimisticEvents((prev) => prev.filter((e) => e.id !== context.optimisticId));
       }
     },
   });
@@ -298,7 +298,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
     if (optimisticToRemove.length > 0) {
       setOptimisticEvents((prev) =>
-        prev.filter((e) => !optimisticToRemove.some((r) => r.id === e.id))
+        prev.filter((e) => !optimisticToRemove.some((r) => r.id === e.id)),
       );
     }
   }, [events, optimisticEvents]);
@@ -310,7 +310,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
-            e.type === "tool.completed"
+            e.type === "tool.completed",
         )
       : [];
 
@@ -321,7 +321,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         .map((e) => {
           const data = e.data as InputMessageData;
           return getTextFromContent(data.message?.content || []);
-        })
+        }),
     );
 
     // Filter out optimistic events that already have a real counterpart
@@ -412,7 +412,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
   // Get tool calls from message event data
   const getToolCalls = (
-    data: OutputMessageCompletedData
+    data: OutputMessageCompletedData,
   ): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
     const content = data.message?.content;
     if (!content) return [];

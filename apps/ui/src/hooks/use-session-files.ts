@@ -61,10 +61,7 @@ export function useFiles(
 }
 
 /** Read a file */
-export function useFile(
-  sessionId: string | undefined,
-  path: string | undefined,
-) {
+export function useFile(sessionId: string | undefined, path: string | undefined) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
@@ -82,10 +79,7 @@ export function useFile(
 }
 
 /** Get file stat */
-export function useFileStat(
-  sessionId: string | undefined,
-  path: string | undefined,
-) {
+export function useFileStat(sessionId: string | undefined, path: string | undefined) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
@@ -113,13 +107,8 @@ export function useCreateFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      request,
-    }: {
-      sessionId: string;
-      request: CreateFileRequest;
-    }) => createFile(sessionId, request),
+    mutationFn: ({ sessionId, request }: { sessionId: string; request: CreateFileRequest }) =>
+      createFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -203,13 +192,8 @@ export function useMoveFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      request,
-    }: {
-      sessionId: string;
-      request: MoveFileRequest;
-    }) => moveFile(sessionId, request),
+    mutationFn: ({ sessionId, request }: { sessionId: string; request: MoveFileRequest }) =>
+      moveFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -225,13 +209,8 @@ export function useCopyFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      request,
-    }: {
-      sessionId: string;
-      request: CopyFileRequest;
-    }) => copyFile(sessionId, request),
+    mutationFn: ({ sessionId, request }: { sessionId: string; request: CopyFileRequest }) =>
+      copyFile(sessionId, request),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(org!, sessionId),
@@ -243,12 +222,7 @@ export function useCopyFile() {
 /** Search files using grep */
 export function useGrepFiles() {
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      request,
-    }: {
-      sessionId: string;
-      request: GrepRequest;
-    }) => grepFiles(sessionId, request),
+    mutationFn: ({ sessionId, request }: { sessionId: string; request: GrepRequest }) =>
+      grepFiles(sessionId, request),
   });
 }

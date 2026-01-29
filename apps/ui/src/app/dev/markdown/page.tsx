@@ -33,13 +33,7 @@ function ShowcaseSection({
   );
 }
 
-function ShowcaseItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -237,32 +231,29 @@ export default function DevMarkdownPage() {
           </ShowcaseSection>
 
           {/* Usage Examples */}
-          <ShowcaseSection
-            title="Usage in Code"
-            description="How to use the Markdown components"
-          >
+          <ShowcaseSection title="Usage in Code" description="How to use the Markdown components">
             <ShowcaseItem label="Import">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-{`import { Markdown, InlineMarkdown } from "@/components/ui/markdown";`}
+                {`import { Markdown, InlineMarkdown } from "@/components/ui/markdown";`}
               </pre>
             </ShowcaseItem>
 
             <ShowcaseItem label="Full Markdown Block">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-{`<Markdown content={description} />
+                {`<Markdown content={description} />
 <Markdown content={description} variant="compact" />`}
               </pre>
             </ShowcaseItem>
 
             <ShowcaseItem label="Inline Markdown (for descriptions)">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-{`<InlineMarkdown content={capability.description} className="text-muted-foreground" />`}
+                {`<InlineMarkdown content={capability.description} className="text-muted-foreground" />`}
               </pre>
             </ShowcaseItem>
 
             <ShowcaseItem label="GitHub Alert Syntax">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-{`> [!NOTE]
+                {`> [!NOTE]
 > Your note content here.
 
 > [!TIP]

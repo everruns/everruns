@@ -2,23 +2,12 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -125,9 +114,7 @@ function ProviderCard({
       <CardContent>
         <div className="space-y-2 text-sm">
           {provider.base_url && (
-            <p className="text-muted-foreground truncate">
-              URL: {provider.base_url}
-            </p>
+            <p className="text-muted-foreground truncate">URL: {provider.base_url}</p>
           )}
           <div className="flex items-center gap-2">
             <Key className="h-4 w-4 text-muted-foreground" />
@@ -210,11 +197,12 @@ function ModelRow({
           <div>
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
-              {model.is_default && (
-                <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-              )}
+              {model.is_default && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
               {profile && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-blue-50 text-blue-700 border-blue-200"
+                >
                   {profile.family}
                 </Badge>
               )}
@@ -280,11 +268,7 @@ function ModelRow({
               onClick={() => setExpanded(!expanded)}
               title={expanded ? "Collapse" : "Expand profile details"}
             >
-              {expanded ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
           )}
           <Button
@@ -323,9 +307,7 @@ function ModelRow({
                 </div>
                 <div>Input: {formatCost(profile.cost.input)}</div>
                 <div>Output: {formatCost(profile.cost.output)}</div>
-                {profile.cost.cache_read && (
-                  <div>Cache: {formatCost(profile.cost.cache_read)}</div>
-                )}
+                {profile.cost.cache_read && <div>Cache: {formatCost(profile.cost.cache_read)}</div>}
               </div>
             )}
 
@@ -339,7 +321,9 @@ function ModelRow({
                 <div className={profile.tool_call ? "text-green-700" : "text-muted-foreground"}>
                   {profile.tool_call ? "✓" : "✗"} Tool Calling
                 </div>
-                <div className={profile.structured_output ? "text-green-700" : "text-muted-foreground"}>
+                <div
+                  className={profile.structured_output ? "text-green-700" : "text-muted-foreground"}
+                >
                   {profile.structured_output ? "✓" : "✗"} Structured Output
                 </div>
                 <div className={profile.reasoning ? "text-green-700" : "text-muted-foreground"}>
@@ -357,17 +341,9 @@ function ModelRow({
                 <Info className="h-3.5 w-3.5" />
                 Model Info
               </div>
-              {profile.knowledge && (
-                <div>Knowledge: {profile.knowledge}</div>
-              )}
-              {profile.release_date && (
-                <div>Released: {profile.release_date}</div>
-              )}
-              {profile.modalities && (
-                <div>
-                  Input: {profile.modalities.input.join(", ")}
-                </div>
-              )}
+              {profile.knowledge && <div>Knowledge: {profile.knowledge}</div>}
+              {profile.release_date && <div>Released: {profile.release_date}</div>}
+              {profile.modalities && <div>Input: {profile.modalities.input.join(", ")}</div>}
             </div>
           </div>
           <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
@@ -439,7 +415,10 @@ function AddProviderDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="provider-type">Provider Type</Label>
-            <Select value={providerType} onValueChange={(v) => setProviderType(v as LlmProviderType)}>
+            <Select
+              value={providerType}
+              onValueChange={(v) => setProviderType(v as LlmProviderType)}
+            >
               <SelectTrigger className="w-full">
                 <div className="flex items-center gap-2">
                   <ProviderIcon providerType={providerType} size="sm" showBackground={false} />
@@ -515,9 +494,7 @@ function SetApiKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {provider?.api_key_set ? "Update" : "Set"} API Key
-          </DialogTitle>
+          <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
           <DialogDescription>
             {provider?.api_key_set
               ? "Enter a new API key to replace the existing one."
@@ -586,9 +563,7 @@ function AddModelDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Model</DialogTitle>
-          <DialogDescription>
-            Add a new model to an existing provider.
-          </DialogDescription>
+          <DialogDescription>Add a new model to an existing provider.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -679,7 +654,11 @@ function ProviderCardSkeleton() {
 }
 
 export default function ProvidersPage() {
-  const { data: providers = [], isLoading: providersLoading, error: providersError } = useLlmProviders();
+  const {
+    data: providers = [],
+    isLoading: providersLoading,
+    error: providersError,
+  } = useLlmProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();
   const deleteProvider = useDeleteLlmProvider();
   const deleteModel = useDeleteLlmModel();
@@ -689,10 +668,17 @@ export default function ProvidersPage() {
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [apiKeyProvider, setApiKeyProvider] = useState<LlmProvider | null>(null);
   const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
-  const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [syncMessage, setSyncMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const handleDeleteProvider = async (id: string) => {
-    if (confirm("Are you sure you want to delete this provider? All associated models will also be deleted.")) {
+    if (
+      confirm(
+        "Are you sure you want to delete this provider? All associated models will also be deleted.",
+      )
+    ) {
       await deleteProvider.mutateAsync(id);
     }
   };
@@ -859,11 +845,7 @@ export default function ProvidersPage() {
         open={apiKeyProvider !== null}
         onOpenChange={(open) => !open && setApiKeyProvider(null)}
       />
-      <AddModelDialog
-        providers={providers}
-        open={addModelOpen}
-        onOpenChange={setAddModelOpen}
-      />
+      <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
     </div>
   );
 }

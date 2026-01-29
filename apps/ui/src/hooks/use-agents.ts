@@ -13,11 +13,7 @@ import {
   updateAgent,
 } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
-import type {
-  CreateAgentRequest,
-  PreviewAgentRequest,
-  UpdateAgentRequest,
-} from "@/lib/api/types";
+import type { CreateAgentRequest, PreviewAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useAgents() {
@@ -69,13 +65,8 @@ export function useUpdateAgent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      agentId,
-      request,
-    }: {
-      agentId: string;
-      request: UpdateAgentRequest;
-    }) => updateAgent(agentId, request),
+    mutationFn: ({ agentId, request }: { agentId: string; request: UpdateAgentRequest }) =>
+      updateAgent(agentId, request),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
       queryClient.invalidateQueries({

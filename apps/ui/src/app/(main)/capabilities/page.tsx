@@ -6,21 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import {
-  CircleOff,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Info,
-} from "lucide-react";
+import { CircleOff, Clock, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineMarkdown } from "@/components/ui/markdown";
 
-function getStatusBadgeVariant(
-  status: CapabilityStatus
-): "default" | "secondary" | "outline" {
+function getStatusBadgeVariant(status: CapabilityStatus): "default" | "secondary" | "outline" {
   switch (status) {
     case "available":
       return "default";
@@ -141,9 +133,9 @@ function CapabilitySummary({ capabilities }: { capabilities: Capability[] }) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Capabilities add functionality to agents through tools, system prompt
-            additions, and behavior modifications. Enable capabilities on individual
-            agents to customize their behavior.
+            Capabilities add functionality to agents through tools, system prompt additions, and
+            behavior modifications. Enable capabilities on individual agents to customize their
+            behavior.
           </p>
         </CardContent>
       </Card>
@@ -162,9 +154,7 @@ export default function CapabilitiesPage() {
           description="Capabilities add functionality to agents - tools, system prompt additions, and behavior modifications."
         />
         <div className="p-6">
-          <div className="text-red-500">
-            Error loading capabilities: {error.message}
-          </div>
+          <div className="text-red-500">Error loading capabilities: {error.message}</div>
         </div>
       </>
     );

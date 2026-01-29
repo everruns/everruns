@@ -62,11 +62,13 @@ export function formatArguments(args: Record<string, unknown>): string {
   const entries = Object.entries(args);
   if (entries.length === 0) return "";
 
-  const formatted = entries.map(([key, value]) => {
-    const strValue = typeof value === "string" ? value : JSON.stringify(value);
-    const truncated = strValue.length > 30 ? strValue.substring(0, 30) + "..." : strValue;
-    return `${key}: ${truncated}`;
-  }).join(", ");
+  const formatted = entries
+    .map(([key, value]) => {
+      const strValue = typeof value === "string" ? value : JSON.stringify(value);
+      const truncated = strValue.length > 30 ? strValue.substring(0, 30) + "..." : strValue;
+      return `${key}: ${truncated}`;
+    })
+    .join(", ");
 
   return formatted.length > 80 ? formatted.substring(0, 80) + "..." : formatted;
 }
@@ -77,7 +79,7 @@ export function formatArguments(args: Record<string, unknown>): string {
 export function getResultPreview(
   result: unknown,
   maxLines: number = 2,
-  maxChars: number = 360
+  maxChars: number = 360,
 ): { preview: string; hasMore: boolean } {
   const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
   const lines = text.split("\n");
@@ -99,7 +101,7 @@ export function getFullText(result: ContentPart[] | undefined): string {
   if (!result || result.length === 0) return "";
   return result
     .filter((part): part is { type: "text"; text: string } => part.type === "text")
-    .map(part => part.text)
+    .map((part) => part.text)
     .join("\n");
 }
 

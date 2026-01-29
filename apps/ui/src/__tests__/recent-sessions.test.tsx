@@ -68,13 +68,7 @@ describe("RecentSessions", () => {
       const session = createSession({ model_id: "model-123" });
       const agent = createAgent();
 
-      render(
-        <RecentSessions
-          sessions={[session]}
-          agents={[agent]}
-          models={[model]}
-        />
-      );
+      render(<RecentSessions sessions={[session]} agents={[agent]} models={[model]} />);
 
       expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
     });
@@ -87,7 +81,7 @@ describe("RecentSessions", () => {
 
       // Find the table cell with dash (excluding header)
       const cells = screen.getAllByRole("cell");
-      const modelCell = cells.find(cell => cell.textContent === "-");
+      const modelCell = cells.find((cell) => cell.textContent === "-");
       expect(modelCell).toBeInTheDocument();
     });
 
@@ -95,16 +89,10 @@ describe("RecentSessions", () => {
       const session = createSession({ model_id: "unknown-model" });
       const agent = createAgent();
 
-      render(
-        <RecentSessions
-          sessions={[session]}
-          agents={[agent]}
-          models={[]}
-        />
-      );
+      render(<RecentSessions sessions={[session]} agents={[agent]} models={[]} />);
 
       const cells = screen.getAllByRole("cell");
-      const modelCell = cells.find(cell => cell.textContent === "-");
+      const modelCell = cells.find((cell) => cell.textContent === "-");
       expect(modelCell).toBeInTheDocument();
     });
 
@@ -123,7 +111,7 @@ describe("RecentSessions", () => {
           sessions={[session1, session2, session3]}
           agents={[agent]}
           models={[model1, model2]}
-        />
+        />,
       );
 
       expect(screen.getByText("GPT-4o")).toBeInTheDocument();
@@ -135,13 +123,7 @@ describe("RecentSessions", () => {
       const session = createSession({ model_id: "model-1" });
       const agent = createAgent();
 
-      render(
-        <RecentSessions
-          sessions={[session]}
-          agents={[agent]}
-          models={[model]}
-        />
-      );
+      render(<RecentSessions sessions={[session]} agents={[agent]} models={[model]} />);
 
       // The model name should be in a span with the Sparkles icon
       const modelText = screen.getByText("GPT-4o");
@@ -154,7 +136,7 @@ describe("RecentSessions", () => {
       render(<RecentSessions sessions={[]} agents={[]} />);
 
       expect(
-        screen.getByText("No sessions yet. Create an agent and start a session to begin.")
+        screen.getByText("No sessions yet. Create an agent and start a session to begin."),
       ).toBeInTheDocument();
     });
   });

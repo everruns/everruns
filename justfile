@@ -50,6 +50,7 @@ test:
 fmt:
     cargo fmt
     cargo clippy --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || true
+    cd apps/ui && npm run format 2>/dev/null || true
     cd apps/ui && npm run lint -- --fix 2>/dev/null || true
 
 # Run format, lint, and test checks

@@ -1,13 +1,7 @@
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import {
-  useLogin,
-  useRegister,
-  useLogout,
-  useCurrentUser,
-  authKeys,
-} from "@/hooks/use-auth";
+import { useLogin, useRegister, useLogout, useCurrentUser, authKeys } from "@/hooks/use-auth";
 
 // Mock the API functions
 jest.mock("@/lib/api/auth", () => ({
@@ -26,7 +20,9 @@ import * as authApi from "@/lib/api/auth";
 const mockLogin = authApi.login as jest.MockedFunction<typeof authApi.login>;
 const mockRegister = authApi.register as jest.MockedFunction<typeof authApi.register>;
 const mockLogout = authApi.logout as jest.MockedFunction<typeof authApi.logout>;
-const mockGetCurrentUser = authApi.getCurrentUser as jest.MockedFunction<typeof authApi.getCurrentUser>;
+const mockGetCurrentUser = authApi.getCurrentUser as jest.MockedFunction<
+  typeof authApi.getCurrentUser
+>;
 
 describe("Auth Hooks", () => {
   let queryClient: QueryClient;
@@ -51,7 +47,9 @@ describe("Auth Hooks", () => {
 
   // Helper to initialize the user query so refetchQueries has something to refetch
   async function initializeUserQuery(initialUser: unknown = null) {
-    mockGetCurrentUser.mockResolvedValueOnce(initialUser as Awaited<ReturnType<typeof authApi.getCurrentUser>>);
+    mockGetCurrentUser.mockResolvedValueOnce(
+      initialUser as Awaited<ReturnType<typeof authApi.getCurrentUser>>,
+    );
     const { result } = renderHook(() => useCurrentUser(true), { wrapper });
     // Wait for initial fetch to complete
     await act(async () => {
@@ -100,7 +98,9 @@ describe("Auth Hooks", () => {
 
     it("should wait for user refetch to complete before mutation resolves", async () => {
       // Initialize the user query first
-      mockGetCurrentUser.mockResolvedValueOnce(null as unknown as Awaited<ReturnType<typeof authApi.getCurrentUser>>);
+      mockGetCurrentUser.mockResolvedValueOnce(
+        null as unknown as Awaited<ReturnType<typeof authApi.getCurrentUser>>,
+      );
       renderHook(() => useCurrentUser(true), { wrapper });
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -220,7 +220,9 @@ describe("Auth Hooks", () => {
 
     it("should wait for user refetch to complete before mutation resolves", async () => {
       // Initialize the user query first
-      mockGetCurrentUser.mockResolvedValueOnce(null as unknown as Awaited<ReturnType<typeof authApi.getCurrentUser>>);
+      mockGetCurrentUser.mockResolvedValueOnce(
+        null as unknown as Awaited<ReturnType<typeof authApi.getCurrentUser>>,
+      );
       renderHook(() => useCurrentUser(true), { wrapper });
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));

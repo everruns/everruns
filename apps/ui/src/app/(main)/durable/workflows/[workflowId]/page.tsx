@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useWorkflow, useWorkflowEvents, useWorkflowSSE, useCancelWorkflow, useSignalWorkflow } from "@/hooks";
+import {
+  useWorkflow,
+  useWorkflowEvents,
+  useWorkflowSSE,
+  useCancelWorkflow,
+  useSignalWorkflow,
+} from "@/hooks";
 import type { WorkflowStatus, WorkflowEvent } from "@/lib/api/types";
 import {
   AlertTriangle,
@@ -94,15 +100,18 @@ function getEventIcon(eventType: string) {
   // Event types from backend are snake_case (e.g., "workflow_started", "activity_completed")
   if (eventType.startsWith("workflow_")) {
     if (eventType === "workflow_started") return <Play className="h-4 w-4 text-green-500" />;
-    if (eventType === "workflow_completed") return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if (eventType === "workflow_completed")
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
     if (eventType === "workflow_failed") return <XCircle className="h-4 w-4 text-red-500" />;
-    if (eventType === "workflow_cancelled") return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+    if (eventType === "workflow_cancelled")
+      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     return <Activity className="h-4 w-4 text-blue-500" />;
   }
   if (eventType.startsWith("activity_")) {
     if (eventType === "activity_scheduled") return <Clock className="h-4 w-4 text-blue-500" />;
     if (eventType === "activity_started") return <Play className="h-4 w-4 text-blue-500" />;
-    if (eventType === "activity_completed") return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if (eventType === "activity_completed")
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
     if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-red-500" />;
     if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-yellow-500" />;
     return <Activity className="h-4 w-4 text-gray-500" />;
@@ -137,15 +146,14 @@ function EventTimeline({ events }: { events: WorkflowEvent[] }) {
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
               {getEventIcon(event.event_type)}
             </div>
-            {index < events.length - 1 && (
-              <div className="w-px h-full bg-border min-h-[20px]" />
-            )}
+            {index < events.length - 1 && <div className="w-px h-full bg-border min-h-[20px]" />}
           </div>
           <div className="flex-1 pb-4">
             <div className="flex items-center justify-between">
               <p className="font-medium text-sm">{formatEventType(event.event_type)}</p>
               <span className="text-xs text-muted-foreground">
-                #{event.sequence_num} · {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+                #{event.sequence_num} ·{" "}
+                {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
               </span>
             </div>
             {event.event_data && Object.keys(event.event_data).length > 0 && (
@@ -162,13 +170,22 @@ function EventTimeline({ events }: { events: WorkflowEvent[] }) {
   );
 }
 
-export default function WorkflowDetailPage({ params }: { params: Promise<{ workflowId: string }> }) {
+export default function WorkflowDetailPage({
+  params,
+}: {
+  params: Promise<{ workflowId: string }>;
+}) {
   const { workflowId } = use(params);
 
   // Connect to workflow-specific SSE for real-time updates
   useWorkflowSSE(workflowId);
 
-  const { data: workflow, isLoading: workflowLoading, error: workflowError, refetch } = useWorkflow(workflowId);
+  const {
+    data: workflow,
+    isLoading: workflowLoading,
+    error: workflowError,
+    refetch,
+  } = useWorkflow(workflowId);
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
   const signalMutation = useSignalWorkflow();
@@ -282,16 +299,12 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="font-medium">
-                    {new Date(workflow.created_at).toLocaleString()}
-                  </p>
+                  <p className="font-medium">{new Date(workflow.created_at).toLocaleString()}</p>
                 </div>
                 {workflow.started_at && (
                   <div>
                     <p className="text-sm text-muted-foreground">Started</p>
-                    <p className="font-medium">
-                      {new Date(workflow.started_at).toLocaleString()}
-                    </p>
+                    <p className="font-medium">{new Date(workflow.started_at).toLocaleString()}</p>
                   </div>
                 )}
                 {workflow.completed_at && (
@@ -345,7 +358,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[200px]">
-                <pre className={`text-sm p-3 rounded ${workflow.error ? "bg-red-500/10" : "bg-muted"}`}>
+                <pre
+                  className={`text-sm p-3 rounded ${workflow.error ? "bg-red-500/10" : "bg-muted"}`}
+                >
                   {JSON.stringify(workflow.error || workflow.result, null, 2)}
                 </pre>
               </ScrollArea>

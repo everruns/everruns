@@ -53,9 +53,7 @@ const durableNavigation = [
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
 ];
 
-const devNavigation = [
-  { name: "Dev Tools", href: "/dev", icon: FlaskConical },
-];
+const devNavigation = [{ name: "Dev Tools", href: "/dev", icon: FlaskConical }];
 
 function getInitials(name: string): string {
   return name
@@ -92,9 +90,7 @@ export function Sidebar() {
       {organizations.length > 0 && (
         <div className="border-b px-3 py-2">
           <DropdownMenu>
-            <DropdownMenuTrigger
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-            >
+            <DropdownMenuTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1 text-left truncate font-medium">
                 {currentOrg?.name ?? "Select Organization"}
@@ -127,8 +123,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 py-4">
         {navigation.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.name}
@@ -137,7 +132,7 @@ export function Sidebar() {
                 "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
               )}
             >
               <item.icon className="h-5 w-5" />
@@ -161,7 +156,7 @@ export function Sidebar() {
                 "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
               )}
             >
               <item.icon className="h-5 w-5" />
@@ -176,8 +171,7 @@ export function Sidebar() {
             <div className="my-3 border-t" />
             <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Dev</p>
             {devNavigation.map((item) => {
-              const isActive =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.name}
@@ -186,7 +180,7 @@ export function Sidebar() {
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <item.icon className="h-5 w-5" />
@@ -202,9 +196,7 @@ export function Sidebar() {
       <div className="border-t p-3">
         {requiresAuth && user ? (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-muted transition-colors"
-            >
+            <DropdownMenuTrigger className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-muted transition-colors">
               <Avatar className="h-8 w-8">
                 {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
                 <AvatarFallback>{getInitials(user.name)}</AvatarFallback>

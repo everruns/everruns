@@ -39,13 +39,7 @@ function ShowcaseSection({
   );
 }
 
-function ShowcaseItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -90,12 +84,14 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 5,
       role: "agent" as const,
-      content: [{
-        type: "tool_call" as const,
-        id: "tc-1",
-        name: "list_files",
-        arguments: { path: "/home/user/project", recursive: true },
-      }],
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "tc-1",
+          name: "list_files",
+          arguments: { path: "/home/user/project", recursive: true },
+        },
+      ],
       tool_call_id: null,
       created_at: new Date().toISOString(),
     },
@@ -104,11 +100,13 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 6,
       role: "tool_result" as const,
-      content: [{
-        type: "tool_result" as const,
-        tool_call_id: "tc-1",
-        result: ["src/", "src/main.rs", "src/lib.rs", "Cargo.toml", "README.md"],
-      }],
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_call_id: "tc-1",
+          result: ["src/", "src/main.rs", "src/lib.rs", "Cargo.toml", "README.md"],
+        },
+      ],
       tool_call_id: "tc-1",
       created_at: new Date().toISOString(),
     },
@@ -120,12 +118,14 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 7,
       role: "agent" as const,
-      content: [{
-        type: "tool_call" as const,
-        id: "tc-2",
-        name: "bash",
-        arguments: { command: "cargo test --workspace" },
-      }],
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "tc-2",
+          name: "bash",
+          arguments: { command: "cargo test --workspace" },
+        },
+      ],
       tool_call_id: null,
       created_at: new Date().toISOString(),
     },
@@ -134,11 +134,14 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 8,
       role: "tool_result" as const,
-      content: [{
-        type: "tool_result" as const,
-        tool_call_id: "tc-2",
-        result: "running 24 tests\ntest storage::tests::test_create_agent ... ok\ntest storage::tests::test_list_agents ... ok\ntest api::tests::test_health_endpoint ... ok\ntest api::tests::test_create_session ... ok\n\ntest result: ok. 24 passed; 0 failed; 0 ignored",
-      }],
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_call_id: "tc-2",
+          result:
+            "running 24 tests\ntest storage::tests::test_create_agent ... ok\ntest storage::tests::test_list_agents ... ok\ntest api::tests::test_health_endpoint ... ok\ntest api::tests::test_create_session ... ok\n\ntest result: ok. 24 passed; 0 failed; 0 ignored",
+        },
+      ],
       tool_call_id: "tc-2",
       created_at: new Date().toISOString(),
     },
@@ -150,12 +153,14 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 9,
       role: "agent" as const,
-      content: [{
-        type: "tool_call" as const,
-        id: "tc-3",
-        name: "read_file",
-        arguments: { path: "/home/user/project/src/main.rs" },
-      }],
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "tc-3",
+          name: "read_file",
+          arguments: { path: "/home/user/project/src/main.rs" },
+        },
+      ],
       tool_call_id: null,
       created_at: new Date().toISOString(),
     },
@@ -168,12 +173,14 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 10,
       role: "agent" as const,
-      content: [{
-        type: "tool_call" as const,
-        id: "tc-4",
-        name: "write_file",
-        arguments: { path: "/etc/protected/config.json", content: "{}" },
-      }],
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "tc-4",
+          name: "write_file",
+          arguments: { path: "/etc/protected/config.json", content: "{}" },
+        },
+      ],
       tool_call_id: null,
       created_at: new Date().toISOString(),
     },
@@ -182,11 +189,13 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 11,
       role: "tool_result" as const,
-      content: [{
-        type: "tool_result" as const,
-        tool_call_id: "tc-4",
-        error: "Permission denied: Cannot write to /etc/protected/config.json",
-      }],
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_call_id: "tc-4",
+          error: "Permission denied: Cannot write to /etc/protected/config.json",
+        },
+      ],
       tool_call_id: "tc-4",
       created_at: new Date().toISOString(),
     },
@@ -198,19 +207,33 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 12,
       role: "agent" as const,
-      content: [{
-        type: "tool_call" as const,
-        id: "tc-5",
-        name: "write_todos",
-        arguments: {
-          todos: [
-            { content: "Review code changes", activeForm: "Reviewing code changes", status: "completed" },
-            { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
-            { content: "Update documentation", activeForm: "Updating documentation", status: "pending" },
-            { content: "Create pull request", activeForm: "Creating pull request", status: "pending" },
-          ],
+      content: [
+        {
+          type: "tool_call" as const,
+          id: "tc-5",
+          name: "write_todos",
+          arguments: {
+            todos: [
+              {
+                content: "Review code changes",
+                activeForm: "Reviewing code changes",
+                status: "completed",
+              },
+              { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
+              {
+                content: "Update documentation",
+                activeForm: "Updating documentation",
+                status: "pending",
+              },
+              {
+                content: "Create pull request",
+                activeForm: "Creating pull request",
+                status: "pending",
+              },
+            ],
+          },
         },
-      }],
+      ],
       tool_call_id: null,
       created_at: new Date().toISOString(),
     },
@@ -219,23 +242,37 @@ const sampleToolCallMessages = {
       session_id: "session-1",
       sequence: 13,
       role: "tool_result" as const,
-      content: [{
-        type: "tool_result" as const,
-        tool_call_id: "tc-5",
-        result: {
-          success: true,
-          total_tasks: 4,
-          pending: 2,
-          in_progress: 1,
-          completed: 1,
-          todos: [
-            { content: "Review code changes", activeForm: "Reviewing code changes", status: "completed" },
-            { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
-            { content: "Update documentation", activeForm: "Updating documentation", status: "pending" },
-            { content: "Create pull request", activeForm: "Creating pull request", status: "pending" },
-          ],
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_call_id: "tc-5",
+          result: {
+            success: true,
+            total_tasks: 4,
+            pending: 2,
+            in_progress: 1,
+            completed: 1,
+            todos: [
+              {
+                content: "Review code changes",
+                activeForm: "Reviewing code changes",
+                status: "completed",
+              },
+              { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
+              {
+                content: "Update documentation",
+                activeForm: "Updating documentation",
+                status: "pending",
+              },
+              {
+                content: "Create pull request",
+                activeForm: "Creating pull request",
+                status: "pending",
+              },
+            ],
+          },
         },
-      }],
+      ],
       tool_call_id: "tc-5",
       created_at: new Date().toISOString(),
     },
@@ -247,7 +284,11 @@ const sampleTodoData = {
   executing: {
     arguments: {
       todos: [
-        { content: "Analyze requirements", activeForm: "Analyzing requirements", status: "completed" },
+        {
+          content: "Analyze requirements",
+          activeForm: "Analyzing requirements",
+          status: "completed",
+        },
         { content: "Implement feature", activeForm: "Implementing feature", status: "in_progress" },
         { content: "Write tests", activeForm: "Writing tests", status: "pending" },
       ],
@@ -258,7 +299,11 @@ const sampleTodoData = {
     arguments: {
       todos: [
         { content: "Set up database", activeForm: "Setting up database", status: "completed" },
-        { content: "Create API endpoints", activeForm: "Creating API endpoints", status: "completed" },
+        {
+          content: "Create API endpoints",
+          activeForm: "Creating API endpoints",
+          status: "completed",
+        },
         { content: "Add authentication", activeForm: "Adding authentication", status: "completed" },
       ],
     },
@@ -270,7 +315,11 @@ const sampleTodoData = {
       completed: 3,
       todos: [
         { content: "Set up database", activeForm: "Setting up database", status: "completed" },
-        { content: "Create API endpoints", activeForm: "Creating API endpoints", status: "completed" },
+        {
+          content: "Create API endpoints",
+          activeForm: "Creating API endpoints",
+          status: "completed",
+        },
         { content: "Add authentication", activeForm: "Adding authentication", status: "completed" },
       ],
     },
@@ -314,16 +363,24 @@ const samplePendingImages: PendingImage[] = [
     uploadPromise: null,
     imageId: "img-uploaded-1",
     filename: "screenshot.png",
-    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23e2e8f0' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='10'%3EPNG%3C/text%3E%3C/svg%3E",
+    previewUrl:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23e2e8f0' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='10'%3EPNG%3C/text%3E%3C/svg%3E",
     status: "uploaded",
   },
   {
     tempId: "temp-2",
     file: new File([], "photo.jpg"),
-    uploadPromise: Promise.resolve({ id: "", filename: "", content_type: "", size_bytes: 0, created_at: "" }),
+    uploadPromise: Promise.resolve({
+      id: "",
+      filename: "",
+      content_type: "",
+      size_bytes: 0,
+      created_at: "",
+    }),
     imageId: null,
     filename: "photo.jpg",
-    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fef3c7' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23d97706' font-size='10'%3EJPG%3C/text%3E%3C/svg%3E",
+    previewUrl:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fef3c7' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23d97706' font-size='10'%3EJPG%3C/text%3E%3C/svg%3E",
     status: "uploading",
   },
   {
@@ -332,7 +389,8 @@ const samplePendingImages: PendingImage[] = [
     uploadPromise: null,
     imageId: null,
     filename: "failed.gif",
-    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fee2e2' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23dc2626' font-size='10'%3EGIF%3C/text%3E%3C/svg%3E",
+    previewUrl:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fee2e2' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23dc2626' font-size='10'%3EGIF%3C/text%3E%3C/svg%3E",
     status: "error",
     error: "Upload failed",
   },
@@ -447,7 +505,11 @@ export default function DevChatComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Assistant Message (Multiline)">
-                <AssistantMessage content={"Here's my analysis:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."} />
+                <AssistantMessage
+                  content={
+                    "Here's my analysis:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."
+                  }
+                />
               </ShowcaseItem>
             </ShowcaseSection>
 
@@ -471,7 +533,9 @@ export default function DevChatComponentsPage() {
                 <div className="w-full flex items-start gap-2">
                   <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                   <div className="flex-1 flex items-start gap-2">
-                    <p className="text-sm whitespace-pre-wrap flex-1 text-foreground/90">Hi there! How can I help?</p>
+                    <p className="text-sm whitespace-pre-wrap flex-1 text-foreground/90">
+                      Hi there! How can I help?
+                    </p>
                     <MessageInfoIcon event={sampleEvents.agentMessage} />
                   </div>
                 </div>
@@ -503,9 +567,7 @@ export default function DevChatComponentsPage() {
 
               <ShowcaseItem label="Executing">
                 <div className="ml-6">
-                  <ToolCallCard
-                    toolCall={sampleToolCallMessages.executing.toolCall}
-                  />
+                  <ToolCallCard toolCall={sampleToolCallMessages.executing.toolCall} />
                 </div>
               </ShowcaseItem>
 
@@ -612,7 +674,9 @@ export default function DevChatComponentsPage() {
                 <div className="flex justify-end">
                   <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
                     <div className="flex-1 space-y-2">
-                      <p className="text-sm whitespace-pre-wrap">Here is a screenshot of the error.</p>
+                      <p className="text-sm whitespace-pre-wrap">
+                        Here is a screenshot of the error.
+                      </p>
                       <div className="flex flex-wrap gap-2 mt-2">
                         <div className="w-20 h-20 rounded-md overflow-hidden bg-muted/50 flex items-center justify-center">
                           <span className="text-[10px] text-muted-foreground">Preview</span>

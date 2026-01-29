@@ -2,11 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { PendingImage } from "@/lib/api/images";
-import {
-  createPendingImage,
-  cleanupPendingImages,
-  validateImageFile,
-} from "@/lib/api/images";
+import { createPendingImage, cleanupPendingImages, validateImageFile } from "@/lib/api/images";
 
 interface UseImageAttachmentsOptions {
   sessionId?: string;
@@ -30,7 +26,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
 
   // Track if all images are uploaded
   const allUploaded = pendingImages.every(
-    (img) => img.status === "uploaded" || img.status === "error"
+    (img) => img.status === "uploaded" || img.status === "error",
   );
 
   // Get IDs of successfully uploaded images
@@ -80,9 +76,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
       if (filesToAdd.length === 0) return;
 
       // Create pending images and start uploads
-      const newPendingImages = filesToAdd.map((file) =>
-        createPendingImage(file, sessionId)
-      );
+      const newPendingImages = filesToAdd.map((file) => createPendingImage(file, sessionId));
 
       // Add to state
       setPendingImages((prev) => [...prev, ...newPendingImages]);
@@ -102,8 +96,8 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
                       imageId: result.id,
                       uploadPromise: null,
                     }
-                  : img
-              )
+                  : img,
+              ),
             );
           })
           .catch((error) => {
@@ -116,13 +110,13 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
                       error: error instanceof Error ? error.message : "Upload failed",
                       uploadPromise: null,
                     }
-                  : img
-              )
+                  : img,
+              ),
             );
           });
       }
     },
-    [pendingImages.length, maxImages, sessionId]
+    [pendingImages.length, maxImages, sessionId],
   );
 
   /**
@@ -170,7 +164,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
         addFiles(imageFiles);
       }
     },
-    [addFiles]
+    [addFiles],
   );
 
   /**
@@ -203,7 +197,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
         addFiles(imageFiles);
       }
     },
-    [addFiles]
+    [addFiles],
   );
 
   return {

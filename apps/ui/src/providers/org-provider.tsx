@@ -42,16 +42,12 @@ interface OrgProviderProps {
 
 export function OrgProvider({ children }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
-  const [currentOrg, setCurrentOrgState] =
-    useState<OrganizationMembership | null>(null);
+  const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Memoize organizations to prevent infinite re-renders
   // User is always fetched (even in none mode) and includes organizations
-  const organizations = useMemo(
-    () => user?.organizations ?? [],
-    [user?.organizations],
-  );
+  const organizations = useMemo(() => user?.organizations ?? [], [user?.organizations]);
 
   // Initialize current org from localStorage or default
   useEffect(() => {
@@ -62,9 +58,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
     if (storedOrgId && organizations.length > 0) {
       // Find the stored org in user's organizations
-      const storedOrg = organizations.find(
-        (org) => org.public_id === storedOrgId,
-      );
+      const storedOrg = organizations.find((org) => org.public_id === storedOrgId);
       if (storedOrg) {
         setCurrentOrgState(storedOrg);
         setIsInitialized(true);
@@ -74,9 +68,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
     // Fall back to default org or first available org
     if (organizations.length > 0) {
-      const defaultOrg = organizations.find(
-        (org) => org.public_id === DEFAULT_ORG_PUBLIC_ID,
-      );
+      const defaultOrg = organizations.find((org) => org.public_id === DEFAULT_ORG_PUBLIC_ID);
       setCurrentOrgState(defaultOrg ?? organizations[0]);
     }
 
@@ -88,13 +80,8 @@ export function OrgProvider({ children }: OrgProviderProps) {
     if (!isInitialized || organizations.length === 0) return;
 
     // If current org is null or no longer valid, set to default
-    if (
-      !currentOrg ||
-      !organizations.find((org) => org.public_id === currentOrg.public_id)
-    ) {
-      const defaultOrg = organizations.find(
-        (org) => org.public_id === DEFAULT_ORG_PUBLIC_ID,
-      );
+    if (!currentOrg || !organizations.find((org) => org.public_id === currentOrg.public_id)) {
+      const defaultOrg = organizations.find((org) => org.public_id === DEFAULT_ORG_PUBLIC_ID);
       setCurrentOrgState(defaultOrg ?? organizations[0]);
     }
   }, [organizations, currentOrg, isInitialized]);

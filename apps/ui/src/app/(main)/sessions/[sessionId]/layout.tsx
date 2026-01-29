@@ -6,13 +6,17 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap, Database, Bot } from "lucide-react";
+  ArrowLeft,
+  Sparkles,
+  MessageSquare,
+  Folder,
+  Activity,
+  Zap,
+  Database,
+  Bot,
+} from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
 import { SessionProvider, useSessionContext } from "./session-context";
@@ -38,9 +42,7 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 
   return (
     <SessionProvider sessionId={sessionId}>
-      <SessionLayoutContent sessionId={sessionId}>
-        {children}
-      </SessionLayoutContent>
+      <SessionLayoutContent sessionId={sessionId}>{children}</SessionLayoutContent>
     </SessionProvider>
   );
 }
@@ -52,7 +54,8 @@ interface SessionLayoutContentProps {
 
 function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
   const pathname = usePathname();
-  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } = useSessionContext();
+  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
+    useSessionContext();
 
   // Determine active tab from pathname
   const getActiveTab = () => {
@@ -129,7 +132,8 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                   <TooltipTrigger>
                     <Badge variant="outline" className="gap-1 cursor-help">
                       <Zap className="w-3 h-3" />
-                      {formatTokens(liveUsage.input_tokens)} / {formatTokens(liveUsage.output_tokens)}
+                      {formatTokens(liveUsage.input_tokens)} /{" "}
+                      {formatTokens(liveUsage.output_tokens)}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -176,7 +180,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                 variant: activeTab === "chat" ? "default" : "ghost",
                 size: "sm",
               }),
-              "gap-2"
+              "gap-2",
             )}
           >
             <MessageSquare className="h-4 w-4" />
@@ -189,7 +193,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                 variant: activeTab === "files" ? "default" : "ghost",
                 size: "sm",
               }),
-              "gap-2"
+              "gap-2",
             )}
           >
             <Folder className="h-4 w-4" />
@@ -202,7 +206,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                 variant: activeTab === "storage" ? "default" : "ghost",
                 size: "sm",
               }),
-              "gap-2"
+              "gap-2",
             )}
           >
             <Database className="h-4 w-4" />
@@ -215,7 +219,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                 variant: activeTab === "events" ? "default" : "ghost",
                 size: "sm",
               }),
-              "gap-2"
+              "gap-2",
             )}
           >
             <Activity className="h-4 w-4" />

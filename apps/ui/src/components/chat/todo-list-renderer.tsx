@@ -39,10 +39,7 @@ function getStatusIcon(status: string, isActive: boolean = false) {
     case "in_progress":
       return (
         <CircleDot
-          className={cn(
-            "h-3.5 w-3.5 text-blue-600 shrink-0",
-            isActive && "animate-pulse"
-          )}
+          className={cn("h-3.5 w-3.5 text-blue-600 shrink-0", isActive && "animate-pulse")}
         />
       );
     case "pending":
@@ -66,7 +63,7 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
           "text-xs",
           isCompleted && "text-muted-foreground/60 line-through",
           isInProgress && "text-foreground",
-          !isCompleted && !isInProgress && "text-muted-foreground/80"
+          !isCompleted && !isInProgress && "text-muted-foreground/80",
         )}
       >
         {displayText}
@@ -77,11 +74,7 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
 
 function TodoListFromItems({ todos, isActive }: { todos: TodoItem[]; isActive?: boolean }) {
   if (!todos || todos.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground italic">
-        No tasks
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground italic">No tasks</div>;
   }
 
   return (
@@ -126,9 +119,7 @@ export function TodoListRenderer({
 
   // Handle error state
   if (error) {
-    return (
-      <div className="text-xs text-red-600">Error: {error}</div>
-    );
+    return <div className="text-xs text-red-600">Error: {error}</div>;
   }
 
   // Handle warning from result
@@ -137,9 +128,7 @@ export function TodoListRenderer({
   return (
     <div className="space-y-0.5">
       <TodoListFromItems todos={todos} isActive={isExecuting} />
-      {warning && (
-        <div className="text-xs text-amber-600 mt-0.5">{warning}</div>
-      )}
+      {warning && <div className="text-xs text-amber-600 mt-0.5">{warning}</div>}
     </div>
   );
 }

@@ -29,12 +29,7 @@ export function StreamingThinking({
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
   return (
-    <div
-      className={cn(
-        "border border-muted-foreground/20 rounded-lg overflow-hidden",
-        className
-      )}
-    >
+    <div className={cn("border border-muted-foreground/20 rounded-lg overflow-hidden", className)}>
       {/* Header - clickable to toggle collapse */}
       <button
         type="button"
@@ -47,9 +42,7 @@ export function StreamingThinking({
           <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         )}
         <Brain className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        <span className="text-sm font-medium text-muted-foreground">
-          Thinking
-        </span>
+        <span className="text-sm font-medium text-muted-foreground">Thinking</span>
         {isStreaming && (
           <span className="relative flex h-2 w-2 ml-1">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-muted-foreground/50 opacity-75" />

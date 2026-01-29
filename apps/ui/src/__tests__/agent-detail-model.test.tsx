@@ -24,7 +24,9 @@ jest.mock("next/link", () => ({
 
 // Mock prompt-editor to avoid react-markdown ESM issues
 jest.mock("@/components/ui/prompt-editor", () => ({
-  MarkdownDisplay: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
+  MarkdownDisplay: ({ content }: { content: string }) => (
+    <div data-testid="markdown">{content}</div>
+  ),
   PromptEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <textarea value={value} onChange={(e) => onChange(e.target.value)} />
   ),
@@ -143,7 +145,7 @@ async function renderWithSuspense(params: { agentId: string }) {
     render(
       <Suspense fallback={<div>Loading...</div>}>
         <AgentDetailPage params={paramsPromise} />
-      </Suspense>
+      </Suspense>,
     );
     // Let the promise resolve
     await paramsPromise;
@@ -235,7 +237,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
     expect(
-      screen.getByText("No sessions yet. Start a new session to begin chatting.")
+      screen.getByText("No sessions yet. Start a new session to begin chatting."),
     ).toBeInTheDocument();
   });
 

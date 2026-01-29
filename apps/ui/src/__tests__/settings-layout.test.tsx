@@ -9,9 +9,7 @@ jest.mock("next/navigation", () => ({
 
 // Mock the Header component
 jest.mock("@/components/layout/header", () => ({
-  Header: ({ title }: { title: string }) => (
-    <header data-testid="header">{title}</header>
-  ),
+  Header: ({ title }: { title: string }) => <header data-testid="header">{title}</header>,
 }));
 
 describe("SettingsLayout", () => {
@@ -23,7 +21,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     expect(screen.getByTestId("header")).toHaveTextContent("Settings");
@@ -33,7 +31,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
@@ -45,7 +43,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
@@ -62,7 +60,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
@@ -74,7 +72,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
@@ -85,7 +83,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div data-testid="child-content">Test Child Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     expect(screen.getByTestId("child-content")).toBeInTheDocument();
@@ -97,7 +95,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     const membersLink = screen.getByRole("link", { name: /Members/i });
@@ -108,7 +106,7 @@ describe("SettingsLayout", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
-      </SettingsLayout>
+      </SettingsLayout>,
     );
 
     const navLinks = screen.getAllByRole("link");

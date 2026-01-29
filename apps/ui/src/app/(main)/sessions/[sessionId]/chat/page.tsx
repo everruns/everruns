@@ -12,7 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
-import type { Controls, InputMessageData, OutputMessageCompletedData, ContentPart } from "@/lib/api/types";
+import type {
+  Controls,
+  InputMessageData,
+  OutputMessageCompletedData,
+  ContentPart,
+} from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -55,7 +60,7 @@ export default function ChatPage() {
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
-    [agentId, sessionId]
+    [agentId, sessionId],
   );
 
   // Image attachments management
@@ -80,7 +85,7 @@ export default function ChatPage() {
 
   const selectedModel = useMemo(
     () => llmModels.find((model) => model.id === selectedModelId),
-    [llmModels, selectedModelId]
+    [llmModels, selectedModelId],
   );
 
   const activeModel = selectedModel ?? llmModel;
@@ -142,7 +147,8 @@ export default function ChatPage() {
 
   // Check if can submit (has content and all images uploaded)
   const hasContent = inputValue.trim() || hasImages;
-  const canSubmit = hasContent && allUploaded && !sendMessage.isPending && !sendMessageWithImages.isPending;
+  const canSubmit =
+    hasContent && allUploaded && !sendMessage.isPending && !sendMessageWithImages.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,9 +159,10 @@ export default function ChatPage() {
       selectedModelId || reasoningEffort
         ? {
             ...(selectedModelId && { model_id: selectedModelId }),
-            ...(reasoningEffort && supportsReasoning && {
-              reasoning: { effort: reasoningEffort },
-            }),
+            ...(reasoningEffort &&
+              supportsReasoning && {
+                reasoning: { effort: reasoningEffort },
+              }),
           }
         : undefined;
 
@@ -208,7 +215,9 @@ export default function ChatPage() {
   };
 
   // Extract image files from message content
-  const getMessageImages = (content: ContentPart[]): Array<{ image_id: string; filename?: string }> => {
+  const getMessageImages = (
+    content: ContentPart[],
+  ): Array<{ image_id: string; filename?: string }> => {
     return content.filter(isImageFilePart).map((part) => ({
       image_id: part.image_id,
       filename: part.filename,
@@ -279,7 +288,9 @@ export default function ChatPage() {
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
                             {textContent && (
-                              <p className="text-sm whitespace-pre-wrap text-foreground/90">{textContent}</p>
+                              <p className="text-sm whitespace-pre-wrap text-foreground/90">
+                                {textContent}
+                              </p>
                             )}
                             {images.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -370,9 +381,7 @@ export default function ChatPage() {
           {/* Textarea with drag-drop wrapper */}
           <div
             className={`flex-1 relative rounded-md transition-colors ${
-              isDraggingOver
-                ? "bg-primary/10 ring-2 ring-primary/50 ring-offset-2"
-                : ""
+              isDraggingOver ? "bg-primary/10 ring-2 ring-primary/50 ring-offset-2" : ""
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -397,9 +406,7 @@ export default function ChatPage() {
               setIsDraggingOver(false);
               const files = e.dataTransfer?.files;
               if (files && files.length > 0) {
-                const imageFiles = Array.from(files).filter((f) =>
-                  f.type.startsWith("image/")
-                );
+                const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
                 if (imageFiles.length > 0) {
                   addFiles(imageFiles);
                 }
@@ -479,7 +486,7 @@ export default function ChatPage() {
               <SelectTrigger size="sm" className="w-[220px]">
                 <SelectValue>
                   {selectedModelId
-                    ? selectedModel?.display_name ?? "Select model"
+                    ? (selectedModel?.display_name ?? "Select model")
                     : llmModel?.display_name
                       ? `Session default (${llmModel.display_name})`
                       : "Session default"}

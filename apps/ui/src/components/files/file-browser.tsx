@@ -26,7 +26,12 @@ import {
   Lock,
 } from "lucide-react";
 import { FileIcon } from "./file-icon";
-import { useFiles, useCreateFile, useCreateDirectory, useDeleteFile } from "@/hooks/use-session-files";
+import {
+  useFiles,
+  useCreateFile,
+  useCreateDirectory,
+  useDeleteFile,
+} from "@/hooks/use-session-files";
 import { formatFileSize, getParentPath, joinPath } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
@@ -36,11 +41,7 @@ interface FileBrowserProps {
   selectedPath?: string;
 }
 
-export function FileBrowser({
-  sessionId,
-  onFileSelect,
-  selectedPath,
-}: FileBrowserProps) {
+export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState("/");
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["/"]));
   const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
@@ -171,9 +172,7 @@ export function FileBrowser({
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create Folder</DialogTitle>
-                  <DialogDescription>
-                    Create a new folder in {currentPath}
-                  </DialogDescription>
+                  <DialogDescription>Create a new folder in {currentPath}</DialogDescription>
                 </DialogHeader>
                 <Input
                   placeholder="Folder name"
@@ -204,9 +203,7 @@ export function FileBrowser({
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create File</DialogTitle>
-                  <DialogDescription>
-                    Create a new file in {currentPath}
-                  </DialogDescription>
+                  <DialogDescription>Create a new file in {currentPath}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <Input
@@ -235,12 +232,7 @@ export function FileBrowser({
         </div>
         {/* Breadcrumbs */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground overflow-x-auto">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 shrink-0"
-            onClick={navigateHome}
-          >
+          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={navigateHome}>
             <Home className="h-3 w-3" />
           </Button>
           {breadcrumbs.map((crumb, index) => (
@@ -265,9 +257,7 @@ export function FileBrowser({
           {isLoading ? (
             <div className="p-4 text-sm text-muted-foreground">Loading...</div>
           ) : !files?.length ? (
-            <div className="p-4 text-sm text-muted-foreground text-center">
-              Empty folder
-            </div>
+            <div className="p-4 text-sm text-muted-foreground text-center">Empty folder</div>
           ) : (
             <div className="p-2">
               {/* Show parent directory link if not at root */}
@@ -340,9 +330,7 @@ function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemP
       )}
       <span className="flex-1 truncate">{file.name}</span>
       <div className="flex items-center gap-1">
-        {file.is_readonly && (
-          <Lock className="h-3 w-3 text-muted-foreground" />
-        )}
+        {file.is_readonly && <Lock className="h-3 w-3 text-muted-foreground" />}
         {!file.is_directory && (
           <Badge variant="outline" className="text-xs py-0">
             {formatFileSize(file.size_bytes)}

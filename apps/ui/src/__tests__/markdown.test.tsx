@@ -47,11 +47,7 @@ describe("GitHub Alert Detection", () => {
     });
 
     it("is case-insensitive", () => {
-      const texts = [
-        "[!note] lowercase",
-        "[!Note] mixed case",
-        "[!NOTE] uppercase",
-      ];
+      const texts = ["[!note] lowercase", "[!Note] mixed case", "[!NOTE] uppercase"];
       texts.forEach((text) => {
         const match = text.match(alertPattern);
         expect(match).not.toBeNull();
@@ -82,11 +78,11 @@ describe("GitHub Alert Detection", () => {
 
     it("does not match malformed alert syntax", () => {
       const malformed = [
-        "[NOTE]",       // Missing exclamation
-        "![NOTE]",      // Wrong order
-        "[!NOTE",       // Missing closing bracket
-        "!NOTE]",       // Missing opening bracket
-        "[ !NOTE]",     // Space before exclamation
+        "[NOTE]", // Missing exclamation
+        "![NOTE]", // Wrong order
+        "[!NOTE", // Missing closing bracket
+        "!NOTE]", // Missing opening bracket
+        "[ !NOTE]", // Space before exclamation
       ];
       malformed.forEach((text) => {
         const match = text.match(alertPattern);
@@ -127,7 +123,7 @@ describe("Alert Configuration", () => {
 
   it("all alert types have distinct styling purposes", () => {
     // Document the intended use of each alert type
-    const purposes: Record<typeof alertTypes[number], string> = {
+    const purposes: Record<(typeof alertTypes)[number], string> = {
       note: "Highlights information that users should take into account",
       tip: "Optional information to help a user be more successful",
       important: "Crucial information necessary for users to succeed",
@@ -141,4 +137,3 @@ describe("Alert Configuration", () => {
     });
   });
 });
-

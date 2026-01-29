@@ -81,9 +81,7 @@ export default function NewAgentPage() {
                 id="name"
                 placeholder="My Agent"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
             </div>
@@ -94,9 +92,7 @@ export default function NewAgentPage() {
                 id="description"
                 placeholder="Describe what this agent does..."
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
               />
             </div>
@@ -172,9 +168,7 @@ export default function NewAgentPage() {
                 id="system_prompt"
                 placeholder="You are a helpful assistant..."
                 value={formData.system_prompt}
-                onChange={(value) =>
-                  setFormData({ ...formData, system_prompt: value })
-                }
+                onChange={(value) => setFormData({ ...formData, system_prompt: value })}
                 required
               />
               <p className="text-xs text-muted-foreground">
@@ -192,9 +186,7 @@ export default function NewAgentPage() {
             </div>
 
             {createAgent.error && (
-              <p className="text-sm text-destructive">
-                Error: {createAgent.error.message}
-              </p>
+              <p className="text-sm text-destructive">Error: {createAgent.error.message}</p>
             )}
           </form>
         </CardContent>

@@ -78,11 +78,7 @@ export default function RegisterPage() {
   }
 
   // If signup is not available, show nothing (will redirect)
-  if (
-    config?.mode === "none" ||
-    !config?.signup_enabled ||
-    !config?.password_auth_enabled
-  ) {
+  if (config?.mode === "none" || !config?.signup_enabled || !config?.password_auth_enabled) {
     return null;
   }
 
@@ -98,9 +94,7 @@ export default function RegisterPage() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-              {error}
-            </div>
+            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
           )}
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
@@ -151,11 +145,7 @@ export default function RegisterPage() {
               autoComplete="new-password"
             />
           </div>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={registerMutation.isPending}
-          >
+          <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
             {registerMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

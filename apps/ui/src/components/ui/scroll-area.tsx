@@ -7,12 +7,7 @@ interface ScrollAreaProps extends ScrollAreaPrimitive.Root.Props {
   ref?: React.RefObject<HTMLDivElement | null>;
 }
 
-function ScrollArea({
-  className,
-  children,
-  ref,
-  ...props
-}: ScrollAreaProps) {
+function ScrollArea({ className, children, ref, ...props }: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -43,11 +38,9 @@ function ScrollBar({
       orientation={orientation}
       className={cn(
         "flex touch-none p-px transition-[colors,opacity] select-none opacity-0 data-[hovering]:opacity-100 data-[scrolling]:opacity-100 duration-150 delay-300 data-[hovering]:duration-75 data-[scrolling]:duration-75  data-[hovering]:delay-0 data-[scrolling]:delay-0",
-        orientation === "vertical" &&
-          "h-full w-2.5 border-l border-l-transparent",
-        orientation === "horizontal" &&
-          "h-2.5 flex-col border-t border-t-transparent",
-        className
+        orientation === "vertical" && "h-full w-2.5 border-l border-l-transparent",
+        orientation === "horizontal" && "h-2.5 flex-col border-t border-t-transparent",
+        className,
       )}
       {...props}
     >

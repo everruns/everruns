@@ -13,7 +13,7 @@ import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
  */
 export function validateImageFile(file: File): { valid: boolean; error?: string } {
   // Check file type
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
     return {
       valid: false,
       error: `Invalid file type "${file.type}". Allowed: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
@@ -45,10 +45,7 @@ function formatBytes(bytes: number): string {
  * @param file - Image file to upload
  * @param sessionId - Optional: session ID stored as metadata for tracking (not required)
  */
-export async function uploadImage(
-  file: File,
-  sessionId?: string
-): Promise<ImageUploadResponse> {
+export async function uploadImage(file: File, sessionId?: string): Promise<ImageUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -106,14 +103,11 @@ export async function deleteImage(imageId: string): Promise<void> {
 /**
  * List images
  */
-export async function listImages(
-  limit: number = 50,
-  offset: number = 0
-): Promise<ImageInfo[]> {
+export async function listImages(limit: number = 50, offset: number = 0): Promise<ImageInfo[]> {
   // Org is sent via cookie automatically (credentials: "include")
   const response = await fetch(
     `${getApiBaseUrl()}/v1/images?limit=${limit}&offset=${offset}`,
-    { credentials: "include" } // Include cookies for auth (access_token, everruns_org)
+    { credentials: "include" }, // Include cookies for auth (access_token, everruns_org)
   );
 
   if (!response.ok) {
