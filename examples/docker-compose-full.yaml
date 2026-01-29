@@ -62,12 +62,12 @@ services:
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       postgres:
         condition: service_healthy
       jaeger:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/app/everruns-server", "--version"]
       interval: 10s
@@ -84,7 +84,7 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -96,7 +96,7 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -108,7 +108,7 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -155,6 +155,12 @@ services:
     expose:
       - "4317"  # OTLP gRPC
       - "4318"  # OTLP HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 4318 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
 # ==========================================================================
 # Configs (inline configuration files)
