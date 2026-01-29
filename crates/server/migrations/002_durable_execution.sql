@@ -116,9 +116,14 @@ CREATE INDEX idx_durable_task_queue_pending
     ON durable_task_queue(priority DESC, visible_at, activity_type)
     WHERE status = 'pending';
 
--- For heartbeat monitoring
+-- For heartbeat monitoring (worker lookup)
 CREATE INDEX idx_durable_task_queue_claimed
     ON durable_task_queue(claimed_by, heartbeat_at)
+    WHERE status = 'claimed';
+
+-- For stale task reclaiming (heartbeat_at range scan)
+CREATE INDEX idx_durable_task_queue_stale_reclaim
+    ON durable_task_queue(heartbeat_at)
     WHERE status = 'claimed';
 
 -- For workflow-level queries
