@@ -7,9 +7,8 @@ start tag="latest":
     set -euo pipefail
     # Check if local docker compose containers are running (not from example compose)
     # We check the com.docker.compose.project label to distinguish local vs example containers
-    local_postgres=$(docker ps --filter "name=^everruns-postgres$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
-    local_jaeger=$(docker ps --filter "name=^everruns-jaeger$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
-    if [[ -n "$local_postgres" || -n "$local_jaeger" ]]; then
+    local_postgres=$(docker ps --filter "name=^everruns-postgres$" --filter "label=com.docker.compose.project=local" --format '{{.Names}}' 2>/dev/null || true)
+    if [[ -n "$local_postgres" ]]; then
         echo "❌ Local docker compose appears to be running (found containers from 'local' project)."
         echo "   Stop it first with: just stop-docker"
         exit 1
@@ -34,7 +33,6 @@ start tag="latest":
     docker compose -f docker-compose-full.yaml up -d
     echo "✅ Example full stack started!"
     echo "   - UI: http://localhost:8080"
-    echo "   - Jaeger UI: http://localhost:16686"
 
 # Stop example docker-compose-full
 stop:

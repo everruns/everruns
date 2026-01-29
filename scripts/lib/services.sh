@@ -217,7 +217,6 @@ case "$cmd" in
     fi
 
     CHILD_PIDS=()
-    JAEGER_STARTED=false
     CLEANUP_DONE=false
 
     cleanup() {
@@ -283,41 +282,18 @@ case "$cmd" in
         echo "   Start PostgreSQL or remove --no-docker flag"
         exit 1
       fi
-      export OTEL_SDK_DISABLED=true
-      echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
     elif check_postgres_ready localhost 5432 postgres; then
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
-      if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q jaeger; then
-          echo "   ℹ️  Starting Jaeger for tracing..."
-          ensure_docker_daemon || true
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
-          cd "$PROJECT_ROOT"
-        else
-          JAEGER_STARTED=true
-        fi
-      fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-      if ! docker ps 2>/dev/null | grep -q jaeger; then
-        echo "   ℹ️  Starting Jaeger for tracing..."
-        if resolve_docker_compose 2>/dev/null; then
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
-          cd "$PROJECT_ROOT"
-        fi
-      else
-        JAEGER_STARTED=true
-      fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
       if resolve_docker_compose; then
         ensure_docker_daemon || exit 1
         cd "$PROJECT_ROOT/local"
-        "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
+        "${DOCKER_COMPOSE[@]}" up -d postgres
         cd "$PROJECT_ROOT"
         sleep 3
         until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
@@ -325,18 +301,15 @@ case "$cmd" in
           sleep 1
         done
         export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-        echo "   ✅ Docker PostgreSQL and Jaeger started"
-        JAEGER_STARTED=true
+        echo "   ✅ Docker PostgreSQL started"
       else
         echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
         exit 1
       fi
     fi
 
-    if [ "$JAEGER_STARTED" = false ]; then
-      echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
-      export OTEL_SDK_DISABLED=true
-    fi
+    # Disable OpenTelemetry (no collector in local dev)
+    export OTEL_SDK_DISABLED=true
 
     # Configure LLM API keys
     echo "2️⃣  Configuring LLM API keys from environment..."
@@ -467,11 +440,6 @@ case "$cmd" in
     fi
     if [ "$NO_UI" = false ]; then
       echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
-    fi
-    if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:16686"
-    elif [ "$NO_DOCKER" = false ]; then
-      echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
     echo ""
     if [ "$NO_WATCH" = false ]; then

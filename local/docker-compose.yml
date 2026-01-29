@@ -16,16 +16,5 @@ services:
       timeout: 5s
       retries: 5
 
-  jaeger:
-    image: jaegertracing/jaeger:2.4.0
-    container_name: everruns-jaeger
-    ports:
-      # OTLP gRPC receiver
-      - "4317:4317"
-      # OTLP HTTP receiver
-      - "4318:4318"
-      # Jaeger UI
-      - "16686:16686"
-
 volumes:
   postgres_data:

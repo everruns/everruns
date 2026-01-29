@@ -55,7 +55,6 @@ This starts:
 - 3 worker instances
 - Next.js UI
 - Caddy reverse proxy
-- Jaeger tracing
 
 ### 5. Access the Platform
 
@@ -64,7 +63,6 @@ This starts:
 | **Web UI** | http://localhost:8080 |
 | **Swagger API Docs** | http://localhost:8080/swagger-ui/ |
 | **Health Check** | http://localhost:8080/health |
-| **Jaeger Tracing** | http://localhost:16686 |
 
 ## Configuration
 
@@ -125,7 +123,7 @@ docker compose logs -f worker-1
 
 ### Distributed Tracing
 
-Jaeger UI is available at http://localhost:16686 for viewing request traces across services.
+Everruns supports OpenTelemetry tracing. Configure `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces to your preferred backend (Jaeger, Grafana Tempo, Datadog, etc.). See [Environment Variables](/sre/environment-variables#opentelemetry-configuration) for details.
 
 ## Stopping Services
 

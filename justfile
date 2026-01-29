@@ -23,7 +23,7 @@ upload-agents:
 
 # === Docker Services ===
 
-# Start Docker services (Postgres, Jaeger)
+# Start Docker services (Postgres)
 start-docker:
     ./scripts/lib/docker.sh start
 

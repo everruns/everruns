@@ -223,17 +223,17 @@ OTLP endpoint for trace export (e.g., Jaeger, Grafana Tempo, or any OTLP-compati
 **Example:**
 
 ```bash
-# For local Jaeger
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-
-# For production Tempo
+# For Grafana Tempo
 OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4317
+
+# For local Jaeger (if running separately)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 ```
 
 **Notes:**
 - When set, traces are exported via OTLP/gRPC
-- For local development, Jaeger is included in `docker-compose.yml`
-- Without this variable, only console logging is enabled
+- Users provide their own OTLP-compatible collector (Jaeger, Tempo, Datadog, etc.)
+- Without this variable, tracing is disabled
 
 ### OTEL_SERVICE_NAME
 
@@ -295,28 +295,17 @@ OTEL_RECORD_CONTENT=true
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 
-## Local Development with Jaeger
+## Enabling Tracing
 
-The `local/docker-compose.yml` includes Jaeger for local trace visualization:
+To enable distributed tracing, set `OTEL_EXPORTER_OTLP_ENDPOINT` to point to your OTLP-compatible collector:
 
 ```bash
-# Start all services including Jaeger
-just start
-
 # Set OTLP endpoint for API and Worker
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://your-collector:4317
 
-# View traces at
-open http://localhost:16686
+# Start services
+just start-all
 ```
-
-### Jaeger Ports
-
-| Port | Description |
-|------|-------------|
-| 4317 | OTLP gRPC receiver |
-| 4318 | OTLP HTTP receiver |
-| 16686 | Jaeger UI |
 
 ### Gen-AI Trace Attributes
 

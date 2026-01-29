@@ -6,7 +6,6 @@
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
-# - Jaeger for distributed tracing (optional)
 #
 # Quick Start:
 #   1. Generate encryption key:
@@ -24,7 +23,6 @@
 #
 # Ports:
 #   - 8080: Web UI (Caddy)
-#   - 16686: Jaeger UI (optional)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
 
@@ -62,11 +60,8 @@ services:
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       postgres:
-        condition: service_healthy
-      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/app/everruns-server", "--version"]
@@ -84,7 +79,6 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -96,7 +90,6 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -108,7 +101,6 @@ services:
     environment:
       GRPC_ADDRESS: server:9001
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       server:
         condition: service_started
@@ -141,25 +133,6 @@ services:
     depends_on:
       - server
       - ui
-    restart: unless-stopped
-
-  # ==========================================================================
-  # Jaeger (distributed tracing)
-  # ==========================================================================
-  jaeger:
-    image: jaegertracing/jaeger:2.4.0
-    container_name: everruns-jaeger
-    ports:
-      - "16686:16686" # Jaeger UI
-    # OTLP ports exposed only to internal network
-    expose:
-      - "4317" # OTLP gRPC
-      - "4318" # OTLP HTTP
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4318 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
 
 # ==========================================================================
