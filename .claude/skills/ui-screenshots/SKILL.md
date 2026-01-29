@@ -7,7 +7,7 @@ description: Take UI screenshots using agent-browser and attach them as PR comme
 
 Capture UI screenshots and attach them to pull requests for visual verification.
 
-Uses [agent-browser](https://github.com/vercel-labs/agent-browser) for screenshots (fast Rust CLI with Node.js fallback). Playwright is still used for e2e tests.
+Uses [agent-browser](https://github.com/vercel-labs/agent-browser) for screenshots (fast Rust CLI with Node.js fallback).
 
 ## Prerequisites
 
@@ -60,16 +60,6 @@ agent-browser screenshot screenshot.png --full
 # Get accessibility snapshot (useful for AI agents)
 agent-browser snapshot -i -c
 ```
-
-### Running e2e Screenshot Tests
-
-The Playwright e2e tests still work for automated screenshot capture:
-
-```bash
-just e2e-screenshots
-```
-
-This captures screenshots to `apps/ui/e2e/screenshots/` (gitignored, not committed).
 
 ### Attaching Screenshots to PR
 
@@ -132,16 +122,6 @@ agent-browser session list
 Verify `CLOUDINARY_URL` is set correctly:
 - Format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`
 - Get from Cloudinary dashboard
-
-## Available Screenshots
-
-The e2e tests capture these screenshots (stored locally, not in repo):
-
-| Screenshot | Description |
-|------------|-------------|
-| `message-components-full.png` | Full page of message components showcase |
-| `message-components-messages.png` | Message rendering section |
-| `message-components-toolcalls.png` | Tool call cards section |
 
 ## Script Reference
 
