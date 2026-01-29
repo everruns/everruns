@@ -76,6 +76,7 @@ pub fn routes(state: AppState) -> Router {
         // Workers
         .route("/v1/durable/workers", get(list_workers))
         .route("/v1/durable/workers/:worker_id/drain", post(drain_worker))
+        .route("/v1/durable/workers/:worker_id/resume", post(resume_worker))
         // Workflows
         .route("/v1/durable/workflows", get(list_workflows))
         .route("/v1/durable/workflows/:workflow_id", get(get_workflow))
@@ -553,6 +554,37 @@ pub async fn drain_worker(
     let store = state.get_store()?;
     store.drain_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to drain worker: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(StatusCode::OK)
+}
+
+/// POST /v1/durable/workers/:worker_id/resume - Resume a draining worker
+#[utoipa::path(
+    post,
+    path = "/v1/durable/workers/{worker_id}/resume",
+    params(
+        ("worker_id" = String, Path, description = "Worker ID")
+    ),
+    responses(
+        (status = 200, description = "Worker resumed"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn resume_worker(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+    store.resume_worker(&worker_id).await.map_err(|e| {
+        tracing::error!("Failed to resume worker: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
