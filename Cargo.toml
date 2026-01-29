@@ -95,6 +95,9 @@ prost-types = "0.13"
 # Image processing (for thumbnail generation)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
+# Fault injection testing
+fail = "0.5"
+
 [profile.dev]
 opt-level = 0
 debug = true

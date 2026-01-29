@@ -22,6 +22,9 @@ use super::store::{
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
 
+#[cfg(feature = "failpoints")]
+use fail::fail_point;
+
 /// PostgreSQL implementation of WorkflowEventStore
 ///
 /// Uses a connection pool for efficient database access.
@@ -213,6 +216,16 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             new_sequence += 1;
         }
 
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_append_events_after_insert", |_| {
+            Err(StoreError::Database("injected: after insert".into()))
+        });
+
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_append_events_before_commit", |_| {
+            Err(StoreError::Database("injected: before commit".into()))
+        });
+
         tx.commit()
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
@@ -395,6 +408,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_claim_task_after_query", |_| {
+            Err(StoreError::Database("injected: after claim query".into()))
+        });
+
         let mut claimed = Vec::with_capacity(rows.len());
         for row in rows {
             let options_json: serde_json::Value = row.get("options");
@@ -445,6 +463,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_heartbeat_update", |_| {
+            Err(StoreError::Database("injected: heartbeat update".into()))
+        });
+
         match result {
             Some(_) => Ok(HeartbeatResponse {
                 accepted: true,
@@ -487,6 +510,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             error!("Failed to complete task: {}", e);
             StoreError::Database(e.to_string())
         })?;
+
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_complete_task_after_update", |_| {
+            Err(StoreError::Database("injected: complete task".into()))
+        });
 
         match result {
             Some(_) => {
