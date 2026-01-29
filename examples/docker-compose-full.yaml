@@ -150,11 +150,11 @@ services:
     image: jaegertracing/jaeger:2.4.0
     container_name: everruns-jaeger
     ports:
-      - "16686:16686"  # Jaeger UI
+      - "16686:16686" # Jaeger UI
     # OTLP ports exposed only to internal network
     expose:
-      - "4317"  # OTLP gRPC
-      - "4318"  # OTLP HTTP
+      - "4317" # OTLP gRPC
+      - "4318" # OTLP HTTP
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 4318 || exit 1"]
       interval: 5s
