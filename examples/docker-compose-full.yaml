@@ -52,7 +52,7 @@ services:
   # Note: Migrations are auto-applied on startup
   # ==========================================================================
   server:
-    image: ghcr.io/everruns/everruns-server:latest
+    image: ghcr.io/everruns/everruns-server:${EVERRUNS_TAG:-latest}
     container_name: everruns-server
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
@@ -79,7 +79,7 @@ services:
   # Workers (3 instances for parallel execution)
   # ==========================================================================
   worker-1:
-    image: ghcr.io/everruns/everruns-worker:latest
+    image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-1
     environment:
       GRPC_ADDRESS: server:9001
@@ -91,7 +91,7 @@ services:
     restart: unless-stopped
 
   worker-2:
-    image: ghcr.io/everruns/everruns-worker:latest
+    image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-2
     environment:
       GRPC_ADDRESS: server:9001
@@ -103,7 +103,7 @@ services:
     restart: unless-stopped
 
   worker-3:
-    image: ghcr.io/everruns/everruns-worker:latest
+    image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-3
     environment:
       GRPC_ADDRESS: server:9001
@@ -118,7 +118,7 @@ services:
   # UI (Next.js dashboard)
   # ==========================================================================
   ui:
-    image: ghcr.io/everruns/everruns-ui:latest
+    image: ghcr.io/everruns/everruns-ui:${EVERRUNS_TAG:-latest}
     container_name: everruns-ui
     environment:
       PORT: "9100"
