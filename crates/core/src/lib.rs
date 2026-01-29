@@ -57,6 +57,7 @@ pub mod message_filter;
 pub mod message_retriever;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
+pub mod openresponses_types;
 pub mod runtime_agent;
 pub mod tools;
 pub mod traits;
