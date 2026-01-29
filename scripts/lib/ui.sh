@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UI operations: dev, build, install, e2e, screenshots
+# UI operations: dev, build, install, e2e
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -59,16 +59,8 @@ case "$cmd" in
     echo "✅ E2E tests complete!"
     ;;
 
-  screenshots)
-    echo "📸 Taking UI screenshots..."
-    cd "$UI_DIR"
-    setup_playwright
-    npm run e2e:screenshots
-    echo "✅ Screenshots saved to apps/ui/e2e/screenshots/"
-    ;;
-
   *)
-    echo "Usage: $0 {dev|build|install|e2e|screenshots}"
+    echo "Usage: $0 {dev|build|install|e2e}"
     exit 1
     ;;
 esac

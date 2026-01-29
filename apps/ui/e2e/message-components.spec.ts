@@ -44,37 +44,6 @@ test.describe('Message Components', () => {
     await expect(page.getByText('Review code changes').first()).toBeVisible();
     await expect(page.getByText('Run tests').first()).toBeVisible();
   });
-
-  test('should take full page screenshot', async ({ page }) => {
-    // Wait for all content to load
-    await page.waitForLoadState('networkidle');
-
-    // Take screenshot for visual regression testing
-    await page.screenshot({
-      path: 'e2e/screenshots/message-components-full.png',
-      fullPage: true,
-    });
-  });
-
-  test('should take section screenshots', async ({ page }) => {
-    await page.waitForLoadState('networkidle');
-
-    // Screenshot of Message Rendering section
-    const messageSection = page.getByRole('heading', { name: 'Message Rendering' }).locator('..');
-    if (await messageSection.isVisible()) {
-      await messageSection.screenshot({
-        path: 'e2e/screenshots/message-components-messages.png',
-      });
-    }
-
-    // Screenshot of ToolCallCard section
-    const toolSection = page.getByRole('heading', { name: 'ToolCallCard Component' }).locator('..');
-    if (await toolSection.isVisible()) {
-      await toolSection.screenshot({
-        path: 'e2e/screenshots/message-components-toolcalls.png',
-      });
-    }
-  });
 });
 
 test.describe('Dev Index Page', () => {
