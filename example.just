@@ -39,3 +39,7 @@ reset:
 # Follow logs from example docker-compose-full
 logs *args:
     cd examples && docker compose -f docker-compose-full.yaml logs -f {{args}}
+
+# Pull latest images for example docker-compose-full
+pull:
+    cd examples && docker compose -f docker-compose-full.yaml pull
