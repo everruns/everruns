@@ -1,7 +1,8 @@
 # Example docker-compose commands
 
 # Start example docker-compose-full (checks local compose not running)
-start:
+# Optional: specify image tag (e.g., `just example start v0.1.0`)
+start tag="latest":
     #!/usr/bin/env bash
     set -euo pipefail
     # Check if local docker compose containers are running
@@ -10,6 +11,10 @@ start:
         echo "   Stop it first with: just stop-docker"
         exit 1
     fi
+
+    # Set image tag
+    export EVERRUNS_TAG="{{tag}}"
+    echo "✅ Using image tag: $EVERRUNS_TAG"
 
     # Pass through API keys from environment if set
     if [[ -n "${OPENAI_API_KEY:-}" ]]; then
@@ -41,5 +46,6 @@ logs *args:
     cd examples && docker compose -f docker-compose-full.yaml logs -f {{args}}
 
 # Pull latest images for example docker-compose-full
-pull:
-    cd examples && docker compose -f docker-compose-full.yaml pull
+# Optional: specify image tag (e.g., `just example pull v0.1.0`)
+pull tag="latest":
+    EVERRUNS_TAG={{tag}} && cd examples && docker compose -f docker-compose-full.yaml pull
