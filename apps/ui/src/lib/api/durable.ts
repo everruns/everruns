@@ -58,6 +58,10 @@ export async function drainWorker(workerId: string): Promise<void> {
   await api.post(`/v1/durable/workers/${encodeURIComponent(workerId)}/drain`);
 }
 
+export async function resumeWorker(workerId: string): Promise<void> {
+  await api.post(`/v1/durable/workers/${encodeURIComponent(workerId)}/resume`);
+}
+
 // ============================================
 // Workflows
 // ============================================

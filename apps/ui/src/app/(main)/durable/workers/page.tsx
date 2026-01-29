@@ -19,7 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useWorkers, useDrainWorker } from "@/hooks";
+import { useWorkers, useDrainWorker, useResumeWorker } from "@/hooks";
 import type { DurableWorker, WorkerStatus } from "@/lib/api/types";
 import {
   Server,
@@ -28,6 +28,7 @@ import {
   Clock,
   RefreshCw,
   Pause,
+  Play,
   CheckCircle,
 } from "lucide-react";
 
@@ -89,7 +90,15 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
-function WorkerRow({ worker, onDrain }: { worker: DurableWorker; onDrain: (id: string) => void }) {
+function WorkerRow({
+  worker,
+  onDrain,
+  onResume,
+}: {
+  worker: DurableWorker;
+  onDrain: (id: string) => void;
+  onResume: (id: string) => void;
+}) {
   const loadPercentage = worker.max_concurrency > 0
     ? (worker.current_load / worker.max_concurrency) * 100
     : 0;
@@ -198,6 +207,16 @@ function WorkerRow({ worker, onDrain }: { worker: DurableWorker; onDrain: (id: s
             Drain
           </Button>
         )}
+        {worker.status === "draining" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onResume(worker.id)}
+          >
+            <Play className="h-3 w-3 mr-1" />
+            Resume
+          </Button>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -206,6 +225,7 @@ function WorkerRow({ worker, onDrain }: { worker: DurableWorker; onDrain: (id: s
 export default function WorkersPage() {
   const { data, isLoading, error, refetch } = useWorkers();
   const drainMutation = useDrainWorker();
+  const resumeMutation = useResumeWorker();
 
   if (isLoading) {
     return (
@@ -288,6 +308,10 @@ export default function WorkersPage() {
     }
   };
 
+  const handleResume = (workerId: string) => {
+    resumeMutation.mutate(workerId);
+  };
+
   return (
     <>
       <Header title="Workers" />
@@ -346,6 +370,7 @@ export default function WorkersPage() {
                         key={worker.id}
                         worker={worker}
                         onDrain={handleDrain}
+                        onResume={handleResume}
                       />
                     ))}
                   </TableBody>

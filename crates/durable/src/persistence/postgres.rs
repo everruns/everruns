@@ -833,12 +833,17 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         current_load: usize,
         accepting_tasks: bool,
     ) -> Result<(), StoreError> {
+        // Only update accepting_tasks if worker is NOT draining.
+        // When draining, we preserve accepting_tasks = false set by drain_worker.
         sqlx::query(
             r#"
             UPDATE durable_workers
             SET last_heartbeat_at = NOW(),
                 current_load = $2,
-                accepting_tasks = $3
+                accepting_tasks = CASE
+                    WHEN status = 'draining' THEN false
+                    ELSE $3
+                END
             WHERE id = $1
             "#,
         )
@@ -1521,6 +1526,28 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         })?;
 
         debug!(worker_id, "drained worker");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn resume_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        sqlx::query(
+            r#"
+            UPDATE durable_workers
+            SET status = 'active',
+                accepting_tasks = true
+            WHERE id = $1 AND status = 'draining'
+            "#,
+        )
+        .bind(worker_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to resume worker: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        debug!(worker_id, "resumed worker");
         Ok(())
     }
 

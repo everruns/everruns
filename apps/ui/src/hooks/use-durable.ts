@@ -7,6 +7,7 @@ import {
   getDurableHealth,
   listWorkers,
   drainWorker,
+  resumeWorker,
   listWorkflows,
   getWorkflow,
   getWorkflowEvents,
@@ -299,6 +300,19 @@ export function useDrainWorker() {
 
   return useMutation({
     mutationFn: (workerId: string) => drainWorker(workerId),
+    onSuccess: () => {
+      // Invalidate to trigger immediate refetch; SSE will update shortly
+      queryClient.invalidateQueries({ queryKey: ["durable", "workers"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "health"] });
+    },
+  });
+}
+
+export function useResumeWorker() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (workerId: string) => resumeWorker(workerId),
     onSuccess: () => {
       // Invalidate to trigger immediate refetch; SSE will update shortly
       queryClient.invalidateQueries({ queryKey: ["durable", "workers"] });

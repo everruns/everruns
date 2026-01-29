@@ -580,6 +580,11 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Resume a draining worker (set status back to active, start accepting new tasks)
+    async fn resume_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
     /// Get system health summary
     async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
         Ok(SystemHealth {
