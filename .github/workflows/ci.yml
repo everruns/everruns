@@ -73,7 +73,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
-    name: Unit Tests
+    name: Unit & Integration Tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -94,6 +94,7 @@ jobs:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
 
     steps:
       - uses: actions/checkout@v4
@@ -133,6 +134,18 @@ jobs:
 
       - name: Run unit tests
         run: cargo test --all-features --lib --bins
+
+      - name: Run API integration tests (in-process)
+        run: cargo test -p everruns-server --test api_integration_test -- --test-threads=1
+
+      - name: Run repository integration tests
+        run: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+
+      - name: Run durable repository tests
+        run: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+
+      - name: Run durable SQL tests
+        run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
 
   build:
     name: Build Check
