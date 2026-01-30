@@ -748,6 +748,144 @@ async fn test_worker_registration() {
         .ok();
 }
 
+/// Test that draining workers cannot claim tasks
+///
+/// When a worker is marked as draining, it should not be able to claim
+/// new tasks even if there are pending tasks matching its activity types.
+#[tokio::test]
+async fn test_draining_worker_cannot_claim_tasks() {
+    let store = create_test_store().await;
+    let worker_id = format!("test-draining-worker-{}", Uuid::now_v7());
+    let workflow_id = Uuid::now_v7();
+
+    // Register an active worker
+    store
+        .register_worker(WorkerInfo {
+            id: worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["draining_test_task".to_string()],
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+
+    // Create workflow and enqueue a task
+    store
+        .create_workflow(workflow_id, "draining_test", json!({}), None)
+        .await
+        .unwrap();
+
+    store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "step".to_string(),
+            activity_type: "draining_test_task".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Worker can claim tasks while active
+    let active_claim = store
+        .claim_task(&worker_id, &["draining_test_task".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(active_claim.len(), 1, "Active worker should claim tasks");
+
+    // Complete the task so we can test draining with a new task
+    store
+        .complete_task(active_claim[0].id, &worker_id, json!({}))
+        .await
+        .unwrap();
+
+    // Enqueue another task
+    store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "step-2".to_string(),
+            activity_type: "draining_test_task".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Drain the worker
+    store.drain_worker(&worker_id).await.unwrap();
+
+    // Draining worker should NOT be able to claim new tasks
+    let draining_claim = store
+        .claim_task(&worker_id, &["draining_test_task".to_string()], 1)
+        .await
+        .unwrap();
+    assert!(
+        draining_claim.is_empty(),
+        "Draining worker should NOT claim new tasks, but claimed {} tasks",
+        draining_claim.len()
+    );
+
+    // Register another active worker to verify task is still claimable
+    let other_worker_id = format!("test-active-worker-{}", Uuid::now_v7());
+    store
+        .register_worker(WorkerInfo {
+            id: other_worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["draining_test_task".to_string()],
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+
+    // Active worker should be able to claim the task
+    let other_claim = store
+        .claim_task(&other_worker_id, &["draining_test_task".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        other_claim.len(),
+        1,
+        "Active worker should claim the task that draining worker couldn't"
+    );
+
+    // Cleanup
+    cleanup_workflow(&store, workflow_id).await;
+    sqlx::query("DELETE FROM durable_workers WHERE id = $1")
+        .bind(&worker_id)
+        .execute(store.pool())
+        .await
+        .ok();
+    sqlx::query("DELETE FROM durable_workers WHERE id = $1")
+        .bind(&other_worker_id)
+        .execute(store.pool())
+        .await
+        .ok();
+}
+
 /// Test that avg_task_duration_ms is properly calculated as FLOAT8 in SQL
 /// This test verifies the fix for the "mismatched types; Rust type `f64` is not
 /// compatible with SQL type `NUMERIC`" error that occurred when AVG() returned

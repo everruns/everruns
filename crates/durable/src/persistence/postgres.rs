@@ -369,20 +369,25 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         // Use SKIP LOCKED for efficient concurrent claiming
         // This query:
-        // 1. Finds pending tasks matching activity types
-        // 2. Orders by priority (desc) then visibility time
-        // 3. Limits to max_tasks
-        // 4. Uses SKIP LOCKED to avoid contention
-        // 5. Updates status and claiming info in one atomic operation
+        // 1. Verifies worker is not draining (early exit if draining)
+        // 2. Finds pending tasks matching activity types
+        // 3. Orders by priority (desc) then visibility time
+        // 4. Limits to max_tasks
+        // 5. Uses SKIP LOCKED to avoid contention
+        // 6. Updates status and claiming info in one atomic operation
         let rows = sqlx::query(
             r#"
-            WITH claimable AS (
-                SELECT id
-                FROM durable_task_queue
-                WHERE status = 'pending'
-                  AND activity_type = ANY($1)
-                  AND visible_at <= NOW()
-                ORDER BY priority DESC, visible_at
+            WITH worker_check AS (
+                SELECT 1 FROM durable_workers
+                WHERE id = $3 AND status != 'draining'
+            ),
+            claimable AS (
+                SELECT tq.id
+                FROM durable_task_queue tq, worker_check
+                WHERE tq.status = 'pending'
+                  AND tq.activity_type = ANY($1)
+                  AND tq.visible_at <= NOW()
+                ORDER BY tq.priority DESC, tq.visible_at
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
             )
