@@ -98,7 +98,13 @@ async fn test_list_workflows_empty() {
     let store = create_test_store().await;
 
     let workflows = store
-        .list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 10 })
+        .list_workflows(
+            WorkflowFilter::default(),
+            Pagination {
+                offset: 0,
+                limit: 10,
+            },
+        )
         .await
         .unwrap();
 
@@ -113,7 +119,12 @@ async fn test_list_workflows_with_filter() {
 
     // Create workflow
     store
-        .create_workflow(workflow_id, "list_filter_test", json!({"key": "value"}), None)
+        .create_workflow(
+            workflow_id,
+            "list_filter_test",
+            json!({"key": "value"}),
+            None,
+        )
         .await
         .unwrap();
 
@@ -124,7 +135,10 @@ async fn test_list_workflows_with_filter() {
                 status: Some(WorkflowStatus::Pending),
                 workflow_type: None,
             },
-            Pagination { offset: 0, limit: 100 },
+            Pagination {
+                offset: 0,
+                limit: 100,
+            },
         )
         .await
         .unwrap();
@@ -137,7 +151,10 @@ async fn test_list_workflows_with_filter() {
                 status: None,
                 workflow_type: Some("list_filter_test".to_string()),
             },
-            Pagination { offset: 0, limit: 100 },
+            Pagination {
+                offset: 0,
+                limit: 100,
+            },
         )
         .await
         .unwrap();
@@ -150,7 +167,10 @@ async fn test_list_workflows_with_filter() {
                 status: Some(WorkflowStatus::Pending),
                 workflow_type: Some("list_filter_test".to_string()),
             },
-            Pagination { offset: 0, limit: 100 },
+            Pagination {
+                offset: 0,
+                limit: 100,
+            },
         )
         .await
         .unwrap();
@@ -174,13 +194,25 @@ async fn test_list_workflows_pagination() {
 
     // Test pagination
     let page1 = store
-        .list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 2 })
+        .list_workflows(
+            WorkflowFilter::default(),
+            Pagination {
+                offset: 0,
+                limit: 2,
+            },
+        )
         .await
         .unwrap();
     assert_eq!(page1.len(), 2);
 
     let page2 = store
-        .list_workflows(WorkflowFilter::default(), Pagination { offset: 2, limit: 2 })
+        .list_workflows(
+            WorkflowFilter::default(),
+            Pagination {
+                offset: 2,
+                limit: 2,
+            },
+        )
         .await
         .unwrap();
     assert_eq!(page2.len(), 2);
@@ -307,7 +339,13 @@ async fn test_list_tasks_empty() {
     let store = create_test_store().await;
 
     let tasks = store
-        .list_tasks(TaskFilter::default(), Pagination { offset: 0, limit: 10 })
+        .list_tasks(
+            TaskFilter::default(),
+            Pagination {
+                offset: 0,
+                limit: 10,
+            },
+        )
         .await
         .unwrap();
 
@@ -344,7 +382,10 @@ async fn test_list_tasks_with_filter() {
                 activity_type: None,
                 workflow_id: None,
             },
-            Pagination { offset: 0, limit: 100 },
+            Pagination {
+                offset: 0,
+                limit: 100,
+            },
         )
         .await
         .unwrap();
@@ -358,7 +399,10 @@ async fn test_list_tasks_with_filter() {
                 activity_type: Some("filterable_activity".to_string()),
                 workflow_id: None,
             },
-            Pagination { offset: 0, limit: 100 },
+            Pagination {
+                offset: 0,
+                limit: 100,
+            },
         )
         .await
         .unwrap();
@@ -384,7 +428,10 @@ async fn test_circuit_breaker_lifecycle() {
     };
 
     // Create circuit breaker
-    store.create_circuit_breaker(&cb_key, &config).await.unwrap();
+    store
+        .create_circuit_breaker(&cb_key, &config)
+        .await
+        .unwrap();
 
     // Get circuit breaker
     let cb = store.get_circuit_breaker(&cb_key).await.unwrap();
@@ -423,7 +470,10 @@ async fn test_list_circuit_breakers() {
         window_size: Duration::from_secs(60),
     };
 
-    store.create_circuit_breaker(&cb_key, &config).await.unwrap();
+    store
+        .create_circuit_breaker(&cb_key, &config)
+        .await
+        .unwrap();
 
     let breakers = store.list_circuit_breakers().await.unwrap();
     assert!(breakers.iter().any(|cb| cb.key == cb_key));
@@ -443,7 +493,10 @@ async fn test_force_open_circuit_breaker() {
         window_size: Duration::from_secs(60),
     };
 
-    store.create_circuit_breaker(&cb_key, &config).await.unwrap();
+    store
+        .create_circuit_breaker(&cb_key, &config)
+        .await
+        .unwrap();
 
     // Force open
     store.force_open_circuit_breaker(&cb_key).await.unwrap();
@@ -466,7 +519,10 @@ async fn test_force_close_circuit_breaker() {
         window_size: Duration::from_secs(60),
     };
 
-    store.create_circuit_breaker(&cb_key, &config).await.unwrap();
+    store
+        .create_circuit_breaker(&cb_key, &config)
+        .await
+        .unwrap();
 
     // Force open first
     store.force_open_circuit_breaker(&cb_key).await.unwrap();
