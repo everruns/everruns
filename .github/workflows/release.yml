@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.5.0)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,8 +17,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Only run if commit message matches release pattern
-    if: ${{ startsWith(github.event.head_commit.message, 'chore(release): prepare v') }}
+    # Run if commit message matches release pattern OR manual trigger
+    if: startsWith(github.event.head_commit.message, 'chore(release): prepare v') || github.event_name == 'workflow_dispatch'
 
     permissions:
       contents: write
@@ -23,13 +29,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version from commit message
+      - name: Extract version from commit message or input
         id: version
         run: |
-          # Extract version from commit message like "chore(release): prepare v0.4.0"
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+')
+          # Use input version if manual trigger, otherwise extract from commit message
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract version from commit message like "chore(release): prepare v0.4.0"
+            VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+')
+          fi
           if [ -z "$VERSION" ]; then
-            echo "::error::Could not extract version from commit message"
+            echo "::error::Could not extract version from commit message or input"
             exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
