@@ -75,7 +75,7 @@ argon2 = "0.5"
 jsonwebtoken = "9.3"
 sha2 = "0.10"
 hex = "0.4"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-native-roots"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 eventsource-stream = "0.2"
@@ -84,13 +84,15 @@ time = "0.3"
 parking_lot = "0.12"
 
 # gRPC (tonic)
-tonic = "0.12"
-tonic-build = "0.12"
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-build = "0.14"
+tonic-prost-build = "0.14"
 
 # Protocol Buffers (used by tonic/gRPC)
-prost = "0.13"
-prost-build = "0.13"
-prost-types = "0.13"
+prost = "0.14"
+prost-build = "0.14"
+prost-types = "0.14"
 
 # Image processing (for thumbnail generation)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }

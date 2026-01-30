@@ -33,8 +33,8 @@ impl EnvironmentInfo {
     /// Detect environment information automatically
     pub fn detect() -> Self {
         let system = System::new_with_specifics(
-            RefreshKind::new()
-                .with_cpu(CpuRefreshKind::new())
+            RefreshKind::nothing()
+                .with_cpu(CpuRefreshKind::nothing())
                 .with_memory(MemoryRefreshKind::everything()),
         );
 

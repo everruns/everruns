@@ -63,7 +63,7 @@ sqlx = { workspace = true, optional = true }
 
 # OpenAI Protocol provider
 # Note: We need "default" features for system proxy detection from environment variables
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-native-roots"] }
+reqwest = { version = "0.13", features = ["json", "stream", "rustls-native-certs"] }
 eventsource-stream = "0.2"
 
 # LLM simulation for testing
