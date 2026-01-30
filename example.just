@@ -48,4 +48,4 @@ logs *args:
 # Pull latest images for example docker-compose-full
 # Optional: specify image tag (e.g., `just example pull v0.1.0`)
 pull tag="latest":
-    EVERRUNS_TAG={{tag}} && cd examples && docker compose -f docker-compose-full.yaml pull
+    export EVERRUNS_TAG={{tag}} && cd examples && docker compose -f docker-compose-full.yaml pull
