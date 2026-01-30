@@ -5,9 +5,12 @@
 start tag="latest":
     #!/usr/bin/env bash
     set -euo pipefail
-    # Check if local docker compose containers are running
-    if docker ps --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null | grep -q '^everruns-postgres$\|^everruns-jaeger$'; then
-        echo "❌ Local docker compose appears to be running (found everruns-postgres or everruns-jaeger)."
+    # Check if local docker compose containers are running (not from example compose)
+    # We check the com.docker.compose.project label to distinguish local vs example containers
+    local_postgres=$(docker ps --filter "name=^everruns-postgres$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
+    local_jaeger=$(docker ps --filter "name=^everruns-jaeger$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
+    if [[ -n "$local_postgres" || -n "$local_jaeger" ]]; then
+        echo "❌ Local docker compose appears to be running (found containers from 'local' project)."
         echo "   Stop it first with: just stop-docker"
         exit 1
     fi
