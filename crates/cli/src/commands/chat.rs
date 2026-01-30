@@ -1,72 +1,21 @@
 // Chat command - send message and stream response
 
-use crate::client::Client;
 use crate::output::OutputFormat;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use everruns_sdk::Everruns;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
-/// Request to create a message
-#[derive(Debug, Serialize)]
-struct CreateMessageRequest {
-    message: InputMessage,
-}
-
-#[derive(Debug, Serialize)]
-struct InputMessage {
-    role: String,
-    content: Vec<InputContentPart>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type")]
-enum InputContentPart {
-    #[serde(rename = "text")]
-    Text { text: String },
-}
-
-/// Event from API
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Event {
-    id: String,
-    #[serde(rename = "type")]
-    event_type: String,
-    data: serde_json::Value,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListResponse<T> {
-    data: Vec<T>,
-}
-
-#[allow(clippy::too_many_arguments)]
 pub async fn run(
-    client: &Client,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     message: String,
-    session_id: Uuid,
-    _agent_id: Option<Uuid>,
+    session_id: String,
     timeout_secs: u64,
     no_stream: bool,
 ) -> Result<()> {
     // Create the message
-    let request = CreateMessageRequest {
-        message: InputMessage {
-            role: "user".to_string(),
-            content: vec![InputContentPart::Text {
-                text: message.clone(),
-            }],
-        },
-    };
-
-    let _: serde_json::Value = client
-        .post(
-            &format!("/v1/sessions/ses_{}/messages", session_id.as_hyphenated()),
-            &request,
-        )
-        .await?;
+    client.messages().create(&session_id, &message).await?;
 
     if !quiet && output.is_text() {
         println!("You: {}\n", message);
@@ -91,19 +40,22 @@ pub async fn run(
             anyhow::bail!("Timeout waiting for response");
         }
 
-        // Build URL with since_id parameter
-        let url = match &last_event_id {
-            Some(id) => format!(
-                "/v1/sessions/ses_{}/events?since_id={}",
-                session_id.as_hyphenated(),
-                id
-            ),
-            None => format!("/v1/sessions/ses_{}/events", session_id.as_hyphenated()),
+        // Fetch events
+        let response = client.events().list(&session_id).await?;
+
+        // Filter events since last seen
+        let events: Vec<_> = if let Some(ref last_id) = last_event_id {
+            response
+                .data
+                .into_iter()
+                .skip_while(|e| &e.id != last_id)
+                .skip(1) // skip the last seen event itself
+                .collect()
+        } else {
+            response.data
         };
 
-        let response: ListResponse<Event> = client.get(&url).await?;
-
-        for event in response.data {
+        for event in events {
             last_event_id = Some(event.id.clone());
 
             if output.is_text() {
@@ -144,8 +96,15 @@ pub async fn run(
                     anyhow::bail!("Turn failed: {}", error);
                 }
             } else {
-                // JSON/YAML output: print each event
-                output.print_value(&event);
+                // JSON/YAML output: print each event as JSON
+                let event_json = serde_json::json!({
+                    "id": event.id,
+                    "type": event.event_type,
+                    "ts": event.ts,
+                    "session_id": event.session_id,
+                    "data": event.data,
+                });
+                output.print_value(&event_json);
 
                 if event.event_type == "turn.completed" {
                     return Ok(());

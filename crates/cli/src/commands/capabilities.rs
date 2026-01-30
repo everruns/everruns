@@ -1,6 +1,8 @@
 // Capabilities listing command
+//
+// Note: Capabilities endpoint is not yet supported by the SDK,
+// so we use reqwest directly here.
 
-use crate::client::Client;
 use crate::output::{OutputFormat, print_table_header, print_table_row};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -23,8 +25,22 @@ struct ListResponse<T> {
     data: Vec<T>,
 }
 
-pub async fn run(client: &Client, output: OutputFormat, status_filter: &str) -> Result<()> {
-    let response: ListResponse<CapabilityInfo> = client.get("/v1/capabilities").await?;
+pub async fn run(
+    api_url: &str,
+    api_key: &str,
+    output: OutputFormat,
+    status_filter: &str,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/v1/capabilities", api_url.trim_end_matches('/'));
+
+    let response: ListResponse<CapabilityInfo> = client
+        .get(&url)
+        .header("Authorization", api_key)
+        .send()
+        .await?
+        .json()
+        .await?;
 
     // Filter by status
     let filtered: Vec<&CapabilityInfo> = response
@@ -58,8 +74,7 @@ pub async fn run(client: &Client, output: OutputFormat, status_filter: &str) -> 
         }
     } else {
         // For JSON/YAML output, return the filtered list
-        let output_data: Vec<&CapabilityInfo> = filtered;
-        output.print_value(&serde_json::json!({ "data": output_data, "total": output_data.len() }));
+        output.print_value(&serde_json::json!({ "data": filtered, "total": filtered.len() }));
     }
 
     Ok(())

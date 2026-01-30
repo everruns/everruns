@@ -1,11 +1,10 @@
 // Agent management commands
 
-use crate::client::{Client, ClientError};
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use everruns_sdk::{CreateAgentRequest, Everruns};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Subcommand)]
 pub enum AgentsCommand {
@@ -27,17 +26,13 @@ pub enum AgentsCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Default model ID
+        /// Default model ID (e.g. mod_xxx)
         #[arg(long)]
-        model: Option<Uuid>,
+        model: Option<String>,
 
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-
-        /// Capability IDs (repeatable)
-        #[arg(long, short)]
-        capability: Vec<String>,
     },
 
     /// List all agents
@@ -45,118 +40,26 @@ pub enum AgentsCommand {
 
     /// Get agent by ID
     Get {
-        /// Agent ID
-        agent_id: Uuid,
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
     },
 
     /// Archive an agent (soft delete)
     Delete {
-        /// Agent ID
-        agent_id: Uuid,
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
     },
 }
 
 /// Agent definition from YAML/JSON file
-/// Capability entry - supports both simple string and object formats for file parsing
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum AgentFileCapability {
-    /// Simple string format (legacy)
-    Simple(String),
-    /// Object format with ref and config
-    WithConfig {
-        #[serde(rename = "ref")]
-        capability_ref: String,
-        #[serde(default)]
-        config: serde_json::Value,
-    },
-}
-
-impl AgentFileCapability {
-    fn to_api_format(&self) -> CapabilityConfig {
-        match self {
-            AgentFileCapability::Simple(id) => CapabilityConfig {
-                capability_ref: id.clone(),
-                config: serde_json::json!({}),
-            },
-            AgentFileCapability::WithConfig {
-                capability_ref,
-                config,
-            } => CapabilityConfig {
-                capability_ref: capability_ref.clone(),
-                config: config.clone(),
-            },
-        }
-    }
-}
-
-/// Capability config for API requests
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CapabilityConfig {
-    #[serde(rename = "ref")]
-    pub capability_ref: String,
-    #[serde(default)]
-    pub config: serde_json::Value,
-}
-
-impl CapabilityConfig {
-    fn new(id: &str) -> Self {
-        Self {
-            capability_ref: id.to_string(),
-            config: serde_json::json!({}),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentFile {
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
-    pub default_model_id: Option<Uuid>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub capabilities: Vec<AgentFileCapability>,
-}
-
-/// Request to create an agent
-#[derive(Debug, Serialize)]
-struct CreateAgentRequest {
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    system_prompt: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    default_model_id: Option<Uuid>,
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(default)]
-    capabilities: Vec<CapabilityConfig>,
-}
-
-/// Agent response from API
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Agent {
-    pub id: String,
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    pub system_prompt: String,
-    #[serde(default)]
     pub default_model_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    #[serde(default)]
-    pub capabilities: Vec<CapabilityConfig>,
-    pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ListResponse<T> {
-    data: Vec<T>,
 }
 
 /// Parse markdown file with YAML front matter.
@@ -164,8 +67,6 @@ struct ListResponse<T> {
 /// ```markdown
 /// ---
 /// name: "agent-name"
-/// capabilities:
-///   - current_time
 /// ---
 /// System prompt goes here as the body.
 /// ```
@@ -198,7 +99,7 @@ fn parse_markdown_frontmatter(content: &str) -> Result<AgentFile> {
 
 pub async fn run(
     command: AgentsCommand,
-    client: &Client,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -210,7 +111,6 @@ pub async fn run(
             description,
             model,
             tag,
-            capability,
         } => {
             create(
                 client,
@@ -222,7 +122,6 @@ pub async fn run(
                 description,
                 model,
                 tag,
-                capability,
             )
             .await
         }
@@ -234,16 +133,15 @@ pub async fn run(
 
 #[allow(clippy::too_many_arguments)]
 async fn create(
-    client: &Client,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     file: Option<String>,
     name: Option<String>,
     system_prompt: Option<String>,
     description: Option<String>,
-    model: Option<Uuid>,
+    model: Option<String>,
     tags: Vec<String>,
-    capabilities: Vec<String>,
 ) -> Result<()> {
     // Load from file if provided
     let file_config = if let Some(path) = file {
@@ -300,32 +198,20 @@ async fn create(
     } else {
         tags
     };
-    // Convert capabilities to API format
-    let final_capabilities: Vec<CapabilityConfig> = if capabilities.is_empty() {
-        // Use file capabilities, converting to API format
-        file_config
-            .capabilities
-            .iter()
-            .map(|c| c.to_api_format())
-            .collect()
-    } else {
-        // Use CLI capabilities (simple strings), converting to API format
-        capabilities
-            .iter()
-            .map(|c| CapabilityConfig::new(c))
-            .collect()
-    };
 
-    let request = CreateAgentRequest {
-        name: final_name,
-        description: final_description,
-        system_prompt: final_system_prompt,
-        default_model_id: final_model,
-        tags: final_tags,
-        capabilities: final_capabilities,
-    };
+    // Build the request
+    let mut req = CreateAgentRequest::new(&final_name, &final_system_prompt);
+    if let Some(desc) = final_description {
+        req = req.description(desc);
+    }
+    if let Some(model_id) = final_model {
+        req = req.default_model_id(model_id);
+    }
+    if !final_tags.is_empty() {
+        req = req.tags(final_tags);
+    }
 
-    let agent: Agent = client.post("/v1/agents", &request).await?;
+    let agent = client.agents().create_with_options(req).await?;
 
     if output.is_text() {
         if quiet {
@@ -333,14 +219,6 @@ async fn create(
         } else {
             println!("Created agent: {}", agent.id);
             print_field("Name", &agent.name);
-            if !agent.capabilities.is_empty() {
-                let cap_ids: Vec<&str> = agent
-                    .capabilities
-                    .iter()
-                    .map(|c| c.capability_ref.as_str())
-                    .collect();
-                print_field("Capabilities", &cap_ids.join(", "));
-            }
         }
     } else {
         output.print_value(&agent);
@@ -349,8 +227,8 @@ async fn create(
     Ok(())
 }
 
-async fn list(client: &Client, output: OutputFormat) -> Result<()> {
-    let response: ListResponse<Agent> = client.get("/v1/agents").await?;
+async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
+    let response = client.agents().list().await?;
 
     if output.is_text() {
         if response.data.is_empty() {
@@ -358,61 +236,50 @@ async fn list(client: &Client, output: OutputFormat) -> Result<()> {
             return Ok(());
         }
 
-        print_table_header(&[
-            ("ID", 36),
-            ("NAME", 20),
-            ("STATUS", 8),
-            ("CAPABILITIES", 30),
-        ]);
+        print_table_header(&[("ID", 36), ("NAME", 20), ("STATUS", 8)]);
 
         for agent in &response.data {
-            let caps = if agent.capabilities.is_empty() {
-                "-".to_string()
-            } else {
-                agent
-                    .capabilities
-                    .iter()
-                    .map(|c| c.capability_ref.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            print_table_row(&[
-                (&agent.id.to_string(), 36),
-                (&agent.name, 20),
-                (&agent.status, 8),
-                (&caps, 30),
-            ]);
+            let status = format!("{:?}", agent.status).to_lowercase();
+            print_table_row(&[(&agent.id, 36), (&agent.name, 20), (&status, 8)]);
         }
     } else {
-        output.print_value(&response);
+        // Convert to JSON for non-text output
+        let data: Vec<serde_json::Value> = response
+            .data
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "id": a.id,
+                    "name": a.name,
+                    "description": a.description,
+                    "system_prompt": a.system_prompt,
+                    "default_model_id": a.default_model_id,
+                    "tags": a.tags,
+                    "status": format!("{:?}", a.status).to_lowercase(),
+                    "created_at": a.created_at,
+                    "updated_at": a.updated_at,
+                })
+            })
+            .collect();
+        output.print_value(&serde_json::json!({ "data": data }));
     }
 
     Ok(())
 }
 
-async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
-    let agent: Agent = client
-        .get(&format!("/v1/agents/{}", agent_id))
+async fn get(client: &Everruns, output: OutputFormat, agent_id: String) -> Result<()> {
+    let agent = client
+        .agents()
+        .get(&agent_id)
         .await
-        .map_err(|e| match e {
-            ClientError::NotFound => anyhow::anyhow!("Agent not found: {}", agent_id),
-            e => e.into(),
-        })?;
+        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
 
     if output.is_text() {
-        print_field("ID", &agent.id.to_string());
+        print_field("ID", &agent.id);
         print_field("Name", &agent.name);
-        print_field("Status", &agent.status);
+        print_field("Status", &format!("{:?}", agent.status).to_lowercase());
         if let Some(desc) = &agent.description {
             print_field("Description", desc);
-        }
-        if !agent.capabilities.is_empty() {
-            let cap_ids: Vec<&str> = agent
-                .capabilities
-                .iter()
-                .map(|c| c.capability_ref.as_str())
-                .collect();
-            print_field("Capabilities", &cap_ids.join(", "));
         }
         if !agent.tags.is_empty() {
             print_field("Tags", &agent.tags.join(", "));
@@ -425,14 +292,17 @@ async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()
     Ok(())
 }
 
-async fn delete(client: &Client, output: OutputFormat, quiet: bool, agent_id: Uuid) -> Result<()> {
+async fn delete(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    agent_id: String,
+) -> Result<()> {
     client
-        .delete(&format!("/v1/agents/{}", agent_id))
+        .agents()
+        .delete(&agent_id)
         .await
-        .map_err(|e| match e {
-            ClientError::NotFound => anyhow::anyhow!("Agent not found: {}", agent_id),
-            e => e.into(),
-        })?;
+        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
 
     if output.is_text() && !quiet {
         println!("Archived agent: {}", agent_id);
@@ -441,4 +311,110 @@ async fn delete(client: &Client, output: OutputFormat, quiet: bool, agent_id: Uu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_markdown_frontmatter_basic() {
+        let content = r#"---
+name: "test-agent"
+description: "A test agent"
+---
+You are a helpful assistant."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("test-agent".to_string()));
+        assert_eq!(result.description, Some("A test agent".to_string()));
+        assert_eq!(
+            result.system_prompt,
+            Some("You are a helpful assistant.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_with_tags() {
+        let content = r#"---
+name: "agent"
+tags:
+  - coding
+  - rust
+---
+Help with code."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("agent".to_string()));
+        assert_eq!(result.tags, vec!["coding", "rust"]);
+        assert_eq!(result.system_prompt, Some("Help with code.".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_empty_body() {
+        let content = r#"---
+name: "agent"
+system_prompt: "From front matter"
+---
+"#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("agent".to_string()));
+        // Empty body doesn't override front matter system_prompt
+        assert_eq!(result.system_prompt, Some("From front matter".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_no_start_delimiter() {
+        let content = "name: test\n---\nBody";
+        let result = parse_markdown_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_no_end_delimiter() {
+        let content = "---\nname: test\nNo end delimiter";
+        let result = parse_markdown_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_agent_file_yaml_parse() {
+        let yaml = r#"
+name: "yaml-agent"
+description: "Parsed from YAML"
+default_model_id: "mod_123"
+tags:
+  - helper
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.name, Some("yaml-agent".to_string()));
+        assert_eq!(result.description, Some("Parsed from YAML".to_string()));
+        assert_eq!(result.default_model_id, Some("mod_123".to_string()));
+        assert_eq!(result.tags, vec!["helper"]);
+    }
+
+    #[test]
+    fn test_agent_file_json_parse() {
+        let json = r#"{
+            "name": "json-agent",
+            "system_prompt": "You help.",
+            "tags": ["fast", "smart"]
+        }"#;
+        let result: AgentFile = serde_json::from_str(json).unwrap();
+        assert_eq!(result.name, Some("json-agent".to_string()));
+        assert_eq!(result.system_prompt, Some("You help.".to_string()));
+        assert_eq!(result.tags, vec!["fast", "smart"]);
+    }
+
+    #[test]
+    fn test_agent_file_defaults() {
+        let yaml = "name: minimal";
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.name, Some("minimal".to_string()));
+        assert_eq!(result.description, None);
+        assert_eq!(result.system_prompt, None);
+        assert_eq!(result.default_model_id, None);
+        assert!(result.tags.is_empty());
+    }
 }
