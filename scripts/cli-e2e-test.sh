@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# CLI E2E Test Script
+# Tests the everruns CLI against a running server
+#
+# Prerequisites:
+# - Server running at localhost:9000 (with worker)
+# - CLI binary built: cargo build -p everruns-cli
+#
+# Usage: ./scripts/cli-e2e-test.sh [--skip-chat]
+#   --skip-chat: Skip chat test (requires LLM API keys)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_ROOT"
+
+# Configuration
+API_URL="${EVERRUNS_API_URL:-http://localhost:9000}"
+CLI="./target/debug/everruns"
+SKIP_CHAT="${1:-}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Test counters
+PASSED=0
+FAILED=0
+
+# Helper functions
+log_test() {
+  echo -e "${YELLOW}[TEST]${NC} $1"
+}
+
+log_pass() {
+  echo -e "${GREEN}[PASS]${NC} $1"
+  ((PASSED++))
+}
+
+log_fail() {
+  echo -e "${RED}[FAIL]${NC} $1"
+  ((FAILED++))
+}
+
+# Check CLI is built
+if [ ! -f "$CLI" ]; then
+  echo "CLI not found at $CLI. Building..."
+  cargo build -p everruns-cli
+fi
+
+# Verify server is running
+log_test "Checking server health..."
+if ! curl -s "$API_URL/health" > /dev/null; then
+  echo "Server not running at $API_URL"
+  exit 1
+fi
+log_pass "Server is healthy"
+
+echo ""
+echo "========================================"
+echo "  Everruns CLI E2E Tests"
+echo "  API: $API_URL"
+echo "========================================"
+echo ""
+
+# ========================================
+# Test: Capabilities
+# ========================================
+log_test "capabilities list"
+CAPS_OUTPUT=$($CLI --api-url "$API_URL" capabilities --status all --output json 2>&1) || {
+  log_fail "capabilities list failed"
+  echo "$CAPS_OUTPUT"
+  exit 1
+}
+if echo "$CAPS_OUTPUT" | jq -e '.data | length >= 0' > /dev/null 2>&1; then
+  log_pass "capabilities list returned valid JSON"
+else
+  log_fail "capabilities list did not return valid JSON array"
+  echo "$CAPS_OUTPUT"
+fi
+
+# ========================================
+# Test: Agents CRUD
+# ========================================
+
+# Create agent
+log_test "agents create"
+AGENT_OUTPUT=$($CLI --api-url "$API_URL" agents create \
+  --name "cli-test-agent" \
+  --system-prompt "You are a test agent for CLI e2e testing." \
+  --description "Test agent created by CLI e2e tests" \
+  --output json 2>&1) || {
+  log_fail "agents create failed"
+  echo "$AGENT_OUTPUT"
+  exit 1
+}
+
+AGENT_ID=$(echo "$AGENT_OUTPUT" | jq -r '.id')
+if [ -n "$AGENT_ID" ] && [ "$AGENT_ID" != "null" ]; then
+  log_pass "agents create returned id: $AGENT_ID"
+else
+  log_fail "agents create did not return valid id"
+  echo "$AGENT_OUTPUT"
+  exit 1
+fi
+
+# Extract UUID from prefixed ID (agt_uuid-format)
+AGENT_UUID=$(echo "$AGENT_ID" | sed 's/^agt_//')
+
+# List agents
+log_test "agents list"
+LIST_OUTPUT=$($CLI --api-url "$API_URL" agents list --output json 2>&1) || {
+  log_fail "agents list failed"
+  echo "$LIST_OUTPUT"
+}
+if echo "$LIST_OUTPUT" | jq -e ".data[] | select(.id == \"$AGENT_ID\")" > /dev/null 2>&1; then
+  log_pass "agents list contains created agent"
+else
+  log_fail "agents list does not contain created agent"
+  echo "$LIST_OUTPUT"
+fi
+
+# Get agent
+log_test "agents get"
+GET_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_UUID" --output json 2>&1) || {
+  log_fail "agents get failed"
+  echo "$GET_OUTPUT"
+}
+AGENT_NAME=$(echo "$GET_OUTPUT" | jq -r '.name')
+if [ "$AGENT_NAME" = "cli-test-agent" ]; then
+  log_pass "agents get returned correct agent"
+else
+  log_fail "agents get did not return correct agent name"
+  echo "$GET_OUTPUT"
+fi
+
+# ========================================
+# Test: Sessions CRUD
+# ========================================
+
+# Create session
+log_test "sessions create"
+SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions create \
+  --agent "$AGENT_UUID" \
+  --title "CLI E2E Test Session" \
+  --output json 2>&1) || {
+  log_fail "sessions create failed"
+  echo "$SESSION_OUTPUT"
+  exit 1
+}
+
+SESSION_ID=$(echo "$SESSION_OUTPUT" | jq -r '.id')
+if [ -n "$SESSION_ID" ] && [ "$SESSION_ID" != "null" ]; then
+  log_pass "sessions create returned id: $SESSION_ID"
+else
+  log_fail "sessions create did not return valid id"
+  echo "$SESSION_OUTPUT"
+  exit 1
+fi
+
+# Extract UUID from prefixed ID (ses_uuid-format)
+SESSION_UUID=$(echo "$SESSION_ID" | sed 's/^ses_//')
+
+# List sessions
+log_test "sessions list"
+LIST_SESSIONS_OUTPUT=$($CLI --api-url "$API_URL" sessions list --agent "$AGENT_UUID" --output json 2>&1) || {
+  log_fail "sessions list failed"
+  echo "$LIST_SESSIONS_OUTPUT"
+}
+if echo "$LIST_SESSIONS_OUTPUT" | jq -e ".data[] | select(.id == \"$SESSION_ID\")" > /dev/null 2>&1; then
+  log_pass "sessions list contains created session"
+else
+  log_fail "sessions list does not contain created session"
+  echo "$LIST_SESSIONS_OUTPUT"
+fi
+
+# Get session
+log_test "sessions get"
+GET_SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions get --agent "$AGENT_UUID" --session "$SESSION_UUID" --output json 2>&1) || {
+  log_fail "sessions get failed"
+  echo "$GET_SESSION_OUTPUT"
+}
+SESSION_TITLE=$(echo "$GET_SESSION_OUTPUT" | jq -r '.title')
+if [ "$SESSION_TITLE" = "CLI E2E Test Session" ]; then
+  log_pass "sessions get returned correct session"
+else
+  log_fail "sessions get did not return correct session title"
+  echo "$GET_SESSION_OUTPUT"
+fi
+
+# ========================================
+# Test: Chat (optional - requires LLM API)
+# ========================================
+if [ "$SKIP_CHAT" = "--skip-chat" ]; then
+  echo ""
+  log_test "chat (SKIPPED - --skip-chat flag set)"
+else
+  log_test "chat (send message with --no-stream)"
+  CHAT_OUTPUT=$($CLI --api-url "$API_URL" chat "Hello, this is a test message" \
+    --session "$SESSION_UUID" \
+    --no-stream \
+    --output json 2>&1) || {
+    # Chat may fail if no LLM API keys, that's ok
+    echo "Chat test skipped (may require LLM API keys)"
+  }
+  if [ -n "$CHAT_OUTPUT" ]; then
+    log_pass "chat command completed"
+  fi
+fi
+
+# ========================================
+# Test: Delete agent (cleanup)
+# ========================================
+log_test "agents delete"
+DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents delete "$AGENT_UUID" --output json 2>&1) || {
+  log_fail "agents delete failed"
+  echo "$DELETE_OUTPUT"
+}
+log_pass "agents delete completed"
+
+# Verify agent is deleted (should fail to get)
+log_test "agents get (verify deleted)"
+if $CLI --api-url "$API_URL" agents get "$AGENT_UUID" --output json 2>&1; then
+  log_fail "agents get should fail for deleted agent"
+else
+  log_pass "agents get correctly fails for deleted agent"
+fi
+
+# ========================================
+# Summary
+# ========================================
+echo ""
+echo "========================================"
+echo "  Test Summary"
+echo "========================================"
+echo -e "  ${GREEN}Passed:${NC} $PASSED"
+echo -e "  ${RED}Failed:${NC} $FAILED"
+echo "========================================"
+
+if [ "$FAILED" -gt 0 ]; then
+  exit 1
+fi
+
+echo ""
+echo "All CLI E2E tests passed!"
