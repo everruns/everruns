@@ -112,8 +112,16 @@ async fn main() -> anyhow::Result<()> {
             timeout,
             no_stream,
         } => {
-            commands::chat::run(&client, output_format, cli.quiet, message, session, timeout, no_stream)
-                .await
+            commands::chat::run(
+                &client,
+                output_format,
+                cli.quiet,
+                message,
+                session,
+                timeout,
+                no_stream,
+            )
+            .await
         }
     }
 }
@@ -148,12 +156,22 @@ mod tests {
     #[test]
     fn test_cli_parse_sessions_create() {
         let cli = Cli::try_parse_from([
-            "everruns", "sessions", "create",
-            "--agent", "agt_abc",
-            "--title", "Test Session"
-        ]).unwrap();
+            "everruns",
+            "sessions",
+            "create",
+            "--agent",
+            "agt_abc",
+            "--title",
+            "Test Session",
+        ])
+        .unwrap();
         if let Commands::Sessions { command } = cli.command {
-            if let commands::sessions::SessionsCommand::Create { agent, title, model } = command {
+            if let commands::sessions::SessionsCommand::Create {
+                agent,
+                title,
+                model,
+            } = command
+            {
                 assert_eq!(agent, "agt_abc");
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
@@ -167,12 +185,15 @@ mod tests {
 
     #[test]
     fn test_cli_parse_chat() {
-        let cli = Cli::try_parse_from([
-            "everruns", "chat",
-            "--session", "ses_xyz",
-            "Hello world"
-        ]).unwrap();
-        if let Commands::Chat { message, session, timeout, no_stream } = cli.command {
+        let cli = Cli::try_parse_from(["everruns", "chat", "--session", "ses_xyz", "Hello world"])
+            .unwrap();
+        if let Commands::Chat {
+            message,
+            session,
+            timeout,
+            no_stream,
+        } = cli.command
+        {
             assert_eq!(message, "Hello world");
             assert_eq!(session, "ses_xyz");
             assert_eq!(timeout, 300); // default
@@ -185,13 +206,23 @@ mod tests {
     #[test]
     fn test_cli_parse_chat_with_options() {
         let cli = Cli::try_parse_from([
-            "everruns", "chat",
-            "--session", "ses_xyz",
-            "--timeout", "60",
+            "everruns",
+            "chat",
+            "--session",
+            "ses_xyz",
+            "--timeout",
+            "60",
             "--no-stream",
-            "Test message"
-        ]).unwrap();
-        if let Commands::Chat { message, session, timeout, no_stream } = cli.command {
+            "Test message",
+        ])
+        .unwrap();
+        if let Commands::Chat {
+            message,
+            session,
+            timeout,
+            no_stream,
+        } = cli.command
+        {
             assert_eq!(message, "Test message");
             assert_eq!(session, "ses_xyz");
             assert_eq!(timeout, 60);

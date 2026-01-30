@@ -292,7 +292,12 @@ async fn get(client: &Everruns, output: OutputFormat, agent_id: String) -> Resul
     Ok(())
 }
 
-async fn delete(client: &Everruns, output: OutputFormat, quiet: bool, agent_id: String) -> Result<()> {
+async fn delete(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    agent_id: String,
+) -> Result<()> {
     client
         .agents()
         .delete(&agent_id)
@@ -323,7 +328,10 @@ You are a helpful assistant."#;
         let result = parse_markdown_frontmatter(content).unwrap();
         assert_eq!(result.name, Some("test-agent".to_string()));
         assert_eq!(result.description, Some("A test agent".to_string()));
-        assert_eq!(result.system_prompt, Some("You are a helpful assistant.".to_string()));
+        assert_eq!(
+            result.system_prompt,
+            Some("You are a helpful assistant.".to_string())
+        );
     }
 
     #[test]
