@@ -61,9 +61,9 @@ pub enum Commands {
         /// Message text to send
         message: String,
 
-        /// Session ID
+        /// Session ID (e.g. ses_xxx)
         #[arg(long, short)]
-        session: uuid::Uuid,
+        session: String,
 
         /// Max wait time in seconds
         #[arg(long, default_value = "300")]

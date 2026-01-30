@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Subcommand)]
 pub enum AgentsCommand {
@@ -27,9 +26,9 @@ pub enum AgentsCommand {
         #[arg(long)]
         description: Option<String>,
 
-        /// Default model ID
+        /// Default model ID (e.g. mod_xxx)
         #[arg(long)]
-        model: Option<Uuid>,
+        model: Option<String>,
 
         /// Tags (repeatable)
         #[arg(long, short)]
@@ -41,14 +40,14 @@ pub enum AgentsCommand {
 
     /// Get agent by ID
     Get {
-        /// Agent ID
-        agent_id: Uuid,
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
     },
 
     /// Archive an agent (soft delete)
     Delete {
-        /// Agent ID
-        agent_id: Uuid,
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
     },
 }
 
@@ -58,7 +57,7 @@ pub struct AgentFile {
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
-    pub default_model_id: Option<Uuid>,
+    pub default_model_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -141,7 +140,7 @@ async fn create(
     name: Option<String>,
     system_prompt: Option<String>,
     description: Option<String>,
-    model: Option<Uuid>,
+    model: Option<String>,
     tags: Vec<String>,
 ) -> Result<()> {
     // Load from file if provided
@@ -206,7 +205,7 @@ async fn create(
         req = req.description(desc);
     }
     if let Some(model_id) = final_model {
-        req = req.default_model_id(format!("mod_{}", model_id.as_hyphenated()));
+        req = req.default_model_id(model_id);
     }
     if !final_tags.is_empty() {
         req = req.tags(final_tags);
@@ -268,10 +267,10 @@ async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-async fn get(client: &Everruns, output: OutputFormat, agent_id: Uuid) -> Result<()> {
+async fn get(client: &Everruns, output: OutputFormat, agent_id: String) -> Result<()> {
     let agent = client
         .agents()
-        .get(&format!("agt_{}", agent_id.as_hyphenated()))
+        .get(&agent_id)
         .await
         .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
 
@@ -293,15 +292,10 @@ async fn get(client: &Everruns, output: OutputFormat, agent_id: Uuid) -> Result<
     Ok(())
 }
 
-async fn delete(
-    client: &Everruns,
-    output: OutputFormat,
-    quiet: bool,
-    agent_id: Uuid,
-) -> Result<()> {
+async fn delete(client: &Everruns, output: OutputFormat, quiet: bool, agent_id: String) -> Result<()> {
     client
         .agents()
-        .delete(&format!("agt_{}", agent_id.as_hyphenated()))
+        .delete(&agent_id)
         .await
         .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
 

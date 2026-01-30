@@ -1193,16 +1193,13 @@ name = "everruns-cli"
 version = "0.5.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "everruns-sdk",
  "reqwest 0.13.1",
  "serde",
  "serde_json",
  "serde_yaml",
- "thiserror 2.0.18",
  "tokio",
- "uuid",
 ]
 
 [[package]]

@@ -4,36 +4,31 @@ use crate::output::{OutputFormat, print_field, print_table_header, print_table_r
 use anyhow::Result;
 use clap::Subcommand;
 use everruns_sdk::{CreateSessionRequest, Everruns};
-use uuid::Uuid;
 
 #[derive(Subcommand)]
 pub enum SessionsCommand {
     /// Create a new session
     Create {
-        /// Agent ID
+        /// Agent ID (e.g. agt_xxx)
         #[arg(long, short)]
-        agent: Uuid,
+        agent: String,
 
         /// Session title
         #[arg(long)]
         title: Option<String>,
 
-        /// Model ID override
+        /// Model ID override (e.g. mod_xxx)
         #[arg(long)]
-        model: Option<Uuid>,
+        model: Option<String>,
     },
 
-    /// List sessions for an agent
-    List {
-        /// Agent ID (optional filter)
-        #[arg(long, short)]
-        agent: Option<Uuid>,
-    },
+    /// List sessions
+    List,
 
     /// Get session by ID
     Get {
-        /// Session ID
-        session: Uuid,
+        /// Session ID (e.g. ses_xxx)
+        session: String,
     },
 }
 
@@ -49,7 +44,7 @@ pub async fn run(
             title,
             model,
         } => create(client, output, quiet, agent, title, model).await,
-        SessionsCommand::List { agent } => list(client, output, agent).await,
+        SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
     }
 }
@@ -58,17 +53,16 @@ async fn create(
     client: &Everruns,
     output: OutputFormat,
     quiet: bool,
-    agent_id: Uuid,
+    agent_id: String,
     title: Option<String>,
-    model_id: Option<Uuid>,
+    model_id: Option<String>,
 ) -> Result<()> {
-    let agent_id_str = format!("agt_{}", agent_id.as_hyphenated());
-    let mut req = CreateSessionRequest::new(&agent_id_str);
+    let mut req = CreateSessionRequest::new(&agent_id);
     if let Some(t) = title {
         req = req.title(t);
     }
     if let Some(m) = model_id {
-        req = req.model_id(format!("mod_{}", m.as_hyphenated()));
+        req = req.model_id(m);
     }
 
     let session = client.sessions().create_with_options(req).await?;
@@ -89,9 +83,7 @@ async fn create(
     Ok(())
 }
 
-async fn list(client: &Everruns, output: OutputFormat, _agent_id: Option<Uuid>) -> Result<()> {
-    // SDK list doesn't support filtering by agent_id in current version
-    // TODO: Add filtering when SDK supports it
+async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
     let response = client.sessions().list().await?;
 
     if output.is_text() {
@@ -137,10 +129,10 @@ async fn list(client: &Everruns, output: OutputFormat, _agent_id: Option<Uuid>) 
     Ok(())
 }
 
-async fn get(client: &Everruns, output: OutputFormat, session_id: Uuid) -> Result<()> {
+async fn get(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
     let session = client
         .sessions()
-        .get(&format!("ses_{}", session_id.as_hyphenated()))
+        .get(&session_id)
         .await
         .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
 

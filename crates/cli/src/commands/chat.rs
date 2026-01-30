@@ -4,21 +4,18 @@ use crate::output::OutputFormat;
 use anyhow::Result;
 use everruns_sdk::Everruns;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
 pub async fn run(
     client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     message: String,
-    session_id: Uuid,
+    session_id: String,
     timeout_secs: u64,
     no_stream: bool,
 ) -> Result<()> {
-    let session_id_str = format!("ses_{}", session_id.as_hyphenated());
-
     // Create the message
-    client.messages().create(&session_id_str, &message).await?;
+    client.messages().create(&session_id, &message).await?;
 
     if !quiet && output.is_text() {
         println!("You: {}\n", message);
@@ -44,7 +41,7 @@ pub async fn run(
         }
 
         // Fetch events
-        let response = client.events().list(&session_id_str).await?;
+        let response = client.events().list(&session_id).await?;
 
         // Filter events since last seen
         let events: Vec<_> = if let Some(ref last_id) = last_event_id {
