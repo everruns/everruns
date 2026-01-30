@@ -147,6 +147,119 @@ jobs:
       - name: Run durable SQL tests
         run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
 
+  workflow-test:
+    name: Workflow Tests (Server + Worker)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      API_BASE_URL: http://localhost:3100
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-workflow-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-workflow-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+
+      - name: Cache sqlx-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
+
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
+
+      - name: Run migrations
+        run: sqlx migrate run --source crates/server/migrations
+
+      - name: Build server and worker
+        run: cargo build --release -p everruns-server -p everruns-worker
+
+      - name: Start API server
+        run: |
+          ./target/release/everruns-server > server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      - name: Start Worker
+        run: |
+          ./target/release/everruns-worker > worker.log 2>&1 &
+          echo $! > worker.pid
+          echo "Worker PID: $(cat worker.pid)"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for server to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:3100/health > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            sleep 2
+          done
+          echo "Server failed to start"
+          cat server.log
+          exit 1
+
+      - name: Run workflow tests
+        run: cargo test -p everruns-server --test workflow_test -- --test-threads=1
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+          fi
+          if [ -f worker.pid ]; then
+            kill $(cat worker.pid) 2>/dev/null || true
+          fi
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Server logs ==="
+          cat server.log 2>/dev/null || echo "No server log"
+          echo ""
+          echo "=== Worker logs ==="
+          cat worker.log 2>/dev/null || echo "No worker log"
+
   build:
     name: Build Check
     runs-on: ubuntu-latest
