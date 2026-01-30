@@ -748,6 +748,100 @@ async fn test_worker_registration() {
         .ok();
 }
 
+/// Test that avg_task_duration_ms is properly calculated as FLOAT8 in SQL
+/// This test verifies the fix for the "mismatched types; Rust type `f64` is not
+/// compatible with SQL type `NUMERIC`" error that occurred when AVG() returned
+/// a NUMERIC type but Rust expected f64.
+#[tokio::test]
+async fn test_worker_stats_avg_duration_type() {
+    let store = create_test_store().await;
+    let worker_id = format!("test-worker-stats-{}", Uuid::now_v7());
+    let workflow_id = Uuid::now_v7();
+
+    // Register worker
+    store
+        .register_worker(WorkerInfo {
+            id: worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["test_activity".to_string()],
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+
+    // Keep worker heartbeat fresh
+    store.worker_heartbeat(&worker_id, 0, true).await.unwrap();
+
+    // Create workflow for task
+    store
+        .create_workflow(workflow_id, "stats_test_workflow", json!({}), None)
+        .await
+        .unwrap();
+
+    // Create and complete a task to generate statistics
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential().with_max_attempts(3),
+        ..Default::default()
+    };
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "stats_task".to_string(),
+            activity_type: "test_activity".to_string(),
+            input: json!({}),
+            options,
+        })
+        .await
+        .unwrap();
+
+    // Claim the task
+    let activity_types = vec!["test_activity".to_string()];
+    let claimed = store
+        .claim_task(&worker_id, &activity_types, 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].id, task_id);
+
+    // Complete the task (this will update heartbeat_at, creating a duration)
+    store
+        .complete_task(task_id, &worker_id, json!({"result": "ok"}))
+        .await
+        .unwrap();
+
+    // List workers - this should not fail with type mismatch
+    // The AVG() function returns NUMERIC, but our query casts it to FLOAT8
+    let workers = store.list_workers(WorkerFilter::default()).await.unwrap();
+    let our_worker = workers.iter().find(|w| w.id == worker_id);
+    assert!(our_worker.is_some(), "Worker should be listed");
+
+    let w = our_worker.unwrap();
+    // The avg_task_duration_ms should be present since we completed a task
+    // (The actual value depends on timing between claim and complete)
+    assert_eq!(w.tasks_completed, 1);
+
+    // Cleanup
+    cleanup_workflow(&store, workflow_id).await;
+    sqlx::query("DELETE FROM durable_workers WHERE id = $1")
+        .bind(&worker_id)
+        .execute(store.pool())
+        .await
+        .ok();
+}
+
 // ============================================
 // DLQ Tests
 // ============================================
