@@ -1,10 +1,9 @@
 // Session management commands
 
-use crate::client::{Client, ClientError};
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::Result;
 use clap::Subcommand;
-use serde::{Deserialize, Serialize};
+use everruns_sdk::{CreateSessionRequest, Everruns};
 use uuid::Uuid;
 
 #[derive(Subcommand)]
@@ -22,71 +21,25 @@ pub enum SessionsCommand {
         /// Model ID override
         #[arg(long)]
         model: Option<Uuid>,
-
-        /// Tags (repeatable)
-        #[arg(long, short)]
-        tag: Vec<String>,
     },
 
     /// List sessions for an agent
     List {
-        /// Agent ID
+        /// Agent ID (optional filter)
         #[arg(long, short)]
-        agent: Uuid,
+        agent: Option<Uuid>,
     },
 
     /// Get session by ID
     Get {
-        /// Agent ID
-        #[arg(long, short)]
-        agent: Uuid,
-
         /// Session ID
-        #[arg(long, short)]
         session: Uuid,
     },
 }
 
-/// Request to create a session
-#[derive(Debug, Serialize)]
-struct CreateSessionRequest {
-    agent_id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model_id: Option<Uuid>,
-}
-
-/// Session response from API
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    pub id: String,
-    pub organization_id: String,
-    pub agent_id: String,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub model_id: Option<String>,
-    pub status: String,
-    pub created_at: String,
-    #[serde(default)]
-    pub started_at: Option<String>,
-    #[serde(default)]
-    pub finished_at: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ListResponse<T> {
-    data: Vec<T>,
-}
-
 pub async fn run(
     command: SessionsCommand,
-    client: &Client,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -95,38 +48,39 @@ pub async fn run(
             agent,
             title,
             model,
-            tag,
-        } => create(client, output, quiet, agent, title, model, tag).await,
+        } => create(client, output, quiet, agent, title, model).await,
         SessionsCommand::List { agent } => list(client, output, agent).await,
-        SessionsCommand::Get { agent, session } => get(client, output, agent, session).await,
+        SessionsCommand::Get { session } => get(client, output, session).await,
     }
 }
 
 async fn create(
-    client: &Client,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     agent_id: Uuid,
     title: Option<String>,
     model_id: Option<Uuid>,
-    tags: Vec<String>,
 ) -> Result<()> {
-    let request = CreateSessionRequest {
-        agent_id,
-        title,
-        tags,
-        model_id,
-    };
+    let agent_id_str = format!("agt_{}", agent_id.as_hyphenated());
+    let mut req = CreateSessionRequest::new(&agent_id_str);
+    if let Some(t) = title {
+        req = req.title(t);
+    }
+    if let Some(m) = model_id {
+        req = req.model_id(format!("mod_{}", m.as_hyphenated()));
+    }
 
-    let session: Session = client.post("/v1/sessions", &request).await?;
+    let session = client.sessions().create_with_options(req).await?;
 
     if output.is_text() {
         if quiet {
             println!("{}", session.id);
         } else {
             println!("Created session: {}", session.id);
-            print_field("Agent", &session.agent_id.to_string());
-            print_field("Status", &session.status);
+            print_field("Agent", &session.agent_id);
+            let status = format!("{:?}", session.status).to_lowercase();
+            print_field("Status", &status);
         }
     } else {
         output.print_value(&session);
@@ -135,13 +89,10 @@ async fn create(
     Ok(())
 }
 
-async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
-    let response: ListResponse<Session> = client
-        .get(&format!(
-            "/v1/sessions?agent_id=agt_{}",
-            agent_id.as_hyphenated()
-        ))
-        .await?;
+async fn list(client: &Everruns, output: OutputFormat, _agent_id: Option<Uuid>) -> Result<()> {
+    // SDK list doesn't support filtering by agent_id in current version
+    // TODO: Add filtering when SDK supports it
+    let response = client.sessions().list().await?;
 
     if output.is_text() {
         if response.data.is_empty() {
@@ -153,38 +104,51 @@ async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<(
 
         for session in &response.data {
             let title = session.title.as_deref().unwrap_or("-");
+            let status = format!("{:?}", session.status).to_lowercase();
             print_table_row(&[
-                (&session.id.to_string(), 36),
+                (&session.id, 36),
                 (title, 25),
-                (&session.status, 10),
+                (&status, 10),
                 (&session.created_at, 20),
             ]);
         }
     } else {
-        output.print_value(&response);
+        // Convert to JSON for non-text output
+        let data: Vec<serde_json::Value> = response
+            .data
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.id,
+                    "organization_id": s.organization_id,
+                    "agent_id": s.agent_id,
+                    "title": s.title,
+                    "tags": s.tags,
+                    "model_id": s.model_id,
+                    "status": format!("{:?}", s.status).to_lowercase(),
+                    "created_at": s.created_at,
+                    "updated_at": s.updated_at,
+                })
+            })
+            .collect();
+        output.print_value(&serde_json::json!({ "data": data }));
     }
 
     Ok(())
 }
 
-async fn get(
-    client: &Client,
-    output: OutputFormat,
-    _agent_id: Uuid,
-    session_id: Uuid,
-) -> Result<()> {
-    let session: Session = client
-        .get(&format!("/v1/sessions/ses_{}", session_id.as_hyphenated()))
+async fn get(client: &Everruns, output: OutputFormat, session_id: Uuid) -> Result<()> {
+    let session = client
+        .sessions()
+        .get(&format!("ses_{}", session_id.as_hyphenated()))
         .await
-        .map_err(|e| match e {
-            ClientError::NotFound => anyhow::anyhow!("Session not found: {}", session_id),
-            e => e.into(),
-        })?;
+        .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
 
     if output.is_text() {
-        print_field("ID", &session.id.to_string());
-        print_field("Agent", &session.agent_id.to_string());
-        print_field("Status", &session.status);
+        print_field("ID", &session.id);
+        print_field("Agent", &session.agent_id);
+        let status = format!("{:?}", session.status).to_lowercase();
+        print_field("Status", &status);
         if let Some(title) = &session.title {
             print_field("Title", title);
         }
@@ -192,12 +156,6 @@ async fn get(
             print_field("Tags", &session.tags.join(", "));
         }
         print_field("Created", &session.created_at);
-        if let Some(started) = &session.started_at {
-            print_field("Started", started);
-        }
-        if let Some(finished) = &session.finished_at {
-            print_field("Finished", finished);
-        }
     } else {
         output.print_value(&session);
     }

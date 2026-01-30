@@ -83,6 +83,9 @@ regex = "1.11"
 time = "0.3"
 parking_lot = "0.12"
 
+# Everruns SDK
+everruns-sdk = "0.1"
+
 # gRPC (tonic)
 tonic = "0.14"
 tonic-prost = "0.14"

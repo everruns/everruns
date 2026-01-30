@@ -14,7 +14,10 @@ path = "src/main.rs"
 # CLI
 clap.workspace = true
 
-# HTTP client
+# Everruns SDK
+everruns-sdk.workspace = true
+
+# HTTP client (for endpoints not yet in SDK)
 reqwest.workspace = true
 
 # Async runtime

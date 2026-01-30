@@ -2,26 +2,26 @@
 //
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json/yaml output formats for scripting.
-// Design Decision: Use reqwest for HTTP client (already in workspace).
+// Design Decision: Use everruns-sdk for API client.
 
-mod client;
 mod commands;
 mod output;
 
 use clap::{Parser, Subcommand};
+use everruns_sdk::Everruns;
 
 #[derive(Parser)]
 #[command(name = "everruns")]
 #[command(about = "Everruns CLI - Manage agents, sessions, and conversations")]
 #[command(version)]
 pub struct Cli {
+    /// API key (defaults to EVERRUNS_API_KEY env var)
+    #[arg(long, env = "EVERRUNS_API_KEY")]
+    pub api_key: Option<String>,
+
     /// API base URL
-    #[arg(
-        long,
-        env = "EVERRUNS_API_URL",
-        default_value = "https://app.everruns.com/api"
-    )]
-    pub api_url: String,
+    #[arg(long, env = "EVERRUNS_API_URL")]
+    pub api_url: Option<String>,
 
     /// Output format
     #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json", "yaml"])]
@@ -65,10 +65,6 @@ pub enum Commands {
         #[arg(long, short)]
         session: uuid::Uuid,
 
-        /// Agent ID (auto-detected from session if omitted)
-        #[arg(long, short)]
-        agent: Option<uuid::Uuid>,
-
         /// Max wait time in seconds
         #[arg(long, default_value = "300")]
         timeout: u64,
@@ -79,18 +75,33 @@ pub enum Commands {
     },
 }
 
+const DEFAULT_API_URL: &str = "https://app.everruns.com/api";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let client = client::Client::new(&cli.api_url);
     let output_format = output::OutputFormat::from_str(&cli.output);
+
+    // Resolve API key and URL
+    let api_key = cli
+        .api_key
+        .or_else(|| std::env::var("EVERRUNS_API_KEY").ok())
+        .ok_or_else(|| anyhow::anyhow!("EVERRUNS_API_KEY environment variable not set"))?;
+    let api_url = cli
+        .api_url
+        .or_else(|| std::env::var("EVERRUNS_API_URL").ok())
+        .unwrap_or_else(|| DEFAULT_API_URL.to_string());
+
+    // Build SDK client
+    let client = Everruns::with_base_url(&api_key, &api_url)?;
 
     match cli.command {
         Commands::Agents { command } => {
             commands::agents::run(command, &client, output_format, cli.quiet).await
         }
         Commands::Capabilities { status } => {
-            commands::capabilities::run(&client, output_format, &status).await
+            // Capabilities endpoint not yet in SDK, use direct HTTP
+            commands::capabilities::run(&api_url, &api_key, output_format, &status).await
         }
         Commands::Sessions { command } => {
             commands::sessions::run(command, &client, output_format, cli.quiet).await
@@ -98,21 +109,11 @@ async fn main() -> anyhow::Result<()> {
         Commands::Chat {
             message,
             session,
-            agent,
             timeout,
             no_stream,
         } => {
-            commands::chat::run(
-                &client,
-                output_format,
-                cli.quiet,
-                message,
-                session,
-                agent,
-                timeout,
-                no_stream,
-            )
-            .await
+            commands::chat::run(&client, output_format, cli.quiet, message, session, timeout, no_stream)
+                .await
         }
     }
 }
