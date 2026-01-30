@@ -89,8 +89,9 @@ just --list             # All commands
 8. Rebase on main: `git fetch origin main && git rebase origin/main`
 9. Smoke test new functionality
 10. UI screenshots for UI changes (use `.claude/skills/ui-screenshots/`)
-11. CI green before merge
-12. Resolve all PR comments
+11. Test coverage: tests must reproduce issue + verify fix, cover touched code paths
+12. CI green before merge
+13. Resolve all PR comments
 
 ### CI
 

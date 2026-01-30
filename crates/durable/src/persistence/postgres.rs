@@ -876,8 +876,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 SELECT claimed_by,
                        COUNT(*) FILTER (WHERE status = 'completed') AS tasks_completed,
                        COUNT(*) FILTER (WHERE status IN ('failed', 'dead')) AS tasks_failed,
-                       AVG(EXTRACT(EPOCH FROM (heartbeat_at - claimed_at)) * 1000)
-                           FILTER (WHERE status = 'completed' AND claimed_at IS NOT NULL AND heartbeat_at IS NOT NULL)
+                       (AVG(EXTRACT(EPOCH FROM (heartbeat_at - claimed_at)) * 1000)
+                           FILTER (WHERE status = 'completed' AND claimed_at IS NOT NULL AND heartbeat_at IS NOT NULL))::FLOAT8
                            AS avg_task_duration_ms
                 FROM durable_task_queue
                 WHERE claimed_by IS NOT NULL

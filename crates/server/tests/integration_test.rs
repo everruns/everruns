@@ -4699,3 +4699,369 @@ async fn test_events_sse_contract() {
 
     println!("SSE contract test passed!");
 }
+
+// =============================================================================
+// Durable SSE In-Process Integration Tests
+// =============================================================================
+//
+// These tests use in-process testing with tower::ServiceExt for regular endpoints.
+// For SSE endpoints (infinite streams), we spawn a TCP server and use reqwest
+// to read streaming chunks with timeout.
+
+mod durable_sse_tests {
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use everruns_durable::InMemoryWorkflowEventStore;
+    use everruns_server::api::durable;
+    use futures::StreamExt;
+    use http_body_util::BodyExt;
+    use std::sync::Arc;
+    use tokio::net::TcpListener;
+    use tower::ServiceExt;
+
+    /// Create a test router with in-memory durable store
+    fn create_test_app() -> Router {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let state = durable::AppState::new(Some(store));
+        durable::routes(state)
+    }
+
+    /// Create a test router with no durable store (simulates 503)
+    fn create_test_app_no_store() -> Router {
+        let state = durable::AppState::new(None);
+        durable::routes(state)
+    }
+
+    /// Spawn a test server and return its base URL
+    async fn spawn_test_server(app: Router) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        // Give the server a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        url
+    }
+
+    /// Test global durable SSE stream contract (/v1/durable/sse)
+    ///
+    /// Verifies:
+    /// - SSE connection establishes successfully (200 OK)
+    /// - Content-Type is text/event-stream
+    /// - First event is "connected"
+    /// - Subsequent event is "snapshot" with expected structure
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_durable_sse_global_stream() {
+        let app = create_test_app();
+        let base_url = spawn_test_server(app).await;
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/v1/durable/sse", base_url))
+            .header("Accept", "text/event-stream")
+            .send()
+            .await
+            .expect("Failed to connect to SSE");
+
+        assert_eq!(response.status(), 200);
+
+        // Verify content-type header
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .expect("Missing content-type header")
+            .to_str()
+            .unwrap();
+        assert!(
+            content_type.contains("text/event-stream"),
+            "Content-type should be text/event-stream, got: {}",
+            content_type
+        );
+
+        // Read chunks with timeout until we have enough data
+        let mut stream = response.bytes_stream();
+        let mut collected = String::new();
+
+        for _ in 0..10 {
+            match tokio::time::timeout(std::time::Duration::from_secs(2), stream.next()).await {
+                Ok(Some(Ok(chunk))) => {
+                    collected.push_str(&String::from_utf8_lossy(&chunk));
+                    // Stop when we have both events
+                    if collected.contains("event: connected")
+                        && collected.contains("event: snapshot")
+                    {
+                        break;
+                    }
+                }
+                Ok(Some(Err(e))) => panic!("Stream error: {}", e),
+                Ok(None) => break, // Stream ended
+                Err(_) => break,   // Timeout - that's OK for SSE
+            }
+        }
+
+        println!("Durable SSE received:\n{}", collected);
+
+        // Verify "connected" event
+        assert!(
+            collected.contains("event: connected"),
+            "Should receive 'connected' event"
+        );
+
+        // Verify "snapshot" event with JSON data
+        assert!(
+            collected.contains("event: snapshot"),
+            "Should receive 'snapshot' event"
+        );
+        assert!(
+            collected.contains("\"health\""),
+            "Snapshot should contain health"
+        );
+        assert!(
+            collected.contains("\"workers\""),
+            "Snapshot should contain workers"
+        );
+        assert!(
+            collected.contains("\"workflows\""),
+            "Snapshot should contain workflows"
+        );
+        assert!(
+            collected.contains("\"tasks\""),
+            "Snapshot should contain tasks"
+        );
+        assert!(collected.contains("\"dlq\""), "Snapshot should contain dlq");
+        assert!(
+            collected.contains("\"circuit_breakers\""),
+            "Snapshot should contain circuit_breakers"
+        );
+
+        // Verify retry hint is present
+        assert!(
+            collected.contains("retry:"),
+            "SSE should include retry hint"
+        );
+
+        println!("Durable global SSE test passed!");
+    }
+
+    /// Test SSE connected event has valid JSON format with timestamp
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_durable_sse_connected_event_format() {
+        let app = create_test_app();
+        let base_url = spawn_test_server(app).await;
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/v1/durable/sse", base_url))
+            .header("Accept", "text/event-stream")
+            .send()
+            .await
+            .expect("Failed to connect to SSE");
+
+        assert_eq!(response.status(), 200);
+
+        // Read first chunk
+        let mut stream = response.bytes_stream();
+        let mut collected = String::new();
+
+        match tokio::time::timeout(std::time::Duration::from_secs(2), stream.next()).await {
+            Ok(Some(Ok(chunk))) => {
+                collected.push_str(&String::from_utf8_lossy(&chunk));
+            }
+            Ok(Some(Err(e))) => panic!("Stream error: {}", e),
+            Ok(None) => panic!("Stream ended unexpectedly"),
+            Err(_) => panic!("Timeout reading first chunk"),
+        }
+
+        // Verify SSE format (event: and data: lines)
+        assert!(collected.contains("event:"), "SSE should have event: field");
+        assert!(
+            collected.contains("event: connected"),
+            "Should have connected event"
+        );
+        assert!(
+            collected.contains("data:"),
+            "connected event should have data: field"
+        );
+
+        // Extract and validate connected event JSON
+        if let Some(data_start) = collected.find("data:") {
+            let data_line = &collected[data_start..];
+            if let Some(json_start) = data_line.find('{') {
+                let potential_json = &data_line[json_start..];
+                if let Some(json_end) = potential_json.find('}') {
+                    let json_str = &potential_json[..=json_end];
+                    let parsed: serde_json::Value = serde_json::from_str(json_str)
+                        .expect("connected data should be valid JSON");
+                    // Connected event has {"status":"connected"}
+                    assert!(
+                        parsed.get("status").is_some(),
+                        "connected event should have status field"
+                    );
+                    assert_eq!(
+                        parsed["status"], "connected",
+                        "status should be 'connected'"
+                    );
+                }
+            }
+        }
+
+        println!("Durable SSE format test passed!");
+    }
+
+    /// Test durable SSE returns 503 when store is not available
+    #[tokio::test]
+    async fn test_durable_sse_no_store_returns_503() {
+        let app = create_test_app_no_store();
+
+        let request = Request::builder()
+            .uri("/v1/durable/sse")
+            .header("Accept", "text/event-stream")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Should return 503 when store is not available"
+        );
+
+        println!("Durable SSE no-store test passed!");
+    }
+
+    /// Test workflow-specific SSE stream returns 404 for non-existent workflow
+    #[tokio::test]
+    async fn test_durable_workflow_sse_not_found() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .uri("/v1/durable/workflows/01234567-89ab-cdef-0123-456789abcdef/sse")
+            .header("Accept", "text/event-stream")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "Should return 404 for non-existent workflow"
+        );
+
+        println!("Workflow SSE not found test passed!");
+    }
+
+    /// Test health endpoint returns system health data
+    #[tokio::test]
+    async fn test_durable_health_endpoint() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .uri("/v1/durable/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let health: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("Health should be valid JSON");
+
+        // Verify health response structure
+        assert!(health.get("total_workers").is_some());
+        assert!(health.get("active_workers").is_some());
+        assert!(health.get("total_capacity").is_some());
+        assert!(health.get("current_load").is_some());
+
+        println!("Durable health endpoint test passed!");
+    }
+
+    /// Test workers list endpoint
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_durable_workers_endpoint() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .uri("/v1/durable/workers")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let workers: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("Workers should be valid JSON");
+
+        // Verify response structure: { data: [...], total: N }
+        assert!(workers.get("data").is_some(), "Should have data field");
+        assert!(workers.get("total").is_some(), "Should have total field");
+        assert!(workers["data"].is_array(), "data should be an array");
+
+        println!("Durable workers endpoint test passed!");
+    }
+
+    /// Test workflows list endpoint
+    #[tokio::test]
+    async fn test_durable_workflows_endpoint() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .uri("/v1/durable/workflows")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let workflows: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("Workflows should be valid JSON");
+
+        // Verify structure
+        assert!(workflows.get("total").is_some());
+        assert!(workflows.get("data").is_some());
+        assert!(workflows["data"].is_array());
+
+        println!("Durable workflows endpoint test passed!");
+    }
+
+    /// Test circuit breakers list endpoint
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_durable_circuit_breakers_endpoint() {
+        let app = create_test_app();
+
+        let request = Request::builder()
+            .uri("/v1/durable/circuit-breakers")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let breakers: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("Circuit breakers should be valid JSON");
+
+        // Verify response structure: { data: [...], total: N }
+        assert!(breakers.get("data").is_some(), "Should have data field");
+        assert!(breakers.get("total").is_some(), "Should have total field");
+        assert!(breakers["data"].is_array(), "data should be an array");
+
+        println!("Durable circuit breakers endpoint test passed!");
+    }
+}

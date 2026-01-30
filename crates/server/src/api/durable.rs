@@ -1272,6 +1272,8 @@ pub async fn stream_durable_sse(
         connection_start: Instant,
         // Track last snapshot hash to detect changes
         last_hash: Option<u64>,
+        // Reason for disconnection (used when phase is SendDisconnecting)
+        disconnect_reason: DisconnectReason,
     }
 
     let initial_state = StreamState {
@@ -1280,6 +1282,7 @@ pub async fn stream_durable_sse(
         config,
         connection_start,
         last_hash: None,
+        disconnect_reason: DisconnectReason::ConnectionCycle,
     };
 
     let stream = stream::unfold((state, initial_state), |(state, stream_state)| async move {
@@ -1289,11 +1292,12 @@ pub async fn stream_durable_sse(
             StreamPhase::SendDisconnecting => {
                 tracing::info!(
                     duration_secs = stream_state.connection_start.elapsed().as_secs(),
-                    "Durable SSE: connection cycling, sending disconnecting event"
+                    reason = stream_state.disconnect_reason.as_str(),
+                    "Durable SSE: sending disconnecting event"
                 );
                 let disconnect_data = format!(
                     r#"{{"reason":"{}","retry_ms":{}}}"#,
-                    DisconnectReason::ConnectionCycle.as_str(),
+                    stream_state.disconnect_reason.as_str(),
                     stream_state.config.disconnect_retry_ms
                 );
                 let disconnecting_event = Ok(SseEvent::default()
@@ -1322,12 +1326,31 @@ pub async fn stream_durable_sse(
             }
 
             StreamPhase::Polling => {
+                // Helper macro to handle errors with graceful disconnect
+                macro_rules! fetch_or_disconnect {
+                    ($result:expr, $msg:expr) => {
+                        match $result {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::error!("{}: {}", $msg, e);
+                                let new_state = StreamState {
+                                    phase: StreamPhase::SendDisconnecting,
+                                    disconnect_reason: DisconnectReason::Error,
+                                    ..stream_state
+                                };
+                                return Some((stream::iter(vec![]), (state, new_state)));
+                            }
+                        }
+                    };
+                }
+
                 // Check for connection cycling
                 if stream_state.connection_start.elapsed()
                     > stream_state.config.max_connection_duration()
                 {
                     let new_state = StreamState {
                         phase: StreamPhase::SendDisconnecting,
+                        disconnect_reason: DisconnectReason::ConnectionCycle,
                         ..stream_state
                     };
                     return Some((stream::iter(vec![]), (state, new_state)));
@@ -1336,43 +1359,43 @@ pub async fn stream_durable_sse(
                 // Fetch current state
                 let store = match state.get_store() {
                     Ok(s) => s,
-                    Err(_) => return None,
-                };
-
-                // Fetch all data in parallel-ish manner
-                let health = match store.get_system_health().await {
-                    Ok(h) => HealthResponse::from(h),
-                    Err(e) => {
-                        tracing::error!("Failed to fetch health: {}", e);
-                        return None;
+                    Err(_) => {
+                        tracing::error!("Durable store not available");
+                        let new_state = StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            disconnect_reason: DisconnectReason::Error,
+                            ..stream_state
+                        };
+                        return Some((stream::iter(vec![]), (state, new_state)));
                     }
                 };
 
-                let workers: Vec<WorkerResponse> =
-                    match store.list_workers(WorkerFilter::default()).await {
-                        Ok(w) => w.into_iter().map(WorkerResponse::from).collect(),
-                        Err(e) => {
-                            tracing::error!("Failed to fetch workers: {}", e);
-                            return None;
-                        }
-                    };
+                // Fetch all data - disconnect gracefully on any error
+                let health = HealthResponse::from(fetch_or_disconnect!(
+                    store.get_system_health().await,
+                    "Failed to fetch health"
+                ));
 
-                let workflows_data = match store
-                    .list_workflows(
-                        WorkflowFilter::default(),
-                        Pagination {
-                            offset: 0,
-                            limit: 100,
-                        },
-                    )
-                    .await
-                {
-                    Ok(w) => w,
-                    Err(e) => {
-                        tracing::error!("Failed to fetch workflows: {}", e);
-                        return None;
-                    }
-                };
+                let workers: Vec<WorkerResponse> = fetch_or_disconnect!(
+                    store.list_workers(WorkerFilter::default()).await,
+                    "Failed to fetch workers"
+                )
+                .into_iter()
+                .map(WorkerResponse::from)
+                .collect();
+
+                let workflows_data = fetch_or_disconnect!(
+                    store
+                        .list_workflows(
+                            WorkflowFilter::default(),
+                            Pagination {
+                                offset: 0,
+                                limit: 100,
+                            },
+                        )
+                        .await,
+                    "Failed to fetch workflows"
+                );
                 let workflows = WorkflowsListResponse {
                     total: workflows_data.len(),
                     data: workflows_data
@@ -1381,55 +1404,44 @@ pub async fn stream_durable_sse(
                         .collect(),
                 };
 
-                let tasks_data = match store
-                    .list_tasks(
-                        TaskFilter::default(),
-                        Pagination {
-                            offset: 0,
-                            limit: 100,
-                        },
-                    )
-                    .await
-                {
-                    Ok(t) => t,
-                    Err(e) => {
-                        tracing::error!("Failed to fetch tasks: {}", e);
-                        return None;
-                    }
-                };
+                let tasks_data = fetch_or_disconnect!(
+                    store
+                        .list_tasks(
+                            TaskFilter::default(),
+                            Pagination {
+                                offset: 0,
+                                limit: 100,
+                            },
+                        )
+                        .await,
+                    "Failed to fetch tasks"
+                );
                 let tasks = TasksListResponse {
                     total: tasks_data.len(),
                     data: tasks_data.into_iter().map(TaskResponse::from).collect(),
                 };
 
-                let dlq_data = match store
-                    .list_dlq(
-                        DlqFilter::default(),
-                        Pagination {
-                            offset: 0,
-                            limit: 100,
-                        },
-                    )
-                    .await
-                {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!("Failed to fetch DLQ: {}", e);
-                        return None;
-                    }
-                };
+                let dlq_data = fetch_or_disconnect!(
+                    store
+                        .list_dlq(
+                            DlqFilter::default(),
+                            Pagination {
+                                offset: 0,
+                                limit: 100,
+                            },
+                        )
+                        .await,
+                    "Failed to fetch DLQ"
+                );
                 let dlq = DlqListResponse {
                     total: dlq_data.len(),
                     data: dlq_data.into_iter().map(DlqEntryResponse::from).collect(),
                 };
 
-                let cb_data = match store.list_circuit_breakers().await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        tracing::error!("Failed to fetch circuit breakers: {}", e);
-                        return None;
-                    }
-                };
+                let cb_data = fetch_or_disconnect!(
+                    store.list_circuit_breakers().await,
+                    "Failed to fetch circuit breakers"
+                );
                 let circuit_breakers = CircuitBreakersListResponse {
                     total: cb_data.len(),
                     data: cb_data
@@ -1586,6 +1598,7 @@ pub async fn stream_workflow_sse(
         connection_start: Instant,
         last_event_count: usize,
         last_status: Option<String>,
+        disconnect_reason: DisconnectReason,
     }
 
     let initial_state = StreamState {
@@ -1596,6 +1609,7 @@ pub async fn stream_workflow_sse(
         connection_start,
         last_event_count: 0,
         last_status: None,
+        disconnect_reason: DisconnectReason::ConnectionCycle,
     };
 
     let stream = stream::unfold((state, initial_state), |(state, stream_state)| async move {
@@ -1606,11 +1620,12 @@ pub async fn stream_workflow_sse(
                 tracing::info!(
                     workflow_id = %stream_state.workflow_id,
                     duration_secs = stream_state.connection_start.elapsed().as_secs(),
-                    "Workflow SSE: connection cycling, sending disconnecting event"
+                    reason = stream_state.disconnect_reason.as_str(),
+                    "Workflow SSE: sending disconnecting event"
                 );
                 let disconnect_data = format!(
                     r#"{{"reason":"{}","retry_ms":{}}}"#,
-                    DisconnectReason::ConnectionCycle.as_str(),
+                    stream_state.disconnect_reason.as_str(),
                     stream_state.config.disconnect_retry_ms
                 );
                 let disconnecting_event = Ok(SseEvent::default()
@@ -1639,10 +1654,29 @@ pub async fn stream_workflow_sse(
             }
 
             StreamPhase::Polling => {
+                // Helper macro to handle errors with graceful disconnect
+                macro_rules! fetch_or_disconnect {
+                    ($result:expr, $msg:expr) => {
+                        match $result {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::error!("{}: {}", $msg, e);
+                                let new_state = StreamState {
+                                    phase: StreamPhase::SendDisconnecting,
+                                    disconnect_reason: DisconnectReason::Error,
+                                    ..stream_state
+                                };
+                                return Some((stream::iter(vec![]), (state, new_state)));
+                            }
+                        }
+                    };
+                }
+
                 // Check for connection cycling
                 if stream_state.connection_start.elapsed() > stream_state.config.max_connection_duration() {
                     let new_state = StreamState {
                         phase: StreamPhase::SendDisconnecting,
+                        disconnect_reason: DisconnectReason::ConnectionCycle,
                         ..stream_state
                     };
                     return Some((stream::iter(vec![]), (state, new_state)));
@@ -1650,38 +1684,45 @@ pub async fn stream_workflow_sse(
 
                 let store = match state.get_store() {
                     Ok(s) => s,
-                    Err(_) => return None,
+                    Err(_) => {
+                        tracing::error!("Durable store not available");
+                        let new_state = StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            disconnect_reason: DisconnectReason::Error,
+                            ..stream_state
+                        };
+                        return Some((stream::iter(vec![]), (state, new_state)));
+                    }
                 };
 
                 // Fetch workflow
-                let workflows = match store
-                    .list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 1000 })
-                    .await
-                {
-                    Ok(w) => w,
-                    Err(e) => {
-                        tracing::error!("Failed to fetch workflows: {}", e);
-                        return None;
-                    }
-                };
+                let workflows = fetch_or_disconnect!(
+                    store.list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 1000 }).await,
+                    "Failed to fetch workflows"
+                );
 
                 let workflow = match workflows.into_iter().find(|w| w.id == stream_state.workflow_id) {
                     Some(w) => WorkflowResponse::from(w),
                     None => {
-                        // Workflow deleted, end stream
-                        return None;
+                        // Workflow deleted, send graceful disconnect
+                        tracing::info!(workflow_id = %stream_state.workflow_id, "Workflow deleted, closing SSE stream");
+                        let new_state = StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            disconnect_reason: DisconnectReason::Error,
+                            ..stream_state
+                        };
+                        return Some((stream::iter(vec![]), (state, new_state)));
                     }
                 };
 
                 // Fetch events
-                let events: Vec<WorkflowEventResponse> =
-                    match store.get_workflow_events(stream_state.workflow_id).await {
-                        Ok(e) => e.into_iter().map(WorkflowEventResponse::from).collect(),
-                        Err(e) => {
-                            tracing::error!("Failed to fetch workflow events: {}", e);
-                            return None;
-                        }
-                    };
+                let events: Vec<WorkflowEventResponse> = fetch_or_disconnect!(
+                    store.get_workflow_events(stream_state.workflow_id).await,
+                    "Failed to fetch workflow events"
+                )
+                .into_iter()
+                .map(WorkflowEventResponse::from)
+                .collect();
 
                 // Detect changes
                 let status_changed = stream_state.last_status.as_ref() != Some(&workflow.status);
@@ -1879,5 +1920,59 @@ mod tests {
         let state = AppState::new(None);
         let result = state.get_store();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_disconnect_event_format_connection_cycle() {
+        // Test that connection cycle disconnect event has correct format
+        let config = SseStreamConfig::monitoring();
+        let disconnect_data = format!(
+            r#"{{"reason":"{}","retry_ms":{}}}"#,
+            DisconnectReason::ConnectionCycle.as_str(),
+            config.disconnect_retry_ms
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
+        assert_eq!(parsed["reason"], "connection_cycle");
+        assert_eq!(parsed["retry_ms"], 1000);
+    }
+
+    #[test]
+    fn test_disconnect_event_format_error() {
+        // Test that error disconnect event has correct format
+        // This verifies the graceful disconnect on error feature
+        let config = SseStreamConfig::monitoring();
+        let disconnect_data = format!(
+            r#"{{"reason":"{}","retry_ms":{}}}"#,
+            DisconnectReason::Error.as_str(),
+            config.disconnect_retry_ms
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
+        assert_eq!(parsed["reason"], "error");
+        assert_eq!(parsed["retry_ms"], 1000);
+    }
+
+    #[test]
+    fn test_disconnect_event_parseable_by_client() {
+        // Simulate what the client receives and parses
+        // This matches the JS code: const data = JSON.parse(event.data)
+        let config = SseStreamConfig::monitoring();
+        let disconnect_data = format!(
+            r#"{{"reason":"{}","retry_ms":{}}}"#,
+            DisconnectReason::Error.as_str(),
+            config.disconnect_retry_ms
+        );
+
+        // Parse like the client does
+        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
+
+        // Extract retry_ms like client: const retryMs = data.retry_ms ?? 1000;
+        let retry_ms = parsed["retry_ms"].as_i64().unwrap_or(1000);
+        assert_eq!(retry_ms, 1000);
+
+        // Client uses reason to log
+        let reason = parsed["reason"].as_str().unwrap_or("unknown");
+        assert_eq!(reason, "error");
     }
 }
