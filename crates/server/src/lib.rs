@@ -25,3 +25,7 @@ pub use direct_worker_adapters::DirectWorkerAdapters;
 // Task notification broadcaster for push-based notifications
 pub mod task_notifications;
 pub use task_notifications::TaskNotificationBroadcaster;
+
+// Test harness for integration tests
+pub mod test_harness;
+pub use test_harness::TestHarness;

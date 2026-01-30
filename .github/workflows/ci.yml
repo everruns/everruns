@@ -206,28 +206,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
-      GRPC_ADDRESS: 127.0.0.1:9001
-      AUTH_MODE: none
-      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # No external services needed - tests use in-process server/worker with in-memory storage
 
     steps:
       - uses: actions/checkout@v4
@@ -250,71 +229,11 @@ jobs:
             ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-
             ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
-      - name: Cache sqlx-cli
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
-
-      - name: Install sqlx-cli
-        run: |
-          if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
-          fi
-
-      - name: Run migrations
-        run: sqlx migrate run --source crates/server/migrations
-
-      - name: Build API and Worker
-        run: |
-          cargo build -p everruns-server
-          cargo build -p everruns-worker
-
-      - name: Start API server
-        run: |
-          cargo run -p everruns-server > /tmp/api.log 2>&1 &
-          API_PID=$!
-          echo "API_PID=$API_PID" >> $GITHUB_ENV
-          # Wait for API to be ready
-          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
-          echo "API is ready"
-
-      - name: Start Worker
-        run: |
-          cargo run -p everruns-worker > /tmp/worker.log 2>&1 &
-          WORKER_PID=$!
-          echo "WORKER_PID=$WORKER_PID" >> $GITHUB_ENV
-          # Give worker time to connect to server
-          sleep 5
-          # Verify worker is still running
-          if kill -0 $WORKER_PID 2>/dev/null; then
-            echo "Worker is running (PID: $WORKER_PID)"
-          else
-            echo "Worker failed to start"
-            cat /tmp/worker.log
-            exit 1
-          fi
-
       - name: Run integration tests
         run: |
-          # Run integration tests (uses LlmSim for workflow tests, no real API keys needed)
+          # Run integration tests (uses in-process server with TestHarness, no external processes needed)
+          # Uses LlmSim for workflow tests, no real API keys needed
           cargo test -p everruns-server --test integration_test -- --test-threads=1
-
-      - name: Show logs on failure
-        if: failure()
-        run: |
-          echo "=== API Logs ==="
-          cat /tmp/api.log || true
-          echo "=== Worker Logs ==="
-          cat /tmp/worker.log || true
-
-      - name: Stop Worker
-        if: always()
-        run: kill $WORKER_PID || true
-
-      - name: Stop API server
-        if: always()
-        run: kill $API_PID || true
 
   docs-build:
     name: Docs Build & Check
