@@ -68,3 +68,59 @@ pub fn print_table_row(values: &[(&str, usize)]) {
         .join("  ");
     println!("{}", row);
 }
+
+/// Format a table row (returns string instead of printing)
+#[cfg(test)]
+fn format_table_row(values: &[(&str, usize)]) -> String {
+    values
+        .iter()
+        .map(|(val, width)| {
+            let s = if val.len() > *width {
+                format!("{}...", &val[..(width - 3)])
+            } else {
+                val.to_string()
+            };
+            format!("{:<width$}", s, width = width)
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_output_format_from_str() {
+        assert!(matches!(OutputFormat::from_str("json"), OutputFormat::Json));
+        assert!(matches!(OutputFormat::from_str("yaml"), OutputFormat::Yaml));
+        assert!(matches!(OutputFormat::from_str("text"), OutputFormat::Text));
+        assert!(matches!(OutputFormat::from_str("unknown"), OutputFormat::Text));
+        assert!(matches!(OutputFormat::from_str(""), OutputFormat::Text));
+    }
+
+    #[test]
+    fn test_output_format_is_text() {
+        assert!(OutputFormat::Text.is_text());
+        assert!(!OutputFormat::Json.is_text());
+        assert!(!OutputFormat::Yaml.is_text());
+    }
+
+    #[test]
+    fn test_format_table_row_normal() {
+        let row = format_table_row(&[("hello", 10), ("world", 10)]);
+        assert_eq!(row, "hello       world     ");
+    }
+
+    #[test]
+    fn test_format_table_row_truncation() {
+        let row = format_table_row(&[("verylongtext", 8)]);
+        assert_eq!(row, "veryl...");
+    }
+
+    #[test]
+    fn test_format_table_row_exact_width() {
+        let row = format_table_row(&[("exact", 5)]);
+        assert_eq!(row, "exact");
+    }
+}

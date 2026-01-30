@@ -307,3 +307,106 @@ async fn delete(client: &Everruns, output: OutputFormat, quiet: bool, agent_id: 
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_markdown_frontmatter_basic() {
+        let content = r#"---
+name: "test-agent"
+description: "A test agent"
+---
+You are a helpful assistant."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("test-agent".to_string()));
+        assert_eq!(result.description, Some("A test agent".to_string()));
+        assert_eq!(result.system_prompt, Some("You are a helpful assistant.".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_with_tags() {
+        let content = r#"---
+name: "agent"
+tags:
+  - coding
+  - rust
+---
+Help with code."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("agent".to_string()));
+        assert_eq!(result.tags, vec!["coding", "rust"]);
+        assert_eq!(result.system_prompt, Some("Help with code.".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_empty_body() {
+        let content = r#"---
+name: "agent"
+system_prompt: "From front matter"
+---
+"#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.name, Some("agent".to_string()));
+        // Empty body doesn't override front matter system_prompt
+        assert_eq!(result.system_prompt, Some("From front matter".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_no_start_delimiter() {
+        let content = "name: test\n---\nBody";
+        let result = parse_markdown_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_no_end_delimiter() {
+        let content = "---\nname: test\nNo end delimiter";
+        let result = parse_markdown_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_agent_file_yaml_parse() {
+        let yaml = r#"
+name: "yaml-agent"
+description: "Parsed from YAML"
+default_model_id: "mod_123"
+tags:
+  - helper
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.name, Some("yaml-agent".to_string()));
+        assert_eq!(result.description, Some("Parsed from YAML".to_string()));
+        assert_eq!(result.default_model_id, Some("mod_123".to_string()));
+        assert_eq!(result.tags, vec!["helper"]);
+    }
+
+    #[test]
+    fn test_agent_file_json_parse() {
+        let json = r#"{
+            "name": "json-agent",
+            "system_prompt": "You help.",
+            "tags": ["fast", "smart"]
+        }"#;
+        let result: AgentFile = serde_json::from_str(json).unwrap();
+        assert_eq!(result.name, Some("json-agent".to_string()));
+        assert_eq!(result.system_prompt, Some("You help.".to_string()));
+        assert_eq!(result.tags, vec!["fast", "smart"]);
+    }
+
+    #[test]
+    fn test_agent_file_defaults() {
+        let yaml = "name: minimal";
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.name, Some("minimal".to_string()));
+        assert_eq!(result.description, None);
+        assert_eq!(result.system_prompt, None);
+        assert_eq!(result.default_model_id, None);
+        assert!(result.tags.is_empty());
+    }
+}

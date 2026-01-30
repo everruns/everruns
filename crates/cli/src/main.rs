@@ -117,3 +117,141 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn test_cli_parse_agents_list() {
+        let cli = Cli::try_parse_from(["everruns", "agents", "list"]).unwrap();
+        assert!(matches!(cli.command, Commands::Agents { .. }));
+        assert_eq!(cli.output, "text");
+        assert!(!cli.quiet);
+    }
+
+    #[test]
+    fn test_cli_parse_agents_get() {
+        let cli = Cli::try_parse_from(["everruns", "agents", "get", "agt_123"]).unwrap();
+        if let Commands::Agents { command } = cli.command {
+            if let commands::agents::AgentsCommand::Get { agent_id } = command {
+                assert_eq!(agent_id, "agt_123");
+            } else {
+                panic!("Expected Get command");
+            }
+        } else {
+            panic!("Expected Agents command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_create() {
+        let cli = Cli::try_parse_from([
+            "everruns", "sessions", "create",
+            "--agent", "agt_abc",
+            "--title", "Test Session"
+        ]).unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Create { agent, title, model } = command {
+                assert_eq!(agent, "agt_abc");
+                assert_eq!(title, Some("Test Session".to_string()));
+                assert_eq!(model, None);
+            } else {
+                panic!("Expected Create command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_chat() {
+        let cli = Cli::try_parse_from([
+            "everruns", "chat",
+            "--session", "ses_xyz",
+            "Hello world"
+        ]).unwrap();
+        if let Commands::Chat { message, session, timeout, no_stream } = cli.command {
+            assert_eq!(message, "Hello world");
+            assert_eq!(session, "ses_xyz");
+            assert_eq!(timeout, 300); // default
+            assert!(!no_stream);
+        } else {
+            panic!("Expected Chat command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_chat_with_options() {
+        let cli = Cli::try_parse_from([
+            "everruns", "chat",
+            "--session", "ses_xyz",
+            "--timeout", "60",
+            "--no-stream",
+            "Test message"
+        ]).unwrap();
+        if let Commands::Chat { message, session, timeout, no_stream } = cli.command {
+            assert_eq!(message, "Test message");
+            assert_eq!(session, "ses_xyz");
+            assert_eq!(timeout, 60);
+            assert!(no_stream);
+        } else {
+            panic!("Expected Chat command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_output_format() {
+        let cli = Cli::try_parse_from(["everruns", "-o", "json", "agents", "list"]).unwrap();
+        assert_eq!(cli.output, "json");
+
+        let cli = Cli::try_parse_from(["everruns", "--output", "yaml", "agents", "list"]).unwrap();
+        assert_eq!(cli.output, "yaml");
+    }
+
+    #[test]
+    fn test_cli_parse_quiet_flag() {
+        let cli = Cli::try_parse_from(["everruns", "-q", "agents", "list"]).unwrap();
+        assert!(cli.quiet);
+
+        let cli = Cli::try_parse_from(["everruns", "--quiet", "agents", "list"]).unwrap();
+        assert!(cli.quiet);
+    }
+
+    #[test]
+    fn test_cli_parse_capabilities() {
+        let cli = Cli::try_parse_from(["everruns", "capabilities"]).unwrap();
+        if let Commands::Capabilities { status } = cli.command {
+            assert_eq!(status, "available"); // default
+        } else {
+            panic!("Expected Capabilities command");
+        }
+
+        let cli = Cli::try_parse_from(["everruns", "capabilities", "--status", "all"]).unwrap();
+        if let Commands::Capabilities { status } = cli.command {
+            assert_eq!(status, "all");
+        } else {
+            panic!("Expected Capabilities command");
+        }
+    }
+
+    #[test]
+    fn test_cli_invalid_output_format() {
+        let result = Cli::try_parse_from(["everruns", "-o", "invalid", "agents", "list"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_missing_required_args() {
+        // Chat requires --session
+        let result = Cli::try_parse_from(["everruns", "chat", "Hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_help_available() {
+        // Verify help can be generated without panic
+        let _ = Cli::command().render_help();
+    }
+}
