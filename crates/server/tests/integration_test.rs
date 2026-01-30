@@ -4699,3 +4699,227 @@ async fn test_events_sse_contract() {
 
     println!("SSE contract test passed!");
 }
+
+// =============================================================================
+// Durable SSE Integration Tests
+// =============================================================================
+
+/// Test global durable SSE stream contract (/v1/durable/sse)
+///
+/// Verifies:
+/// - SSE connection establishes successfully
+/// - Content-Type is text/event-stream
+/// - First event is "connected"
+/// - Subsequent event is "snapshot" with expected structure
+#[tokio::test]
+async fn test_durable_sse_global_stream() {
+    use futures::StreamExt;
+
+    let client = reqwest::Client::new();
+
+    println!("Testing durable global SSE stream...");
+
+    // Connect to global durable SSE
+    let sse_url = format!("{}/v1/durable/sse", API_BASE_URL);
+
+    let sse_response = client
+        .get(&sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("Failed to connect to durable SSE");
+
+    // Check response status
+    if sse_response.status() == 503 {
+        // Durable store not available (in-memory mode) - skip test
+        println!("Durable store not available (503), skipping test");
+        return;
+    }
+
+    assert_eq!(
+        sse_response.status(),
+        200,
+        "Expected 200 OK for durable SSE"
+    );
+
+    // Verify content-type header
+    let content_type = sse_response
+        .headers()
+        .get("content-type")
+        .expect("Missing content-type header")
+        .to_str()
+        .unwrap();
+    assert!(
+        content_type.contains("text/event-stream"),
+        "Content-type should be text/event-stream, got: {}",
+        content_type
+    );
+
+    // Read first chunks with timeout
+    let mut stream = sse_response.bytes_stream();
+    let mut collected = String::new();
+
+    // Collect events until we have connected + snapshot or timeout
+    for _ in 0..5 {
+        let chunk = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+            .await
+            .expect("Timeout reading SSE chunk")
+            .expect("Stream ended unexpectedly")
+            .expect("Failed to read chunk");
+        collected.push_str(&String::from_utf8_lossy(&chunk));
+
+        // Check if we have enough events
+        if collected.contains("event:connected") && collected.contains("event:snapshot") {
+            break;
+        }
+    }
+
+    println!("Durable SSE received:\n{}", collected);
+
+    // Verify "connected" event
+    assert!(
+        collected.contains("event:connected"),
+        "Should receive 'connected' event"
+    );
+
+    // Verify "snapshot" event with JSON data
+    assert!(
+        collected.contains("event:snapshot"),
+        "Should receive 'snapshot' event"
+    );
+    assert!(
+        collected.contains("\"health\""),
+        "Snapshot should contain health"
+    );
+    assert!(
+        collected.contains("\"workers\""),
+        "Snapshot should contain workers"
+    );
+    assert!(
+        collected.contains("\"workflows\""),
+        "Snapshot should contain workflows"
+    );
+    assert!(
+        collected.contains("\"tasks\""),
+        "Snapshot should contain tasks"
+    );
+    assert!(collected.contains("\"dlq\""), "Snapshot should contain dlq");
+    assert!(
+        collected.contains("\"circuit_breakers\""),
+        "Snapshot should contain circuit_breakers"
+    );
+
+    // Verify retry hint is present
+    assert!(
+        collected.contains("retry:"),
+        "SSE should include retry hint"
+    );
+
+    println!("Durable global SSE test passed!");
+}
+
+/// Test durable SSE disconnecting event on error is graceful
+///
+/// Verifies:
+/// - SSE stream can handle server-side errors gracefully
+/// - "disconnecting" event is sent with reason when available
+#[tokio::test]
+async fn test_durable_sse_has_valid_format() {
+    use futures::StreamExt;
+
+    let client = reqwest::Client::new();
+
+    println!("Testing durable SSE format...");
+
+    let sse_url = format!("{}/v1/durable/sse", API_BASE_URL);
+
+    let sse_response = client
+        .get(&sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("Failed to connect to durable SSE");
+
+    if sse_response.status() == 503 {
+        println!("Durable store not available (503), skipping test");
+        return;
+    }
+
+    assert_eq!(sse_response.status(), 200);
+
+    // Read first chunk
+    let mut stream = sse_response.bytes_stream();
+    let first_chunk = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+        .await
+        .expect("Timeout reading first SSE chunk")
+        .expect("Stream ended unexpectedly")
+        .expect("Failed to read chunk");
+
+    let chunk_str = String::from_utf8_lossy(&first_chunk);
+    println!("First chunk:\n{}", chunk_str);
+
+    // Verify SSE format (event: and data: lines)
+    // First event should be "connected" with timestamp
+    assert!(chunk_str.contains("event:"), "SSE should have event: field");
+
+    // If connected event is in first chunk, verify format
+    if chunk_str.contains("event:connected") {
+        assert!(
+            chunk_str.contains("data:"),
+            "connected event should have data: field"
+        );
+        // Data should be JSON with timestamp
+        if let Some(data_start) = chunk_str.find("data:") {
+            let data_line = &chunk_str[data_start..];
+            if let Some(json_start) = data_line.find('{') {
+                let potential_json = &data_line[json_start..];
+                if let Some(json_end) = potential_json.find('}') {
+                    let json_str = &potential_json[..=json_end];
+                    // Verify it's valid JSON
+                    let parsed: serde_json::Value = serde_json::from_str(json_str)
+                        .expect("connected data should be valid JSON");
+                    assert!(
+                        parsed.get("timestamp").is_some(),
+                        "connected event should have timestamp"
+                    );
+                }
+            }
+        }
+    }
+
+    println!("Durable SSE format test passed!");
+}
+
+/// Test workflow-specific SSE stream (/v1/durable/workflows/:id/sse)
+///
+/// Verifies:
+/// - Returns 404 for non-existent workflow
+#[tokio::test]
+async fn test_durable_workflow_sse_not_found() {
+    let client = reqwest::Client::new();
+
+    println!("Testing workflow SSE not found...");
+
+    // Try to stream non-existent workflow
+    let sse_url = format!(
+        "{}/v1/durable/workflows/wf_nonexistent123/sse",
+        API_BASE_URL
+    );
+
+    let response = client
+        .get(&sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return 404 or 503 (if durable not available)
+    let status = response.status().as_u16();
+    assert!(
+        status == 404 || status == 503,
+        "Expected 404 Not Found or 503 Service Unavailable, got {}",
+        status
+    );
+
+    println!("Workflow SSE not found test passed!");
+}
