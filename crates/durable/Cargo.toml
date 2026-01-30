@@ -58,7 +58,7 @@ dashmap = "6"
 parking_lot = "0.12"
 
 # Benchmark support
-sysinfo = "0.32"
+sysinfo = "0.38"
 minijinja = "2"
 indicatif = "0.18"
 
