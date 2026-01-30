@@ -321,15 +321,9 @@ export default function WorkersPage() {
 
         {/* Workers Table */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Worker Pool</CardTitle>
-              <CardDescription>All registered workers and their current status</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
+          <CardHeader>
+            <CardTitle>Worker Pool</CardTitle>
+            <CardDescription>All registered workers and their current status</CardDescription>
           </CardHeader>
           <CardContent>
             {workers.length > 0 ? (
