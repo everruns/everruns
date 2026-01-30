@@ -57,8 +57,6 @@ Manage agent configurations.
 everruns agents create \
   --name "my-agent" \
   --system-prompt "You are a helpful assistant." \
-  --capability current_time \
-  --capability web_fetch \
   --tag production
 
 # From YAML file
@@ -138,21 +136,21 @@ everruns agents list
 Output:
 
 ```
-ID                                    NAME              STATUS   CAPABILITIES
-550e8400-e29b-41d4-a716-446655440000  research-bot      active   current_time, web_fetch
-660e8400-e29b-41d4-a716-446655440001  joke-bot          active   -
+ID                                    NAME              STATUS
+agt_550e8400e29b41d4a716446655440000  research-bot      active
+agt_660e8400e29b41d4a716446655440001  joke-bot          active
 ```
 
 #### Get Agent
 
 ```bash
-everruns agents get <agent-id>
+everruns agents get agt_xxx
 ```
 
 #### Delete Agent
 
 ```bash
-everruns agents delete <agent-id>
+everruns agents delete agt_xxx
 ```
 
 ### Capabilities
@@ -187,22 +185,22 @@ Manage conversation sessions for an agent.
 #### Create Session
 
 ```bash
-everruns sessions create --agent <agent-id>
+everruns sessions create --agent agt_xxx
 
 # With title
-everruns sessions create --agent <agent-id> --title "Debug session"
+everruns sessions create --agent agt_xxx --title "Debug session"
 ```
 
 #### List Sessions
 
 ```bash
-everruns sessions list --agent <agent-id>
+everruns sessions list
 ```
 
 #### Get Session
 
 ```bash
-everruns sessions get --agent <agent-id> --session <session-id>
+everruns sessions get ses_xxx
 ```
 
 ### Chat
@@ -210,7 +208,7 @@ everruns sessions get --agent <agent-id> --session <session-id>
 Send a message and receive the agent's response.
 
 ```bash
-everruns chat "Tell me a joke!" --session <session-id> --agent <agent-id>
+everruns chat "Tell me a joke!" --session ses_xxx
 ```
 
 Output:
@@ -248,7 +246,7 @@ Suppress non-essential output:
 ```bash
 # Only output the created agent ID
 everruns agents create -f agent.yaml --quiet
-# Output: 550e8400-e29b-41d4-a716-446655440000
+# Output: agt_550e8400e29b41d4a716446655440000
 ```
 
 ## Examples
@@ -260,14 +258,13 @@ everruns agents create -f agent.yaml --quiet
 AGENT_ID=$(everruns agents create \
   --name "assistant" \
   --system-prompt "You are a helpful assistant." \
-  --capability current_time \
   -o json | jq -r '.id')
 
 # 2. Create a session
 SESSION_ID=$(everruns sessions create --agent $AGENT_ID -o json | jq -r '.id')
 
 # 3. Chat with the agent
-everruns chat "What time is it?" --session $SESSION_ID --agent $AGENT_ID
+everruns chat "What time is it?" --session $SESSION_ID
 ```
 
 ### Using Agent Files
@@ -303,7 +300,7 @@ everruns agents create -f agent.md
 
 ```bash
 # Get agent details as JSON and extract with jq
-everruns agents get <agent-id> --output json | jq '.capabilities'
+everruns agents get agt_xxx --output json | jq '.tags'
 
 # List agents and filter
 everruns agents list --output json | jq '.data[] | select(.status == "active")'
