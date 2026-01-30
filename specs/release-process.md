@@ -20,8 +20,8 @@ This specification defines the release process for Everruns. The process is desi
 1. CHANGELOG.md is the canonical source for release notes
 2. GitHub Release notes are extracted from the corresponding version section in CHANGELOG.md
 3. Each version section includes:
-   - **Highlights** - Key features (user-written, 3-5 items)
-   - **What's Changed** - List of commits with markdown links: `- <message> ([#PR](url)) by [@user](url))`
+   - **Highlights** - Key features (user-written, 5-10 items with PR links)
+   - **What's Changed** - List of commits: `- <message> ([#PR](url))`
    - **Migration Notes** - Breaking changes or upgrade instructions (if needed)
 
 ### Version Updates
@@ -46,6 +46,15 @@ This ensures lock files reflect the current version and any dependency updates.
 Release commits use: `chore(release): prepare vX.Y.Z`
 
 This commit message triggers the auto-tagging workflow on merge to main.
+
+### Manual Release Trigger
+
+If the automatic release workflow fails, you can manually trigger it:
+1. Go to **Actions → Release → Run workflow**
+2. Enter the version number (e.g., `0.5.0`)
+3. Click **Run workflow**
+
+The workflow will extract release notes from CHANGELOG.md and create the GitHub Release.
 
 ### GitHub Release
 
