@@ -193,22 +193,28 @@ else
 fi
 
 # ========================================
-# Test: Chat (optional - requires LLM API)
+# Test: Chat (requires LLM API keys)
 # ========================================
 if [ "$SKIP_CHAT" = "--skip-chat" ]; then
   echo ""
   log_test "chat (SKIPPED - --skip-chat flag set)"
 else
-  log_test "chat (send message with --no-stream)"
-  CHAT_OUTPUT=$($CLI --api-url "$API_URL" chat "Hello, this is a test message" \
+  log_test "chat (send message and wait for response)"
+  # Use a simple prompt that should get a short response
+  # Timeout after 60 seconds
+  CHAT_OUTPUT=$($CLI --api-url "$API_URL" chat "Reply with exactly: OK" \
     --session "$SESSION_UUID" \
-    --no-stream \
+    --timeout 60 \
     --output json 2>&1) || {
-    # Chat may fail if no LLM API keys, that's ok
-    echo "Chat test skipped (may require LLM API keys)"
+    log_fail "chat command failed"
+    echo "$CHAT_OUTPUT"
   }
-  if [ -n "$CHAT_OUTPUT" ]; then
-    log_pass "chat command completed"
+  # Check if we got a turn.completed event
+  if echo "$CHAT_OUTPUT" | grep -q "turn.completed"; then
+    log_pass "chat received turn.completed event"
+  else
+    log_fail "chat did not receive turn.completed event"
+    echo "$CHAT_OUTPUT"
   fi
 fi
 

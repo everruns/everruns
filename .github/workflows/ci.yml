@@ -411,7 +411,7 @@ jobs:
           fi
 
       - name: Run CLI E2E tests
-        run: ./scripts/cli-e2e-test.sh --skip-chat
+        run: ./scripts/cli-e2e-test.sh
 
       - name: Show logs on failure
         if: failure()
