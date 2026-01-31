@@ -5,6 +5,7 @@
 # Prerequisites:
 # - Server running at localhost:9000 (with worker)
 # - CLI binary built: cargo build -p everruns-cli
+# - EVERRUNS_API_KEY set (any value works with AUTH_MODE=none)
 #
 # Usage: ./scripts/cli-e2e-test.sh [--skip-chat]
 #   --skip-chat: Skip chat test (requires LLM API keys)
@@ -108,9 +109,6 @@ else
   exit 1
 fi
 
-# Extract UUID from prefixed ID (agt_uuid-format)
-AGENT_UUID=$(echo "$AGENT_ID" | sed 's/^agt_//')
-
 # List agents
 log_test "agents list"
 LIST_OUTPUT=$($CLI --api-url "$API_URL" agents list --output json 2>&1) || {
@@ -124,9 +122,9 @@ else
   echo "$LIST_OUTPUT"
 fi
 
-# Get agent
+# Get agent (uses prefixed ID directly)
 log_test "agents get"
-GET_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_UUID" --output json 2>&1) || {
+GET_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1) || {
   log_fail "agents get failed"
   echo "$GET_OUTPUT"
 }
@@ -142,10 +140,10 @@ fi
 # Test: Sessions CRUD
 # ========================================
 
-# Create session
+# Create session (uses prefixed agent ID)
 log_test "sessions create"
 SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions create \
-  --agent "$AGENT_UUID" \
+  --agent "$AGENT_ID" \
   --title "CLI E2E Test Session" \
   --output json 2>&1) || {
   log_fail "sessions create failed"
@@ -162,12 +160,9 @@ else
   exit 1
 fi
 
-# Extract UUID from prefixed ID (ses_uuid-format)
-SESSION_UUID=$(echo "$SESSION_ID" | sed 's/^ses_//')
-
-# List sessions
+# List sessions (top-level, no agent filter)
 log_test "sessions list"
-LIST_SESSIONS_OUTPUT=$($CLI --api-url "$API_URL" sessions list --agent "$AGENT_UUID" --output json 2>&1) || {
+LIST_SESSIONS_OUTPUT=$($CLI --api-url "$API_URL" sessions list --output json 2>&1) || {
   log_fail "sessions list failed"
   echo "$LIST_SESSIONS_OUTPUT"
 }
@@ -178,9 +173,9 @@ else
   echo "$LIST_SESSIONS_OUTPUT"
 fi
 
-# Get session
+# Get session (uses prefixed session ID directly)
 log_test "sessions get"
-GET_SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions get --agent "$AGENT_UUID" --session "$SESSION_UUID" --output json 2>&1) || {
+GET_SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions get "$SESSION_ID" --output json 2>&1) || {
   log_fail "sessions get failed"
   echo "$GET_SESSION_OUTPUT"
 }
@@ -203,7 +198,7 @@ else
   # Use a simple prompt that should get a short response
   # Timeout after 60 seconds
   CHAT_OUTPUT=$($CLI --api-url "$API_URL" chat "Reply with exactly: OK" \
-    --session "$SESSION_UUID" \
+    --session "$SESSION_ID" \
     --timeout 60 \
     --output json 2>&1) || {
     log_fail "chat command failed"
@@ -222,7 +217,7 @@ fi
 # Test: Delete agent (cleanup)
 # ========================================
 log_test "agents delete"
-DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents delete "$AGENT_UUID" --output json 2>&1) || {
+DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents delete "$AGENT_ID" --output json 2>&1) || {
   log_fail "agents delete failed"
   echo "$DELETE_OUTPUT"
 }
@@ -230,7 +225,7 @@ log_pass "agents delete completed"
 
 # Verify agent is deleted (should fail to get)
 log_test "agents get (verify deleted)"
-if $CLI --api-url "$API_URL" agents get "$AGENT_UUID" --output json 2>&1; then
+if $CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1; then
   log_fail "agents get should fail for deleted agent"
 else
   log_pass "agents get correctly fails for deleted agent"

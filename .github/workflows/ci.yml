@@ -327,6 +327,8 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # CLI requires API key even with AUTH_MODE=none (server won't validate it)
+      EVERRUNS_API_KEY: "cli-e2e-test-key"
 
     steps:
       - uses: actions/checkout@v4
