@@ -646,3 +646,20 @@ pub struct SessionSecretInfoRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+// ============================================================================
+// Capability Secrets
+// ============================================================================
+
+/// Database row for capability secrets (encrypted API keys, etc.)
+#[derive(Debug, Clone, FromRow)]
+pub struct CapabilitySecretRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub agent_id: Uuid,
+    pub capability_id: String,
+    pub secret_name: String,
+    pub value_encrypted: Vec<u8>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

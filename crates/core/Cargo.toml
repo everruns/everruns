@@ -48,6 +48,7 @@ base64.workspace = true
 
 # URL parsing
 url = "2"
+urlencoding = "2"
 
 # Web fetching
 fetchkit = { git = "https://github.com/everruns/fetchkit" }

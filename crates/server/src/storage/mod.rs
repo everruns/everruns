@@ -7,10 +7,12 @@
 // - DbMessageRetriever: implements MessageRetriever for message loading
 // - DbSessionFileStore: implements SessionFileStore for session filesystem
 // - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
+// - DbCapabilitySecretStore: implements CapabilitySecretStore for capability secrets
 // - DbLlmProviderStore: implements LlmProviderStore for LLM provider retrieval
 
 pub mod agent_store;
 pub mod backend;
+pub mod capability_secrets_store;
 pub mod encryption;
 pub mod llm_provider_store;
 pub mod memory;
@@ -27,6 +29,10 @@ mod event_tests;
 
 pub use agent_store::{DbAgentStore, create_db_agent_store};
 pub use backend::StorageBackend;
+pub use capability_secrets_store::{
+    DbCapabilitySecretStore, create_db_capability_secret_store,
+    create_db_capability_secret_store_without_encryption,
+};
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
     generate_encryption_key,

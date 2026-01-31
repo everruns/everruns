@@ -342,6 +342,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "value_encrypted",
         id_column: "id",
     },
+    // Capability secrets are encrypted at rest
+    EncryptedColumn {
+        table: "capability_secrets",
+        column: "value_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
@@ -571,10 +577,20 @@ mod tests {
             // Detect CREATE TABLE
             if trimmed.starts_with("create table") {
                 in_create_table = true;
-                // Extract table name
+                // Extract table name (handles "IF NOT EXISTS")
                 let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    let table_name = parts[2].trim_end_matches('(').to_string();
+                // Find table name: skip "create table" and optional "if not exists"
+                let table_idx = if parts.len() >= 5
+                    && parts[2] == "if"
+                    && parts[3] == "not"
+                    && parts[4] == "exists"
+                {
+                    5 // "create table if not exists table_name"
+                } else {
+                    2 // "create table table_name"
+                };
+                if parts.len() > table_idx {
+                    let table_name = parts[table_idx].trim_end_matches('(').to_string();
                     current_table = Some(table_name);
                 }
             }

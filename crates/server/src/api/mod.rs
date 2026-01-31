@@ -5,6 +5,7 @@
 
 pub mod agents;
 pub mod capabilities;
+pub mod capability_secrets;
 pub mod common;
 pub mod durable;
 pub mod events;

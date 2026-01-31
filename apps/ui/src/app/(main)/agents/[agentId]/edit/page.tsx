@@ -301,6 +301,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       selected={selectedCapabilities}
                       onChange={handleCapabilitiesChange}
                       disabled={isSaving}
+                      agentId={agentId}
                     />
                   </CardContent>
                 </Card>

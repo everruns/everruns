@@ -290,6 +290,60 @@ pub trait SessionStorageStore: Send + Sync {
 }
 
 // ============================================================================
+// CapabilitySecretStore - For capability-level secrets (per agent)
+// ============================================================================
+
+/// Trait for capability secret storage operations
+///
+/// This trait abstracts storage operations for capability-specific secrets
+/// (like API keys for web search providers). Secrets are stored per agent
+/// per capability and are encrypted at rest.
+///
+/// Unlike session secrets, capability secrets are:
+/// - Scoped to agent + capability (not session)
+/// - Set via UI/API configuration (not by the agent itself)
+/// - Write-only from the user's perspective (values not exposed in API responses)
+#[async_trait]
+pub trait CapabilitySecretStore: Send + Sync {
+    /// Get a capability secret by name
+    /// Returns the decrypted value if the secret exists
+    async fn get_secret(
+        &self,
+        agent_id: AgentId,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<Option<String>>;
+
+    /// Set a capability secret (creates or updates, value is encrypted before storage)
+    async fn set_secret(
+        &self,
+        agent_id: AgentId,
+        capability_id: &str,
+        secret_name: &str,
+        value: &str,
+    ) -> Result<()>;
+
+    /// Delete a capability secret
+    async fn delete_secret(
+        &self,
+        agent_id: AgentId,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool>;
+
+    /// Check if a capability secret exists (without retrieving the value)
+    async fn has_secret(
+        &self,
+        agent_id: AgentId,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool>;
+
+    /// List all secret names for a capability (without values)
+    async fn list_secrets(&self, agent_id: AgentId, capability_id: &str) -> Result<Vec<String>>;
+}
+
+// ============================================================================
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
@@ -298,6 +352,7 @@ pub trait SessionStorageStore: Send + Sync {
 /// This context contains:
 /// - Session ID for scoping operations
 /// - Optional stores for tools that need external access
+/// - Capability context for tools that need capability-specific config/secrets
 ///
 /// Tools that need context-aware execution (like filesystem tools) can use
 /// the `execute_with_context` method on the Tool trait.
@@ -311,6 +366,18 @@ pub struct ToolContext {
 
     /// Optional storage store for key/value and secret storage
     pub storage_store: Option<Arc<dyn SessionStorageStore>>,
+
+    /// The agent ID (needed for capability secrets)
+    pub agent_id: Option<AgentId>,
+
+    /// The capability ID for the tool being executed
+    pub capability_id: Option<String>,
+
+    /// Optional capability configuration JSON
+    pub capability_config: Option<serde_json::Value>,
+
+    /// Optional capability secret store for capability-specific secrets
+    pub capability_secret_store: Option<Arc<dyn CapabilitySecretStore>>,
 }
 
 impl ToolContext {
@@ -320,6 +387,10 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: None,
+            agent_id: None,
+            capability_id: None,
+            capability_config: None,
+            capability_secret_store: None,
         }
     }
 
@@ -329,6 +400,10 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: None,
+            agent_id: None,
+            capability_id: None,
+            capability_config: None,
+            capability_secret_store: None,
         }
     }
 
@@ -341,6 +416,10 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: Some(storage_store),
+            agent_id: None,
+            capability_id: None,
+            capability_config: None,
+            capability_secret_store: None,
         }
     }
 
@@ -354,7 +433,55 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: Some(storage_store),
+            agent_id: None,
+            capability_id: None,
+            capability_config: None,
+            capability_secret_store: None,
         }
+    }
+
+    /// Set the agent ID for this context
+    pub fn with_agent_id(mut self, agent_id: AgentId) -> Self {
+        self.agent_id = Some(agent_id);
+        self
+    }
+
+    /// Set the capability context (ID, config, and secret store)
+    pub fn with_capability(
+        mut self,
+        capability_id: String,
+        config: Option<serde_json::Value>,
+        secret_store: Option<Arc<dyn CapabilitySecretStore>>,
+    ) -> Self {
+        self.capability_id = Some(capability_id);
+        self.capability_config = config;
+        self.capability_secret_store = secret_store;
+        self
+    }
+
+    /// Get a capability secret by name
+    ///
+    /// Returns Ok(None) if the secret doesn't exist or if capability secret store is not configured.
+    /// Returns Err if there's an error retrieving the secret.
+    pub async fn get_capability_secret(&self, secret_name: &str) -> Result<Option<String>> {
+        let agent_id = match self.agent_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+
+        let capability_id = match &self.capability_id {
+            Some(id) => id.clone(),
+            None => return Ok(None),
+        };
+
+        let store = match &self.capability_secret_store {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        store
+            .get_secret(agent_id, &capability_id, secret_name)
+            .await
     }
 }
 
@@ -364,6 +491,13 @@ impl std::fmt::Debug for ToolContext {
             .field("session_id", &self.session_id)
             .field("file_store", &self.file_store.is_some())
             .field("storage_store", &self.storage_store.is_some())
+            .field("agent_id", &self.agent_id)
+            .field("capability_id", &self.capability_id)
+            .field("capability_config", &self.capability_config.is_some())
+            .field(
+                "capability_secret_store",
+                &self.capability_secret_store.is_some(),
+            )
             .finish()
     }
 }

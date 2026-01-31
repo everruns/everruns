@@ -2247,6 +2247,73 @@ impl InMemoryDatabase {
         secrets.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(secrets)
     }
+
+    // ============================================
+    // Capability Secrets (stub implementation for dev mode)
+    // ============================================
+
+    pub async fn get_capability_secret(
+        &self,
+        _agent_id: Uuid,
+        _capability_id: &str,
+        _secret_name: &str,
+    ) -> Result<Option<CapabilitySecretRow>> {
+        // In-memory mode: secrets are not persisted
+        // Return None to indicate no secret is configured
+        Ok(None)
+    }
+
+    pub async fn upsert_capability_secret(
+        &self,
+        _agent_id: Uuid,
+        _capability_id: &str,
+        _secret_name: &str,
+        _value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        // In-memory mode: no-op, secrets not persisted
+        Ok(())
+    }
+
+    pub async fn upsert_capability_secret_with_org(
+        &self,
+        _org_id: i64,
+        _agent_id: Uuid,
+        _capability_id: &str,
+        _secret_name: &str,
+        _value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        // In-memory mode: no-op, secrets not persisted
+        Ok(())
+    }
+
+    pub async fn delete_capability_secret(
+        &self,
+        _agent_id: Uuid,
+        _capability_id: &str,
+        _secret_name: &str,
+    ) -> Result<bool> {
+        // In-memory mode: always return false (nothing to delete)
+        Ok(false)
+    }
+
+    pub async fn has_capability_secret(
+        &self,
+        _agent_id: Uuid,
+        _capability_id: &str,
+        _secret_name: &str,
+    ) -> Result<bool> {
+        // In-memory mode: no secrets stored
+        Ok(false)
+    }
+
+    pub async fn list_capability_secrets(
+        &self,
+        _agent_id: Uuid,
+        _capability_id: &str,
+    ) -> Result<Vec<String>> {
+        // In-memory mode: return empty list
+        Ok(vec![])
+    }
 }
 
 #[cfg(test)]

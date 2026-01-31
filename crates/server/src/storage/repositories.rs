@@ -2656,4 +2656,162 @@ impl Database {
 
         Ok(result.rows_affected() > 0)
     }
+
+    // ========================================================================
+    // Capability Secrets
+    // ========================================================================
+
+    /// Get a capability secret by agent_id, capability_id, and secret_name
+    pub async fn get_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<Option<CapabilitySecretRow>> {
+        let row = sqlx::query_as::<_, CapabilitySecretRow>(
+            r#"
+            SELECT id, org_id, agent_id, capability_id, secret_name, value_encrypted, created_at, updated_at
+            FROM capability_secrets
+            WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
+            "#,
+        )
+        .bind(agent_id)
+        .bind(capability_id)
+        .bind(secret_name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Get org_id for an agent (without full agent data)
+    pub async fn get_agent_org_id(&self, agent_id: Uuid) -> Result<Option<i64>> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT org_id FROM agents WHERE id = $1
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
+    /// Upsert a capability secret (with org_id)
+    pub async fn upsert_capability_secret_with_org(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+        value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO capability_secrets (org_id, agent_id, capability_id, secret_name, value_encrypted)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (agent_id, capability_id, secret_name) DO UPDATE SET
+                value_encrypted = EXCLUDED.value_encrypted,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(capability_id)
+        .bind(secret_name)
+        .bind(value_encrypted)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Upsert a capability secret (looks up org_id from agent)
+    pub async fn upsert_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+        value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        let org_id = self
+            .get_agent_org_id(agent_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", agent_id))?;
+
+        self.upsert_capability_secret_with_org(
+            org_id,
+            agent_id,
+            capability_id,
+            secret_name,
+            value_encrypted,
+        )
+        .await
+    }
+
+    /// Delete a capability secret
+    pub async fn delete_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM capability_secrets
+            WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
+            "#,
+        )
+        .bind(agent_id)
+        .bind(capability_id)
+        .bind(secret_name)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Check if a capability secret exists
+    pub async fn has_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT 1 FROM capability_secrets
+            WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
+            "#,
+        )
+        .bind(agent_id)
+        .bind(capability_id)
+        .bind(secret_name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.is_some())
+    }
+
+    /// List all secret names for a capability
+    pub async fn list_capability_secrets(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+    ) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT secret_name FROM capability_secrets
+            WHERE agent_id = $1 AND capability_id = $2
+            ORDER BY secret_name
+            "#,
+        )
+        .bind(agent_id)
+        .bind(capability_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
 }

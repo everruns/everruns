@@ -817,4 +817,97 @@ impl StorageBackend {
     ) -> Result<Vec<SessionSecretInfoRow>> {
         dispatch!(self, list_session_secrets, session_id)
     }
+
+    // ============================================
+    // Capability Secrets
+    // ============================================
+
+    pub async fn get_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<Option<CapabilitySecretRow>> {
+        dispatch!(
+            self,
+            get_capability_secret,
+            agent_id,
+            capability_id,
+            secret_name
+        )
+    }
+
+    pub async fn upsert_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+        value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            upsert_capability_secret,
+            agent_id,
+            capability_id,
+            secret_name,
+            value_encrypted
+        )
+    }
+
+    pub async fn upsert_capability_secret_with_org(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+        value_encrypted: Vec<u8>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            upsert_capability_secret_with_org,
+            org_id,
+            agent_id,
+            capability_id,
+            secret_name,
+            value_encrypted
+        )
+    }
+
+    pub async fn delete_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            delete_capability_secret,
+            agent_id,
+            capability_id,
+            secret_name
+        )
+    }
+
+    pub async fn has_capability_secret(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+        secret_name: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            has_capability_secret,
+            agent_id,
+            capability_id,
+            secret_name
+        )
+    }
+
+    pub async fn list_capability_secrets(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+    ) -> Result<Vec<String>> {
+        dispatch!(self, list_capability_secrets, agent_id, capability_id)
+    }
 }

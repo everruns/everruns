@@ -17,6 +17,8 @@ interface CapabilitySelectorProps {
   disabled?: boolean;
   /** Label for the component */
   label?: string;
+  /** Agent ID for storing capability secrets */
+  agentId?: string;
 }
 
 /**
@@ -30,6 +32,7 @@ export function CapabilitySelector({
   onChange,
   disabled,
   label = "Capabilities",
+  agentId,
 }: CapabilitySelectorProps) {
   const { selectedIds, getCapability, getAllDependencies, getDependents, canRemove } =
     useCapabilityDependencies({ capabilities, selected });
@@ -124,6 +127,7 @@ export function CapabilitySelector({
         onConfigChange={handleConfigChange}
         onMoveUp={moveUp}
         onMoveDown={moveDown}
+        agentId={agentId}
       />
 
       {/* Coming soon indicator */}

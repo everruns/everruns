@@ -91,9 +91,9 @@ pub use message_filter::{
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider, NoopEventEmitter,
-    ResolvedImage, SecretInfo, SessionFileStore, SessionStorageStore, SessionStore, ToolContext,
-    ToolExecutor,
+    CapabilitySecretStore, EventEmitter, ImageResolver, KeyInfo, LlmProviderStore,
+    ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
+    SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
 };
 
 // Event listener re-exports
@@ -137,7 +137,8 @@ pub use capabilities::{
     MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool, NoopCapability,
     ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
     SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
+    TestWeatherCapability, WEB_SEARCH_API_KEY_SECRET, WebSearchCapability, WebSearchConfig,
+    WebSearchProvider, WebSearchTool, WriteFileTool, WriteTodosTool, apply_capabilities,
     collect_capabilities_with_configs, get_dependencies, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id, resolve_dependencies,
 };

@@ -19,6 +19,8 @@ interface SelectedCapabilityListProps {
   onConfigChange: (capabilityId: CapabilityId, newConfig: Record<string, unknown>) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
+  /** Agent ID for storing capability secrets */
+  agentId?: string;
 }
 
 export function SelectedCapabilityList({
@@ -30,6 +32,7 @@ export function SelectedCapabilityList({
   onConfigChange,
   onMoveUp,
   onMoveDown,
+  agentId,
 }: SelectedCapabilityListProps) {
   // Track which capability settings are expanded
   const [expandedSettings, setExpandedSettings] = useState<Set<CapabilityId>>(new Set());
@@ -185,6 +188,7 @@ export function SelectedCapabilityList({
                       config={capConfig.config}
                       onChange={(newConfig) => onConfigChange(capConfig.ref, newConfig)}
                       disabled={disabled}
+                      agentId={agentId}
                     />
                   </div>
                 </CollapsibleContent>
