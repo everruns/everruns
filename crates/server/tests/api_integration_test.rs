@@ -174,7 +174,7 @@ async fn test_delete_agent() {
     server
         .delete(&format!("/v1/agents/{}", agent.id))
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NO_CONTENT);
 
     // Verify agent is deleted (should return 404)
     server
@@ -519,7 +519,7 @@ async fn test_llm_provider_crud() {
     server
         .delete(&format!("/v1/llm-providers/{}", provider.id))
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
@@ -566,11 +566,11 @@ async fn test_llm_model_crud() {
     server
         .delete(&format!("/v1/llm-models/{}", model.id))
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NO_CONTENT);
     server
         .delete(&format!("/v1/llm-providers/{}", provider.id))
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NO_CONTENT);
 }
 
 // ============================================
@@ -746,7 +746,7 @@ async fn test_session_filesystem() {
     server
         .delete(&format!("{}/hello.txt", fs_url))
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NO_CONTENT);
 }
 
 // ============================================
