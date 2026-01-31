@@ -117,7 +117,8 @@ Tests are organized by dependency requirements and execution speed:
 - `everruns-openai` - LLM client SDK, request/response parsing
 - `everruns-internal-protocol` - Protobuf definitions
 - `everruns-core` - Agent logic, tool handling, prompt building
-- `everruns-cli` - CLI utilities
+
+Note: `everruns-cli` is binary-only (no lib target) and tested via CLI E2E tests.
 
 **What to test:**
 - Serialization/deserialization

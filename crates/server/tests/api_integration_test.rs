@@ -170,17 +170,19 @@ async fn test_delete_agent() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // Delete the agent
+    // Delete the agent (soft-delete: archives the agent)
     server
         .delete(&format!("/v1/agents/{}", agent.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    // Verify agent is deleted (should return 404)
-    server
+    // Verify agent is archived (not hard-deleted)
+    let archived_agent: Agent = server
         .get(&format!("/v1/agents/{}", agent.id))
         .await
-        .assert_status(StatusCode::NOT_FOUND);
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(archived_agent.status.as_str(), "archived");
 }
 
 // ============================================
@@ -743,10 +745,12 @@ async fn test_session_filesystem() {
     assert!(dir.is_directory);
 
     // Delete file
-    server
+    let result: Value = server
         .delete(&format!("{}/hello.txt", fs_url))
         .await
-        .assert_status(StatusCode::NO_CONTENT);
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(result["deleted"], true);
 }
 
 // ============================================

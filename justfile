@@ -52,7 +52,6 @@ test-unit:
     cargo test -p everruns-openai --lib --all-features
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
-    cargo test -p everruns-cli --lib --all-features
 
 # Run integration tests (requires PostgreSQL via Docker or start-dev)
 test-integration: start-docker
