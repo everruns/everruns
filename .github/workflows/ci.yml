@@ -226,7 +226,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      API_BASE_URL: http://localhost:3100
+      API_BASE_URL: http://localhost:9000
 
     steps:
       - uses: actions/checkout@v4
@@ -288,7 +288,7 @@ jobs:
         run: |
           echo "Waiting for server to be ready..."
           for i in {1..30}; do
-            if curl -s http://localhost:3100/health > /dev/null 2>&1; then
+            if curl -s http://localhost:9000/health > /dev/null 2>&1; then
               echo "Server is ready!"
               exit 0
             fi
