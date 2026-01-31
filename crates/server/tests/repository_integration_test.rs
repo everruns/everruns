@@ -98,19 +98,20 @@ async fn test_agent_crud() {
         .expect("Failed to list agents");
     assert!(agents.iter().any(|a| a.id == agent.id));
 
-    // Delete agent
+    // Delete agent (soft-delete: archives the agent)
     let deleted = backend
         .delete_agent(TEST_ORG_ID, agent.id)
         .await
         .expect("Failed to delete agent");
     assert!(deleted);
 
-    // Verify deletion
+    // Verify agent is archived (not hard-deleted)
     let fetched = backend
         .get_agent(TEST_ORG_ID, agent.id)
         .await
-        .expect("Failed to get agent");
-    assert!(fetched.is_none());
+        .expect("Failed to get agent")
+        .expect("Agent should still exist after soft-delete");
+    assert_eq!(fetched.status, everruns_core::AgentStatus::Archived);
 }
 
 #[tokio::test]
