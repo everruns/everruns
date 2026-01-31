@@ -107,11 +107,23 @@ POST /v1/sessions
   "agent_id": "agent_01234567-...",
   "title": "Optional title",
   "tags": ["optional", "tags"],
-  "model_id": "optional-model-override"
+  "model_id": "optional-model-override",
+  "capabilities": [
+    { "ref": "current_time" },
+    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
+  ]
 }
 ```
 
 The `agent_id` field is required and specifies which agent will work in this session.
+
+**Session Capabilities:**
+
+The optional `capabilities` field allows setting session-level capabilities that are **additive** to the agent's capabilities. When building the RuntimeAgent:
+1. Agent capabilities are applied first
+2. Session capabilities are applied after (additive)
+
+This enables temporarily extending an agent's capabilities for specific sessions without modifying the agent configuration.
 
 #### List Sessions
 

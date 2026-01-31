@@ -49,11 +49,14 @@ An instance of agentic loop execution. Sessions are top-level entities under org
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
 | `model_id` | ModelId? | Override model (null = use agent default) |
+| `capabilities` | CapabilityConfig[] | Session-level capabilities (additive to agent) |
 | `status` | enum | `started`, `active`, `idle` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time (auto-updated on any change) |
 | `started_at` | timestamp? | Execution start time |
 | `finished_at` | timestamp? | Completion time |
+
+**Session Capabilities:** The `capabilities` field allows setting session-level capabilities that are additive to the agent's capabilities. When building the RuntimeAgent, agent capabilities are applied first, then session capabilities are applied after. This enables temporarily extending an agent's capabilities for specific sessions.
 
 **Note:** Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned to work in the session. This allows for organization-wide session management and future flexibility to reassign agents.
 

@@ -6,6 +6,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::typed_id::{AgentId, ModelId, SessionId};
 
@@ -82,6 +83,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub model_id: Option<ModelId>,
+    /// Session-level capabilities (additive to agent capabilities).
+    /// Applied after agent capabilities when building RuntimeAgent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<AgentCapabilityConfig>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.

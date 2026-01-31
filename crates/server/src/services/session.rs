@@ -3,7 +3,8 @@
 // Design Decision: Capability mounts are applied at session creation time.
 // This ensures mounted files are available immediately when the session starts.
 // The service collects mounts from the agent's capabilities and applies them
-// to the session filesystem.
+// to the session filesystem. Session capabilities are applied after agent capabilities
+// (additive behavior).
 
 use crate::api::common::Pagination;
 use crate::services::session_file::SessionFileService;
@@ -13,8 +14,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    AgentId, CapabilityRegistry, ModelId, Session, SessionId, SessionStatus, TokenUsage,
-    capabilities::collect_capabilities,
+    AgentCapabilityConfig, AgentId, CapabilityRegistry, ModelId, Session, SessionId, SessionStatus,
+    TokenUsage, capabilities::collect_capabilities,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -64,18 +65,22 @@ impl SessionService {
             }
         };
 
+        // Serialize capabilities to JSON for storage
+        let capabilities_json = serde_json::to_value(&req.capabilities)?;
+
         let input = CreateSessionRow {
             org_id,
             agent_id,
             title: req.title,
             tags: req.tags,
             model_id,
+            capabilities: capabilities_json,
         };
         let row = self.db.create_session(input).await?;
         let session = Self::row_to_session(row, org_public_id);
 
-        // Apply capability mounts to the session filesystem
-        self.apply_capability_mounts(agent_id.uuid(), session.id.uuid())
+        // Apply capability mounts to the session filesystem (agent + session capabilities)
+        self.apply_capability_mounts(agent_id.uuid(), &req.capabilities, session.id.uuid())
             .await?;
 
         Ok(session)
@@ -86,25 +91,36 @@ impl SessionService {
     /// This method:
     /// 1. Gets the agent's enabled capabilities
     /// 2. Collects mount points from those capabilities
-    /// 3. Creates the mounted files/directories in the session filesystem
+    /// 3. Adds session-level capabilities (additive)
+    /// 4. Creates the mounted files/directories in the session filesystem
     async fn apply_capability_mounts(
         &self,
         agent_id: Uuid,
+        session_capabilities: &[AgentCapabilityConfig],
         session_id: impl Into<uuid::Uuid> + Copy,
     ) -> Result<()> {
         let session_id = session_id.into();
+
         // Get agent's capability IDs
         let capability_rows = self.db.get_agent_capabilities(agent_id).await?;
-        let capability_ids: Vec<String> = capability_rows
+        let mut capability_ids: Vec<String> = capability_rows
             .iter()
             .map(|r| r.capability_id.clone())
             .collect();
+
+        // Add session-level capabilities (additive)
+        for cap in session_capabilities {
+            let cap_id = cap.capability_id().to_string();
+            if !capability_ids.contains(&cap_id) {
+                capability_ids.push(cap_id);
+            }
+        }
 
         if capability_ids.is_empty() {
             return Ok(()); // No capabilities, nothing to mount
         }
 
-        // Collect mounts from capabilities
+        // Collect mounts from all capabilities
         let collected = collect_capabilities(&capability_ids, &self.capability_registry);
 
         if collected.mounts.is_empty() {
@@ -246,6 +262,10 @@ impl SessionService {
             None
         };
 
+        // Parse capabilities from JSON
+        let capabilities: Vec<AgentCapabilityConfig> =
+            serde_json::from_value(row.capabilities).unwrap_or_default();
+
         Session {
             id: row.id,
             organization_id: org_public_id.to_string(),
@@ -255,6 +275,7 @@ impl SessionService {
             output_preview: None, // Populated separately in list()
             tags: row.tags,
             model_id: row.model_id,
+            capabilities,
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

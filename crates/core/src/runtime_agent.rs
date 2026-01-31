@@ -116,6 +116,27 @@ impl RuntimeAgentBuilder {
             .with_capabilities(&capability_ids, registry)
     }
 
+    /// Apply session-level capabilities to this builder (additive to agent capabilities).
+    ///
+    /// This is the same as `with_capabilities` but takes `AgentCapabilityConfig` instead
+    /// of raw capability IDs, matching the session's capabilities format.
+    ///
+    /// # Arguments
+    ///
+    /// * `capabilities` - Session-level capability configs to apply
+    /// * `registry` - The capability registry containing implementations
+    pub fn with_session_capabilities(
+        self,
+        capabilities: &[crate::capability_types::AgentCapabilityConfig],
+        registry: &CapabilityRegistry,
+    ) -> Self {
+        let capability_ids: Vec<String> = capabilities
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
+        self.with_capabilities(&capability_ids, registry)
+    }
+
     /// Apply capabilities to this builder.
     ///
     /// This resolves dependencies, then collects contributions from capabilities:
@@ -412,5 +433,76 @@ mod tests {
             runtime_agent.system_prompt.contains("Base prompt."),
             "Should preserve base prompt"
         );
+    }
+
+    #[test]
+    fn test_builder_with_session_capabilities() {
+        use crate::tool_types::ToolDefinition;
+
+        let registry = CapabilityRegistry::with_builtins();
+
+        // First apply agent with no capabilities, then add session capabilities
+        let session_caps = vec![AgentCapabilityConfig::new("current_time")];
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .system_prompt("Agent prompt.")
+            .with_session_capabilities(&session_caps, &registry)
+            .build();
+
+        // Should have the tool from session capability
+        assert_eq!(runtime_agent.tools.len(), 1);
+        match &runtime_agent.tools[0] {
+            ToolDefinition::Builtin(tool) => {
+                assert_eq!(tool.name, "get_current_time");
+            }
+        }
+    }
+
+    #[test]
+    fn test_builder_with_agent_and_session_capabilities() {
+        use crate::tool_types::ToolDefinition;
+        use uuid::{NoContext, Timestamp, Uuid};
+
+        let registry = CapabilityRegistry::with_builtins();
+        let ts = Timestamp::now(NoContext);
+
+        // Agent has current_time capability
+        let agent = Agent {
+            id: Uuid::new_v7(ts).into(),
+            name: "Test Agent".to_string(),
+            description: None,
+            system_prompt: "Agent prompt.".to_string(),
+            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            status: AgentStatus::Active,
+            default_model_id: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            usage: None,
+        };
+
+        // Session adds test_math capability
+        let session_caps = vec![AgentCapabilityConfig::new("test_math")];
+
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .with_agent(&agent, &registry)
+            .with_session_capabilities(&session_caps, &registry)
+            .model("gpt-5.2")
+            .build();
+
+        // Should have tools from both agent and session capabilities
+        assert!(runtime_agent.tools.len() >= 2);
+        let tool_names: Vec<&str> = runtime_agent
+            .tools
+            .iter()
+            .map(|t| match t {
+                ToolDefinition::Builtin(b) => b.name.as_str(),
+            })
+            .collect();
+        assert!(tool_names.contains(&"get_current_time"));
+        assert!(tool_names.contains(&"add"));
+
+        // System prompt should contain both capability additions and agent prompt
+        assert!(runtime_agent.system_prompt.contains("Agent prompt."));
+        assert!(runtime_agent.system_prompt.contains("math tools"));
     }
 }

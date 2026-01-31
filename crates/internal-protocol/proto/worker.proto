@@ -205,6 +205,8 @@ message Session {
     optional Uuid default_model_id = 7;
     // Organization public ID (format: org_{32-hex})
     string organization_id = 8;
+    // Session-level capabilities (JSON-encoded AgentCapabilityConfig)
+    repeated string capabilities = 9;
 }
 
 message GetSessionRequest {

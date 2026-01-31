@@ -145,27 +145,32 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to get session")
             })?;
 
-        Ok(row.map(|r| Session {
-            id: r.id,
-            organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            agent_id: r.agent_id,
-            title: r.title,
-            preview: None,
-            output_preview: None,
-            tags: r.tags,
-            model_id: r.model_id,
-            status: match r.status.as_str() {
-                "started" => SessionStatus::Started,
-                "active" => SessionStatus::Active,
-                "idle" => SessionStatus::Idle,
-                "running" => SessionStatus::Active,
-                _ => SessionStatus::Started,
-            },
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            started_at: r.started_at,
-            finished_at: r.finished_at,
-            usage: None,
+        Ok(row.map(|r| {
+            // Parse capabilities from JSON
+            let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
+            Session {
+                id: r.id,
+                organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                agent_id: r.agent_id,
+                title: r.title,
+                preview: None,
+                output_preview: None,
+                tags: r.tags,
+                model_id: r.model_id,
+                capabilities,
+                status: match r.status.as_str() {
+                    "started" => SessionStatus::Started,
+                    "active" => SessionStatus::Active,
+                    "idle" => SessionStatus::Idle,
+                    "running" => SessionStatus::Active,
+                    _ => SessionStatus::Started,
+                },
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                started_at: r.started_at,
+                finished_at: r.finished_at,
+                usage: None,
+            }
         }))
     }
 

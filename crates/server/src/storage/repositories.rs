@@ -481,9 +481,9 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, agent_id, title, tags, model_id, status)
-            VALUES ($1, $2, $3, $4, $5, 'started')
-            RETURNING id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, agent_id, title, tags, model_id, capabilities, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'started')
+            RETURNING id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -492,6 +492,7 @@ impl Database {
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id)
+        .bind(&input.capabilities)
         .fetch_one(&self.pool)
         .await?;
 
@@ -502,7 +503,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -554,7 +555,7 @@ impl Database {
         let rows = if let Some(aid) = agent_id {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1 AND agent_id = $2
@@ -571,7 +572,7 @@ impl Database {
         } else {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1

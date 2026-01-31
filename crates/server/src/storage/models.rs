@@ -214,6 +214,9 @@ pub struct SessionRow {
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
+    /// Session-level capabilities (JSONB in DB)
+    #[sqlx(default)]
+    pub capabilities: serde_json::Value,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -240,6 +243,8 @@ pub struct CreateSessionRow {
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
+    /// Session-level capabilities (additive to agent capabilities)
+    pub capabilities: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default)]
