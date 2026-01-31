@@ -182,7 +182,7 @@ async fn test_delete_agent() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(archived_agent.status.as_str(), "archived");
+    assert_eq!(archived_agent.status, everruns_core::AgentStatus::Archived);
 }
 
 // ============================================
