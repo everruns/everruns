@@ -301,12 +301,7 @@ async fn test_event_crud() {
         "Should not include the event itself"
     );
 
-    // Cleanup
-    backend
-        .delete_session(TEST_ORG_ID, session.id)
-        .await
-        .unwrap();
-    backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
+    // Note: No cleanup - events are append-only so sessions with events cannot be deleted
 }
 
 #[tokio::test]
@@ -379,12 +374,7 @@ async fn test_event_exclude_types() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type, "input.message");
 
-    // Cleanup
-    backend
-        .delete_session(TEST_ORG_ID, session.id)
-        .await
-        .unwrap();
-    backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
+    // Note: No cleanup - events are append-only so sessions with events cannot be deleted
 }
 
 // ============================================
@@ -792,7 +782,8 @@ async fn test_organization_crud() {
     let backend = create_test_backend().await;
 
     // Create organization
-    let public_id = format!("org_{}", Uuid::now_v7());
+    // Note: public_id must match format ^org_[0-9a-f]{32}$
+    let public_id = format!("org_{}", Uuid::now_v7().simple());
     let org = backend
         .create_organization(CreateOrganizationRow {
             public_id: public_id.clone(),
@@ -1067,10 +1058,5 @@ async fn test_session_previews() {
     assert!(output_previews.contains_key(&session_uuid));
     assert!(output_previews[&session_uuid].contains("doing well"));
 
-    // Cleanup
-    backend
-        .delete_session(TEST_ORG_ID, session.id)
-        .await
-        .unwrap();
-    backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
+    // Note: No cleanup - events are append-only so sessions with events cannot be deleted
 }
