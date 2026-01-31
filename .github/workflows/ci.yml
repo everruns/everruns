@@ -316,6 +316,68 @@ jobs:
         if: always()
         run: kill $API_PID || true
 
+  cli-e2e-test:
+    name: CLI E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      DEV_MODE: "true"
+      AUTH_MODE: none
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # CLI requires API key even with AUTH_MODE=none (server won't validate it)
+      EVERRUNS_API_KEY: "cli-e2e-test-key"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler jq
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-cli-e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-cli-e2e-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+
+      - name: Build server and CLI
+        run: |
+          cargo build -p everruns-server
+          cargo build -p everruns-cli
+
+      - name: Start server (DEV_MODE with in-process worker)
+        run: |
+          cargo run -p everruns-server > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          # Wait for server to be ready
+          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
+          echo "Server is ready (DEV_MODE with in-process worker)"
+
+      - name: Run CLI E2E tests
+        run: ./scripts/cli-e2e-test.sh
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Server Logs ==="
+          cat /tmp/server.log || true
+
+      - name: Stop server
+        if: always()
+        run: kill $SERVER_PID || true
+
   docs-build:
     name: Docs Build & Check
     runs-on: ubuntu-latest
