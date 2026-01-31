@@ -161,6 +161,67 @@ impl InjectedMessage {
 }
 
 // ============================================================================
+// PrependTransform - Dynamic message prepending based on filter results
+// ============================================================================
+
+/// Context passed to prepend transform functions
+#[derive(Debug, Clone)]
+pub struct FilterContext {
+    /// Total messages before any filtering
+    pub total_count: usize,
+    /// Messages remaining after filtering
+    pub filtered_count: usize,
+    /// Number of messages excluded by filters/limit
+    pub excluded_count: usize,
+}
+
+/// A transform that can prepend a message based on filter results.
+///
+/// This enables dynamic message injection that depends on how many messages
+/// were filtered out, useful for "N messages hidden" notices.
+pub trait PrependTransform: Send + Sync {
+    /// Optionally generate a message to prepend based on filter context.
+    ///
+    /// Return `Some(message)` to prepend, or `None` to skip.
+    fn transform(&self, ctx: &FilterContext) -> Option<Message>;
+}
+
+/// Simple implementation that prepends a message when messages were excluded
+pub struct ExcludedNoticeTransform {
+    /// Format string with {} placeholder for excluded count
+    pub format: String,
+}
+
+impl ExcludedNoticeTransform {
+    /// Create a new excluded notice transform with the given format string.
+    ///
+    /// The format should contain `{}` which will be replaced with the excluded count.
+    pub fn new(format: impl Into<String>) -> Self {
+        Self {
+            format: format.into(),
+        }
+    }
+
+    /// Default format for infinity context
+    pub fn infinity_context() -> Self {
+        Self::new("[IMPORTANT: {} earlier messages are NOT visible in this context. \
+To answer questions about earlier parts of the conversation, \
+you MUST call the `query_history` tool to search for the relevant information.]")
+    }
+}
+
+impl PrependTransform for ExcludedNoticeTransform {
+    fn transform(&self, ctx: &FilterContext) -> Option<Message> {
+        if ctx.excluded_count > 0 {
+            let text = self.format.replace("{}", &ctx.excluded_count.to_string());
+            Some(Message::system(&text))
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
 // MessageQuery - Query specification for message retrieval
 // ============================================================================
 
@@ -183,7 +244,7 @@ impl InjectedMessage {
 ///     })
 ///     .with_limit(100);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MessageQuery {
     /// Session to load messages from
     pub session_id: SessionId,
@@ -199,6 +260,10 @@ pub struct MessageQuery {
 
     /// Number of messages to skip
     pub offset: Option<i64>,
+
+    /// Optional transform to prepend a message based on filter results.
+    /// Applied after filtering, receives context about excluded messages.
+    pub prepend_transform: Option<Arc<dyn PrependTransform>>,
 }
 
 impl Default for MessageQuery {
@@ -209,7 +274,21 @@ impl Default for MessageQuery {
             injections: Vec::new(),
             limit: None,
             offset: None,
+            prepend_transform: None,
         }
+    }
+}
+
+impl std::fmt::Debug for MessageQuery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MessageQuery")
+            .field("session_id", &self.session_id)
+            .field("filters", &self.filters)
+            .field("injections", &self.injections)
+            .field("limit", &self.limit)
+            .field("offset", &self.offset)
+            .field("prepend_transform", &self.prepend_transform.is_some())
+            .finish()
     }
 }
 
@@ -222,7 +301,17 @@ impl MessageQuery {
             injections: Vec::new(),
             limit: None,
             offset: None,
+            prepend_transform: None,
         }
+    }
+
+    /// Set a prepend transform to dynamically add a message based on filter results.
+    ///
+    /// The transform receives filter context (total, filtered, excluded counts) and
+    /// can optionally return a message to prepend.
+    pub fn with_prepend_transform(mut self, transform: Arc<dyn PrependTransform>) -> Self {
+        self.prepend_transform = Some(transform);
+        self
     }
 
     /// Add a filter to the query

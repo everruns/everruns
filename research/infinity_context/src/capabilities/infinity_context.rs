@@ -73,6 +73,8 @@ struct InfinityContextFilterProvider;
 
 impl MessageFilterProvider for InfinityContextFilterProvider {
     fn apply_filters(&self, query: &mut MessageQuery, config: &Value) {
+        use everruns_core::message_filter::ExcludedNoticeTransform;
+
         let config: ContextStrategyConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
 
@@ -80,6 +82,10 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let limit =
             calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
         query.limit = Some(limit as i64);
+
+        // Add prepend transform to notify model about excluded messages
+        query.prepend_transform =
+            Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
     fn priority(&self) -> i32 {

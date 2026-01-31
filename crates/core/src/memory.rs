@@ -170,10 +170,39 @@ impl MessageRetriever for InMemoryMessageRetriever {
             }
         }
 
-        // Apply limit
+        // Track count before limit for prepend transform
+        let count_before_limit = messages.len();
+
+        // Apply limit - keep the most RECENT messages (drop oldest)
         if let Some(limit) = query.limit {
             let limit = limit.max(0i64) as usize;
-            messages.truncate(limit);
+            if messages.len() > limit {
+                // Drop oldest messages, keep most recent
+                let skip_count = messages.len() - limit;
+                messages = messages.into_iter().skip(skip_count).collect();
+            }
+        }
+
+        // Apply prepend transform if set
+        if let Some(ref transform) = query.prepend_transform {
+            let ctx = crate::message_filter::FilterContext {
+                total_count: count_before_limit,
+                filtered_count: messages.len(),
+                excluded_count: count_before_limit.saturating_sub(messages.len()),
+            };
+            tracing::debug!(
+                total = count_before_limit,
+                filtered = messages.len(),
+                excluded = ctx.excluded_count,
+                "PrependTransform context"
+            );
+            if let Some(prepend_msg) = transform.transform(&ctx) {
+                tracing::info!(
+                    excluded = ctx.excluded_count,
+                    "Prepending excluded messages notice"
+                );
+                messages.insert(0, prepend_msg);
+            }
         }
 
         // Apply injections

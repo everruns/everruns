@@ -90,6 +90,35 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     result
 }
 
+/// Remove orphaned tool_result messages that don't have corresponding tool_use.
+///
+/// When context is trimmed, we may have tool_result messages whose corresponding
+/// tool_use was in an earlier (now-excluded) message. LLMs require every tool_result
+/// to have a matching tool_use in the same turn.
+fn filter_orphaned_tool_results(messages: &[Message]) -> Vec<Message> {
+    // Collect all tool_call IDs from agent messages
+    let tool_call_ids: std::collections::HashSet<_> = messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Agent)
+        .flat_map(|m| m.tool_calls())
+        .map(|tc| tc.id.clone())
+        .collect();
+
+    // Keep only tool_results that have a matching tool_call
+    messages
+        .iter()
+        .filter(|m| {
+            if m.role == MessageRole::ToolResult {
+                m.tool_call_id()
+                    .is_some_and(|id| tool_call_ids.contains(id))
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect()
+}
+
 // ============================================================================
 // Input and Output Types
 // ============================================================================
@@ -521,8 +550,18 @@ where
             .and_then(|c| c.reasoning.as_ref())
             .and_then(|r| r.effort.clone());
 
-        // 10. Patch dangling tool calls (add cancelled results for tool calls without responses)
-        let patched_messages = patch_dangling_tool_calls(&messages);
+        // 10a. Filter orphaned tool_results (results without corresponding tool_use in context)
+        // This can happen when context is trimmed and tool_use was in an excluded message.
+        let filtered_messages = filter_orphaned_tool_results(&messages);
+        tracing::debug!(
+            before = messages.len(),
+            after = filtered_messages.len(),
+            removed = messages.len() - filtered_messages.len(),
+            "Filtered orphaned tool_results"
+        );
+
+        // 10b. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        let patched_messages = patch_dangling_tool_calls(&filtered_messages);
 
         // 11. Resolve images from image_file references (if any)
         //
