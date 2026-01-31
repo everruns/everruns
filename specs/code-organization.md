@@ -96,6 +96,7 @@ let result = db.operation().await.map_err(|e| {
 | Unit Tests | Inline `#[cfg(test)]` modules | None | `cargo test --lib` |
 | Integration Tests | `tests/integration_test.rs` | PostgreSQL, workers | `cargo test --test integration_test` |
 | LLM Tests | `tests/agent_run_*.rs` | Real LLM API keys | `cargo test --test agent_run_basic` |
+| CLI E2E Tests | `scripts/cli-e2e-test.sh` | Server (DEV_MODE), LLM API keys | `./scripts/cli-e2e-test.sh` |
 
 ### Unit Tests
 
@@ -125,6 +126,28 @@ Inline `#[cfg(test)]` modules for:
 ```bash
 # Run LLM tests
 ANTHROPIC_API_KEY=key OPENAI_API_KEY=key cargo test -p everruns-core --test agent_run_basic
+```
+
+### CLI E2E Tests
+
+`scripts/cli-e2e-test.sh` tests the CLI binary against a running server:
+- Agent CRUD (create, list, get, delete)
+- Session CRUD (create, list, get)
+- Chat with LLM response verification
+- Capabilities listing
+
+**Requirements:**
+- Server running at `localhost:9000` (use `just start-dev --no-watch` or DEV_MODE in CI)
+- `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY` for chat tests
+- Use `--skip-chat` flag to skip chat tests when no LLM keys available
+
+```bash
+# Run CLI e2e tests locally
+just start-dev --no-watch &
+./scripts/cli-e2e-test.sh
+
+# Skip chat tests (no LLM keys)
+./scripts/cli-e2e-test.sh --skip-chat
 ```
 
 ### When to Add
