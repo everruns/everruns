@@ -326,6 +326,17 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
         }))
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        _provider_type: Option<&everruns_core::LlmProviderType>,
+        _model_string: &str,
+    ) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
+        // Model string resolution should happen at the control plane (server),
+        // not on the worker. The server resolves the model string to a model_id
+        // before dispatching work to the worker. This method is not used in worker context.
+        Ok(None)
+    }
+
     async fn get_default_model(&self) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
         let result = self.adapters.get_default_model(self.org_id).await?;
         Ok(result.map(|m| everruns_core::traits::ModelWithProvider {

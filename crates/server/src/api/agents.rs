@@ -43,11 +43,19 @@ pub struct CreateAgentRequest {
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
     pub system_prompt: String,
-    /// The ID of the default LLM model to use for this agent.
+    /// The ID of the default LLM model to use for this agent (format: model_{32-hex}).
     /// If not specified, the system default model will be used.
+    /// Use either `default_model_id` (UUID reference) or `default_model` (provider/model string), not both.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Default model in "provider/model" format (e.g., "anthropic/opus-4.5", "openai/gpt-5.2").
+    /// Supports aliases that resolve to the latest model version.
+    /// Use either `default_model` (provider/model string) or `default_model_id` (UUID reference), not both.
+    /// When both are provided, `default_model` takes precedence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "anthropic/opus-4.5")]
+    pub default_model: Option<String>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     #[schema(example = json!(["support", "customer-facing"]))]
@@ -78,10 +86,18 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]
     pub system_prompt: Option<String>,
-    /// The ID of the default LLM model to use for this agent.
+    /// The ID of the default LLM model to use for this agent (format: model_{32-hex}).
+    /// Use either `default_model_id` (UUID reference) or `default_model` (provider/model string), not both.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Default model in "provider/model" format (e.g., "anthropic/opus-4.5", "openai/gpt-5.2").
+    /// Supports aliases that resolve to the latest model version.
+    /// Use either `default_model` (provider/model string) or `default_model_id` (UUID reference), not both.
+    /// When both are provided, `default_model` takes precedence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "anthropic/opus-4.5")]
+    pub default_model: Option<String>,
     /// Tags for organizing and filtering agents.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["updated-tag"]))]
@@ -580,6 +596,7 @@ pub async fn import_agent(
         description: agent_file.description,
         system_prompt,
         default_model_id: agent_file.default_model_id,
+        default_model: None, // TODO: Support in agent file format
         tags: agent_file.tags,
         capabilities: agent_file
             .capabilities

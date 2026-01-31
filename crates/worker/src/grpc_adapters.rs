@@ -617,6 +617,17 @@ impl LlmProviderStore for GrpcLlmProviderStore {
         }
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        _provider_type: Option<&everruns_core::LlmProviderType>,
+        _model_string: &str,
+    ) -> Result<Option<ModelWithProvider>> {
+        // Model string resolution should happen at the control plane (server),
+        // not on the worker. The server resolves the model string to a model_id
+        // before dispatching work to the worker. This method is not used in gRPC context.
+        Ok(None)
+    }
+
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         let mut client = self.client.inner.lock().await;
 

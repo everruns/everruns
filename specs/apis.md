@@ -108,7 +108,8 @@ POST /v1/sessions
   "agent_id": "agent_01234567-...",
   "title": "Optional title",
   "tags": ["optional", "tags"],
-  "model_id": "optional-model-override",
+  "model": "anthropic/opus-4.5",
+  "model_id": "model_01234567-...",
   "capabilities": [
     { "ref": "current_time" },
     { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
@@ -117,6 +118,12 @@ POST /v1/sessions
 ```
 
 The `agent_id` field is required and specifies which agent will work in this session.
+
+**Model selection:**
+- `model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`). Supports aliases that resolve to latest versions. Takes precedence over `model_id`.
+- `model_id`: UUID reference to a configured model. Use either `model` or `model_id`, not both.
+
+See [Models spec](models.md) for the full list of supported aliases.
 
 **Session Capabilities:**
 
@@ -327,15 +334,20 @@ Capabilities are modular functionality units that can be enabled on agents. They
 }
 ```
 
-Create agent with capabilities:
+Create agent with capabilities and model:
 ```json
 POST /v1/agents
 {
   "name": "Research Assistant",
   "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "web_fetch"]
+  "capabilities": ["current_time", "web_fetch"],
+  "default_model": "anthropic/opus-4.5"
 }
 ```
+
+**Model selection:**
+- `default_model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`). Takes precedence over `default_model_id`.
+- `default_model_id`: UUID reference to a configured model. Use either `default_model` or `default_model_id`, not both.
 
 Update agent capabilities:
 ```json

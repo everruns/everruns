@@ -81,6 +81,60 @@ impl LlmProviderStore for DbLlmProviderStore {
         }))
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        provider_type_filter: Option<&LlmProviderType>,
+        model_string: &str,
+    ) -> Result<Option<ModelWithProvider>> {
+        // Look up the model by model_id string
+        // TODO: Get org_id from context after Phase 3
+        let model_row = self
+            .db
+            .get_llm_model_by_model_id(DEFAULT_ORG_ID, model_string)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        // Parse provider type from the row
+        let provider_type = parse_provider_type(&model_row.provider_type)?;
+
+        // Filter by provider type if specified
+        if let Some(filter_type) = provider_type_filter
+            && provider_type != *filter_type
+        {
+            return Ok(None);
+        }
+
+        // Look up the provider for API key
+        let provider_row = self
+            .db
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        // Decrypt the API key
+        let provider_with_key = self
+            .db
+            .get_provider_with_api_key(&provider_row, &self.encryption)
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        Ok(Some(ModelWithProvider {
+            model: model_row.model_id,
+            provider_type,
+            api_key: provider_with_key.api_key,
+            base_url: provider_with_key.base_url,
+        }))
+    }
+
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         // Look up the default model (is_default = true)
         // TODO: Get org_id from context after Phase 3

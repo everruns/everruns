@@ -518,18 +518,23 @@ where
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 4. Extract model_id from the last user message's controls (highest priority)
-        let controls_model_id = messages
+        // 4. Extract model info from the last user message's controls (highest priority)
+        // Priority: controls.model (provider/model string) > controls.model_id (UUID)
+        let last_user_controls = messages
             .iter()
             .rev()
             .find(|m| m.role == MessageRole::User)
-            .and_then(|m| m.controls.as_ref())
-            .and_then(|c| c.model_id);
+            .and_then(|m| m.controls.as_ref());
 
-        // 5. Resolve model: controls > session > agent > harness
+        let controls_model_string = last_user_controls.and_then(|c| c.model.clone());
+        let controls_model_id = last_user_controls.and_then(|c| c.model_id);
+
+        // 5. Resolve model using chain:
+        //    controls.model > controls.model_id > session.model_id > agent.default_model_id > harness.default_model_id
         let agent_model_id = agent.as_ref().and_then(|a| a.default_model_id);
         let (model_with_provider, resolved_model_id) = self
             .resolve_model(
+                controls_model_string.as_deref(),
                 controls_model_id,
                 session.model_id,
                 agent_model_id,
@@ -1251,15 +1256,50 @@ where
         })
     }
 
-    /// Resolve model using priority chain: controls > session > agent > harness > system default
+    /// Resolve model using priority chain
+    ///
+    /// Priority (highest to lowest):
+    /// 1. controls.model (provider/model string) - e.g., "anthropic/opus-4.5"
+    /// 2. controls.model_id (UUID reference)
+    /// 3. session.model_id (UUID reference)
+    /// 4. agent.default_model_id (UUID reference)
+    /// 5. harness.default_model_id (UUID reference)
+    /// 6. System default model
+    ///
+    /// Returns the ModelWithProvider and the resolved model_id (if known as UUID).
     async fn resolve_model(
         &self,
+        controls_model_string: Option<&str>,
         controls_model_id: Option<crate::typed_id::ModelId>,
         session_model_id: Option<crate::typed_id::ModelId>,
         agent_model_id: Option<crate::typed_id::ModelId>,
         harness_model_id: Option<crate::typed_id::ModelId>,
     ) -> Result<(ModelWithProvider, Option<crate::typed_id::ModelId>)> {
-        // Try in priority order: controls > session > agent > harness
+        // Try controls.model (provider/model string) first (highest priority)
+        if let Some(model_string) = controls_model_string {
+            // Parse and resolve the model string (e.g., "anthropic/opus-4.5" -> "claude-opus-4-5-20251101")
+            let parsed = crate::model_string_resolver::parse_model_string(model_string);
+
+            // Look up the model by its resolved model string
+            if let Some(model_with_provider) = self
+                .provider_store
+                .get_model_with_provider_by_string(parsed.provider.as_ref(), &parsed.resolved_model)
+                .await?
+            {
+                // We don't have a model_id UUID for string-based lookups
+                return Ok((model_with_provider, None));
+            }
+
+            // If the model string wasn't found in the database, log a warning but continue
+            // This allows fallback to other resolution methods
+            tracing::warn!(
+                model_string = model_string,
+                resolved_model = %parsed.resolved_model,
+                "Model string not found in database, falling back to other resolution methods"
+            );
+        }
+
+        // Try model_id resolution in priority order: controls > session > agent > harness
         for model_id in [
             controls_model_id,
             session_model_id,
@@ -1285,7 +1325,7 @@ where
             .await?
             .ok_or_else(|| {
                 AgentLoopError::llm(
-                    "No model configured: no model_id in controls, session, or agent, and no system default model is set"
+                    "No model configured: no model in controls, no model_id in controls/session/agent, and no system default model is set"
                 )
             })?;
         Ok((model, None))

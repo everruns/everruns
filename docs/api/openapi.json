@@ -4373,12 +4373,20 @@
         "type": "object",
         "description": "Runtime controls for message processing",
         "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model string in \"provider/model\" format (e.g., \"anthropic/opus-4.5\", \"openai/gpt-5.2\").\nSupports aliases that resolve to the latest model version.\nUse either `model` (provider/model string) or `model_id` (UUID reference), not both.\nWhen both are provided, `model` takes precedence.\n\nExamples:\n- \"anthropic/opus-4.5\" → resolves to \"claude-opus-4-5-20251101\"\n- \"anthropic/sonnet\" → resolves to latest sonnet (claude-sonnet-4-5)\n- \"openai/gpt-5.2\" → passed through as-is\n- \"openai/codex\" → resolves to \"gpt-5.2-codex\"",
+            "example": "anthropic/opus-4.5"
+          },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Model ID to use for this message (format: model_{32-hex}).\nOverrides session and agent model settings.",
+            "description": "Model ID to use for this message (format: model_{32-hex}).\nOverrides session and agent model settings.\nUse either `model_id` (UUID reference) or `model` (provider/model string), not both.",
             "example": "model_01933b5a00007000800000000000001"
           },
           "reasoning": {
@@ -4437,12 +4445,20 @@
               }
             ]
           },
+          "default_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default model in \"provider/model\" format (e.g., \"anthropic/opus-4.5\", \"openai/gpt-5.2\").\nSupports aliases that resolve to the latest model version.\nUse either `default_model` (provider/model string) or `default_model_id` (UUID reference), not both.\nWhen both are provided, `default_model` takes precedence.",
+            "example": "anthropic/opus-4.5"
+          },
           "default_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
+            "description": "The ID of the default LLM model to use for this agent (format: model_{32-hex}).\nIf not specified, the system default model will be used.\nUse either `default_model_id` (UUID reference) or `default_model` (provider/model string), not both.",
             "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
@@ -4815,12 +4831,20 @@
             "description": "ID of the harness for this session (format: harness_{32-hex}).",
             "example": "harness_01933b5a00007000800000000000001"
           },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model string in \"provider/model\" format (e.g., \"anthropic/opus-4.5\", \"openai/gpt-5.2\").\nSupports aliases that resolve to the latest model version.\nUse either `model` (provider/model string) or `model_id` (UUID reference), not both.\nWhen both are provided, `model` takes precedence.",
+            "example": "anthropic/opus-4.5"
+          },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified.",
+            "description": "The ID of the LLM model to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if specified.\nUse either `model_id` (UUID reference) or `model` (provider/model string), not both.",
             "example": "model_01933b5a00007000800000000000001"
           },
           "tags": {
@@ -9392,12 +9416,20 @@
               }
             ]
           },
+          "default_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default model in \"provider/model\" format (e.g., \"anthropic/opus-4.5\", \"openai/gpt-5.2\").\nSupports aliases that resolve to the latest model version.\nUse either `default_model` (provider/model string) or `default_model_id` (UUID reference), not both.\nWhen both are provided, `default_model` takes precedence.",
+            "example": "anthropic/opus-4.5"
+          },
           "default_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The ID of the default LLM model to use for this agent.",
+            "description": "The ID of the default LLM model to use for this agent (format: model_{32-hex}).\nUse either `default_model_id` (UUID reference) or `default_model` (provider/model string), not both.",
             "example": "model_01933b5a00007000800000000000001"
           },
           "description": {

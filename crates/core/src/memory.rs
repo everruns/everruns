@@ -358,6 +358,27 @@ impl LlmProviderStore for InMemoryLlmProviderStore {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        provider_type: Option<&crate::llm_models::LlmProviderType>,
+        model_string: &str,
+    ) -> Result<Option<ModelWithProvider>> {
+        let models = self.models.read().await;
+        // Find first model matching the model string and optionally provider type
+        for model in models.values() {
+            if model.model == model_string {
+                if let Some(pt) = provider_type {
+                    if model.provider_type == *pt {
+                        return Ok(Some(model.clone()));
+                    }
+                } else {
+                    return Ok(Some(model.clone()));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         Ok(self.default_model.read().await.clone())
     }

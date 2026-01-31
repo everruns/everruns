@@ -106,6 +106,19 @@ pub trait LlmProviderStore: Send + Sync {
     async fn get_model_with_provider(&self, model_id: ModelId)
     -> Result<Option<ModelWithProvider>>;
 
+    /// Get model with provider info by model string (e.g., "claude-opus-4-5-20251101", "gpt-5.2")
+    ///
+    /// This is used when the API receives a model in "provider/model" format.
+    /// The provider_type hint is used to filter models when the same model_id
+    /// string might exist across multiple providers.
+    ///
+    /// Returns the model info needed to create an LLM provider via the factory.
+    async fn get_model_with_provider_by_string(
+        &self,
+        provider_type: Option<&LlmProviderType>,
+        model_string: &str,
+    ) -> Result<Option<ModelWithProvider>>;
+
     /// Get the default model with provider info
     ///
     /// Returns the system default model when an agent has no default_model_id set.

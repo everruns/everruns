@@ -143,12 +143,40 @@ Both fields must be preserved and sent back to the Anthropic API in subsequent t
 **Model resolution priority:**
 
 The model used for processing is determined using this priority chain:
-1. `controls.model_id` (from the last user message) - highest priority
-2. `session.model_id` - session-level override
-3. `agent.default_model_id` - agent's default model
-4. System default model - fallback if no model is configured above
+1. `controls.model` (from the last user message) - highest priority, provider/model string format
+2. `controls.model_id` (from the last user message) - UUID reference
+3. `session.model_id` - session-level override (UUID)
+4. `agent.default_model_id` - agent's default model (UUID)
+5. System default model - fallback if no model is configured above
 
-Each level references a UUID that points to a configured model in the `llm_models` table.
+**Provider/Model String Format:**
+
+The `model` field accepts a string in the format `"provider/model"` (e.g., `"anthropic/opus-4.5"`). This format supports:
+
+- **Provider prefix**: `anthropic/`, `openai/`, `llmsim/`
+- **Model aliases**: Shorthand names that resolve to the latest model versions
+
+**Anthropic aliases:**
+| Alias | Resolves to |
+|-------|-------------|
+| `opus-4.5`, `opus` | `claude-opus-4-5-20251101` |
+| `sonnet-4.5`, `sonnet` | `claude-sonnet-4-5-20250929` |
+| `haiku-4.5`, `haiku` | `claude-haiku-4-5-20251001` |
+| `opus-4` | `claude-opus-4-20250514` |
+| `sonnet-4` | `claude-sonnet-4-20250514` |
+| `sonnet-3.7` | `claude-3-7-sonnet-20250219` |
+| `sonnet-3.5` | `claude-3-5-sonnet-20241022` |
+
+**OpenAI aliases:**
+| Alias | Resolves to |
+|-------|-------------|
+| `latest`, `flagship` | `gpt-5.2` |
+| `codex` | `gpt-5.2-codex` |
+| `pro` | `gpt-5.2-pro` |
+
+Full model IDs (e.g., `"claude-opus-4-5-20251101"`) can also be used and are passed through unchanged.
+
+Both UUID reference (`model_id`) and string format (`model`) can be used; if both are provided, `model` takes precedence.
 
 **CreateMessageRequest structure:**
 
@@ -162,7 +190,7 @@ Each level references a UUID that points to a configured model in the `llm_model
     ]
   },
   "controls": {
-    "model_id": "550e8400-e29b-41d4-a716-446655440000",
+    "model": "anthropic/opus-4.5",
     "reasoning": { "effort": "medium" }
   },
   "metadata": {

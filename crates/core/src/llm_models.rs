@@ -12,7 +12,7 @@ use crate::typed_id::{ModelId, ProviderId};
 use utoipa::ToSchema;
 
 /// LLM provider type
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {

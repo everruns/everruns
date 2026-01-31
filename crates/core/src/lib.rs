@@ -45,6 +45,7 @@ pub mod harness;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
+pub mod model_string_resolver;
 pub mod organization;
 pub mod session;
 pub mod session_file;
@@ -191,6 +192,7 @@ pub use mcp_server::{
     McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool, mcp_tool_name,
     parse_mcp_tool_name,
 };
+pub use model_string_resolver::{ParsedModelString, parse_model_string};
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, Organization, generate_org_public_id,

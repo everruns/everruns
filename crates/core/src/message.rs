@@ -72,9 +72,24 @@ pub struct ReasoningConfig {
 pub struct Controls {
     /// Model ID to use for this message (format: model_{32-hex}).
     /// Overrides session and agent model settings.
+    /// Use either `model_id` (UUID reference) or `model` (provider/model string), not both.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub model_id: Option<ModelId>,
+
+    /// Model string in "provider/model" format (e.g., "anthropic/opus-4.5", "openai/gpt-5.2").
+    /// Supports aliases that resolve to the latest model version.
+    /// Use either `model` (provider/model string) or `model_id` (UUID reference), not both.
+    /// When both are provided, `model` takes precedence.
+    ///
+    /// Examples:
+    /// - "anthropic/opus-4.5" → resolves to "claude-opus-4-5-20251101"
+    /// - "anthropic/sonnet" → resolves to latest sonnet (claude-sonnet-4-5)
+    /// - "openai/gpt-5.2" → passed through as-is
+    /// - "openai/codex" → resolves to "gpt-5.2-codex"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "anthropic/opus-4.5"))]
+    pub model: Option<String>,
 
     /// Reasoning configuration
     #[serde(skip_serializing_if = "Option::is_none")]

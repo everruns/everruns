@@ -40,11 +40,19 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(example = json!(["debugging", "urgent"]))]
     pub tags: Vec<String>,
-    /// The ID of the LLM model to use for this session.
+    /// The ID of the LLM model to use for this session (format: model_{32-hex}).
     /// Overrides the agent's default model if specified.
+    /// Use either `model_id` (UUID reference) or `model` (provider/model string), not both.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub model_id: Option<ModelId>,
+    /// Model string in "provider/model" format (e.g., "anthropic/opus-4.5", "openai/gpt-5.2").
+    /// Supports aliases that resolve to the latest model version.
+    /// Use either `model` (provider/model string) or `model_id` (UUID reference), not both.
+    /// When both are provided, `model` takes precedence.
+    #[serde(default)]
+    #[schema(example = "anthropic/opus-4.5")]
+    pub model: Option<String>,
     /// Session-level capabilities (additive to agent capabilities).
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
