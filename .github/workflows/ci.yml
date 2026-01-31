@@ -85,11 +85,11 @@ jobs:
 
       - name: Run pure unit tests
         run: |
-          cargo test -p everruns-anthropic --lib
-          cargo test -p everruns-openai --lib
-          cargo test -p everruns-internal-protocol --lib
-          cargo test -p everruns-core --lib
-          cargo test -p everruns-cli --lib
+          cargo test -p everruns-anthropic --lib --all-features
+          cargo test -p everruns-openai --lib --all-features
+          cargo test -p everruns-internal-protocol --lib --all-features
+          cargo test -p everruns-core --lib --all-features
+          cargo test -p everruns-cli --lib --all-features
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database

@@ -643,7 +643,11 @@ async fn test_session_inherits_agent_default_model() {
         "Session should inherit agent's default_model_id"
     );
 
-    // Cleanup
+    // Cleanup in correct order: session -> agent -> model -> provider
+    server
+        .delete(&format!("/v1/sessions/{}", session.id))
+        .await;
+    server.delete(&format!("/v1/agents/{}", agent.id)).await;
     server.delete(&format!("/v1/llm-models/{}", model.id)).await;
     server
         .delete(&format!("/v1/llm-providers/{}", provider.id))
