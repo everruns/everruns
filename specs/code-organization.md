@@ -335,13 +335,25 @@ npm test -- --watch         # Watch mode for development
 
 ### CI Jobs
 
-| Job | What it tests | Runs in parallel |
-|-----|---------------|------------------|
-| `unit-test` | Pure logic, no dependencies | Yes |
-| `integration-test` | PostgreSQL, in-process API, server + worker | Yes |
-| `cli-e2e-test` | CLI binary against DEV_MODE server | Yes |
+| Job | What it tests | Dependencies |
+|-----|---------------|--------------|
+| `unit-test` | Pure logic, no dependencies | None |
+| `integration-test` | PostgreSQL, in-process API | None |
+| `build-binaries` | Builds release binaries, uploads artifacts | None |
+| `workflow-test` | Server + worker E2E | `build-binaries` |
+| `cli-e2e-test` | CLI binary against DEV_MODE server | `build-binaries` |
 
-All jobs run in parallel in CI for faster feedback.
+### CI Caching Strategy
+
+Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
+
+| Shared Key | Used By | Purpose |
+|------------|---------|---------|
+| `clippy` | clippy | Lint checks |
+| `test` | unit-test, integration-test, workflow-test | Test compilation |
+| `release` | build-binaries, build, openapi-check | Release builds |
+
+**Artifact sharing:** `build-binaries` uploads server/worker/cli binaries as GitHub artifacts. E2E jobs download pre-built binaries instead of rebuilding (~5 min saved per job).
 
 ## Content Types
 
