@@ -1022,11 +1022,11 @@ async fn test_session_previews() {
         .await
         .expect("Failed to create event");
 
-    // Create an agent message event
+    // Create an agent message event (must be output.message.completed for preview queries)
     backend
         .create_event(CreateEventRow {
             session_id: session.id,
-            event_type: "output.message".to_string(),
+            event_type: "output.message.completed".to_string(),
             ts: Utc::now(),
             context: json!({"role": "agent"}),
             data: json!({
