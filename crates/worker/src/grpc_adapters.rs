@@ -458,9 +458,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     let capabilities = proto_session
         .capabilities
         .iter()
-        .filter_map(|c| {
-            serde_json::from_str::<everruns_core::AgentCapabilityConfig>(c).ok()
-        })
+        .filter_map(|c| serde_json::from_str::<everruns_core::AgentCapabilityConfig>(c).ok())
         .collect();
 
     Ok(Session {
