@@ -106,12 +106,13 @@ async fn test_agent_crud() {
     assert!(deleted);
 
     // Verify agent is archived (not hard-deleted)
+    // Note: Repository returns row types with status as String
     let fetched = backend
         .get_agent(TEST_ORG_ID, agent.id)
         .await
         .expect("Failed to get agent")
         .expect("Agent should still exist after soft-delete");
-    assert_eq!(fetched.status, everruns_core::AgentStatus::Archived);
+    assert_eq!(fetched.status, "archived");
 }
 
 #[tokio::test]
