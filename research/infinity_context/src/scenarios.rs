@@ -4,14 +4,14 @@
 //!
 //! # Design: Token Budget
 //!
-//! The default eval context window is 50k tokens with 70% budget (35k tokens).
-//! This ensures scenarios exceed the budget, triggering context trimming and
-//! making the history search tool useful. Key considerations:
+//! Default context budget is 100k tokens. Scenarios are designed to exceed this
+//! budget, triggering context trimming and making the history search tool useful.
 //!
+//! Key considerations:
 //! - Filler messages are ~100-200 tokens each (detailed questions/answers)
 //! - Tool outputs are ~1500-3000 tokens each (realistic large file reads)
-//! - With ~300-500 events per scenario and many large tool results,
-//!   total tokens significantly exceed 35k budget (target: 80k-150k tokens)
+//! - With ~800-1000 turns per scenario and many large tool results,
+//!   total tokens significantly exceed 100k budget (target: 175-220k tokens)
 //! - The Infinity Context capability trims older messages and provides
 //!   the query_history tool to search excluded content
 //!
@@ -22,9 +22,9 @@
 //!
 //! Rough estimates (chars / 4 ≈ tokens):
 //! - Large tool results: ~6000 chars = ~1500 tokens each
-//! - With 40 tool results per scenario: ~60k tokens just from tools
-//! - Plus filler messages: additional ~20-40k tokens
-//! - Total per scenario: ~80-100k tokens (well over 35k budget)
+//! - With ~200 tool results per scenario: ~300k tokens just from tools
+//! - Plus filler messages: additional ~50-80k tokens
+//! - Total per scenario: ~175-220k tokens (well over 100k budget)
 
 use crate::dataset::{
     make_input_event, make_output_event, make_output_event_with_tool_call, make_tool_event,
@@ -59,8 +59,8 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
     let (key_name, key_value) = secrets[variant % secrets.len()];
     // Plant needle early so it gets trimmed from context
     let needle_position = 25 + (variant * 7) % 40;
-    // Much larger conversation with many tool results
-    let total_turns = 400;
+    // Much larger conversation with many tool results to exceed 100k token budget
+    let total_turns = 900;
 
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
@@ -169,7 +169,7 @@ fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
     let mut tool_call_counter = 0usize;
-    let total_turns = 350;
+    let total_turns = 850;
 
     let service_name = "UserAuthService";
     let auth_method = "OAuth 2.0";
@@ -315,7 +315,7 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
         ),
     ];
 
-    let total_turns = 380;
+    let total_turns = 880;
 
     for i in 0..total_turns {
         let version = function_versions.iter().find(|(pos, _)| *pos == i);
@@ -462,7 +462,7 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
     ];
 
     let (topic, task, choices) = &decision_topics[variant % decision_topics.len()];
-    let total_turns = 360;
+    let total_turns = 860;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
     let mut tool_call_counter = 0usize;
@@ -614,7 +614,7 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
     ];
 
     let (topic, task, versions) = &timeline_topics[variant % timeline_topics.len()];
-    let total_turns = 340;
+    let total_turns = 840;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
     let mut tool_call_counter = 0usize;
@@ -772,7 +772,7 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
     ];
 
     let (name, task, expected, target_tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
-    let total_turns = 320;
+    let total_turns = 820;
     let mut events: Vec<Event> = Vec::new();
     let mut seq = 0i32;
     let mut tool_call_counter = 0usize;

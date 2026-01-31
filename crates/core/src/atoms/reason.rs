@@ -25,8 +25,9 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use super::{Atom, AtomContext};
-use crate::capabilities::CapabilityRegistry;
+use crate::capabilities::{CapabilityRegistry, collect_capabilities_with_configs};
 use crate::error::{AgentLoopError, Result};
+use crate::message_filter::MessageQuery;
 use crate::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData,
@@ -470,14 +471,24 @@ where
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
-        // 3. Load messages (needed for controls.model_id extraction)
-        let messages = self.message_retriever.load(session_id).await?;
+        // 3. Collect capabilities and their message filter providers
+        let collected_capabilities =
+            collect_capabilities_with_configs(&agent.capabilities, &self.capability_registry);
+
+        // 4. Load messages with capability filters applied
+        let messages = if collected_capabilities.has_message_filters() {
+            let mut query = MessageQuery::new(session_id);
+            collected_capabilities.apply_message_filters(&mut query);
+            self.message_retriever.load_filtered(query).await?
+        } else {
+            self.message_retriever.load(session_id).await?
+        };
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 4. Extract model_id from the last user message's controls (highest priority)
+        // 5. Extract model_id from the last user message's controls (highest priority)
         let controls_model_id = messages
             .iter()
             .rev()
@@ -485,12 +496,12 @@ where
             .and_then(|m| m.controls.as_ref())
             .and_then(|c| c.model_id);
 
-        // 5. Resolve model using chain: controls.model_id > session.model_id > agent.default_model_id
+        // 6. Resolve model using chain: controls.model_id > session.model_id > agent.default_model_id
         let (model_with_provider, resolved_model_id) = self
             .resolve_model(controls_model_id, session.model_id, agent.default_model_id)
             .await?;
 
-        // 6. Build runtime agent from agent with capabilities applied
+        // 7. Build runtime agent from agent with capabilities applied
         // Also include MCP tool definitions that were pre-resolved by control-plane
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &self.capability_registry)
@@ -498,10 +509,10 @@ where
             .model(&model_with_provider.model)
             .build();
 
-        // 7. Create LLM driver using factory
+        // 8. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
 
-        // 8. Extract reasoning effort from the last user message's controls
+        // 9. Extract reasoning effort from the last user message's controls
         let reasoning_effort = messages
             .iter()
             .rev()
@@ -510,16 +521,16 @@ where
             .and_then(|c| c.reasoning.as_ref())
             .and_then(|r| r.effort.clone());
 
-        // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        // 10. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 10. Resolve images from image_file references (if any)
+        // 11. Resolve images from image_file references (if any)
         //
         // Image resolution converts image_file content parts (which only contain UUIDs)
         // into actual base64-encoded image data that can be sent to LLMs.
         let resolved_images = self.resolve_images(&patched_messages).await;
 
-        // 11. Build LLM messages
+        // 12. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -549,7 +560,7 @@ where
             llm_messages.push(LlmMessage::from_message_with_images(msg, &resolved_images));
         }
 
-        // 12. Build LLM call config with reasoning effort and metadata
+        // 13. Build LLM call config with reasoning effort and metadata
         let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
@@ -580,7 +591,7 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit output.message.started event BEFORE starting LLM call
+        // 14. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
         tracing::info!(
@@ -772,7 +783,7 @@ where
             Err(e) => return Err(e),
         };
 
-        // 14. Process stream with batched output.message.delta emissions
+        // 15. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
@@ -981,7 +992,7 @@ where
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
-        // 15. Convert completion metadata to TokenUsage
+        // 16. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => Some(TokenUsage::with_cache(
@@ -994,7 +1005,7 @@ where
             }
         });
 
-        // 16. Emit llm.generation event (child of reason span)
+        // 17. Emit llm.generation event (child of reason span)
         let event_context = EventContext::from_atom_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
@@ -1054,7 +1065,7 @@ where
             );
         }
 
-        // 17. Build metadata with model and reasoning effort info
+        // 18. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -1067,7 +1078,7 @@ where
             );
         }
 
-        // 18. Store and emit output.message.completed event with metadata and usage
+        // 19. Store and emit output.message.completed event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
