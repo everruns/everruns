@@ -692,7 +692,7 @@ Session capabilities use the same format as agent capabilities:
 }
 ```
 
-Session capabilities are stored in the `sessions.capabilities` column (JSONB) and applied at runtime via `RuntimeAgentBuilder::with_session_capabilities()`.
+Session capabilities are stored in the `sessions.capabilities` column (JSONB) and applied at runtime via `RuntimeAgentBuilder::with_capabilities()` after agent capabilities are applied.
 
 ### API Endpoints
 

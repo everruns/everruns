@@ -116,27 +116,6 @@ impl RuntimeAgentBuilder {
             .with_capabilities(&capability_ids, registry)
     }
 
-    /// Apply session-level capabilities to this builder (additive to agent capabilities).
-    ///
-    /// This is the same as `with_capabilities` but takes `AgentCapabilityConfig` instead
-    /// of raw capability IDs, matching the session's capabilities format.
-    ///
-    /// # Arguments
-    ///
-    /// * `capabilities` - Session-level capability configs to apply
-    /// * `registry` - The capability registry containing implementations
-    pub fn with_session_capabilities(
-        self,
-        capabilities: &[crate::capability_types::AgentCapabilityConfig],
-        registry: &CapabilityRegistry,
-    ) -> Self {
-        let capability_ids: Vec<String> = capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-        self.with_capabilities(&capability_ids, registry)
-    }
-
     /// Apply capabilities to this builder.
     ///
     /// This resolves dependencies, then collects contributions from capabilities:
@@ -436,19 +415,18 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_with_session_capabilities() {
+    fn test_builder_additive_capabilities() {
         use crate::tool_types::ToolDefinition;
 
         let registry = CapabilityRegistry::with_builtins();
 
-        // First apply agent with no capabilities, then add session capabilities
-        let session_caps = vec![AgentCapabilityConfig::new("current_time")];
+        // Apply capabilities additively (simulating session-level capabilities)
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Agent prompt.")
-            .with_session_capabilities(&session_caps, &registry)
+            .with_capabilities(&["current_time".to_string()], &registry)
             .build();
 
-        // Should have the tool from session capability
+        // Should have the tool from capability
         assert_eq!(runtime_agent.tools.len(), 1);
         match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
@@ -458,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_with_agent_and_session_capabilities() {
+    fn test_builder_with_agent_and_additive_capabilities() {
         use crate::tool_types::ToolDefinition;
         use uuid::{NoContext, Timestamp, Uuid};
 
@@ -480,12 +458,12 @@ mod tests {
             usage: None,
         };
 
-        // Session adds test_math capability
-        let session_caps = vec![AgentCapabilityConfig::new("test_math")];
+        // Session adds test_math capability (additive)
+        let session_capability_ids = vec!["test_math".to_string()];
 
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &registry)
-            .with_session_capabilities(&session_caps, &registry)
+            .with_capabilities(&session_capability_ids, &registry)
             .model("gpt-5.2")
             .build();
 
