@@ -659,15 +659,40 @@ See `specs/mcp-servers.md` for full MCP integration details including:
 When a session executes:
 
 1. **Load Agent**: Fetch agent configuration from database
-2. **Fetch Capabilities**: Get agent's enabled capabilities via `get_agent_capabilities(agent_id)`
-3. **Resolve Capabilities**: For each capability (ordered by `position`):
+2. **Load Session**: Fetch session configuration including session-level capabilities
+3. **Fetch Agent Capabilities**: Get agent's enabled capabilities via `get_agent_capabilities(agent_id)`
+4. **Resolve Capabilities**: For each capability (ordered by `position`):
    - Look up `InternalCapability` from registry by string ID
    - Collect `system_prompt_addition` texts
    - Collect `tools` definitions
-4. **Build RuntimeAgent**:
-   - System prompt = capability additions + agent's base system prompt
-   - Tools = merged tool list from all capabilities
-5. **Execute**: Run Agent Loop with fully configured RuntimeAgent
+5. **Apply Session Capabilities**: Session-level capabilities are applied **after** agent capabilities (additive):
+   - Session capabilities extend the agent's tools
+   - Session capability system prompts are prepended after agent capability prompts
+   - This allows temporarily extending capabilities without modifying the agent
+6. **Build RuntimeAgent**:
+   - System prompt = session cap additions + agent cap additions + agent's base prompt
+   - Tools = merged tool list from agent capabilities + session capabilities
+7. **Execute**: Run Agent Loop with fully configured RuntimeAgent
+
+### Session Capabilities
+
+Sessions can have their own capabilities that are additive to the agent's capabilities. This enables:
+- Temporarily extending an agent's capabilities for specific sessions
+- Per-session customization without modifying the agent configuration
+- Testing new capabilities before adding them to the agent
+
+Session capabilities use the same format as agent capabilities:
+
+```json
+{
+  "capabilities": [
+    { "ref": "current_time" },
+    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
+  ]
+}
+```
+
+Session capabilities are stored in the `sessions.capabilities` column (JSONB) and applied at runtime via `RuntimeAgentBuilder::with_capabilities()` after agent capabilities are applied.
 
 ### API Endpoints
 

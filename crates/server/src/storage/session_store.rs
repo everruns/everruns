@@ -63,6 +63,9 @@ impl SessionStore for DbSessionStore {
                     None
                 };
 
+                // Parse capabilities from JSON
+                let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
+
                 Ok(Some(Session {
                     id: row.id,
                     organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
@@ -72,6 +75,7 @@ impl SessionStore for DbSessionStore {
                     output_preview: None, // Output preview populated separately when listing sessions
                     tags: row.tags,
                     model_id: row.model_id,
+                    capabilities,
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

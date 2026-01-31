@@ -310,6 +310,11 @@ impl WorkerService for WorkerServiceImpl {
             updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
             organization_id: session.organization_id.clone(),
+            capabilities: session
+                .capabilities
+                .iter()
+                .filter_map(|c| serde_json::to_string(c).ok())
+                .collect(),
         };
 
         // Load messages from events using EventService
@@ -498,6 +503,11 @@ impl WorkerService for WorkerServiceImpl {
             updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
             default_model_id: s.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
             organization_id: s.organization_id.clone(),
+            capabilities: s
+                .capabilities
+                .iter()
+                .filter_map(|c| serde_json::to_string(c).ok())
+                .collect(),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -543,6 +553,11 @@ impl WorkerService for WorkerServiceImpl {
             updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
             organization_id: session.organization_id.clone(),
+            capabilities: session
+                .capabilities
+                .iter()
+                .filter_map(|c| serde_json::to_string(c).ok())
+                .collect(),
         };
 
         Ok(Response::new(SetSessionStatusResponse {

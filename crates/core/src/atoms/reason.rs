@@ -491,9 +491,16 @@ where
             .await?;
 
         // 6. Build runtime agent from agent with capabilities applied
+        // Then apply session-level capabilities (additive to agent capabilities)
         // Also include MCP tool definitions that were pre-resolved by control-plane
+        let session_capability_ids: Vec<String> = session
+            .capabilities
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &self.capability_registry)
+            .with_capabilities(&session_capability_ids, &self.capability_registry)
             .tools(mcp_tool_definitions.iter().cloned())
             .model(&model_with_provider.model)
             .build();

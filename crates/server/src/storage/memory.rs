@@ -468,6 +468,7 @@ impl InMemoryDatabase {
             title: input.title,
             tags: input.tags,
             model_id: input.model_id,
+            capabilities: input.capabilities,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,
             updated_at: now,
@@ -2303,6 +2304,7 @@ mod tests {
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
+                capabilities: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2343,6 +2345,7 @@ mod tests {
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
+                capabilities: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2398,6 +2401,7 @@ mod tests {
                 title: None,
                 tags: vec![],
                 model_id: None,
+                capabilities: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2450,6 +2454,7 @@ mod tests {
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,
+                capabilities: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2527,6 +2532,7 @@ mod tests {
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,
+                capabilities: serde_json::json!([]),
             })
             .await
             .unwrap();

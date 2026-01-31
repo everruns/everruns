@@ -11,6 +11,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
 use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId, TurnId};
 use everruns_core::{Message, Session};
@@ -40,6 +41,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub model_id: Option<ModelId>,
+    /// Session-level capabilities (additive to agent capabilities).
+    /// Applied after agent capabilities when building RuntimeAgent.
+    #[serde(default)]
+    pub capabilities: Vec<AgentCapabilityConfig>,
 }
 
 /// Response from cancel turn endpoint
@@ -432,6 +437,7 @@ mod tests {
         assert_eq!(req.title, None);
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
+        assert!(req.capabilities.is_empty());
     }
 
     #[test]
@@ -476,6 +482,25 @@ mod tests {
         assert_eq!(req.title, Some("Full Session".to_string()));
         assert_eq!(req.tags, vec!["tag1", "tag2"]);
         assert_eq!(req.model_id, Some(model_id));
+        assert!(req.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_create_session_request_with_capabilities() {
+        let json = format!(
+            r#"{{
+                "agent_id": "{}",
+                "capabilities": [
+                    {{"ref": "current_time"}},
+                    {{"ref": "web_fetch", "config": {{"timeout_ms": 30000}}}}
+                ]
+            }}"#,
+            TEST_AGENT_ID
+        );
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.capabilities.len(), 2);
+        assert_eq!(req.capabilities[0].capability_id(), "current_time");
+        assert_eq!(req.capabilities[1].capability_id(), "web_fetch");
     }
 
     #[test]

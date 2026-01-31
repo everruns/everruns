@@ -413,4 +413,74 @@ mod tests {
             "Should preserve base prompt"
         );
     }
+
+    #[test]
+    fn test_builder_additive_capabilities() {
+        use crate::tool_types::ToolDefinition;
+
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Apply capabilities additively (simulating session-level capabilities)
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .system_prompt("Agent prompt.")
+            .with_capabilities(&["current_time".to_string()], &registry)
+            .build();
+
+        // Should have the tool from capability
+        assert_eq!(runtime_agent.tools.len(), 1);
+        match &runtime_agent.tools[0] {
+            ToolDefinition::Builtin(tool) => {
+                assert_eq!(tool.name, "get_current_time");
+            }
+        }
+    }
+
+    #[test]
+    fn test_builder_with_agent_and_additive_capabilities() {
+        use crate::tool_types::ToolDefinition;
+        use uuid::{NoContext, Timestamp, Uuid};
+
+        let registry = CapabilityRegistry::with_builtins();
+        let ts = Timestamp::now(NoContext);
+
+        // Agent has current_time capability
+        let agent = Agent {
+            id: Uuid::new_v7(ts).into(),
+            name: "Test Agent".to_string(),
+            description: None,
+            system_prompt: "Agent prompt.".to_string(),
+            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            status: AgentStatus::Active,
+            default_model_id: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            usage: None,
+        };
+
+        // Session adds test_math capability (additive)
+        let session_capability_ids = vec!["test_math".to_string()];
+
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .with_agent(&agent, &registry)
+            .with_capabilities(&session_capability_ids, &registry)
+            .model("gpt-5.2")
+            .build();
+
+        // Should have tools from both agent and session capabilities
+        assert!(runtime_agent.tools.len() >= 2);
+        let tool_names: Vec<&str> = runtime_agent
+            .tools
+            .iter()
+            .map(|t| match t {
+                ToolDefinition::Builtin(b) => b.name.as_str(),
+            })
+            .collect();
+        assert!(tool_names.contains(&"get_current_time"));
+        assert!(tool_names.contains(&"add"));
+
+        // System prompt should contain both capability additions and agent prompt
+        assert!(runtime_agent.system_prompt.contains("Agent prompt."));
+        assert!(runtime_agent.system_prompt.contains("math tools"));
+    }
 }

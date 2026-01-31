@@ -454,6 +454,13 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     let created_at = proto_timestamp_or_now(proto_session.created_at.as_ref());
     let updated_at = proto_timestamp_or_now(proto_session.updated_at.as_ref());
 
+    // Parse capabilities from proto if present
+    let capabilities = proto_session
+        .capabilities
+        .iter()
+        .filter_map(|c| serde_json::from_str::<everruns_core::AgentCapabilityConfig>(c).ok())
+        .collect();
+
     Ok(Session {
         id: id.into(),
         organization_id: proto_session.organization_id,
@@ -463,6 +470,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         output_preview: None,
         tags: vec![],
         model_id: model_id.map(|u| u.into()),
+        capabilities,
         status,
         created_at,
         updated_at,

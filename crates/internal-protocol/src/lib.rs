@@ -348,6 +348,11 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         updated_at: Some(datetime_to_proto_timestamp(value.updated_at)),
         default_model_id: value.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         organization_id: value.organization_id.clone(),
+        capabilities: value
+            .capabilities
+            .iter()
+            .filter_map(|c| serde_json::to_string(c).ok())
+            .collect(),
     }
 }
 
