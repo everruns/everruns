@@ -194,11 +194,3 @@ Check if another process is using port 9000:
 ```bash
 lsof -i :9000
 ```
-
-## Completed Features (formerly "Next Steps")
-
-- [x] Add authentication middleware (`src/auth/middleware.rs`)
-- [x] Implement rate limiting (via circuit breakers in `everruns-durable`)
-- [x] Add request validation (Axum extractors with serde validation)
-- [x] Add workflow execution monitoring (durable execution engine)
-- [x] Add real-time updates via SSE (`src/api/sse.rs`, `src/api/events.rs`)
