@@ -52,6 +52,9 @@ url = "2"
 # Web fetching
 fetchkit = { git = "https://github.com/everruns/fetchkit" }
 
+# Sandboxed bash interpreter
+bashkit = { git = "https://github.com/everruns/bashkit" }
+
 # OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
 
@@ -63,7 +66,7 @@ sqlx = { workspace = true, optional = true }
 
 # OpenAI Protocol provider
 # Note: We need "default" features for system proxy detection from environment variables
-reqwest = { version = "0.13", features = ["json", "stream", "rustls-native-certs"] }
+reqwest = { version = "0.13", features = ["json", "stream", "rustls-native-certs", "blocking"] }
 eventsource-stream = "0.2"
 
 # LLM simulation for testing

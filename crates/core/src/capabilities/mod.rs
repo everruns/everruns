@@ -48,6 +48,7 @@ mod session_storage;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
+mod virtual_bash;
 mod web_fetch;
 
 // Re-export capabilities
@@ -94,6 +95,7 @@ pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
+pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{WebFetchCapability, WebFetchTool};
 
 // ============================================================================
@@ -276,6 +278,7 @@ impl CapabilityRegistry {
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
+        registry.register(VirtualBashCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
@@ -853,6 +856,7 @@ mod tests {
         assert!(registry.has("test_weather"));
         assert!(registry.has("stateless_todo_list"));
         assert!(registry.has("web_fetch"));
+        assert!(registry.has("virtual_bash"));
         assert!(registry.has("sample_data"));
         assert!(registry.has("fake_warehouse"));
         assert!(registry.has("fake_aws"));
@@ -860,7 +864,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 16);
+        assert_eq!(registry.len(), 17);
     }
 
     #[test]
@@ -878,6 +882,7 @@ mod tests {
         assert!(registry.has("test_weather"));
         assert!(registry.has("stateless_todo_list"));
         assert!(registry.has("web_fetch"));
+        assert!(registry.has("virtual_bash"));
         assert!(registry.has("sample_data"));
         assert!(registry.has("fake_warehouse"));
         assert!(registry.has("fake_aws"));
@@ -885,7 +890,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 15);
+        assert_eq!(registry.len(), 16);
     }
 
     #[test]
