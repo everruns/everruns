@@ -40,28 +40,30 @@ cargo run --example create_agent
 
 This will:
 1. Create a new agent
-2. Create an agent version
-3. Retrieve the agent
-4. List all agents
+2. Retrieve the agent
+3. List all agents
 
 ### Example Output
 
 ```
-🔑 Using tenant_id: 01234567-89ab-cdef-0123-456789abcdef
-
-📝 Creating agent...
-✅ Created agent:
-   ID: 01234567-89ab-cdef-0123-456789abcdef
+Creating agent...
+Created agent:
+   ID: agt_01234567890123456789012345
    Name: My First Agent
    Status: Active
    Created at: 2025-12-13T06:30:00Z
 
-📦 Creating agent version...
-✅ Created agent version:
-   Version: 1
-   Agent ID: 01234567-89ab-cdef-0123-456789abcdef
+Retrieving agent...
+Retrieved agent:
+   ID: agt_01234567890123456789012345
+   Name: My First Agent
+   Description: A helpful AI assistant
 
-🎉 Example completed successfully!
+Listing all agents...
+Found 1 agent(s):
+   - My First Agent (agt_01234567890123456789012345)
+
+Example completed successfully!
 ```
 
 ## Integration Tests
@@ -91,59 +93,47 @@ cargo test -p everruns-server --test integration_test test_full_agent_session_wo
 
 ## API Endpoints
 
-### Agents
+See [specs/apis.md](../../specs/apis.md) for the complete API reference.
 
-- `POST /v1/agents` - Create agent
-- `GET /v1/agents?tenant_id=<uuid>` - List agents
-- `GET /v1/agents/:id?tenant_id=<uuid>` - Get agent
-- `PATCH /v1/agents/:id?tenant_id=<uuid>` - Update agent
-- `POST /v1/agents/:id/versions` - Create version
-- `GET /v1/agents/:id/versions` - List versions
-- `GET /v1/agents/:id/versions/:version` - Get version
+### Core Resources
 
-### Threads
-
-- `POST /v1/threads` - Create thread
-- `GET /v1/threads/:id?tenant_id=<uuid>` - Get thread
-- `POST /v1/threads/:id/messages` - Add message
-- `GET /v1/threads/:id/messages` - List messages
-
-### Runs
-
-- `POST /v1/runs` - Create run
-- `GET /v1/runs/:id?tenant_id=<uuid>` - Get run
+- **Agents** - `/v1/agents` - Create, list, get, update, delete agents
+- **Sessions** - `/v1/sessions` - Manage chat sessions
+- **Messages** - `/v1/sessions/:id/messages` - Send/receive messages
+- **Events** - `/v1/sessions/:id/events` - SSE stream for real-time updates
 
 ### System
 
-- `GET /health` - Health check
+- `GET /health` - Health check (includes version and runner mode)
 - `GET /swagger-ui/` - Interactive API documentation
 - `GET /api-doc/openapi.json` - OpenAPI specification
+
+Organization context is derived from authentication (API key or session cookie).
 
 ## Development
 
 ### Build
 
 ```bash
-cargo build -p everrun-api
+cargo build -p everruns-server
 ```
 
 ### Run with Custom Port
 
 ```bash
-# Currently fixed at 9000, but can be made configurable
-cargo run -p everrun-api
+cargo run -p everruns-server
 ```
 
 ### Format Code
 
 ```bash
-cargo fmt -p everrun-api
+cargo fmt -p everruns-server
 ```
 
 ### Lint
 
 ```bash
-cargo clippy -p everrun-api -- -D warnings
+cargo clippy -p everruns-server -- -D warnings
 ```
 
 ## Architecture
@@ -160,29 +150,25 @@ Currently configured via environment variables:
 
 - `DATABASE_URL` - PostgreSQL connection string (required)
 
-Default: `postgres://everrun:everrun@localhost:5432/everrun`
+Default: `postgres://everruns:everruns@localhost:5432/everruns`
 
 ## Testing with cURL
 
 ### Create an Agent
 
 ```bash
-TENANT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-
 curl -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
-  -d "{
-    \"tenant_id\": \"$TENANT_ID\",
-    \"name\": \"Test Agent\",
-    \"description\": \"A test agent\",
-    \"default_model_id\": \"gpt-5.1\"
-  }" | jq
+  -d '{
+    "name": "Test Agent",
+    "system_prompt": "You are a helpful assistant."
+  }' | jq
 ```
 
 ### List Agents
 
 ```bash
-curl "http://localhost:9000/v1/agents?tenant_id=$TENANT_ID" | jq
+curl http://localhost:9000/v1/agents | jq
 ```
 
 ## Troubleshooting
@@ -209,10 +195,10 @@ Check if another process is using port 9000:
 lsof -i :9000
 ```
 
-## Next Steps
+## Completed Features (formerly "Next Steps")
 
-- [ ] Add authentication middleware
-- [ ] Implement rate limiting
-- [ ] Add request validation
-- [ ] Add workflow execution monitoring
-- [ ] Add WebSocket support for real-time updates
+- [x] Add authentication middleware (`src/auth/middleware.rs`)
+- [x] Implement rate limiting (via circuit breakers in `everruns-durable`)
+- [x] Add request validation (Axum extractors with serde validation)
+- [x] Add workflow execution monitoring (durable execution engine)
+- [x] Add real-time updates via SSE (`src/api/sse.rs`, `src/api/events.rs`)
