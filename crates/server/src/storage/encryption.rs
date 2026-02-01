@@ -342,9 +342,9 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "value_encrypted",
         id_column: "id",
     },
-    // Capability secrets are encrypted at rest
+    // Agent capability secrets are encrypted at rest
     EncryptedColumn {
-        table: "capability_secrets",
+        table: "agent_capability_secrets",
         column: "value_encrypted",
         id_column: "id",
     },

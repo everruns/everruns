@@ -2671,7 +2671,7 @@ impl Database {
         let row = sqlx::query_as::<_, CapabilitySecretRow>(
             r#"
             SELECT id, org_id, agent_id, capability_id, secret_name, value_encrypted, created_at, updated_at
-            FROM capability_secrets
+            FROM agent_capability_secrets
             WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
             "#,
         )
@@ -2709,7 +2709,7 @@ impl Database {
     ) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO capability_secrets (org_id, agent_id, capability_id, secret_name, value_encrypted)
+            INSERT INTO agent_capability_secrets (org_id, agent_id, capability_id, secret_name, value_encrypted)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (agent_id, capability_id, secret_name) DO UPDATE SET
                 value_encrypted = EXCLUDED.value_encrypted,
@@ -2759,7 +2759,7 @@ impl Database {
     ) -> Result<bool> {
         let result = sqlx::query(
             r#"
-            DELETE FROM capability_secrets
+            DELETE FROM agent_capability_secrets
             WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
             "#,
         )
@@ -2781,7 +2781,7 @@ impl Database {
     ) -> Result<bool> {
         let row: Option<(i64,)> = sqlx::query_as(
             r#"
-            SELECT 1 FROM capability_secrets
+            SELECT 1 FROM agent_capability_secrets
             WHERE agent_id = $1 AND capability_id = $2 AND secret_name = $3
             "#,
         )
@@ -2802,7 +2802,7 @@ impl Database {
     ) -> Result<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"
-            SELECT secret_name FROM capability_secrets
+            SELECT secret_name FROM agent_capability_secrets
             WHERE agent_id = $1 AND capability_id = $2
             ORDER BY secret_name
             "#,
