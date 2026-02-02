@@ -728,7 +728,10 @@ mod tests {
 
     #[test]
     fn test_normalize_path_workspace_nested() {
-        assert_eq!(normalize_path("/workspace/foo/bar/test.txt"), "/foo/bar/test.txt");
+        assert_eq!(
+            normalize_path("/workspace/foo/bar/test.txt"),
+            "/foo/bar/test.txt"
+        );
     }
 
     #[test]
@@ -754,7 +757,10 @@ mod tests {
 
     #[test]
     fn test_add_workspace_prefix_nested() {
-        assert_eq!(add_workspace_prefix("/foo/bar.txt"), "/workspace/foo/bar.txt");
+        assert_eq!(
+            add_workspace_prefix("/foo/bar.txt"),
+            "/workspace/foo/bar.txt"
+        );
     }
 
     #[test]

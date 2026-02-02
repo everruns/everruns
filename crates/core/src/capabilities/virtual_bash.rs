@@ -688,11 +688,7 @@ mod tests {
             Ok(files.remove(&(session_id, path)).is_some())
         }
 
-        async fn list_directory(
-            &self,
-            session_id: SessionId,
-            path: &str,
-        ) -> Result<Vec<FileInfo>> {
+        async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let mut entries = Vec::new();
@@ -731,11 +727,7 @@ mod tests {
             Ok(entries)
         }
 
-        async fn stat_file(
-            &self,
-            session_id: SessionId,
-            path: &str,
-        ) -> Result<Option<FileStat>> {
+        async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -762,11 +754,7 @@ mod tests {
             Ok(vec![])
         }
 
-        async fn create_directory(
-            &self,
-            session_id: SessionId,
-            path: &str,
-        ) -> Result<FileInfo> {
+        async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
             let path = Self::normalize_path(path);
             let mut dirs = self.directories.lock().unwrap();
             dirs.insert((session_id, path.clone()), true);
@@ -1097,10 +1085,7 @@ mod tests {
 
         // Try to write to /tmp (outside workspace)
         let result = tool
-            .execute_with_context(
-                json!({"command": "echo 'hack' > /tmp/evil.txt"}),
-                &context,
-            )
+            .execute_with_context(json!({"command": "echo 'hack' > /tmp/evil.txt"}), &context)
             .await;
 
         // This should fail because /tmp is outside /workspace
@@ -1124,8 +1109,14 @@ mod tests {
             );
             // Also check that /tmp read fails
             assert!(
-                output["stderr"].as_str().unwrap_or("").contains("Permission")
-                    || output["stderr"].as_str().unwrap_or("").contains("workspace")
+                output["stderr"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("Permission")
+                    || output["stderr"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("workspace")
                     || output["exit_code"] != 0,
                 "Write outside workspace should fail or be blocked"
             );
@@ -1364,7 +1355,10 @@ mod tests {
             .unwrap();
 
         // List should include the file
-        let entries = adapter.read_dir(Path::new("/workspace/mydir")).await.unwrap();
+        let entries = adapter
+            .read_dir(Path::new("/workspace/mydir"))
+            .await
+            .unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "file.txt");
     }
@@ -1469,10 +1463,7 @@ mod tests {
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let result = adapter
-            .symlink(
-                Path::new("/workspace/target"),
-                Path::new("/workspace/link"),
-            )
+            .symlink(Path::new("/workspace/target"), Path::new("/workspace/link"))
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not supported"));
