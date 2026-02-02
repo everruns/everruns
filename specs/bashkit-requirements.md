@@ -1,10 +1,13 @@
 # Bashkit Requirements for Custom FileSystem Adapters
 
+> **Status: IMPLEMENTED** - bashkit now exports the required types and
+> `SessionFileSystemAdapter` has been implemented in `crates/core/src/capabilities/virtual_bash.rs`.
+
 ## Context
 
 Everruns needs to implement a custom `FileSystem` adapter that bridges bashkit to the session file store. This enables live visibility of files during bash execution - if another tool writes to the session filesystem while bash is running, those files should be immediately visible.
 
-Current limitation: bashkit exports `FileSystem` trait but not the types needed to implement it.
+~~Current limitation: bashkit exports `FileSystem` trait but not the types needed to implement it.~~
 
 ## Required Exports
 

@@ -1,13 +1,13 @@
 //! Virtual Bash Capability
 //!
 //! This capability provides a sandboxed bash interpreter using bashkit.
-//! The bash environment uses an in-memory filesystem that syncs with
-//! the session's virtual filesystem before/after execution.
+//! The bash environment uses a custom FileSystem adapter that bridges
+//! directly to the session file store.
 //!
 //! Design decisions:
-//! - Uses bashkit's InMemoryFs for sandboxed bash execution
-//! - Session files are loaded into InMemoryFs before execution
-//! - Changes are synced back to session store after execution
+//! - SessionFileSystemAdapter implements bashkit's FileSystem trait
+//! - Direct delegation to SessionFileStore - no sync overhead
+//! - Live visibility: files written by other tools are immediately visible
 //! - Resource limits prevent runaway scripts (max commands, loop iterations)
 //! - Context-aware tool that requires session filesystem access
 
@@ -17,10 +17,11 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
-use bashkit::{Bash, ExecutionLimits, FileSystem, InMemoryFs};
+use bashkit::{Bash, DirEntry, ExecutionLimits, FileSystem, FileType, Metadata};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
@@ -187,13 +188,11 @@ impl Tool for BashTool {
             }
         };
 
-        // Create in-memory filesystem and sync session files
-        let mem_fs = Arc::new(InMemoryFs::new());
-
-        // Load session files into in-memory fs
-        if let Err(e) = sync_session_to_memfs(context.session_id, &file_store, &mem_fs, "/").await {
-            return ToolExecutionResult::tool_error(format!("Failed to load session files: {}", e));
-        }
+        // Create filesystem adapter that bridges to session file store
+        let session_fs = Arc::new(SessionFileSystemAdapter::new(
+            context.session_id,
+            file_store,
+        ));
 
         // Configure bash with resource limits
         let limits = ExecutionLimits::new()
@@ -202,7 +201,7 @@ impl Tool for BashTool {
             .max_function_depth(100);
 
         let mut bash = Bash::builder()
-            .fs(mem_fs.clone())
+            .fs(session_fs)
             .cwd(working_dir)
             .env("HOME", "/")
             .env("USER", "agent")
@@ -217,11 +216,6 @@ impl Tool for BashTool {
             bash.exec(command),
         )
         .await;
-
-        // Sync changes back to session store (even on error, to capture partial writes)
-        if let Err(e) = sync_memfs_to_session(context.session_id, &file_store, &mem_fs, "/").await {
-            tracing::warn!("Failed to sync changes back to session: {}", e);
-        }
 
         match result {
             Ok(Ok(output)) => ToolExecutionResult::success(json!({
@@ -247,129 +241,244 @@ impl Tool for BashTool {
 }
 
 // ============================================================================
-// Filesystem Sync Functions
+// SessionFileSystemAdapter
 // ============================================================================
 
-/// Load all session files into the in-memory filesystem
-async fn sync_session_to_memfs(
+/// Adapter that implements bashkit's FileSystem trait by delegating to SessionFileStore.
+///
+/// This provides live visibility of session files during bash execution - any files
+/// written by other tools are immediately visible, and vice versa.
+pub struct SessionFileSystemAdapter {
     session_id: SessionId,
-    store: &Arc<dyn SessionFileStore>,
-    mem_fs: &Arc<InMemoryFs>,
-    path: &str,
-) -> Result<(), String> {
-    // List directory contents
-    let entries = store
-        .list_directory(session_id, path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for entry in entries {
-        let entry_path = if path == "/" {
-            format!("/{}", entry.name)
-        } else {
-            format!("{}/{}", path, entry.name)
-        };
-
-        if entry.is_directory {
-            // Create directory in memfs
-            mem_fs
-                .mkdir(Path::new(&entry_path), true)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            // Recursively sync directory contents
-            Box::pin(sync_session_to_memfs(
-                session_id,
-                store,
-                mem_fs,
-                &entry_path,
-            ))
-            .await?;
-        } else {
-            // Read file from session store
-            if let Some(file) = store
-                .read_file(session_id, &entry_path)
-                .await
-                .map_err(|e| e.to_string())?
-            {
-                let content = file.content.unwrap_or_default();
-                let bytes = SessionFile::decode_content(&content, &file.encoding)
-                    .map_err(|e| e.to_string())?;
-
-                // Ensure parent directory exists
-                if let Some(parent) = Path::new(&entry_path).parent()
-                    && parent.as_os_str() != "/"
-                {
-                    let _ = mem_fs.mkdir(parent, true).await;
-                }
-
-                // Write file to memfs
-                mem_fs
-                    .write_file(Path::new(&entry_path), &bytes)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-    }
-
-    Ok(())
+    store: Arc<dyn SessionFileStore>,
 }
 
-/// Sync changes from in-memory filesystem back to session store
-async fn sync_memfs_to_session(
-    session_id: SessionId,
-    store: &Arc<dyn SessionFileStore>,
-    mem_fs: &Arc<InMemoryFs>,
-    path: &str,
-) -> Result<(), String> {
-    // Read directory contents from memfs
-    let entries = mem_fs
-        .read_dir(Path::new(path))
-        .await
-        .map_err(|e| e.to_string())?;
+impl SessionFileSystemAdapter {
+    pub fn new(session_id: SessionId, store: Arc<dyn SessionFileStore>) -> Self {
+        Self { session_id, store }
+    }
 
-    for entry in entries {
-        let entry_path = if path == "/" {
-            format!("/{}", entry.name)
+    /// Normalize path to session file store format (ensure leading /)
+    fn normalize_path(path: &Path) -> String {
+        let path_str = path.to_string_lossy();
+        if path_str.starts_with('/') {
+            path_str.to_string()
         } else {
-            format!("{}/{}", path, entry.name)
-        };
+            format!("/{}", path_str)
+        }
+    }
+}
 
-        // Check if it's a directory
-        let stat = mem_fs
-            .stat(Path::new(&entry_path))
-            .await
-            .map_err(|e| e.to_string())?;
+#[async_trait]
+impl FileSystem for SessionFileSystemAdapter {
+    async fn read_file(&self, path: &Path) -> bashkit::Result<Vec<u8>> {
+        let path_str = Self::normalize_path(path);
 
-        if stat.file_type.is_dir() {
-            // Ensure directory exists in session store
-            let _ = store.create_directory(session_id, &entry_path).await;
-
-            // Recursively sync directory contents
-            Box::pin(sync_memfs_to_session(
-                session_id,
-                store,
-                mem_fs,
-                &entry_path,
-            ))
-            .await?;
-        } else {
-            // Read file from memfs
-            let bytes = mem_fs
-                .read_file(Path::new(&entry_path))
-                .await
-                .map_err(|e| e.to_string())?;
-
-            // Encode and write to session store
-            let (content, encoding) = SessionFile::encode_content(&bytes);
-            store
-                .write_file(session_id, &entry_path, &content, &encoding)
-                .await
-                .map_err(|e| e.to_string())?;
+        match self.store.read_file(self.session_id, &path_str).await {
+            Ok(Some(file)) => {
+                let content = file.content.unwrap_or_default();
+                SessionFile::decode_content(&content, &file.encoding)
+                    .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+            }
+            Ok(None) => Err(bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("File not found: {}", path_str),
+            ))),
+            Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
         }
     }
 
-    Ok(())
+    async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let path_str = Self::normalize_path(path);
+        let (encoded, encoding) = SessionFile::encode_content(content);
+
+        self.store
+            .write_file(self.session_id, &path_str, &encoded, &encoding)
+            .await
+            .map(|_| ())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+    }
+
+    async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let path_str = Self::normalize_path(path);
+
+        // Read existing content
+        let mut existing = match self.store.read_file(self.session_id, &path_str).await {
+            Ok(Some(file)) => {
+                let content = file.content.unwrap_or_default();
+                SessionFile::decode_content(&content, &file.encoding)
+                    .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?
+            }
+            Ok(None) => Vec::new(),
+            Err(e) => return Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
+        };
+
+        // Append new content
+        existing.extend_from_slice(content);
+
+        // Write back
+        let (encoded, encoding) = SessionFile::encode_content(&existing);
+        self.store
+            .write_file(self.session_id, &path_str, &encoded, &encoding)
+            .await
+            .map(|_| ())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+    }
+
+    async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
+        let path_str = Self::normalize_path(path);
+
+        self.store
+            .create_directory(self.session_id, &path_str)
+            .await
+            .map(|_| ())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+    }
+
+    async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
+        let path_str = Self::normalize_path(path);
+
+        self.store
+            .delete_file(self.session_id, &path_str, recursive)
+            .await
+            .map(|_| ())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+    }
+
+    async fn stat(&self, path: &Path) -> bashkit::Result<Metadata> {
+        let path_str = Self::normalize_path(path);
+
+        // Check if it's a file
+        match self.store.read_file(self.session_id, &path_str).await {
+            Ok(Some(file)) => {
+                let content = file.content.unwrap_or_default();
+                let size = content.len() as u64;
+                let now = SystemTime::now();
+
+                Ok(Metadata {
+                    file_type: FileType::File,
+                    size,
+                    mode: 0o644,
+                    modified: now,
+                    created: now,
+                })
+            }
+            Ok(None) => {
+                // Check if it's a directory by listing it
+                match self.store.list_directory(self.session_id, &path_str).await {
+                    Ok(_entries) => {
+                        let now = SystemTime::now();
+                        Ok(Metadata {
+                            file_type: FileType::Directory,
+                            size: 0,
+                            mode: 0o755,
+                            modified: now,
+                            created: now,
+                        })
+                    }
+                    Err(_) => Err(bashkit::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Path not found: {}", path_str),
+                    ))),
+                }
+            }
+            Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
+        }
+    }
+
+    async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
+        let path_str = Self::normalize_path(path);
+
+        let entries = self
+            .store
+            .list_directory(self.session_id, &path_str)
+            .await
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
+
+        let now = SystemTime::now();
+
+        Ok(entries
+            .into_iter()
+            .map(|e| {
+                let file_type = if e.is_directory {
+                    FileType::Directory
+                } else {
+                    FileType::File
+                };
+
+                DirEntry {
+                    name: e.name,
+                    metadata: Metadata {
+                        file_type,
+                        size: e.size_bytes as u64,
+                        mode: if e.is_directory { 0o755 } else { 0o644 },
+                        modified: now,
+                        created: now,
+                    },
+                }
+            })
+            .collect())
+    }
+
+    async fn exists(&self, path: &Path) -> bashkit::Result<bool> {
+        let path_str = Self::normalize_path(path);
+
+        // Check file
+        if let Ok(Some(_)) = self.store.read_file(self.session_id, &path_str).await {
+            return Ok(true);
+        }
+
+        // Check directory
+        if let Ok(_entries) = self.store.list_directory(self.session_id, &path_str).await {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
+        let from_str = Self::normalize_path(from);
+
+        // Read source file
+        let content = self.read_file(from).await?;
+
+        // Write to destination
+        self.write_file(to, &content).await?;
+
+        // Delete source
+        self.store
+            .delete_file(self.session_id, &from_str, false)
+            .await
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
+
+        Ok(())
+    }
+
+    async fn copy(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
+        let content = self.read_file(from).await?;
+        self.write_file(to, &content).await
+    }
+
+    async fn symlink(&self, _target: &Path, _link: &Path) -> bashkit::Result<()> {
+        // Session filesystem doesn't support symlinks
+        Err(bashkit::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Symlinks not supported in session filesystem",
+        )))
+    }
+
+    async fn read_link(&self, path: &Path) -> bashkit::Result<PathBuf> {
+        // Session filesystem doesn't support symlinks
+        Err(bashkit::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!("Symlinks not supported: {}", path.display()),
+        )))
+    }
+
+    async fn chmod(&self, _path: &Path, _mode: u32) -> bashkit::Result<()> {
+        // chmod is a no-op - session filesystem doesn't track permissions
+        Ok(())
+    }
 }
 
 #[cfg(test)]
