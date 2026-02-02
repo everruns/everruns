@@ -584,7 +584,209 @@ impl FileSystem for SessionFileSystemAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_file::FileInfo;
+    use crate::traits::SessionFileStore;
     use crate::typed_id::SessionId;
+    use crate::{FileStat, GrepMatch, Result};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    // ========================================================================
+    // MockFileStore for testing
+    // ========================================================================
+
+    /// In-memory file store for testing
+    struct MockFileStore {
+        files: Mutex<HashMap<(SessionId, String), (String, String)>>, // (content, encoding)
+        directories: Mutex<HashMap<(SessionId, String), bool>>,
+    }
+
+    impl MockFileStore {
+        fn new() -> Self {
+            Self {
+                files: Mutex::new(HashMap::new()),
+                directories: Mutex::new(HashMap::new()),
+            }
+        }
+
+        fn normalize_path(path: &str) -> String {
+            let mut normalized = path.trim().to_string();
+            if !normalized.starts_with('/') {
+                normalized = format!("/{}", normalized);
+            }
+            if normalized.len() > 1 && normalized.ends_with('/') {
+                normalized.pop();
+            }
+            normalized
+        }
+    }
+
+    #[async_trait]
+    impl SessionFileStore for MockFileStore {
+        async fn read_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> Result<Option<SessionFile>> {
+            let path = Self::normalize_path(path);
+            let files = self.files.lock().unwrap();
+            if let Some((content, encoding)) = files.get(&(session_id, path.clone())) {
+                Ok(Some(SessionFile {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: path.clone(),
+                    name: path.split('/').last().unwrap_or("").to_string(),
+                    is_directory: false,
+                    is_readonly: false,
+                    content: Some(content.clone()),
+                    encoding: encoding.clone(),
+                    size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else {
+                Ok(None)
+            }
+        }
+
+        async fn write_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+            content: &str,
+            encoding: &str,
+        ) -> Result<SessionFile> {
+            let path = Self::normalize_path(path);
+            let mut files = self.files.lock().unwrap();
+            files.insert(
+                (session_id, path.clone()),
+                (content.to_string(), encoding.to_string()),
+            );
+            Ok(SessionFile {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.into(),
+                path: path.clone(),
+                name: path.split('/').last().unwrap_or("").to_string(),
+                is_directory: false,
+                is_readonly: false,
+                content: Some(content.to_string()),
+                encoding: encoding.to_string(),
+                size_bytes: content.len() as i64,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            })
+        }
+
+        async fn delete_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+            _recursive: bool,
+        ) -> Result<bool> {
+            let path = Self::normalize_path(path);
+            let mut files = self.files.lock().unwrap();
+            Ok(files.remove(&(session_id, path)).is_some())
+        }
+
+        async fn list_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> Result<Vec<FileInfo>> {
+            let path = Self::normalize_path(path);
+            let files = self.files.lock().unwrap();
+            let mut entries = Vec::new();
+
+            for ((sid, file_path), (content, _)) in files.iter() {
+                if *sid != session_id {
+                    continue;
+                }
+
+                // Check if file is directly under this path
+                let parent = if let Some(idx) = file_path.rfind('/') {
+                    if idx == 0 {
+                        "/".to_string()
+                    } else {
+                        file_path[..idx].to_string()
+                    }
+                } else {
+                    "/".to_string()
+                };
+
+                if parent == path {
+                    entries.push(FileInfo {
+                        id: uuid::Uuid::new_v4(),
+                        session_id: session_id.into(),
+                        path: file_path.clone(),
+                        name: file_path.split('/').last().unwrap_or("").to_string(),
+                        is_directory: false,
+                        is_readonly: false,
+                        size_bytes: content.len() as i64,
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    });
+                }
+            }
+
+            Ok(entries)
+        }
+
+        async fn stat_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> Result<Option<FileStat>> {
+            let path = Self::normalize_path(path);
+            let files = self.files.lock().unwrap();
+            if let Some((content, _)) = files.get(&(session_id, path.clone())) {
+                Ok(Some(FileStat {
+                    path: path.clone(),
+                    name: path.split('/').last().unwrap_or("").to_string(),
+                    is_directory: false,
+                    is_readonly: false,
+                    size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else {
+                Ok(None)
+            }
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> Result<Vec<GrepMatch>> {
+            Ok(vec![])
+        }
+
+        async fn create_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> Result<FileInfo> {
+            let path = Self::normalize_path(path);
+            let mut dirs = self.directories.lock().unwrap();
+            dirs.insert((session_id, path.clone()), true);
+            Ok(FileInfo {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.into(),
+                path: path.clone(),
+                name: path.split('/').last().unwrap_or("").to_string(),
+                is_directory: true,
+                is_readonly: false,
+                size_bytes: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            })
+        }
+    }
+
+    // ========================================================================
+    // Capability metadata tests
+    // ========================================================================
 
     #[test]
     fn test_capability_metadata() {
@@ -627,6 +829,64 @@ mod tests {
         assert!(BashTool.requires_context());
     }
 
+    // ========================================================================
+    // Path translation tests
+    // ========================================================================
+
+    #[test]
+    fn test_to_session_path_workspace_root() {
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspace"));
+        assert_eq!(result, Some("/".to_string()));
+    }
+
+    #[test]
+    fn test_to_session_path_workspace_file() {
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspace/file.txt"));
+        assert_eq!(result, Some("/file.txt".to_string()));
+    }
+
+    #[test]
+    fn test_to_session_path_workspace_nested() {
+        let result =
+            SessionFileSystemAdapter::to_session_path(Path::new("/workspace/dir/subdir/file.txt"));
+        assert_eq!(result, Some("/dir/subdir/file.txt".to_string()));
+    }
+
+    #[test]
+    fn test_to_session_path_outside_workspace() {
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("/tmp/file.txt"));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_to_session_path_home_outside_workspace() {
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("/home/agent/file.txt"));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_to_session_path_workspacefoo_invalid() {
+        // /workspacefoo is NOT under /workspace
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspacefoo"));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_to_session_path_relative_path() {
+        // Relative path gets normalized to absolute
+        let result = SessionFileSystemAdapter::to_session_path(Path::new("workspace/file.txt"));
+        // /workspace/file.txt would be valid, but "workspace/file.txt" -> "/workspace/file.txt"
+        // Wait, that's not right. Let me check the logic again.
+        // normalize adds "/" prefix: "workspace/file.txt" -> "/workspace/file.txt"
+        // Then it checks if it starts with "/workspace" - yes it does
+        // So this should return Some("/file.txt")
+        assert_eq!(result, Some("/file.txt".to_string()));
+    }
+
+    // ========================================================================
+    // Tool error handling tests
+    // ========================================================================
+
     #[tokio::test]
     async fn test_bash_without_context() {
         let tool = BashTool;
@@ -667,5 +927,565 @@ mod tests {
         } else {
             panic!("Expected tool error for missing file store");
         }
+    }
+
+    // ========================================================================
+    // Bash execution tests with MockFileStore
+    // ========================================================================
+
+    fn create_context_with_mock_store() -> (ToolContext, SessionId) {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let mut context = ToolContext::new(session_id);
+        context.file_store = Some(store);
+        (context, session_id)
+    }
+
+    #[tokio::test]
+    async fn test_bash_echo_command() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "echo hello world"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "hello world\n");
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["success"], true);
+        } else {
+            panic!("Expected success result, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_pwd_default_workspace() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "pwd"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "/workspace\n");
+            assert_eq!(output["exit_code"], 0);
+        } else {
+            panic!("Expected success result, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_env_variables() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Test HOME
+        let result = tool
+            .execute_with_context(json!({"command": "echo $HOME"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "/home/agent\n");
+        } else {
+            panic!("Expected success");
+        }
+
+        // Test WORKSPACE
+        let result = tool
+            .execute_with_context(json!({"command": "echo $WORKSPACE"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "/workspace\n");
+        } else {
+            panic!("Expected success");
+        }
+
+        // Test USER (set by bashkit from username)
+        let result = tool
+            .execute_with_context(json!({"command": "echo $USER"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "everruns\n");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_write_and_read_file() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Write a file
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'test content' > /workspace/test.txt"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Read it back
+        let result = tool
+            .execute_with_context(json!({"command": "cat /workspace/test.txt"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "test content\n");
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_pipe_command() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "echo hello | cat"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "hello\n");
+            assert_eq!(output["exit_code"], 0);
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_arithmetic() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "echo $((2 + 3 * 4))"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "14\n");
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_command_substitution() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "echo $(echo nested)"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "nested\n");
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    // ========================================================================
+    // Negative tests - paths outside workspace
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_write_outside_workspace_fails() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Try to write to /tmp (outside workspace)
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'hack' > /tmp/evil.txt"}),
+                &context,
+            )
+            .await;
+
+        // This should fail because /tmp is outside /workspace
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(
+                msg.contains("outside workspace") || msg.contains("Permission"),
+                "Expected workspace error, got: {}",
+                msg
+            );
+        } else if let ToolExecutionResult::Success(output) = result {
+            // If bashkit doesn't error, the write should silently fail
+            // Let's verify by trying to read it
+            let read_result = tool
+                .execute_with_context(json!({"command": "cat /tmp/evil.txt"}), &context)
+                .await;
+            // Should not find the file
+            assert!(
+                matches!(read_result, ToolExecutionResult::ToolError(_))
+                    || matches!(&read_result, ToolExecutionResult::Success(o) if o["exit_code"] != 0),
+                "File should not exist outside workspace"
+            );
+            // Also check that /tmp read fails
+            assert!(
+                output["stderr"].as_str().unwrap_or("").contains("Permission")
+                    || output["stderr"].as_str().unwrap_or("").contains("workspace")
+                    || output["exit_code"] != 0,
+                "Write outside workspace should fail or be blocked"
+            );
+        } else {
+            // Either behavior is acceptable - error or silent failure
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_read_outside_workspace_fails() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Try to read from /etc (outside workspace)
+        let result = tool
+            .execute_with_context(json!({"command": "cat /etc/passwd"}), &context)
+            .await;
+
+        // Should fail - either as tool error or with non-zero exit code
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("workspace") || msg.contains("not found"),
+                    "Expected workspace error, got: {}",
+                    msg
+                );
+            }
+            ToolExecutionResult::Success(output) => {
+                // Exit code should be non-zero since file doesn't exist
+                assert_ne!(
+                    output["exit_code"], 0,
+                    "Reading /etc/passwd should fail with non-zero exit"
+                );
+            }
+            _ => panic!("Unexpected result type"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_mkdir_outside_workspace_fails() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Try to create directory in /tmp
+        let result = tool
+            .execute_with_context(json!({"command": "mkdir /tmp/evil_dir"}), &context)
+            .await;
+
+        // Should fail
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("workspace") || msg.contains("Permission"),
+                    "Got: {}",
+                    msg
+                );
+            }
+            ToolExecutionResult::Success(output) => {
+                // If it "succeeds", the directory shouldn't actually exist
+                // Or exit code should be non-zero
+                assert!(
+                    output["exit_code"] != 0
+                        || output["stderr"]
+                            .as_str()
+                            .unwrap_or("")
+                            .contains("Permission"),
+                    "mkdir outside workspace should fail"
+                );
+            }
+            _ => {}
+        }
+    }
+
+    // ========================================================================
+    // Working directory tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_custom_working_dir() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // First create the directory
+        let result = tool
+            .execute_with_context(json!({"command": "mkdir -p /workspace/mydir"}), &context)
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Run pwd with custom working directory
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "command": "pwd",
+                    "working_dir": "/workspace/mydir"
+                }),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "/workspace/mydir\n");
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    // ========================================================================
+    // Exit code tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_false_command_exit_code() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "false"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 1);
+            assert_eq!(output["success"], false);
+        } else {
+            panic!("Expected success result with non-zero exit code");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_true_command_exit_code() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"command": "true"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["success"], true);
+        } else {
+            panic!("Expected success result");
+        }
+    }
+
+    // ========================================================================
+    // FileSystem adapter direct tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_adapter_read_write_workspace_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write a file
+        adapter
+            .write_file(Path::new("/workspace/test.txt"), b"hello")
+            .await
+            .unwrap();
+
+        // Read it back
+        let content = adapter
+            .read_file(Path::new("/workspace/test.txt"))
+            .await
+            .unwrap();
+        assert_eq!(content, b"hello");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_read_outside_workspace_fails() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        let result = adapter.read_file(Path::new("/tmp/file.txt")).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("workspace"));
+    }
+
+    #[tokio::test]
+    async fn test_adapter_write_outside_workspace_fails() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        let result = adapter
+            .write_file(Path::new("/tmp/file.txt"), b"data")
+            .await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("workspace"));
+    }
+
+    #[tokio::test]
+    async fn test_adapter_stat_workspace_root() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        let stat = adapter.stat(Path::new("/workspace")).await.unwrap();
+        assert!(stat.file_type.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_adapter_exists_workspace() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // /workspace always exists
+        assert!(adapter.exists(Path::new("/workspace")).await.unwrap());
+
+        // /tmp does not exist (outside workspace)
+        assert!(!adapter.exists(Path::new("/tmp")).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_adapter_mkdir_and_list() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
+
+        // Create a directory
+        adapter
+            .mkdir(Path::new("/workspace/mydir"), false)
+            .await
+            .unwrap();
+
+        // Write a file in it
+        adapter
+            .write_file(Path::new("/workspace/mydir/file.txt"), b"content")
+            .await
+            .unwrap();
+
+        // List should include the file
+        let entries = adapter.read_dir(Path::new("/workspace/mydir")).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "file.txt");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_rename_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write original file
+        adapter
+            .write_file(Path::new("/workspace/old.txt"), b"data")
+            .await
+            .unwrap();
+
+        // Rename it
+        adapter
+            .rename(
+                Path::new("/workspace/old.txt"),
+                Path::new("/workspace/new.txt"),
+            )
+            .await
+            .unwrap();
+
+        // Old file should not exist
+        let old_result = adapter.read_file(Path::new("/workspace/old.txt")).await;
+        assert!(old_result.is_err());
+
+        // New file should have the content
+        let new_content = adapter
+            .read_file(Path::new("/workspace/new.txt"))
+            .await
+            .unwrap();
+        assert_eq!(new_content, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_copy_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write original file
+        adapter
+            .write_file(Path::new("/workspace/source.txt"), b"copy me")
+            .await
+            .unwrap();
+
+        // Copy it
+        adapter
+            .copy(
+                Path::new("/workspace/source.txt"),
+                Path::new("/workspace/dest.txt"),
+            )
+            .await
+            .unwrap();
+
+        // Both files should exist with same content
+        let source = adapter
+            .read_file(Path::new("/workspace/source.txt"))
+            .await
+            .unwrap();
+        let dest = adapter
+            .read_file(Path::new("/workspace/dest.txt"))
+            .await
+            .unwrap();
+        assert_eq!(source, dest);
+        assert_eq!(source, b"copy me");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_append_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write initial content
+        adapter
+            .write_file(Path::new("/workspace/log.txt"), b"line1\n")
+            .await
+            .unwrap();
+
+        // Append more
+        adapter
+            .append_file(Path::new("/workspace/log.txt"), b"line2\n")
+            .await
+            .unwrap();
+
+        // Read combined content
+        let content = adapter
+            .read_file(Path::new("/workspace/log.txt"))
+            .await
+            .unwrap();
+        assert_eq!(content, b"line1\nline2\n");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_symlink_not_supported() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        let result = adapter
+            .symlink(
+                Path::new("/workspace/target"),
+                Path::new("/workspace/link"),
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not supported"));
+    }
+
+    #[tokio::test]
+    async fn test_adapter_chmod_is_noop() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // chmod should succeed as a no-op
+        let result = adapter.chmod(Path::new("/workspace/file.txt"), 0o755).await;
+        assert!(result.is_ok());
     }
 }
