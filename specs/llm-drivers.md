@@ -147,17 +147,34 @@ Detect `RequestTooLarge` for:
 
 3. **LlmMessage Extended Fields**:
    - `thinking`: Optional thinking content from extended thinking models
-   - `thinking_signature`: Optional cryptographic signature for thinking (Anthropic)
+   - `thinking_signature`: Opaque token for multi-turn thinking context (provider-specific)
 
 ### Extended Thinking Support
 
-Extended thinking allows models to perform chain-of-thought reasoning before generating responses. This is supported by Anthropic Claude models.
+Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
 #### Stream Events
 
 When `reasoning_effort` is configured, drivers emit additional stream events:
-- `ThinkingDelta(String)` - Incremental thinking content
-- `ThinkingSignature(String)` - Cryptographic signature for thinking (Anthropic-specific)
+- `ThinkingDelta(String)` - Incremental thinking/reasoning content
+- `ThinkingSignature(String)` - Opaque token for multi-turn context preservation
+
+The `ThinkingSignature` event serves the same purpose across providers but with different semantics:
+- **Anthropic**: Cryptographic signature for thinking content
+- **OpenAI**: Encrypted reasoning content (`encrypted_content` from `ReasoningItem`)
+
+#### Multi-turn Thinking Requirements
+
+Both providers require preserved thinking context for multi-turn conversations:
+
+| Field | Anthropic | OpenAI |
+|-------|-----------|--------|
+| `thinking` | Chain-of-thought text | Reasoning summary text |
+| `thinking_signature` | Cryptographic signature | Encrypted content token |
+
+When sending conversation history with thinking enabled:
+- Every assistant message with thinking MUST include both fields
+- The signature/token MUST be sent back to preserve reasoning context
 
 #### Anthropic-Specific Requirements
 
@@ -172,15 +189,37 @@ When `reasoning_effort` is configured, drivers emit additional stream events:
    - Stored with the assistant message
    - Sent back with the thinking content in subsequent API calls
 
-3. **Multi-turn Requirements**: When sending conversation history to Anthropic with thinking enabled:
-   - Every assistant message with thinking MUST include both `thinking` and `signature`
-   - Thinking block MUST appear before `tool_use` blocks in message content
-   - Without proper signatures, Anthropic returns: `"Expected 'thinking' or 'redacted_thinking', but found 'tool_use'"`
+3. **Message Ordering**: Thinking block MUST appear before `tool_use` blocks in message content.
+   Without proper signatures, Anthropic returns: `"Expected 'thinking' or 'redacted_thinking', but found 'tool_use'"`
 
 4. **Budget Tokens**: The thinking budget is derived from `reasoning_effort`:
-   - `low`: 10,000 tokens
-   - `medium`: 50,000 tokens
-   - `high`: 100,000 tokens
+   - `low`: 1,024 tokens
+   - `medium`: 4,096 tokens
+   - `high`: 16,384 tokens
+   - `xhigh`: 32,768 tokens
+
+#### OpenAI-Specific Requirements (Responses API)
+
+1. **Reasoning Events**: OpenAI emits reasoning via streaming events:
+   - `response.reasoning.delta` - Incremental reasoning text
+   - `response.reasoning_summary_text.delta` - Summary reasoning text
+   - `response.output_item.done` with `reasoning` type - Contains `encrypted_content`
+
+2. **Encrypted Content**: OpenAI returns `encrypted_content` in `OutputItem::Reasoning` when the reasoning item completes. This MUST be:
+   - Captured from the `response.output_item.done` event
+   - Stored in `thinking_signature` field
+   - Sent back as a `ReasoningItem` with `encrypted_content` in subsequent API calls
+
+3. **Reasoning Item in Requests**: When sending conversation history with thinking:
+   - Include a `Reasoning` input item BEFORE the assistant message
+   - The `encrypted_content` field contains the preserved reasoning context
+
+4. **Reasoning Effort Levels**: Supported values:
+   - `none`: No reasoning
+   - `low`: Minimal reasoning
+   - `medium`: Moderate reasoning
+   - `high`: Extensive reasoning
+   - `xhigh`: Maximum reasoning
 
 ### Completion Metadata
 
