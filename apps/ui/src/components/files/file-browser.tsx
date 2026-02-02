@@ -42,8 +42,8 @@ interface FileBrowserProps {
 }
 
 export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrowserProps) {
-  const [currentPath, setCurrentPath] = useState("/");
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["/"]));
+  const [currentPath, setCurrentPath] = useState("/workspace");
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["/workspace"]));
   const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
   const [isCreateDirOpen, setIsCreateDirOpen] = useState(false);
   const [newFileName, setNewFileName] = useState("");
@@ -82,7 +82,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
   };
 
   const navigateHome = () => {
-    setCurrentPath("/");
+    setCurrentPath("/workspace");
   };
 
   const handleCreateFile = async () => {
@@ -139,7 +139,8 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
     }
   };
 
-  const breadcrumbs = currentPath.split("/").filter(Boolean);
+  // Skip "workspace" in breadcrumbs since Home icon represents it
+  const breadcrumbs = currentPath.split("/").filter(Boolean).slice(1);
 
   return (
     <Card className="h-full flex flex-col">
@@ -147,7 +148,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Folder className="h-4 w-4" />
-            Files
+            Workspace
           </CardTitle>
           <div className="flex items-center gap-1">
             <Button
@@ -242,7 +243,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
                 type="button"
                 className="hover:text-foreground hover:underline"
                 onClick={() => {
-                  const path = `/${breadcrumbs.slice(0, index + 1).join("/")}`;
+                  const path = `/workspace/${breadcrumbs.slice(0, index + 1).join("/")}`;
                   setCurrentPath(path);
                 }}
               >
@@ -260,8 +261,8 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
             <div className="p-4 text-sm text-muted-foreground text-center">Empty folder</div>
           ) : (
             <div className="p-2">
-              {/* Show parent directory link if not at root */}
-              {currentPath !== "/" && (
+              {/* Show parent directory link if not at workspace root */}
+              {currentPath !== "/workspace" && (
                 <button
                   type="button"
                   className="w-full flex items-center gap-2 p-2 text-sm text-muted-foreground hover:bg-muted rounded-md"

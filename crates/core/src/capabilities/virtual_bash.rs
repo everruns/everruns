@@ -83,11 +83,12 @@ Use the `bash` tool to execute shell commands. The environment includes:
 - Glob patterns: `*.txt`, `**/*.rs`
 - Here documents: `<<EOF ... EOF`
 
-**Session Filesystem:**
-- The session filesystem is mounted at `/`
-- Files you create with `write_file` are accessible in bash
-- Files created in bash are accessible via `read_file`
-- Working directory starts at `/`
+**Workspace:**
+- Session data is mounted at `/workspace`
+- Files you create with `write_file` are accessible in bash at `/workspace`
+- Files created in bash under `/workspace` are accessible via `read_file`
+- Working directory starts at `/workspace`
+- HOME is set to `/home/agent`
 
 **Limits:**
 - Maximum 1000 commands per execution
@@ -138,8 +139,8 @@ impl Tool for BashTool {
                 },
                 "working_dir": {
                     "type": "string",
-                    "default": "/",
-                    "description": "Working directory for command execution (default: '/')"
+                    "default": "/workspace",
+                    "description": "Working directory for command execution (default: '/workspace')"
                 },
                 "timeout_ms": {
                     "type": "integer",
@@ -171,7 +172,7 @@ impl Tool for BashTool {
         let working_dir = arguments
             .get("working_dir")
             .and_then(|v| v.as_str())
-            .unwrap_or("/");
+            .unwrap_or("/workspace");
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -203,10 +204,11 @@ impl Tool for BashTool {
         let mut bash = Bash::builder()
             .fs(session_fs)
             .cwd(working_dir)
-            .env("HOME", "/")
+            .env("HOME", "/home/agent")
             .env("USER", "agent")
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+            .env("WORKSPACE", "/workspace")
             .limits(limits)
             .build();
 
@@ -258,13 +260,37 @@ impl SessionFileSystemAdapter {
         Self { session_id, store }
     }
 
-    /// Normalize path to session file store format (ensure leading /)
-    fn normalize_path(path: &Path) -> String {
+    /// Workspace mount point in the virtual filesystem
+    const WORKSPACE_PREFIX: &'static str = "/workspace";
+
+    /// Convert bash path to session file store path.
+    /// Paths under /workspace are mapped to session store.
+    /// Returns None for paths outside /workspace.
+    fn to_session_path(path: &Path) -> Option<String> {
         let path_str = path.to_string_lossy();
-        if path_str.starts_with('/') {
+
+        // Normalize to absolute path
+        let abs_path = if path_str.starts_with('/') {
             path_str.to_string()
         } else {
             format!("/{}", path_str)
+        };
+
+        // Check if path is under /workspace
+        if abs_path == Self::WORKSPACE_PREFIX {
+            // Root of workspace maps to root of session store
+            Some("/".to_string())
+        } else if let Some(stripped) = abs_path.strip_prefix(Self::WORKSPACE_PREFIX) {
+            // /workspace/foo -> /foo
+            if stripped.starts_with('/') {
+                Some(stripped.to_string())
+            } else {
+                // /workspacefoo is not valid
+                None
+            }
+        } else {
+            // Path is outside /workspace
+            None
         }
     }
 }
@@ -272,9 +298,14 @@ impl SessionFileSystemAdapter {
 #[async_trait]
 impl FileSystem for SessionFileSystemAdapter {
     async fn read_file(&self, path: &Path) -> bashkit::Result<Vec<u8>> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Path not in workspace: {}", path.display()),
+            ))
+        })?;
 
-        match self.store.read_file(self.session_id, &path_str).await {
+        match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
                 let content = file.content.unwrap_or_default();
                 SessionFile::decode_content(&content, &file.encoding)
@@ -282,28 +313,39 @@ impl FileSystem for SessionFileSystemAdapter {
             }
             Ok(None) => Err(bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("File not found: {}", path_str),
+                format!("File not found: {}", path.display()),
             ))),
             Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
         }
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Cannot write outside workspace: {}", path.display()),
+            ))
+        })?;
+
         let (encoded, encoding) = SessionFile::encode_content(content);
 
         self.store
-            .write_file(self.session_id, &path_str, &encoded, &encoding)
+            .write_file(self.session_id, &session_path, &encoded, &encoding)
             .await
             .map(|_| ())
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Cannot write outside workspace: {}", path.display()),
+            ))
+        })?;
 
         // Read existing content
-        let mut existing = match self.store.read_file(self.session_id, &path_str).await {
+        let mut existing = match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
                 let content = file.content.unwrap_or_default();
                 SessionFile::decode_content(&content, &file.encoding)
@@ -319,37 +361,67 @@ impl FileSystem for SessionFileSystemAdapter {
         // Write back
         let (encoded, encoding) = SessionFile::encode_content(&existing);
         self.store
-            .write_file(self.session_id, &path_str, &encoded, &encoding)
+            .write_file(self.session_id, &session_path, &encoded, &encoding)
             .await
             .map(|_| ())
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "Cannot create directory outside workspace: {}",
+                    path.display()
+                ),
+            ))
+        })?;
 
         self.store
-            .create_directory(self.session_id, &path_str)
+            .create_directory(self.session_id, &session_path)
             .await
             .map(|_| ())
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Cannot delete outside workspace: {}", path.display()),
+            ))
+        })?;
 
         self.store
-            .delete_file(self.session_id, &path_str, recursive)
+            .delete_file(self.session_id, &session_path, recursive)
             .await
             .map(|_| ())
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn stat(&self, path: &Path) -> bashkit::Result<Metadata> {
-        let path_str = Self::normalize_path(path);
+        // Handle /workspace itself
+        if path.to_string_lossy() == "/workspace" {
+            let now = SystemTime::now();
+            return Ok(Metadata {
+                file_type: FileType::Directory,
+                size: 0,
+                mode: 0o755,
+                modified: now,
+                created: now,
+            });
+        }
+
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Path not in workspace: {}", path.display()),
+            ))
+        })?;
 
         // Check if it's a file
-        match self.store.read_file(self.session_id, &path_str).await {
+        match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
                 let content = file.content.unwrap_or_default();
                 let size = content.len() as u64;
@@ -365,7 +437,11 @@ impl FileSystem for SessionFileSystemAdapter {
             }
             Ok(None) => {
                 // Check if it's a directory by listing it
-                match self.store.list_directory(self.session_id, &path_str).await {
+                match self
+                    .store
+                    .list_directory(self.session_id, &session_path)
+                    .await
+                {
                     Ok(_entries) => {
                         let now = SystemTime::now();
                         Ok(Metadata {
@@ -378,7 +454,7 @@ impl FileSystem for SessionFileSystemAdapter {
                     }
                     Err(_) => Err(bashkit::Error::Io(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
-                        format!("Path not found: {}", path_str),
+                        format!("Path not found: {}", path.display()),
                     ))),
                 }
             }
@@ -387,11 +463,16 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let path_str = Self::normalize_path(path);
+        let session_path = Self::to_session_path(path).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Path not in workspace: {}", path.display()),
+            ))
+        })?;
 
         let entries = self
             .store
-            .list_directory(self.session_id, &path_str)
+            .list_directory(self.session_id, &session_path)
             .await
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
 
@@ -421,15 +502,28 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn exists(&self, path: &Path) -> bashkit::Result<bool> {
-        let path_str = Self::normalize_path(path);
+        // /workspace always exists
+        if path.to_string_lossy() == "/workspace" {
+            return Ok(true);
+        }
+
+        let session_path = match Self::to_session_path(path) {
+            Some(p) => p,
+            None => return Ok(false), // Paths outside workspace don't exist
+        };
 
         // Check file
-        if let Ok(Some(_)) = self.store.read_file(self.session_id, &path_str).await {
+        if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
         // Check directory
-        if let Ok(_entries) = self.store.list_directory(self.session_id, &path_str).await {
+        if self
+            .store
+            .list_directory(self.session_id, &session_path)
+            .await
+            .is_ok()
+        {
             return Ok(true);
         }
 
@@ -437,7 +531,12 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
-        let from_str = Self::normalize_path(from);
+        let from_session = Self::to_session_path(from).ok_or_else(|| {
+            bashkit::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Source not in workspace: {}", from.display()),
+            ))
+        })?;
 
         // Read source file
         let content = self.read_file(from).await?;
@@ -447,7 +546,7 @@ impl FileSystem for SessionFileSystemAdapter {
 
         // Delete source
         self.store
-            .delete_file(self.session_id, &from_str, false)
+            .delete_file(self.session_id, &from_session, false)
             .await
             .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
 
@@ -511,7 +610,7 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("bash"));
         assert!(prompt.contains("pipes"));
-        assert!(prompt.contains("session filesystem"));
+        assert!(prompt.contains("/workspace"));
     }
 
     #[test]

@@ -30,13 +30,13 @@ impl Capability for FileSystemCapability {
     }
 
     fn description(&self) -> &str {
-        r#"Tools to access and manipulate files in the session file system - read, write, list, grep, and more.
+        r#"Tools to access and manipulate files in the session workspace - read, write, list, grep, and more.
 
 > [!NOTE]
-> Each session has its own isolated filesystem. Files persist for the session duration.
+> Each session has its own isolated workspace at `/workspace`. Files persist for the session duration.
 
 > [!TIP]
-> Use `list_directory` first to explore the filesystem structure before reading or writing files."#
+> Use `list_directory` to explore the workspace structure before reading or writing files."#
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -53,7 +53,11 @@ impl Capability for FileSystemCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to file system tools for working with the session file system. Each session has its own isolated filesystem stored in the database.
+            r#"You have access to file system tools for working with the session workspace. Each session has its own isolated workspace stored in the database.
+
+**Workspace Location:** `/workspace`
+
+All session files are stored under `/workspace`. This is the root of your persistent storage.
 
 Available tools:
 - `read_file`: Read the content of a file by path
@@ -64,10 +68,10 @@ Available tools:
 - `stat_file`: Get metadata about a file (size, dates, etc.)
 
 Best practices:
-- Use `list_directory` first to explore the filesystem structure
+- All paths should start with `/workspace` (e.g., `/workspace/myfile.txt`)
+- Use `list_directory` with path `/workspace` to explore the workspace
 - Use `stat_file` to check if a file exists before reading/writing
 - Use `grep_files` to search across multiple files efficiently
-- The root directory is `/` - all paths should be absolute
 - Directories are created automatically when writing files"#,
         )
     }
@@ -107,7 +111,7 @@ impl Tool for ReadFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the file (e.g., '/docs/readme.txt')"
+                    "description": "Absolute path to the file (e.g., '/workspace/docs/readme.txt')"
                 }
             },
             "required": ["path"],
@@ -189,7 +193,7 @@ impl Tool for WriteFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path for the file (e.g., '/docs/notes.txt')"
+                    "description": "Absolute path for the file (e.g., '/workspace/docs/notes.txt')"
                 },
                 "content": {
                     "type": "string",
@@ -291,8 +295,8 @@ impl Tool for ListDirectoryTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "default": "/",
-                    "description": "Directory path to list (default: root '/')"
+                    "default": "/workspace",
+                    "description": "Directory path to list (default: '/workspace')"
                 }
             },
             "additionalProperties": false
@@ -313,7 +317,7 @@ impl Tool for ListDirectoryTool {
         let path = arguments
             .get("path")
             .and_then(|v| v.as_str())
-            .unwrap_or("/");
+            .unwrap_or("/workspace");
 
         let file_store = match &context.file_store {
             Some(store) => store,
@@ -388,7 +392,7 @@ impl Tool for GrepFilesTool {
                 },
                 "path_pattern": {
                     "type": "string",
-                    "description": "Optional path pattern to filter files (e.g., '*.txt', '/docs/*')"
+                    "description": "Optional path pattern to filter files (e.g., '*.txt', '/workspace/docs/*')"
                 }
             },
             "required": ["pattern"],
