@@ -108,4 +108,6 @@ Types: feat, fix, docs, refactor, test, chore
 
 **REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
 
+**NEVER** add links to Claude sessions in PR body or commits.
+
 See `CONTRIBUTING.md` for details.
