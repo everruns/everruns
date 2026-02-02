@@ -38,6 +38,14 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 **Chosen:** No special handling for large files (>10MB)
 **Rationale:** MVP focuses on code and config files. Large file streaming can be added later with object storage backend.
 
+### Decision 6: Workspace Mount Point
+**Chosen:** Session files exposed to agents at `/workspace`
+**Alternatives considered:**
+- Mount at root `/`: Conflicts with system directories
+- Mount at `/home/agent`: Confusing with bash HOME directory
+- Mount at `/app/session`: Less intuitive
+**Rationale:** `/workspace` is a common convention (similar to VS Code DevContainers, GitHub Codespaces) and clearly indicates agent work area. All capabilities (file_system, virtual_bash) normalize paths by stripping/adding the `/workspace` prefix when interfacing with the session file store.
+
 ## Requirements
 
 ### SessionFile Model
@@ -53,6 +61,16 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 | `size_bytes` | i64 | Content size |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
+
+### Workspace Mount Point
+
+Session files are exposed to agents at `/workspace`:
+
+- **Agent view**: Files appear at `/workspace/*` (e.g., `/workspace/src/main.rs`)
+- **Store view**: Files stored with normalized paths (e.g., `/src/main.rs`)
+- **Path translation**: Capabilities strip `/workspace` prefix before storage, add it back for display
+
+This enables both the file_system capability (tools) and virtual_bash capability to share the same file store seamlessly.
 
 ### Path Validation
 

@@ -2,12 +2,16 @@
 
 > **Status: IMPLEMENTED** - bashkit now exports the required types and
 > `SessionFileSystemAdapter` has been implemented in `crates/core/src/capabilities/virtual_bash.rs`.
+>
+> **Workspace Mount**: Session files are mounted at `/workspace` in the bash environment.
+> Both `virtual_bash` and `session_file_system` capabilities normalize paths, enabling
+> seamless file sharing between bash commands and file system tools.
 
 ## Context
 
-Everruns needs to implement a custom `FileSystem` adapter that bridges bashkit to the session file store. This enables live visibility of files during bash execution - if another tool writes to the session filesystem while bash is running, those files should be immediately visible.
+Everruns implements a custom `FileSystem` adapter that bridges bashkit to the session file store. This enables live visibility of files during bash execution - if another tool writes to the session filesystem while bash is running, those files are immediately visible.
 
-~~Current limitation: bashkit exports `FileSystem` trait but not the types needed to implement it.~~
+The implementation is in `crates/core/src/capabilities/virtual_bash.rs` with `SessionFileSystemAdapter`.
 
 ## Required Exports
 

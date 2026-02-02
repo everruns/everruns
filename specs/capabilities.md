@@ -124,6 +124,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `test_math` | Test Math | Testing | Available |
 | `test_weather` | Test Weather | Testing | Available |
 | `session_file_system` | File System | File Operations | Available |
+| `virtual_bash` | Virtual Bash | Execution | Available |
 | `session_storage` | Session Storage | Storage | Available |
 | `web_fetch` | Web Fetch | Network | Available |
 | `stateless_todo_list` | Task Management | Productivity | Available |
@@ -349,12 +350,13 @@ pub fn resolve_dependencies(
 
 - **Status**: Available
 - **ID**: `session_file_system`
-- **Purpose**: Tools to access and manipulate files in the session file system
-- **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations
+- **Purpose**: Tools to access and manipulate files in the session workspace (`/workspace`)
+- **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations. Explains the `/workspace` mount point.
+- **Workspace Mount**: All paths are relative to `/workspace` (e.g., `/workspace/src/main.rs`). Paths are normalized internally to enable seamless integration with virtual_bash.
 - **Tools**:
   - `read_file` - Read file content by path
     - Parameters:
-      - `path`: string (required) - Absolute path to the file (e.g., '/docs/readme.txt')
+      - `path`: string (required) - Absolute path to the file (e.g., '/workspace/docs/readme.txt')
     - Returns: Object containing path, content, encoding, size_bytes
     - Policy: Auto
   - `write_file` - Create or update a file
@@ -402,6 +404,59 @@ Each session has its own isolated filesystem stored in PostgreSQL. Files are ses
 ##### Design Decision: Auto-Create Parents
 
 When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are automatically created if they don't exist. This follows common filesystem patterns and reduces tool call overhead.
+
+#### VirtualBash
+
+- **Status**: Available
+- **ID**: `virtual_bash`
+- **Purpose**: Sandboxed bash shell execution for safe code execution and file manipulation
+- **System Prompt**: Guidance on bash capabilities, limitations, and best practices. Explains the `/workspace` mount point and environment.
+- **Dependencies**: `session_file_system` (bash commands operate on the same workspace)
+- **Environment**:
+  - `HOME=/home/agent`
+  - `SHELL=/bin/bash`
+  - `PATH=/usr/local/bin:/usr/bin:/bin`
+  - `WORKSPACE=/workspace`
+  - `USER=everruns`
+- **Workspace Mount**: Session files mounted at `/workspace`. Files created by bash are accessible via FileSystem tools and vice versa.
+- **Tools**:
+  - `bash` - Execute a bash command
+    - Parameters:
+      - `command`: string (required) - The bash command to execute
+      - `working_dir`: string (optional) - Working directory, defaults to `/workspace`
+      - `timeout_ms`: integer (optional) - Command timeout in milliseconds, defaults to 30000
+    - Returns: Object containing exit_code, stdout, stderr, success
+    - Policy: Auto
+- **Limits**:
+  - Max iterations: 1,000,000
+  - Max call depth: 256
+  - Max array size: 10,000
+- **Icon**: "terminal"
+- **Category**: "Execution"
+
+##### Design Decision: bashkit Library
+
+This capability uses the [bashkit](https://github.com/everruns/bashkit) library for sandboxed bash execution. bashkit provides:
+- WASM-like execution isolation (no system access)
+- Custom FileSystem trait implementation for session file access
+- Built-in shell commands (cd, ls, cat, echo, etc.)
+- Resource limits to prevent infinite loops
+
+##### Design Decision: SessionFileSystemAdapter
+
+The `SessionFileSystemAdapter` implements bashkit's `FileSystem` trait, bridging bash file operations to the session file store. This enables:
+- **Live file visibility**: Files written by other tools during bash execution are immediately visible
+- **No sync overhead**: Eliminates pre/post execution sync of entire filesystem
+- **Memory efficiency**: Files read on-demand instead of loading all into memory
+- **Consistency**: Single source of truth for file state
+
+##### Design Decision: Path Translation
+
+Bash operates with `/workspace` as the root. The adapter translates paths:
+- `/workspace/foo.txt` → `/foo.txt` (storage path)
+- Paths outside `/workspace` return errors
+
+This ensures bash and FileSystem capability share the same file namespace.
 
 #### SessionStorage
 
