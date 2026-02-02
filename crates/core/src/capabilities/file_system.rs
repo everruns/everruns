@@ -17,6 +17,44 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+/// Workspace prefix used in file paths
+const WORKSPACE_PREFIX: &str = "/workspace";
+
+/// Normalize a file path by stripping the /workspace prefix.
+/// This ensures both file_system and virtual_bash capabilities use the same
+/// path format in the session file store.
+///
+/// Examples:
+/// - `/workspace/foo.txt` -> `/foo.txt`
+/// - `/workspace` -> `/`
+/// - `/foo.txt` -> `/foo.txt` (already normalized)
+fn normalize_path(path: &str) -> String {
+    if path == WORKSPACE_PREFIX {
+        "/".to_string()
+    } else if let Some(stripped) = path.strip_prefix(WORKSPACE_PREFIX) {
+        if stripped.starts_with('/') {
+            stripped.to_string()
+        } else {
+            // path like "/workspacefoo" - not a valid workspace path
+            path.to_string()
+        }
+    } else {
+        // Path doesn't start with /workspace - use as-is
+        path.to_string()
+    }
+}
+
+/// Add workspace prefix back to a path for display to the user
+fn add_workspace_prefix(path: &str) -> String {
+    if path == "/" {
+        WORKSPACE_PREFIX.to_string()
+    } else if path.starts_with('/') {
+        format!("{}{}", WORKSPACE_PREFIX, path)
+    } else {
+        format!("{}/{}", WORKSPACE_PREFIX, path)
+    }
+}
+
 /// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
 
@@ -144,23 +182,32 @@ impl Tool for ReadFileTool {
             }
         };
 
-        match file_store.read_file(context.session_id, path).await {
+        // Normalize path to strip /workspace prefix for storage
+        let normalized_path = normalize_path(path);
+        let display_path = add_workspace_prefix(&normalized_path);
+
+        match file_store
+            .read_file(context.session_id, &normalized_path)
+            .await
+        {
             Ok(Some(file)) => {
                 if file.is_directory {
                     ToolExecutionResult::tool_error(format!(
                         "Path '{}' is a directory, not a file. Use list_directory instead.",
-                        path
+                        display_path
                     ))
                 } else {
                     ToolExecutionResult::success(json!({
-                        "path": file.path,
+                        "path": display_path,
                         "content": file.content,
                         "encoding": file.encoding,
                         "size_bytes": file.size_bytes
                     }))
                 }
             }
-            Ok(None) => ToolExecutionResult::tool_error(format!("File not found: {}", path)),
+            Ok(None) => {
+                ToolExecutionResult::tool_error(format!("File not found: {}", display_path))
+            }
             Err(e) => ToolExecutionResult::internal_error(e),
         }
     }
@@ -246,12 +293,16 @@ impl Tool for WriteFileTool {
             }
         };
 
+        // Normalize path to strip /workspace prefix for storage
+        let normalized_path = normalize_path(path);
+        let display_path = add_workspace_prefix(&normalized_path);
+
         match file_store
-            .write_file(context.session_id, path, content, encoding)
+            .write_file(context.session_id, &normalized_path, content, encoding)
             .await
         {
             Ok(file) => ToolExecutionResult::success(json!({
-                "path": file.path,
+                "path": display_path,
                 "size_bytes": file.size_bytes,
                 "created": true
             })),
@@ -328,14 +379,21 @@ impl Tool for ListDirectoryTool {
             }
         };
 
-        match file_store.list_directory(context.session_id, path).await {
+        // Normalize path to strip /workspace prefix for storage
+        let normalized_path = normalize_path(path);
+        let display_path = add_workspace_prefix(&normalized_path);
+
+        match file_store
+            .list_directory(context.session_id, &normalized_path)
+            .await
+        {
             Ok(files) => {
                 let entries: Vec<Value> = files
                     .iter()
                     .map(|f| {
                         json!({
                             "name": f.name,
-                            "path": f.path,
+                            "path": add_workspace_prefix(&f.path),
                             "is_directory": f.is_directory,
                             "size_bytes": f.size_bytes,
                             "is_readonly": f.is_readonly
@@ -344,7 +402,7 @@ impl Tool for ListDirectoryTool {
                     .collect();
 
                 ToolExecutionResult::success(json!({
-                    "path": path,
+                    "path": display_path,
                     "entries": entries,
                     "count": entries.len()
                 }))
@@ -436,7 +494,7 @@ impl Tool for GrepFilesTool {
                     .iter()
                     .map(|m| {
                         json!({
-                            "path": m.path,
+                            "path": add_workspace_prefix(&m.path),
                             "line_number": m.line_number,
                             "line": m.line
                         })
@@ -531,18 +589,22 @@ impl Tool for DeleteFileTool {
             }
         };
 
+        // Normalize path to strip /workspace prefix for storage
+        let normalized_path = normalize_path(path);
+        let display_path = add_workspace_prefix(&normalized_path);
+
         match file_store
-            .delete_file(context.session_id, path, recursive)
+            .delete_file(context.session_id, &normalized_path, recursive)
             .await
         {
             Ok(deleted) => {
                 if deleted {
                     ToolExecutionResult::success(json!({
-                        "path": path,
+                        "path": display_path,
                         "deleted": true
                     }))
                 } else {
-                    ToolExecutionResult::tool_error(format!("File not found: {}", path))
+                    ToolExecutionResult::tool_error(format!("File not found: {}", display_path))
                 }
             }
             Err(e) => {
@@ -617,9 +679,16 @@ impl Tool for StatFileTool {
             }
         };
 
-        match file_store.stat_file(context.session_id, path).await {
+        // Normalize path to strip /workspace prefix for storage
+        let normalized_path = normalize_path(path);
+        let display_path = add_workspace_prefix(&normalized_path);
+
+        match file_store
+            .stat_file(context.session_id, &normalized_path)
+            .await
+        {
             Ok(Some(stat)) => ToolExecutionResult::success(json!({
-                "path": stat.path,
+                "path": add_workspace_prefix(&stat.path),
                 "name": stat.name,
                 "exists": true,
                 "is_directory": stat.is_directory,
@@ -629,7 +698,7 @@ impl Tool for StatFileTool {
                 "updated_at": stat.updated_at.to_rfc3339()
             })),
             Ok(None) => ToolExecutionResult::success(json!({
-                "path": path,
+                "path": display_path,
                 "exists": false
             })),
             Err(e) => ToolExecutionResult::internal_error(e),
@@ -645,6 +714,53 @@ impl Tool for StatFileTool {
 mod tests {
     use super::*;
     use crate::typed_id::SessionId;
+
+    // Path normalization tests
+    #[test]
+    fn test_normalize_path_workspace_root() {
+        assert_eq!(normalize_path("/workspace"), "/");
+    }
+
+    #[test]
+    fn test_normalize_path_workspace_file() {
+        assert_eq!(normalize_path("/workspace/test.txt"), "/test.txt");
+    }
+
+    #[test]
+    fn test_normalize_path_workspace_nested() {
+        assert_eq!(normalize_path("/workspace/foo/bar/test.txt"), "/foo/bar/test.txt");
+    }
+
+    #[test]
+    fn test_normalize_path_already_normalized() {
+        assert_eq!(normalize_path("/test.txt"), "/test.txt");
+    }
+
+    #[test]
+    fn test_normalize_path_invalid_workspace_prefix() {
+        // /workspacefoo is not a valid workspace path (no slash after workspace)
+        assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
+
+    #[test]
+    fn test_add_workspace_prefix_root() {
+        assert_eq!(add_workspace_prefix("/"), "/workspace");
+    }
+
+    #[test]
+    fn test_add_workspace_prefix_file() {
+        assert_eq!(add_workspace_prefix("/test.txt"), "/workspace/test.txt");
+    }
+
+    #[test]
+    fn test_add_workspace_prefix_nested() {
+        assert_eq!(add_workspace_prefix("/foo/bar.txt"), "/workspace/foo/bar.txt");
+    }
+
+    #[test]
+    fn test_add_workspace_prefix_no_leading_slash() {
+        assert_eq!(add_workspace_prefix("test.txt"), "/workspace/test.txt");
+    }
 
     #[test]
     fn test_capability_metadata() {
