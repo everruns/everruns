@@ -120,7 +120,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
               <span>•</span>
               <span>
                 {activeTab === "files"
-                  ? "Session file system"
+                  ? "Workspace: /workspace"
                   : `Started ${new Date(session.created_at).toLocaleString()}`}
               </span>
             </div>
@@ -197,7 +197,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             )}
           >
             <Folder className="h-4 w-4" />
-            Files
+            Workspace
           </Link>
           <Link
             href={`${basePath}/storage`}
