@@ -67,6 +67,7 @@ pub mod activity;
 pub mod engine;
 pub mod persistence;
 pub mod reliability;
+pub mod scheduler;
 pub mod task_events;
 pub mod worker;
 pub mod workflow;
@@ -89,6 +90,7 @@ pub mod prelude {
         TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
+    pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
     pub use crate::worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
     pub use crate::workflow::{
         ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
@@ -108,6 +110,7 @@ pub use persistence::{
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
 };
+pub use scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
