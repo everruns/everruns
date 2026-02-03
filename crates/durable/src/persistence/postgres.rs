@@ -375,6 +375,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         // 4. Limits to max_tasks
         // 5. Uses SKIP LOCKED to avoid contention
         // 6. Updates status and claiming info in one atomic operation
+        // NOTE: The `attempt < max_attempts` check is critical for preventing infinite
+        // retries when workers panic. Without fail_task being called, the task becomes
+        // stale, gets reclaimed, but must not be claimed if attempts are exhausted.
         let rows = sqlx::query(
             r#"
             WITH worker_check AS (
@@ -387,6 +390,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 WHERE tq.status = 'pending'
                   AND tq.activity_type = ANY($1)
                   AND tq.visible_at <= NOW()
+                  AND tq.attempt < tq.max_attempts
                 ORDER BY tq.priority DESC, tq.visible_at
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
@@ -667,7 +671,33 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let threshold =
             Utc::now() - chrono::Duration::from_std(stale_threshold).unwrap_or_default();
 
-        // Find and reclaim stale tasks
+        // First, mark exhausted tasks as dead (they've used all attempts via stale reclaims)
+        // This handles the case where workers panic without calling fail_task.
+        let dead_rows = sqlx::query(
+            r#"
+            UPDATE durable_task_queue
+            SET status = 'dead',
+                last_error = COALESCE(last_error, 'Worker became unresponsive after exhausting all retry attempts')
+            WHERE status = 'claimed'
+              AND heartbeat_at < $1
+              AND attempt >= max_attempts
+            RETURNING id
+            "#,
+        )
+        .bind(threshold)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to mark exhausted stale tasks as dead: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let dead_count = dead_rows.len();
+        if dead_count > 0 {
+            info!(count = dead_count, "marked exhausted stale tasks as dead");
+        }
+
+        // Then, reclaim stale tasks that still have attempts remaining
         let rows = sqlx::query(
             r#"
             UPDATE durable_task_queue
@@ -676,6 +706,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 claimed_at = NULL
             WHERE status = 'claimed'
               AND heartbeat_at < $1
+              AND attempt < max_attempts
             RETURNING id
             "#,
         )
@@ -687,10 +718,16 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        let reclaimed: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
+        // Return all affected tasks (both dead and reclaimed)
+        let mut reclaimed: Vec<Uuid> = dead_rows.iter().map(|r| r.get("id")).collect();
+        reclaimed.extend(rows.iter().map(|r| r.get::<Uuid, _>("id")));
 
         if !reclaimed.is_empty() {
-            debug!(count = reclaimed.len(), "reclaimed stale tasks");
+            debug!(
+                count = reclaimed.len(),
+                dead = dead_count,
+                "processed stale tasks"
+            );
         }
 
         Ok(reclaimed)
