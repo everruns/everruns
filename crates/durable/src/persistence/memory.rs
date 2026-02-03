@@ -259,8 +259,12 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 break;
             }
 
+            // Check attempt < max_attempts to prevent infinite retries when workers panic
+            // without calling fail_task (mirroring PostgreSQL fix)
+            let max_attempts = task.definition.options.retry_policy.max_attempts;
             if task.status == TaskStatus::Pending
                 && activity_types.contains(&task.definition.activity_type)
+                && task.attempt < max_attempts
             {
                 task.status = TaskStatus::Claimed;
                 task.claimed_by = Some(worker_id.to_string());

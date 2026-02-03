@@ -15,7 +15,8 @@ use uuid::Uuid;
 
 use everruns_durable::persistence::{
     DlqFilter, Pagination, PostgresWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventStore, WorkflowStatus,
+    TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventStore,
+    WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -1387,6 +1388,201 @@ async fn test_duplicate_scheduling_prevention() {
         pending_tasks.is_empty(),
         "No duplicate pending tasks should exist"
     );
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+// ============================================
+// Stale Task Reclaim Max Attempts Tests
+// ============================================
+
+/// Test that tasks cannot be claimed after exhausting max_attempts via stale reclaim
+///
+/// Bug reproduction: When a worker panics (doesn't call fail_task), the task becomes
+/// stale and gets reclaimed. Without the fix, this can happen indefinitely because:
+/// 1. reclaim_stale_tasks sets status='pending' without checking attempt count
+/// 2. claim_task doesn't check if attempt >= max_attempts
+///
+/// Fix: claim_task must check `attempt < max_attempts` before claiming.
+#[tokio::test]
+async fn test_stale_reclaim_respects_max_attempts() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "stale_max_attempts_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // Create task with max_attempts=2
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(2)
+            .with_initial_interval(Duration::from_millis(1)),
+        ..Default::default()
+    };
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "panic_task".to_string(),
+            activity_type: "panic_activity".to_string(),
+            input: json!({}),
+            options,
+        })
+        .await
+        .unwrap();
+
+    // Attempt 1: Worker claims task then "panics" (no fail_task call)
+    let claimed = store
+        .claim_task("worker-1", &["panic_activity".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].attempt, 1);
+
+    // Simulate heartbeat timeout (worker panicked)
+    sqlx::query(
+        r#"
+        UPDATE durable_task_queue
+        SET heartbeat_at = NOW() - INTERVAL '1 hour'
+        WHERE id = $1
+        "#,
+    )
+    .bind(task_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // Reclaim stale task
+    let reclaimed = store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert_eq!(reclaimed.len(), 1);
+
+    // Attempt 2: Another worker claims the reclaimed task
+    let claimed = store
+        .claim_task("worker-2", &["panic_activity".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].attempt, 2); // This is the 2nd (and final) attempt
+
+    // Simulate another heartbeat timeout (worker panicked again)
+    sqlx::query(
+        r#"
+        UPDATE durable_task_queue
+        SET heartbeat_at = NOW() - INTERVAL '1 hour'
+        WHERE id = $1
+        "#,
+    )
+    .bind(task_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // Reclaim stale task again
+    let reclaimed = store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert_eq!(reclaimed.len(), 1);
+
+    // BUG: Without fix, this would claim the task for attempt 3 (exceeding max_attempts=2)
+    // FIXED: Task should NOT be claimable because attempt (2) >= max_attempts (2)
+    let claimed = store
+        .claim_task("worker-3", &["panic_activity".to_string()], 1)
+        .await
+        .unwrap();
+    assert!(
+        claimed.is_empty(),
+        "Task should NOT be claimable after exhausting max_attempts via stale reclaim. \
+         Got {} tasks with attempts: {:?}",
+        claimed.len(),
+        claimed.iter().map(|t| t.attempt).collect::<Vec<_>>()
+    );
+
+    // Verify task status is 'dead' (moved to DLQ)
+    let task = store.get_task(task_id).await.unwrap();
+    assert_eq!(
+        task.status,
+        TaskStatus::Dead,
+        "Task should be marked as dead after exhausting attempts"
+    );
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+/// Test that partially exhausted tasks can still be claimed
+///
+/// Ensures the fix doesn't prevent claiming tasks that still have attempts remaining.
+#[tokio::test]
+async fn test_stale_reclaim_allows_remaining_attempts() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "partial_attempts_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // Create task with max_attempts=3
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(3)
+            .with_initial_interval(Duration::from_millis(1)),
+        ..Default::default()
+    };
+
+    store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "retry_task".to_string(),
+            activity_type: "retry_activity".to_string(),
+            input: json!({}),
+            options,
+        })
+        .await
+        .unwrap();
+
+    // Attempt 1: claim and simulate panic
+    let claimed = store
+        .claim_task("worker-1", &["retry_activity".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed[0].attempt, 1);
+
+    sqlx::query(
+        r#"
+        UPDATE durable_task_queue
+        SET heartbeat_at = NOW() - INTERVAL '1 hour'
+        WHERE workflow_id = $1
+        "#,
+    )
+    .bind(workflow_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+
+    // Attempt 2: should still be claimable (attempt 2 < max_attempts 3)
+    let claimed = store
+        .claim_task("worker-2", &["retry_activity".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1, "Task should be claimable for attempt 2");
+    assert_eq!(claimed[0].attempt, 2);
+
+    // Complete the task on attempt 2
+    store
+        .complete_task(claimed[0].id, "worker-2", json!({"done": true}))
+        .await
+        .unwrap();
 
     cleanup_workflow(&store, workflow_id).await;
 }
