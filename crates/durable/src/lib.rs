@@ -101,9 +101,11 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    CircuitBreakerState, ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse,
-    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, StoreError, SystemHealth,
-    TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext,
+    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter, HeartbeatResponse,
+    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ScheduleExecutionFilter,
+    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
+    ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
+    TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
     WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
     WorkflowInfoExtended, WorkflowStatus,
 };

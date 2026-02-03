@@ -1373,6 +1373,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "cron",
  "dotenvy",
  "everruns-core",
  "everruns-durable",
