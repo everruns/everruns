@@ -1485,4 +1485,133 @@ mod tests {
         let result = adapter.chmod(Path::new("/workspace/file.txt"), 0o755).await;
         assert!(result.is_ok());
     }
+
+    // ========================================================================
+    // Security limit tests (bashkit 0.1.0)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_max_input_bytes_limit() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create a script larger than 1MB limit
+        let large_script = "echo ".to_string() + &"x".repeat(1_100_000);
+
+        let result = tool
+            .execute_with_context(json!({"command": large_script}), &context)
+            .await;
+
+        // Should fail due to input size limit
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("too large") || msg.contains("input") || msg.contains("limit"),
+                    "Expected input size error, got: {}",
+                    msg
+                );
+            }
+            ToolExecutionResult::Success(output) => {
+                panic!(
+                    "Expected error for oversized script, got success: {:?}",
+                    output
+                );
+            }
+            _ => panic!("Unexpected result type"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_loop_within_limit() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Execute a loop within the 10000 iteration limit
+        let command = "i=0; while [ $i -lt 100 ]; do i=$((i + 1)); done; echo $i";
+
+        let result = tool
+            .execute_with_context(json!({"command": command}), &context)
+            .await;
+
+        // Should succeed within limits
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "100");
+        } else {
+            panic!("Expected success for loop within limit: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_function_calls() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Test basic function definition and calls (non-recursive to avoid stack issues)
+        let command = r#"
+            greet() {
+                echo "Hello, $1!"
+            }
+            greet world
+        "#;
+
+        let result = tool
+            .execute_with_context(json!({"command": command}), &context)
+            .await;
+
+        // Should succeed
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert!(
+                output["stdout"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("Hello, world!")
+            );
+        } else {
+            panic!("Expected success for function call: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_arithmetic_expressions() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Test various arithmetic expressions (shallow nesting to avoid stack issues)
+        let command = "echo $((1 + 2 * 3))";
+
+        let result = tool
+            .execute_with_context(json!({"command": command}), &context)
+            .await;
+
+        // Should succeed
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "7");
+        } else {
+            panic!("Expected success for arithmetic expression: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_commands_within_limit() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Execute multiple commands within the 1000 command limit
+        let command = "for i in $(seq 1 100); do true; done; echo done";
+
+        let result = tool
+            .execute_with_context(json!({"command": command}), &context)
+            .await;
+
+        // Should succeed within limits
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert!(output["stdout"].as_str().unwrap_or("").contains("done"));
+        } else {
+            panic!("Expected success for commands within limit: {:?}", result);
+        }
+    }
 }
