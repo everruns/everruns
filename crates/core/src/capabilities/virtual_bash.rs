@@ -94,6 +94,8 @@ Use the `bash` tool to execute shell commands. The environment includes:
 - Maximum 1000 commands per execution
 - Maximum 10000 loop iterations
 - Maximum 100 function call depth
+- Maximum 1MB input script size
+- Parser timeout: 5 seconds
 
 **Best Practices:**
 - Use bash for complex text processing and file manipulation
@@ -196,10 +198,14 @@ impl Tool for BashTool {
         ));
 
         // Configure bash with resource limits
+        // Security limits added in bashkit 0.1.0: parser_timeout, max_input_bytes, max_ast_depth
         let limits = ExecutionLimits::new()
             .max_commands(1000)
             .max_loop_iterations(10000)
-            .max_function_depth(100);
+            .max_function_depth(100)
+            .max_input_bytes(1_000_000) // 1MB max script size
+            .max_ast_depth(100)
+            .parser_timeout(std::time::Duration::from_secs(5));
 
         let mut bash = Bash::builder()
             .fs(session_fs)
