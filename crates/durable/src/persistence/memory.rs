@@ -47,6 +47,21 @@ struct CircuitBreakerMemState {
     opened_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Schedule state in memory
+struct ScheduleMemState {
+    row: ScheduleRow,
+}
+
+/// Schedule execution state in memory
+struct ScheduleExecutionMemState {
+    row: ScheduleExecutionRow,
+}
+
+/// Rate limit window in memory
+struct RateLimitWindow {
+    count: u32,
+}
+
 /// In-memory implementation of WorkflowEventStore
 ///
 /// This is primarily for testing. It stores all data in memory and
@@ -65,6 +80,10 @@ pub struct InMemoryWorkflowEventStore {
     dlq: RwLock<HashMap<Uuid, DlqEntry>>,
     circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
     workers: RwLock<HashMap<String, WorkerInfo>>,
+    schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
+    schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
+    rate_limits: RwLock<HashMap<(i64, chrono::DateTime<chrono::Utc>), RateLimitWindow>>,
+    scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
 }
@@ -78,6 +97,10 @@ impl InMemoryWorkflowEventStore {
             dlq: RwLock::new(HashMap::new()),
             circuit_breakers: RwLock::new(HashMap::new()),
             workers: RwLock::new(HashMap::new()),
+            schedules: RwLock::new(HashMap::new()),
+            schedule_executions: RwLock::new(HashMap::new()),
+            rate_limits: RwLock::new(HashMap::new()),
+            scheduler_instances: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
         }
     }
@@ -815,6 +838,524 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let end = (pagination.offset + pagination.limit) as usize;
         Ok(result.into_iter().skip(start).take(end - start).collect())
     }
+
+    // =========================================================================
+    // Schedule Operations
+    // =========================================================================
+
+    async fn create_schedule(&self, schedule: CreateScheduleRow) -> Result<Uuid, StoreError> {
+        let id = Uuid::now_v7();
+        let now = Utc::now();
+
+        let row = ScheduleRow {
+            id,
+            org_id: schedule.org_id,
+            name: schedule.name,
+            description: schedule.description,
+            cron_expression: schedule.cron_expression,
+            timezone: schedule.timezone,
+            target_type: schedule.target_type,
+            target_name: schedule.target_name,
+            target_input: schedule.target_input,
+            enabled: schedule.enabled,
+            max_concurrent: schedule.max_concurrent,
+            catch_up_missed: schedule.catch_up_missed,
+            max_catch_up: schedule.max_catch_up,
+            retry_policy: schedule.retry_policy,
+            last_triggered_at: None,
+            next_trigger_at: schedule.next_trigger_at,
+            claimed_by: None,
+            claimed_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let mut schedules = self.schedules.write();
+        schedules.insert(id, ScheduleMemState { row });
+        Ok(id)
+    }
+
+    async fn get_schedule(&self, id: Uuid) -> Result<ScheduleRow, StoreError> {
+        let schedules = self.schedules.read();
+        schedules
+            .get(&id)
+            .map(|s| s.row.clone())
+            .ok_or(StoreError::ScheduleNotFound(id))
+    }
+
+    async fn get_schedule_for_org(&self, org_id: i64, id: Uuid) -> Result<ScheduleRow, StoreError> {
+        let schedules = self.schedules.read();
+        schedules
+            .get(&id)
+            .filter(|s| s.row.org_id == org_id)
+            .map(|s| s.row.clone())
+            .ok_or(StoreError::ScheduleNotFound(id))
+    }
+
+    async fn list_schedules(
+        &self,
+        filter: ScheduleFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<ScheduleRow>, StoreError> {
+        let schedules = self.schedules.read();
+        let mut result: Vec<_> = schedules
+            .values()
+            .filter(|s| {
+                if filter.org_id.is_some_and(|id| s.row.org_id != id) {
+                    return false;
+                }
+                if filter.enabled.is_some_and(|e| s.row.enabled != e) {
+                    return false;
+                }
+                if filter.target_type.is_some_and(|t| s.row.target_type != t) {
+                    return false;
+                }
+                true
+            })
+            .map(|s| s.row.clone())
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let start = pagination.offset as usize;
+        let end = (pagination.offset + pagination.limit) as usize;
+        Ok(result.into_iter().skip(start).take(end - start).collect())
+    }
+
+    async fn count_schedules(&self, filter: ScheduleFilter) -> Result<u64, StoreError> {
+        let schedules = self.schedules.read();
+        let count = schedules
+            .values()
+            .filter(|s| {
+                if filter.org_id.is_some_and(|id| s.row.org_id != id) {
+                    return false;
+                }
+                if filter.enabled.is_some_and(|e| s.row.enabled != e) {
+                    return false;
+                }
+                if filter.target_type.is_some_and(|t| s.row.target_type != t) {
+                    return false;
+                }
+                true
+            })
+            .count();
+        Ok(count as u64)
+    }
+
+    async fn update_schedule(&self, id: Uuid, update: UpdateSchedule) -> Result<(), StoreError> {
+        let mut schedules = self.schedules.write();
+        let state = schedules
+            .get_mut(&id)
+            .ok_or(StoreError::ScheduleNotFound(id))?;
+
+        if let Some(name) = update.name {
+            state.row.name = name;
+        }
+        if let Some(description) = update.description {
+            state.row.description = description;
+        }
+        if let Some(cron_expression) = update.cron_expression {
+            state.row.cron_expression = cron_expression;
+        }
+        if let Some(timezone) = update.timezone {
+            state.row.timezone = timezone;
+        }
+        if let Some(target_type) = update.target_type {
+            state.row.target_type = target_type;
+        }
+        if let Some(target_name) = update.target_name {
+            state.row.target_name = target_name;
+        }
+        if let Some(target_input) = update.target_input {
+            state.row.target_input = target_input;
+        }
+        if let Some(enabled) = update.enabled {
+            state.row.enabled = enabled;
+        }
+        if let Some(max_concurrent) = update.max_concurrent {
+            state.row.max_concurrent = max_concurrent;
+        }
+        if let Some(catch_up_missed) = update.catch_up_missed {
+            state.row.catch_up_missed = catch_up_missed;
+        }
+        if let Some(max_catch_up) = update.max_catch_up {
+            state.row.max_catch_up = max_catch_up;
+        }
+        if let Some(retry_policy) = update.retry_policy {
+            state.row.retry_policy = retry_policy;
+        }
+        if let Some(next_trigger_at) = update.next_trigger_at {
+            state.row.next_trigger_at = next_trigger_at;
+        }
+        state.row.updated_at = Utc::now();
+        Ok(())
+    }
+
+    async fn delete_schedule(&self, id: Uuid) -> Result<(), StoreError> {
+        let mut schedules = self.schedules.write();
+        schedules
+            .remove(&id)
+            .ok_or(StoreError::ScheduleNotFound(id))?;
+
+        // Also remove executions for this schedule
+        let mut executions = self.schedule_executions.write();
+        executions.retain(|_, e| e.row.schedule_id != id);
+        Ok(())
+    }
+
+    // =========================================================================
+    // Scheduler Operations
+    // =========================================================================
+
+    async fn claim_due_schedules(
+        &self,
+        scheduler_id: &str,
+        limit: u32,
+    ) -> Result<Vec<ScheduleRow>, StoreError> {
+        let now = Utc::now();
+        let mut schedules = self.schedules.write();
+
+        // Find due schedules, one per org (round-robin fairness)
+        let mut seen_orgs = std::collections::HashSet::new();
+        let mut claimed = Vec::new();
+
+        // Sort by org_id, then by next_trigger_at to get earliest per org
+        let mut candidates: Vec<_> = schedules
+            .iter_mut()
+            .filter(|(_, s)| {
+                s.row.enabled
+                    && s.row.next_trigger_at.is_some_and(|t| t <= now)
+                    && s.row.claimed_by.is_none()
+            })
+            .collect();
+        candidates.sort_by(|a, b| {
+            let org_cmp = a.1.row.org_id.cmp(&b.1.row.org_id);
+            if org_cmp != std::cmp::Ordering::Equal {
+                return org_cmp;
+            }
+            a.1.row.next_trigger_at.cmp(&b.1.row.next_trigger_at)
+        });
+
+        for (_, state) in candidates {
+            if claimed.len() >= limit as usize {
+                break;
+            }
+            if seen_orgs.contains(&state.row.org_id) {
+                continue;
+            }
+            seen_orgs.insert(state.row.org_id);
+            state.row.claimed_by = Some(scheduler_id.to_string());
+            state.row.claimed_at = Some(now);
+            claimed.push(state.row.clone());
+        }
+
+        Ok(claimed)
+    }
+
+    async fn update_next_trigger(
+        &self,
+        id: Uuid,
+        next: chrono::DateTime<Utc>,
+    ) -> Result<(), StoreError> {
+        let mut schedules = self.schedules.write();
+        let state = schedules
+            .get_mut(&id)
+            .ok_or(StoreError::ScheduleNotFound(id))?;
+        state.row.next_trigger_at = Some(next);
+        state.row.last_triggered_at = Some(Utc::now());
+        state.row.claimed_by = None;
+        state.row.claimed_at = None;
+        state.row.updated_at = Utc::now();
+        Ok(())
+    }
+
+    async fn skip_schedule_trigger(&self, id: Uuid) -> Result<(), StoreError> {
+        // Just release the claim, keep next_trigger_at the same
+        let mut schedules = self.schedules.write();
+        let state = schedules
+            .get_mut(&id)
+            .ok_or(StoreError::ScheduleNotFound(id))?;
+        state.row.claimed_by = None;
+        state.row.claimed_at = None;
+        Ok(())
+    }
+
+    async fn release_schedule(&self, id: Uuid) -> Result<(), StoreError> {
+        self.skip_schedule_trigger(id).await
+    }
+
+    // =========================================================================
+    // Schedule Execution Operations
+    // =========================================================================
+
+    async fn create_schedule_execution(
+        &self,
+        org_id: i64,
+        schedule_id: Uuid,
+        scheduled_at: chrono::DateTime<Utc>,
+    ) -> Result<Uuid, StoreError> {
+        let id = Uuid::now_v7();
+        let now = Utc::now();
+
+        let row = ScheduleExecutionRow {
+            id,
+            org_id,
+            schedule_id,
+            scheduled_at,
+            started_at: now,
+            completed_at: None,
+            status: ScheduleExecutionStatus::Running,
+            workflow_id: None,
+            task_id: None,
+            error: None,
+            duration_ms: None,
+            created_at: now,
+        };
+
+        let mut executions = self.schedule_executions.write();
+        executions.insert(id, ScheduleExecutionMemState { row });
+        Ok(id)
+    }
+
+    async fn get_schedule_execution(&self, id: Uuid) -> Result<ScheduleExecutionRow, StoreError> {
+        let executions = self.schedule_executions.read();
+        executions
+            .get(&id)
+            .map(|e| e.row.clone())
+            .ok_or(StoreError::ScheduleExecutionNotFound(id))
+    }
+
+    async fn complete_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        target_id: Uuid,
+        is_workflow: bool,
+    ) -> Result<(), StoreError> {
+        let mut executions = self.schedule_executions.write();
+        let state = executions
+            .get_mut(&execution_id)
+            .ok_or(StoreError::ScheduleExecutionNotFound(execution_id))?;
+
+        let now = Utc::now();
+        state.row.status = ScheduleExecutionStatus::Completed;
+        state.row.completed_at = Some(now);
+        state.row.duration_ms = Some((now - state.row.started_at).num_milliseconds() as i32);
+        if is_workflow {
+            state.row.workflow_id = Some(target_id);
+        } else {
+            state.row.task_id = Some(target_id);
+        }
+        Ok(())
+    }
+
+    async fn fail_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        error: &str,
+    ) -> Result<(), StoreError> {
+        let mut executions = self.schedule_executions.write();
+        let state = executions
+            .get_mut(&execution_id)
+            .ok_or(StoreError::ScheduleExecutionNotFound(execution_id))?;
+
+        let now = Utc::now();
+        state.row.status = ScheduleExecutionStatus::Failed;
+        state.row.completed_at = Some(now);
+        state.row.duration_ms = Some((now - state.row.started_at).num_milliseconds() as i32);
+        state.row.error = Some(error.to_string());
+        Ok(())
+    }
+
+    async fn skip_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        reason: &str,
+    ) -> Result<(), StoreError> {
+        let mut executions = self.schedule_executions.write();
+        let state = executions
+            .get_mut(&execution_id)
+            .ok_or(StoreError::ScheduleExecutionNotFound(execution_id))?;
+
+        let now = Utc::now();
+        state.row.status = ScheduleExecutionStatus::Skipped;
+        state.row.completed_at = Some(now);
+        state.row.duration_ms = Some((now - state.row.started_at).num_milliseconds() as i32);
+        state.row.error = Some(reason.to_string());
+        Ok(())
+    }
+
+    async fn list_schedule_executions(
+        &self,
+        filter: ScheduleExecutionFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<ScheduleExecutionRow>, StoreError> {
+        let executions = self.schedule_executions.read();
+        let mut result: Vec<_> = executions
+            .values()
+            .filter(|e| {
+                if filter.org_id.is_some_and(|id| e.row.org_id != id) {
+                    return false;
+                }
+                if filter.schedule_id.is_some_and(|id| e.row.schedule_id != id) {
+                    return false;
+                }
+                if filter.status.is_some_and(|s| e.row.status != s) {
+                    return false;
+                }
+                true
+            })
+            .map(|e| e.row.clone())
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let start = pagination.offset as usize;
+        let end = (pagination.offset + pagination.limit) as usize;
+        Ok(result.into_iter().skip(start).take(end - start).collect())
+    }
+
+    async fn count_running_executions(&self, schedule_id: Uuid) -> Result<u32, StoreError> {
+        let executions = self.schedule_executions.read();
+        let count = executions
+            .values()
+            .filter(|e| {
+                e.row.schedule_id == schedule_id && e.row.status == ScheduleExecutionStatus::Running
+            })
+            .count();
+        Ok(count as u32)
+    }
+
+    async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
+        let executions = self.schedule_executions.read();
+        let schedule_execs: Vec<_> = executions
+            .values()
+            .filter(|e| e.row.schedule_id == schedule_id)
+            .collect();
+
+        let total_executions = schedule_execs.len() as u64;
+        let successful_executions = schedule_execs
+            .iter()
+            .filter(|e| e.row.status == ScheduleExecutionStatus::Completed)
+            .count() as u64;
+        let failed_executions = schedule_execs
+            .iter()
+            .filter(|e| e.row.status == ScheduleExecutionStatus::Failed)
+            .count() as u64;
+        let skipped_executions = schedule_execs
+            .iter()
+            .filter(|e| e.row.status == ScheduleExecutionStatus::Skipped)
+            .count() as u64;
+
+        let durations: Vec<_> = schedule_execs
+            .iter()
+            .filter_map(|e| e.row.duration_ms)
+            .collect();
+        let avg_duration_ms = if durations.is_empty() {
+            None
+        } else {
+            Some(durations.iter().map(|d| *d as u64).sum::<u64>() / durations.len() as u64)
+        };
+
+        let last_execution_status = schedule_execs
+            .iter()
+            .max_by_key(|e| e.row.created_at)
+            .map(|e| e.row.status);
+
+        Ok(ScheduleStats {
+            total_executions,
+            successful_executions,
+            failed_executions,
+            skipped_executions,
+            avg_duration_ms,
+            last_execution_status,
+        })
+    }
+
+    // =========================================================================
+    // Rate Limit Operations
+    // =========================================================================
+
+    async fn check_and_increment_rate_limit(
+        &self,
+        org_id: i64,
+        limit: u32,
+    ) -> Result<(u32, u32), StoreError> {
+        use chrono::Timelike;
+        let now = Utc::now();
+        let window_start = now
+            .with_minute(0)
+            .and_then(|t| t.with_second(0))
+            .and_then(|t| t.with_nanosecond(0))
+            .unwrap_or(now);
+
+        let mut rate_limits = self.rate_limits.write();
+        let key = (org_id, window_start);
+        let window = rate_limits
+            .entry(key)
+            .or_insert(RateLimitWindow { count: 0 });
+        window.count += 1;
+        Ok((window.count, limit))
+    }
+
+    async fn get_rate_limit_count(&self, org_id: i64) -> Result<u32, StoreError> {
+        use chrono::Timelike;
+        let now = Utc::now();
+        let window_start = now
+            .with_minute(0)
+            .and_then(|t| t.with_second(0))
+            .and_then(|t| t.with_nanosecond(0))
+            .unwrap_or(now);
+
+        let rate_limits = self.rate_limits.read();
+        let key = (org_id, window_start);
+        Ok(rate_limits.get(&key).map(|w| w.count).unwrap_or(0))
+    }
+
+    async fn cleanup_rate_limit_windows(
+        &self,
+        older_than: chrono::DateTime<Utc>,
+    ) -> Result<u64, StoreError> {
+        let mut rate_limits = self.rate_limits.write();
+        let before_count = rate_limits.len();
+        rate_limits.retain(|(_, window_start), _| *window_start >= older_than);
+        let removed = before_count - rate_limits.len();
+        Ok(removed as u64)
+    }
+
+    // =========================================================================
+    // Scheduler Instance Operations
+    // =========================================================================
+
+    async fn register_scheduler_instance(
+        &self,
+        instance: SchedulerInstanceInfo,
+    ) -> Result<(), StoreError> {
+        let mut instances = self.scheduler_instances.write();
+        instances.insert(instance.instance_id.clone(), instance);
+        Ok(())
+    }
+
+    async fn heartbeat_scheduler_instance(
+        &self,
+        instance_id: &str,
+        schedules_processed: u64,
+    ) -> Result<(), StoreError> {
+        let mut instances = self.scheduler_instances.write();
+        if let Some(instance) = instances.get_mut(instance_id) {
+            instance.last_heartbeat_at = Utc::now();
+            instance.schedules_processed = schedules_processed;
+        }
+        Ok(())
+    }
+
+    async fn list_scheduler_instances(&self) -> Result<Vec<SchedulerInstanceInfo>, StoreError> {
+        let instances = self.scheduler_instances.read();
+        Ok(instances.values().cloned().collect())
+    }
+
+    async fn deregister_scheduler_instance(&self, instance_id: &str) -> Result<(), StoreError> {
+        let mut instances = self.scheduler_instances.write();
+        instances.remove(instance_id);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1261,5 +1802,262 @@ mod tests {
 
         // In the real workflow, after complete_task fails, the worker
         // should NOT call schedule_next_activity, preventing duplicate atoms
+    }
+
+    // =========================================================================
+    // Schedule Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_schedule_create_and_get() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        let schedule = CreateScheduleRow {
+            org_id: 1,
+            name: "test-schedule".to_string(),
+            description: Some("Test description".to_string()),
+            cron_expression: "*/5 * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test_workflow".to_string(),
+            target_input: serde_json::json!({"key": "value"}),
+            enabled: true,
+            max_concurrent: Some(2),
+            catch_up_missed: false,
+            max_catch_up: Some(1),
+            retry_policy: None,
+            next_trigger_at: Some(Utc::now()),
+        };
+
+        let id = store.create_schedule(schedule.clone()).await.unwrap();
+        let retrieved = store.get_schedule(id).await.unwrap();
+
+        assert_eq!(retrieved.name, "test-schedule");
+        assert_eq!(retrieved.org_id, 1);
+        assert_eq!(retrieved.cron_expression, "*/5 * * * *");
+        assert_eq!(retrieved.target_type, ScheduleTargetType::Workflow);
+        assert!(retrieved.enabled);
+    }
+
+    #[tokio::test]
+    async fn test_schedule_org_isolation() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        let schedule = CreateScheduleRow {
+            org_id: 1,
+            name: "org1-schedule".to_string(),
+            description: None,
+            cron_expression: "*/5 * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test_workflow".to_string(),
+            target_input: serde_json::json!({}),
+            enabled: true,
+            max_concurrent: None,
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: None,
+        };
+
+        let id = store.create_schedule(schedule).await.unwrap();
+
+        // Can get with correct org
+        let result = store.get_schedule_for_org(1, id).await;
+        assert!(result.is_ok());
+
+        // Cannot get with wrong org
+        let result = store.get_schedule_for_org(2, id).await;
+        assert!(matches!(result, Err(StoreError::ScheduleNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_schedule_claim_round_robin() {
+        let store = InMemoryWorkflowEventStore::new();
+        let now = Utc::now();
+
+        // Create schedules for org 1 (3 schedules)
+        for i in 0..3 {
+            let schedule = CreateScheduleRow {
+                org_id: 1,
+                name: format!("org1-schedule-{}", i),
+                description: None,
+                cron_expression: "* * * * *".to_string(),
+                timezone: "UTC".to_string(),
+                target_type: ScheduleTargetType::Workflow,
+                target_name: "test".to_string(),
+                target_input: serde_json::json!({}),
+                enabled: true,
+                max_concurrent: None,
+                catch_up_missed: false,
+                max_catch_up: None,
+                retry_policy: None,
+                next_trigger_at: Some(now - chrono::Duration::minutes(1)),
+            };
+            store.create_schedule(schedule).await.unwrap();
+        }
+
+        // Create schedule for org 2 (1 schedule)
+        let schedule = CreateScheduleRow {
+            org_id: 2,
+            name: "org2-schedule".to_string(),
+            description: None,
+            cron_expression: "* * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test".to_string(),
+            target_input: serde_json::json!({}),
+            enabled: true,
+            max_concurrent: None,
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(now - chrono::Duration::minutes(1)),
+        };
+        store.create_schedule(schedule).await.unwrap();
+
+        // Claim with limit 10 - should get one per org (round-robin)
+        let claimed = store.claim_due_schedules("scheduler-1", 10).await.unwrap();
+
+        // Should get exactly 2 (one from org 1, one from org 2)
+        assert_eq!(claimed.len(), 2);
+
+        // Verify we got one from each org
+        let org_ids: std::collections::HashSet<_> = claimed.iter().map(|s| s.org_id).collect();
+        assert!(org_ids.contains(&1));
+        assert!(org_ids.contains(&2));
+    }
+
+    #[tokio::test]
+    async fn test_schedule_execution_lifecycle() {
+        let store = InMemoryWorkflowEventStore::new();
+        let now = Utc::now();
+
+        // Create schedule
+        let schedule = CreateScheduleRow {
+            org_id: 1,
+            name: "test-schedule".to_string(),
+            description: None,
+            cron_expression: "*/5 * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test_workflow".to_string(),
+            target_input: serde_json::json!({}),
+            enabled: true,
+            max_concurrent: None,
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(now),
+        };
+        let schedule_id = store.create_schedule(schedule).await.unwrap();
+
+        // Create execution
+        let exec_id = store
+            .create_schedule_execution(1, schedule_id, now)
+            .await
+            .unwrap();
+
+        // Verify running
+        let exec = store.get_schedule_execution(exec_id).await.unwrap();
+        assert_eq!(exec.status, ScheduleExecutionStatus::Running);
+
+        // Check running count
+        let running = store.count_running_executions(schedule_id).await.unwrap();
+        assert_eq!(running, 1);
+
+        // Complete execution
+        let workflow_id = Uuid::now_v7();
+        store
+            .complete_schedule_execution(exec_id, workflow_id, true)
+            .await
+            .unwrap();
+
+        // Verify completed
+        let exec = store.get_schedule_execution(exec_id).await.unwrap();
+        assert_eq!(exec.status, ScheduleExecutionStatus::Completed);
+        assert_eq!(exec.workflow_id, Some(workflow_id));
+        assert!(exec.duration_ms.is_some());
+
+        // Running count should be 0
+        let running = store.count_running_executions(schedule_id).await.unwrap();
+        assert_eq!(running, 0);
+    }
+
+    #[tokio::test]
+    async fn test_schedule_stats() {
+        let store = InMemoryWorkflowEventStore::new();
+        let now = Utc::now();
+
+        // Create schedule
+        let schedule = CreateScheduleRow {
+            org_id: 1,
+            name: "test-schedule".to_string(),
+            description: None,
+            cron_expression: "*/5 * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test_workflow".to_string(),
+            target_input: serde_json::json!({}),
+            enabled: true,
+            max_concurrent: None,
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(now),
+        };
+        let schedule_id = store.create_schedule(schedule).await.unwrap();
+
+        // Create and complete some executions
+        for _ in 0..3 {
+            let exec_id = store
+                .create_schedule_execution(1, schedule_id, now)
+                .await
+                .unwrap();
+            store
+                .complete_schedule_execution(exec_id, Uuid::now_v7(), true)
+                .await
+                .unwrap();
+        }
+
+        // Create a failed execution
+        let exec_id = store
+            .create_schedule_execution(1, schedule_id, now)
+            .await
+            .unwrap();
+        store
+            .fail_schedule_execution(exec_id, "Test error")
+            .await
+            .unwrap();
+
+        // Get stats
+        let stats = store.get_schedule_stats(schedule_id).await.unwrap();
+        assert_eq!(stats.total_executions, 4);
+        assert_eq!(stats.successful_executions, 3);
+        assert_eq!(stats.failed_executions, 1);
+        assert_eq!(
+            stats.last_execution_status,
+            Some(ScheduleExecutionStatus::Failed)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Increment rate limit multiple times
+        for i in 1..=5 {
+            let (count, limit) = store.check_and_increment_rate_limit(1, 1000).await.unwrap();
+            assert_eq!(count, i);
+            assert_eq!(limit, 1000);
+        }
+
+        // Check current count
+        let count = store.get_rate_limit_count(1).await.unwrap();
+        assert_eq!(count, 5);
+
+        // Different org should have 0
+        let count = store.get_rate_limit_count(2).await.unwrap();
+        assert_eq!(count, 0);
     }
 }
