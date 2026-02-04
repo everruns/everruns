@@ -37,8 +37,8 @@ const devPages = [
     icon: Gauge,
   },
   {
-    title: "Markdown Component",
-    description: "GitHub Flavored Markdown renderer with alert support (NOTE, TIP, WARNING, etc.)",
+    title: "Streamdown Message",
+    description: "Streaming-optimized markdown renderer with GFM, code highlighting, and incomplete syntax handling",
     href: "/dev/markdown",
     icon: FileText,
   },
