@@ -13,8 +13,8 @@
     "@astrojs/starlight": "^0.37.1",
     "@pasqal-io/starlight-client-mermaid": "^0.1.0",
     "astro": "^5.1.1",
-    "sharp": "^0.33.5",
-    "starlight-openapi": "^0.21.1",
+    "sharp": "^0.34.5",
+    "starlight-openapi": "^0.22.0",
     "typescript": "^5.7.2"
   }
 }
