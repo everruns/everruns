@@ -11,6 +11,7 @@
 
 import { Streamdown, type StreamdownProps } from "streamdown";
 import { code } from "@streamdown/code";
+import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
 
 // Streamdown styling to match the design system
@@ -34,6 +35,26 @@ const streamdownStyles = `
   .streamdown th { background: var(--color-muted); font-weight: 600; }
   .streamdown img { max-width: 100%; height: auto; }
   .streamdown [data-streamdown-code] { border-radius: 0; }
+
+  /* GitHub-style alerts */
+  .streamdown .markdown-alert { padding: 0.5em 1em; margin: 0.5em 0; border-left: 4px solid; }
+  .streamdown .markdown-alert-title { display: flex; align-items: center; gap: 0.5em; font-weight: 600; margin-bottom: 0.25em; }
+  .streamdown .markdown-alert-title svg { width: 1em; height: 1em; }
+
+  .streamdown .markdown-alert-note { border-color: #0969da; background: rgba(9, 105, 218, 0.1); }
+  .streamdown .markdown-alert-note .markdown-alert-title { color: #0969da; }
+
+  .streamdown .markdown-alert-tip { border-color: #1a7f37; background: rgba(26, 127, 55, 0.1); }
+  .streamdown .markdown-alert-tip .markdown-alert-title { color: #1a7f37; }
+
+  .streamdown .markdown-alert-important { border-color: #8250df; background: rgba(130, 80, 223, 0.1); }
+  .streamdown .markdown-alert-important .markdown-alert-title { color: #8250df; }
+
+  .streamdown .markdown-alert-warning { border-color: #9a6700; background: rgba(154, 103, 0, 0.1); }
+  .streamdown .markdown-alert-warning .markdown-alert-title { color: #9a6700; }
+
+  .streamdown .markdown-alert-caution { border-color: #cf222e; background: rgba(207, 34, 46, 0.1); }
+  .streamdown .markdown-alert-caution .markdown-alert-title { color: #cf222e; }
 `;
 
 export interface StreamdownMessageProps {
@@ -55,6 +76,7 @@ export interface StreamdownMessageProps {
  * - Handles incomplete/unterminated markdown blocks during streaming
  * - Memoized rendering for performance
  * - Built-in GFM support (tables, task lists, strikethrough)
+ * - GitHub-style alerts ([!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION])
  * - Optional Shiki-based syntax highlighting
  */
 export function StreamdownMessage({
@@ -64,7 +86,7 @@ export function StreamdownMessage({
   className,
   variant = "default",
 }: StreamdownMessageProps) {
-  // Build plugins array
+  // Build plugins
   const plugins: StreamdownProps["plugins"] = {};
   if (enableCodeHighlighting) {
     plugins.code = code;
@@ -82,7 +104,11 @@ export function StreamdownMessage({
           className,
         )}
       >
-        <Streamdown plugins={plugins} isAnimating={isAnimating}>
+        <Streamdown
+          plugins={plugins}
+          isAnimating={isAnimating}
+          remarkPlugins={[remarkGithubAlerts]}
+        >
           {children}
         </Streamdown>
       </div>

@@ -102,6 +102,23 @@ Unordered list:
 - HTML to Markdown conversion
 - Configurable timeouts`,
 
+  alerts: `GitHub-style alerts:
+
+> [!NOTE]
+> Highlights information that users should take into account.
+
+> [!TIP]
+> Optional information to help a user be more successful.
+
+> [!IMPORTANT]
+> Crucial information necessary for users to succeed.
+
+> [!WARNING]
+> Critical content demanding immediate user attention due to potential risks.
+
+> [!CAUTION]
+> Negative potential consequences of an action.`,
+
   longStreaming: `# Agent Response
 
 I'll help you implement a new feature for your application.
@@ -326,6 +343,16 @@ export default function DevMarkdownPage() {
 
             <ShowcaseItem label="Table">
               <InlineStreamdownMessage>{sampleMarkdownContent.table}</InlineStreamdownMessage>
+            </ShowcaseItem>
+          </ShowcaseSection>
+
+          {/* GitHub Alerts */}
+          <ShowcaseSection
+            title="GitHub-Style Alerts"
+            description="NOTE, TIP, IMPORTANT, WARNING, CAUTION callouts"
+          >
+            <ShowcaseItem label="All Alert Types">
+              <StreamdownMessage variant="inline">{sampleMarkdownContent.alerts}</StreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
