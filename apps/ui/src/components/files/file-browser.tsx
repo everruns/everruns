@@ -143,7 +143,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
   const breadcrumbs = currentPath.split("/").filter(Boolean).slice(1);
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full flex flex-col gap-0">
       <CardHeader className="pb-1">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
