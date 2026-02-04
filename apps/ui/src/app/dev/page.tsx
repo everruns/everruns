@@ -12,6 +12,7 @@ import {
   FileText,
   Palette,
   Gauge,
+  FileCode,
 } from "lucide-react";
 
 // Check if we're in development mode
@@ -54,6 +55,12 @@ const devPages = [
     description: "LLM model selection component with favorite models support",
     href: "/dev/model-picker",
     icon: Star,
+  },
+  {
+    title: "File Previews",
+    description: "Code, CSV, JSON, markdown, and image preview components with Shiki highlighting",
+    href: "/dev/file-previews",
+    icon: FileCode,
   },
 ];
 

@@ -218,8 +218,16 @@ CREATE INDEX session_files_path_prefix_idx ON session_files(session_id, path tex
 
 ### UI Integration
 
-- "File System" tab on session detail page
+- "Workspace" tab on session detail page
 - File browser component with directory navigation
-- File viewer/editor with save functionality
+- File viewer with Preview/Source toggle
+- File preview support:
+  - **Code files** (ts, js, py, rs, go, etc.): Shiki-based syntax highlighting via Streamdown
+  - **CSV files**: Rendered as formatted tables with row/column count
+  - **JSON files**: Pretty-printed with Shiki syntax highlighting
+  - **Markdown files**: Full rendering with GFM, code blocks, alerts
+  - **Images** (png, jpg, gif, webp, svg): Inline preview
+- File editor with save functionality (text files only)
 - Create file/folder dialogs
 - Delete confirmation
+- Download file support
