@@ -253,7 +253,7 @@ describe("FileBrowser Breadcrumbs", () => {
 
       const breadcrumbBar = screen.getByText("workspace").closest("div");
       expect(breadcrumbBar).toHaveClass("px-2");
-      expect(breadcrumbBar).toHaveClass("py-1.5");
+      expect(breadcrumbBar).toHaveClass("py-1");
     });
   });
 });

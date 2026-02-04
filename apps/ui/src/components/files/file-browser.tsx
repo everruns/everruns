@@ -144,7 +144,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
 
   return (
     <Card className="h-full flex flex-col">
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-1">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Folder className="h-4 w-4" />
@@ -232,7 +232,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
           </div>
         </div>
         {/* Breadcrumbs */}
-        <div className="flex items-center gap-1 text-sm bg-muted/50 rounded-md px-2 py-1.5 overflow-x-auto">
+        <div className="flex items-center gap-1 text-sm bg-muted/50 rounded-md px-2 py-1 overflow-x-auto">
           <Button
             variant="ghost"
             size="icon"
