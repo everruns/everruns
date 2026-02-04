@@ -74,6 +74,18 @@ use utoipa::OpenApi;
         api::mcp_servers::get_mcp_server,
         api::mcp_servers::update_mcp_server,
         api::mcp_servers::delete_mcp_server,
+        // Durable schedules
+        api::schedules::create_schedule,
+        api::schedules::list_schedules,
+        api::schedules::get_schedule,
+        api::schedules::update_schedule,
+        api::schedules::delete_schedule,
+        api::schedules::pause_schedule,
+        api::schedules::resume_schedule,
+        api::schedules::trigger_schedule,
+        api::schedules::list_schedule_executions,
+        api::schedules::get_execution,
+        api::schedules::get_schedule_stats,
     ),
     components(
         schemas(
@@ -124,6 +136,19 @@ use utoipa::OpenApi;
             api::mcp_servers::CreateMcpServerRequest,
             api::mcp_servers::UpdateMcpServerRequest,
             ListResponse<McpServer>,
+            // Schedule types
+            api::schedules::ScheduleTarget,
+            api::schedules::CreateScheduleRequest,
+            api::schedules::UpdateScheduleRequest,
+            api::schedules::ScheduleResponse,
+            api::schedules::ScheduleTargetResponse,
+            api::schedules::SchedulesListResponse,
+            api::schedules::ScheduleExecutionResponse,
+            api::schedules::ScheduleExecutionsListResponse,
+            api::schedules::ScheduleStatsResponse,
+            api::schedules::TriggerResponse,
+            api::schedules::ListSchedulesQuery,
+            api::schedules::ListExecutionsQuery,
         )
     ),
     tags(
@@ -136,7 +161,8 @@ use utoipa::OpenApi;
         (name = "capabilities", description = "Capability management endpoints"),
         (name = "users", description = "User management endpoints"),
         (name = "filesystem", description = "Session virtual filesystem endpoints"),
-        (name = "mcp-servers", description = "MCP Server management endpoints")
+        (name = "mcp-servers", description = "MCP Server management endpoints"),
+        (name = "durable-schedules", description = "Durable scheduled tasks management endpoints")
     ),
     info(
         title = "Everruns API",

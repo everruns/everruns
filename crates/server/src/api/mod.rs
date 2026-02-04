@@ -14,6 +14,7 @@ pub mod llm_providers;
 pub mod mcp_servers;
 pub mod messages;
 pub mod organizations;
+pub mod schedules;
 pub mod session_files;
 pub mod session_storage;
 pub mod sessions;

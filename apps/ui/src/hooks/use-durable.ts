@@ -491,3 +491,135 @@ export function useDeleteCircuitBreaker() {
     },
   });
 }
+
+// ============================================
+// Schedules
+// ============================================
+
+import {
+  listSchedules,
+  getSchedule,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule as deleteScheduleApi,
+  pauseSchedule,
+  resumeSchedule,
+  triggerSchedule,
+  listScheduleExecutions,
+  getScheduleStats,
+  type ListSchedulesParams,
+  type ListExecutionsParams,
+} from "@/lib/api/durable";
+import type { CreateScheduleRequest, UpdateScheduleRequest } from "@/lib/api/types";
+
+export function useSchedules(params?: ListSchedulesParams) {
+  return useQuery({
+    queryKey: ["durable", "schedules", params],
+    queryFn: () => listSchedules(params),
+    staleTime: 30000, // 30 seconds - schedules don't change as often
+  });
+}
+
+export function useSchedule(scheduleId: string | undefined) {
+  return useQuery({
+    queryKey: ["durable", "schedule", scheduleId],
+    queryFn: () => getSchedule(scheduleId!),
+    enabled: !!scheduleId,
+    staleTime: 30000,
+  });
+}
+
+export function useCreateSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateScheduleRequest) => createSchedule(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+    },
+  });
+}
+
+export function useUpdateSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ scheduleId, request }: { scheduleId: string; request: UpdateScheduleRequest }) =>
+      updateSchedule(scheduleId, request),
+    onSuccess: (_, { scheduleId }) => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId] });
+    },
+  });
+}
+
+export function useDeleteSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (scheduleId: string) => deleteScheduleApi(scheduleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+    },
+  });
+}
+
+export function usePauseSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (scheduleId: string) => pauseSchedule(scheduleId),
+    onSuccess: (_, scheduleId) => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId] });
+    },
+  });
+}
+
+export function useResumeSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (scheduleId: string) => resumeSchedule(scheduleId),
+    onSuccess: (_, scheduleId) => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId] });
+    },
+  });
+}
+
+export function useTriggerSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (scheduleId: string) => triggerSchedule(scheduleId),
+    onSuccess: (_, scheduleId) => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId] });
+      queryClient.invalidateQueries({
+        queryKey: ["durable", "schedule", scheduleId, "executions"],
+      });
+    },
+  });
+}
+
+export function useScheduleExecutions(
+  scheduleId: string | undefined,
+  params?: ListExecutionsParams,
+) {
+  return useQuery({
+    queryKey: ["durable", "schedule", scheduleId, "executions", params],
+    queryFn: () => listScheduleExecutions(scheduleId!, params),
+    enabled: !!scheduleId,
+    staleTime: 10000, // 10 seconds - executions update more frequently
+  });
+}
+
+export function useScheduleStats(scheduleId: string | undefined) {
+  return useQuery({
+    queryKey: ["durable", "schedule", scheduleId, "stats"],
+    queryFn: () => getScheduleStats(scheduleId!),
+    enabled: !!scheduleId,
+    staleTime: 30000,
+  });
+}

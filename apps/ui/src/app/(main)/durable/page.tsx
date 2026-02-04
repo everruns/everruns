@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDurableHealth, useWorkers, useWorkflows } from "@/hooks";
+import { useDurableHealth, useWorkers, useWorkflows, useSchedules } from "@/hooks";
 import {
   Server,
   Workflow,
@@ -14,6 +14,9 @@ import {
   Activity,
   Inbox,
   Zap,
+  Calendar,
+  Pause,
+  Play,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -48,8 +51,9 @@ export default function DurableDashboardPage() {
   const { data: health, isLoading: healthLoading, error: healthError } = useDurableHealth();
   const { data: workersData, isLoading: workersLoading } = useWorkers();
   const { data: workflowsData, isLoading: workflowsLoading } = useWorkflows({ limit: 5 });
+  const { data: schedulesData, isLoading: schedulesLoading } = useSchedules({ limit: 5 });
 
-  const isLoading = healthLoading || workersLoading || workflowsLoading;
+  const isLoading = healthLoading || workersLoading || workflowsLoading || schedulesLoading;
 
   if (isLoading) {
     return (
@@ -194,6 +198,64 @@ export default function DurableDashboardPage() {
               </CardContent>
             </Card>
           )}
+
+        {/* Schedules Summary */}
+        {schedulesData && schedulesData.data.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Scheduled Tasks
+                </CardTitle>
+                <CardDescription>
+                  {schedulesData.data.filter((s) => s.enabled).length} active,{" "}
+                  {schedulesData.data.filter((s) => !s.enabled).length} paused
+                </CardDescription>
+              </div>
+              <Link href="/durable/schedules">
+                <Button variant="outline" size="sm">
+                  View All
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {schedulesData.data.slice(0, 5).map((schedule) => (
+                  <Link
+                    key={schedule.id}
+                    href={`/durable/schedules/${schedule.id}`}
+                    className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      {schedule.enabled ? (
+                        <Play className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Pause className="h-4 w-4 text-gray-400" />
+                      )}
+                      <div>
+                        <p className="text-sm font-medium">{schedule.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {schedule.target.type}: {schedule.target.name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={schedule.enabled ? "default" : "outline"}>
+                        {schedule.enabled ? "Active" : "Paused"}
+                      </Badge>
+                      {schedule.next_trigger_at && schedule.enabled && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Next: {new Date(schedule.next_trigger_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main content grid */}
         <div className="grid gap-6 md:grid-cols-2">

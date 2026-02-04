@@ -67,6 +67,7 @@ pub mod activity;
 pub mod engine;
 pub mod persistence;
 pub mod reliability;
+pub mod scheduler;
 pub mod task_events;
 pub mod worker;
 pub mod workflow;
@@ -89,6 +90,7 @@ pub mod prelude {
         TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
+    pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
     pub use crate::worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
     pub use crate::workflow::{
         ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
@@ -99,15 +101,18 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    CircuitBreakerState, ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse,
-    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, StoreError, SystemHealth,
-    TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext,
+    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter, HeartbeatResponse,
+    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ScheduleExecutionFilter,
+    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
+    ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
+    TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
     WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
     WorkflowInfoExtended, WorkflowStatus,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
 };
+pub use scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,

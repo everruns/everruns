@@ -13,8 +13,12 @@ function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
 
 function TooltipTrigger({
   children,
+  asChild,
   ...props
-}: TooltipPrimitive.Trigger.Props & { children: React.ReactNode }) {
+}: TooltipPrimitive.Trigger.Props & { children: React.ReactNode; asChild?: boolean }) {
+  if (asChild && React.isValidElement(children)) {
+    return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" render={children} {...props} />;
+  }
   return (
     <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props}>
       {children}

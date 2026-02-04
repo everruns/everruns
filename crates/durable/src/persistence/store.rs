@@ -28,6 +28,26 @@ pub enum StoreError {
     #[error("circuit breaker not found: {0}")]
     CircuitBreakerNotFound(String),
 
+    /// Schedule not found
+    #[error("schedule not found: {0}")]
+    ScheduleNotFound(Uuid),
+
+    /// Schedule execution not found
+    #[error("schedule execution not found: {0}")]
+    ScheduleExecutionNotFound(Uuid),
+
+    /// Schedule limit exceeded
+    #[error("schedule limit exceeded: {current}/{limit} schedules")]
+    ScheduleLimitExceeded { current: u32, limit: u32 },
+
+    /// Invalid cron expression
+    #[error("invalid cron expression: {0}")]
+    InvalidCronExpression(String),
+
+    /// Cron interval too short
+    #[error("cron interval too short: {actual}s < {minimum}s minimum")]
+    CronIntervalTooShort { actual: u64, minimum: u64 },
+
     /// Concurrency conflict (optimistic locking failed)
     #[error("concurrency conflict: expected sequence {expected}, got {actual}")]
     ConcurrencyConflict { expected: i32, actual: i32 },
@@ -635,6 +655,169 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             })
             .collect())
     }
+
+    // =========================================================================
+    // Schedule Operations (optional, default no-op)
+    // =========================================================================
+
+    /// Create a new schedule
+    async fn create_schedule(&self, _schedule: CreateScheduleRow) -> Result<Uuid, StoreError> {
+        Ok(Uuid::nil())
+    }
+
+    /// Get a schedule by ID
+    async fn get_schedule(&self, _id: Uuid) -> Result<ScheduleRow, StoreError> {
+        Err(StoreError::ScheduleNotFound(Uuid::nil()))
+    }
+
+    /// List schedules with filtering and pagination
+    async fn list_schedules(
+        &self,
+        _filter: ScheduleFilter,
+        _pagination: Pagination,
+    ) -> Result<Vec<ScheduleRow>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// Count schedules matching filter
+    async fn count_schedules(&self, _filter: ScheduleFilter) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    /// Update a schedule
+    async fn update_schedule(&self, _id: Uuid, _update: UpdateSchedule) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Delete a schedule
+    async fn delete_schedule(&self, _id: Uuid) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // =========================================================================
+    // Scheduler Operations (for DurableScheduler component)
+    // =========================================================================
+
+    /// Claim due schedules for processing (uses SKIP LOCKED for multi-instance)
+    /// Returns schedules with next_trigger_at <= now
+    async fn claim_due_schedules(
+        &self,
+        _scheduler_id: &str,
+        _limit: u32,
+    ) -> Result<Vec<ScheduleRow>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// Update next trigger time after successful trigger
+    async fn update_next_trigger(&self, _id: Uuid, _next: DateTime<Utc>) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Skip a schedule trigger (e.g., max_concurrent reached)
+    async fn skip_schedule_trigger(&self, _id: Uuid) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Release a claimed schedule (e.g., on scheduler shutdown)
+    async fn release_schedule(&self, _id: Uuid) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // =========================================================================
+    // Schedule Execution Operations
+    // =========================================================================
+
+    /// Create a schedule execution record
+    async fn create_schedule_execution(
+        &self,
+        _schedule_id: Uuid,
+        _scheduled_at: DateTime<Utc>,
+    ) -> Result<Uuid, StoreError> {
+        Ok(Uuid::nil())
+    }
+
+    /// Get a schedule execution by ID
+    async fn get_schedule_execution(&self, _id: Uuid) -> Result<ScheduleExecutionRow, StoreError> {
+        Err(StoreError::ScheduleExecutionNotFound(Uuid::nil()))
+    }
+
+    /// Complete a schedule execution successfully
+    async fn complete_schedule_execution(
+        &self,
+        _execution_id: Uuid,
+        _target_id: Uuid,
+        _is_workflow: bool,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Fail a schedule execution
+    async fn fail_schedule_execution(
+        &self,
+        _execution_id: Uuid,
+        _error: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Skip a schedule execution
+    async fn skip_schedule_execution(
+        &self,
+        _execution_id: Uuid,
+        _reason: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List executions for a schedule
+    async fn list_schedule_executions(
+        &self,
+        _filter: ScheduleExecutionFilter,
+        _pagination: Pagination,
+    ) -> Result<Vec<ScheduleExecutionRow>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// Count running executions for a schedule (for max_concurrent check)
+    async fn count_running_executions(&self, _schedule_id: Uuid) -> Result<u32, StoreError> {
+        Ok(0)
+    }
+
+    /// Get schedule statistics
+    async fn get_schedule_stats(&self, _schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
+        Ok(ScheduleStats::default())
+    }
+
+    // =========================================================================
+    // Scheduler Instance Operations
+    // =========================================================================
+
+    /// Register a scheduler instance
+    async fn register_scheduler_instance(
+        &self,
+        _instance: SchedulerInstanceInfo,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Update scheduler instance heartbeat
+    async fn heartbeat_scheduler_instance(
+        &self,
+        _instance_id: &str,
+        _schedules_processed: u64,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List scheduler instances
+    async fn list_scheduler_instances(&self) -> Result<Vec<SchedulerInstanceInfo>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// Deregister a scheduler instance
+    async fn deregister_scheduler_instance(&self, _instance_id: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 /// Circuit breaker state
@@ -648,4 +831,160 @@ pub struct CircuitBreakerState {
     pub opened_at: Option<chrono::DateTime<chrono::Utc>>,
     pub half_open_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+// =========================================================================
+// Schedule Types
+// =========================================================================
+
+/// Target type for a schedule
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleTargetType {
+    Workflow,
+    Activity,
+}
+
+impl std::fmt::Display for ScheduleTargetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Workflow => write!(f, "workflow"),
+            Self::Activity => write!(f, "activity"),
+        }
+    }
+}
+
+/// Schedule execution status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleExecutionStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Skipped,
+}
+
+impl std::fmt::Display for ScheduleExecutionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Running => write!(f, "running"),
+            Self::Completed => write!(f, "completed"),
+            Self::Failed => write!(f, "failed"),
+            Self::Skipped => write!(f, "skipped"),
+        }
+    }
+}
+
+/// Schedule row from database
+#[derive(Debug, Clone)]
+pub struct ScheduleRow {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub cron_expression: String,
+    pub timezone: String,
+    pub target_type: ScheduleTargetType,
+    pub target_name: String,
+    pub target_input: serde_json::Value,
+    pub enabled: bool,
+    pub max_concurrent: Option<u32>,
+    pub catch_up_missed: bool,
+    pub max_catch_up: Option<u32>,
+    pub retry_policy: Option<serde_json::Value>,
+    pub last_triggered_at: Option<DateTime<Utc>>,
+    pub next_trigger_at: Option<DateTime<Utc>>,
+    pub claimed_by: Option<String>,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a schedule
+#[derive(Debug, Clone)]
+pub struct CreateScheduleRow {
+    pub name: String,
+    pub description: Option<String>,
+    pub cron_expression: String,
+    pub timezone: String,
+    pub target_type: ScheduleTargetType,
+    pub target_name: String,
+    pub target_input: serde_json::Value,
+    pub enabled: bool,
+    pub max_concurrent: Option<u32>,
+    pub catch_up_missed: bool,
+    pub max_catch_up: Option<u32>,
+    pub retry_policy: Option<serde_json::Value>,
+    pub next_trigger_at: Option<DateTime<Utc>>,
+}
+
+/// Input for updating a schedule
+#[derive(Debug, Clone, Default)]
+pub struct UpdateSchedule {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub cron_expression: Option<String>,
+    pub timezone: Option<String>,
+    pub target_type: Option<ScheduleTargetType>,
+    pub target_name: Option<String>,
+    pub target_input: Option<serde_json::Value>,
+    pub enabled: Option<bool>,
+    pub max_concurrent: Option<Option<u32>>,
+    pub catch_up_missed: Option<bool>,
+    pub max_catch_up: Option<Option<u32>>,
+    pub retry_policy: Option<Option<serde_json::Value>>,
+    pub next_trigger_at: Option<Option<DateTime<Utc>>>,
+}
+
+/// Filter for listing schedules
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleFilter {
+    pub enabled: Option<bool>,
+    pub target_type: Option<ScheduleTargetType>,
+}
+
+/// Schedule execution row from database
+#[derive(Debug, Clone)]
+pub struct ScheduleExecutionRow {
+    pub id: Uuid,
+    pub schedule_id: Uuid,
+    pub scheduled_at: DateTime<Utc>,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub status: ScheduleExecutionStatus,
+    pub workflow_id: Option<Uuid>,
+    pub task_id: Option<Uuid>,
+    pub error: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Schedule statistics
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleStats {
+    pub total_executions: u64,
+    pub successful_executions: u64,
+    pub failed_executions: u64,
+    pub skipped_executions: u64,
+    pub avg_duration_ms: Option<u64>,
+    pub last_execution_status: Option<ScheduleExecutionStatus>,
+}
+
+/// Filter for listing schedule executions
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleExecutionFilter {
+    pub schedule_id: Option<Uuid>,
+    pub status: Option<ScheduleExecutionStatus>,
+}
+
+/// Scheduler instance info
+#[derive(Debug, Clone)]
+pub struct SchedulerInstanceInfo {
+    pub instance_id: String,
+    pub started_at: DateTime<Utc>,
+    pub last_heartbeat_at: DateTime<Utc>,
+    pub schedules_processed: u64,
+    pub hostname: Option<String>,
+    pub version: Option<String>,
 }

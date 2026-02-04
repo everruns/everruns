@@ -260,7 +260,8 @@ async fn main() -> Result<()> {
                     as Arc<dyn WorkflowEventStore + Send + Sync>
             })
         };
-    let durable_state = api::durable::AppState::new(durable_store);
+    let durable_state = api::durable::AppState::new(durable_store.clone());
+    let schedules_state = api::schedules::ScheduleAppState::new(durable_store);
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
     let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
     let health_state = HealthState {
@@ -306,6 +307,7 @@ async fn main() -> Result<()> {
         .merge(api::session_storage::routes(session_storage_state))
         .merge(api::users::routes(users_state))
         .merge(api::durable::routes(durable_state))
+        .merge(api::schedules::routes(schedules_state))
         .merge(api::images::routes(images_state))
         .merge(api::organizations::routes(organizations_state))
         .merge(auth::routes(auth_state));

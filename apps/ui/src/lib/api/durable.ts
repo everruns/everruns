@@ -209,3 +209,106 @@ export async function forceCloseCircuitBreaker(key: string): Promise<void> {
 export async function deleteCircuitBreaker(key: string): Promise<void> {
   await api.delete(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}`);
 }
+
+// ============================================
+// Schedules
+// ============================================
+
+import type {
+  DurableSchedule,
+  SchedulesResponse,
+  CreateScheduleRequest,
+  UpdateScheduleRequest,
+  ScheduleExecution,
+  ScheduleExecutionsResponse,
+  ScheduleStats,
+  TriggerResponse,
+} from "./types";
+
+export interface ListSchedulesParams {
+  enabled?: boolean;
+  target_type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listSchedules(params?: ListSchedulesParams): Promise<SchedulesResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.enabled !== undefined) searchParams.set("enabled", String(params.enabled));
+  if (params?.target_type) searchParams.set("target_type", params.target_type);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+
+  const query = searchParams.toString();
+  const url = `/v1/durable/schedules${query ? `?${query}` : ""}`;
+  const response = await api.get<SchedulesResponse>(url);
+  return response.data;
+}
+
+export async function getSchedule(scheduleId: string): Promise<DurableSchedule> {
+  const response = await api.get<DurableSchedule>(`/v1/durable/schedules/${scheduleId}`);
+  return response.data;
+}
+
+export async function createSchedule(request: CreateScheduleRequest): Promise<DurableSchedule> {
+  const response = await api.post<DurableSchedule>("/v1/durable/schedules", request);
+  return response.data;
+}
+
+export async function updateSchedule(
+  scheduleId: string,
+  request: UpdateScheduleRequest,
+): Promise<DurableSchedule> {
+  const response = await api.patch<DurableSchedule>(`/v1/durable/schedules/${scheduleId}`, request);
+  return response.data;
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<void> {
+  await api.delete(`/v1/durable/schedules/${scheduleId}`);
+}
+
+export async function pauseSchedule(scheduleId: string): Promise<DurableSchedule> {
+  const response = await api.post<DurableSchedule>(`/v1/durable/schedules/${scheduleId}/pause`);
+  return response.data;
+}
+
+export async function resumeSchedule(scheduleId: string): Promise<DurableSchedule> {
+  const response = await api.post<DurableSchedule>(`/v1/durable/schedules/${scheduleId}/resume`);
+  return response.data;
+}
+
+export async function triggerSchedule(scheduleId: string): Promise<TriggerResponse> {
+  const response = await api.post<TriggerResponse>(`/v1/durable/schedules/${scheduleId}/trigger`);
+  return response.data;
+}
+
+export interface ListExecutionsParams {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listScheduleExecutions(
+  scheduleId: string,
+  params?: ListExecutionsParams,
+): Promise<ScheduleExecutionsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+
+  const query = searchParams.toString();
+  const url = `/v1/durable/schedules/${scheduleId}/executions${query ? `?${query}` : ""}`;
+  const response = await api.get<ScheduleExecutionsResponse>(url);
+  return response.data;
+}
+
+export async function getScheduleExecution(executionId: string): Promise<ScheduleExecution> {
+  const response = await api.get<ScheduleExecution>(`/v1/durable/executions/${executionId}`);
+  return response.data;
+}
+
+export async function getScheduleStats(scheduleId: string): Promise<ScheduleStats> {
+  const response = await api.get<ScheduleStats>(`/v1/durable/schedules/${scheduleId}/stats`);
+  return response.data;
+}
