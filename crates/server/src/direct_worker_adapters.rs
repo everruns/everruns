@@ -79,6 +79,49 @@ impl DirectWorkerAdapters {
             capability_registry,
         }
     }
+
+    /// Ensure a directory exists, creating it and parents if needed
+    async fn ensure_directory_exists(&self, session_id: Uuid, path: &str) -> Result<()> {
+        use crate::storage::models::CreateSessionFileRow;
+
+        if path == "/" {
+            return Ok(()); // Root always exists
+        }
+
+        // Check if directory exists
+        if let Some(existing) = self
+            .db
+            .get_session_file(session_id, path)
+            .await
+            .map_err(|e| store_error(format!("Failed to check directory: {}", e)))?
+        {
+            if existing.is_directory {
+                return Ok(());
+            } else {
+                return Err(store_error(format!("A file exists at path: {}", path)));
+            }
+        }
+
+        // Create parent first
+        if let Some(parent) = FileInfo::parent_path(path) {
+            Box::pin(self.ensure_directory_exists(session_id, &parent)).await?;
+        }
+
+        // Create this directory
+        let input = CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_id),
+            path: path.to_string(),
+            content: None,
+            is_directory: true,
+            is_readonly: false,
+        };
+
+        self.db
+            .create_session_file(input)
+            .await
+            .map_err(|e| store_error(format!("Failed to create directory: {}", e)))?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -398,6 +441,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 })?
                 .ok_or_else(|| store_error("File disappeared during update"))?
         } else {
+            // Ensure parent directory exists
+            if let Some(parent) = FileInfo::parent_path(path) {
+                self.ensure_directory_exists(session_id, &parent).await?;
+            }
+
             let create = CreateSessionFileRow {
                 session_id: SessionId::from_uuid(session_id),
                 path: path.to_string(),
