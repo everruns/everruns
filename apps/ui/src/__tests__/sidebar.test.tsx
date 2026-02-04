@@ -41,6 +41,16 @@ jest.mock("@/hooks/use-auth", () => ({
   }),
 }));
 
+// Mock org provider
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({
+    currentOrg: { public_id: "org-123", name: "Test Org" },
+    organizations: [{ public_id: "org-123", name: "Test Org" }],
+    isLoading: false,
+    setCurrentOrg: jest.fn(),
+  }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
@@ -91,7 +101,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
-    expect(agentsLink).toHaveClass("bg-primary");
+    expect(agentsLink).toHaveClass("border-accent");
   });
 
   it("highlights navigation for nested routes", () => {
@@ -99,7 +109,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
-    expect(agentsLink).toHaveClass("bg-primary");
+    expect(agentsLink).toHaveClass("border-accent");
   });
 
   it("renders version in footer", () => {
