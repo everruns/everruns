@@ -154,10 +154,11 @@ jobs:
       - name: Run repository integration tests
         run: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
 
-      # Note: Durable integration tests (postgres_integration_test, postgres_repository_test)
-      # are not run here because they require worker registration setup that isn't implemented.
-      # These tests were never running in CI before the test restructure.
-      # TODO: Fix durable tests to properly register workers before claiming tasks.
+      - name: Run durable integration tests
+        run: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+
+      - name: Run durable repository tests
+        run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
 
   # Build release binaries and upload as artifacts for E2E jobs
   build-binaries:

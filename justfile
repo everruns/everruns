@@ -68,7 +68,8 @@ test-integration: start-docker
     cargo test -p everruns-server --lib
     cargo test -p everruns-server --test api_integration_test -- --test-threads=1
     cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
-    # Note: Durable integration tests require worker registration setup - see CI workflow for details
+    cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+    cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
 
 # Run workflow tests (requires running server + worker)
 test-workflow:
