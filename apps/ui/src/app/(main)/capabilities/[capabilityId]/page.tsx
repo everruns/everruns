@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { InlineMarkdown } from "@/components/ui/markdown";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ArrowLeft, CircleOff, Wrench, FileText, Code, Link as LinkIcon } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
@@ -149,7 +149,7 @@ export default function CapabilityDetailPage({
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <InlineMarkdown content={capability.description} className="text-muted-foreground" />
+              <InlineStreamdownMessage className="text-muted-foreground">{capability.description}</InlineStreamdownMessage>
             </CardContent>
           </Card>
 

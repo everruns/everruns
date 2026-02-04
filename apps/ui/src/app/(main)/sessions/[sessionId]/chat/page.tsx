@@ -24,6 +24,7 @@ import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { useSessionContext } from "../session-context";
 import { useLlmModels, useImageAttachments } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -288,9 +289,9 @@ export default function ChatPage() {
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
                             {textContent && (
-                              <p className="text-sm whitespace-pre-wrap text-foreground/90">
+                              <StreamdownMessage variant="inline" className="text-foreground/90">
                                 {textContent}
-                              </p>
+                              </StreamdownMessage>
                             )}
                             {images.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">

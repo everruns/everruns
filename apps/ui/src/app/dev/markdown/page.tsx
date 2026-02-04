@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
-import { Markdown, InlineMarkdown } from "@/components/ui/markdown";
+import {
+  StreamdownMessage,
+  InlineStreamdownMessage,
+} from "@/components/chat/streamdown-message";
+import { StreamingMessage } from "@/components/streaming-message";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -72,52 +77,162 @@ Unordered list:
   table: `| Feature | Status | Notes |
 |---------|--------|-------|
 | Markdown | Done | Full GFM support |
-| Alerts | Done | All 5 types |
+| Streaming | Done | Via Streamdown |
 | Tables | Done | With styling |`,
 
-  noteAlert: `> [!NOTE]
-> Highlights information that users should take into account, even when skimming.`,
-
-  tipAlert: `> [!TIP]
-> Optional information to help a user be more successful.`,
-
-  importantAlert: `> [!IMPORTANT]
-> Crucial information necessary for users to succeed.`,
-
-  warningAlert: `> [!WARNING]
-> Critical content demanding immediate user attention due to potential risks.`,
-
-  cautionAlert: `> [!CAUTION]
-> Negative potential consequences of an action.`,
-
-  allAlerts: `> [!NOTE]
-> This is a note with helpful information.
-
-> [!TIP]
-> This is a tip to help you succeed.
-
-> [!IMPORTANT]
-> This is important information you must know.
-
-> [!WARNING]
-> This is a warning about potential risks.
-
-> [!CAUTION]
-> This describes negative consequences of an action.`,
-
   capabilityDescription: `Fetch content from URLs and convert HTML to markdown.
-
-> [!TIP]
-> Use \`as_markdown: true\` for better readability when fetching HTML pages.
-
-> [!WARNING]
-> Binary content (images, PDFs) cannot be fetched as text. Only metadata is returned.
 
 **Features:**
 - HTTP/HTTPS support
 - HTML to Markdown conversion
 - Configurable timeouts`,
+
+  longStreaming: `# Agent Response
+
+I'll help you implement a new feature for your application.
+
+## Overview
+
+This implementation involves several steps:
+
+1. **Create the component** - We'll build a reusable React component
+2. **Add state management** - Using hooks for local state
+3. **Style with Tailwind** - Consistent with the design system
+
+## Code Example
+
+\`\`\`typescript
+import { useState } from 'react';
+
+interface FeatureProps {
+  title: string;
+  enabled?: boolean;
+}
+
+export function Feature({ title, enabled = true }: FeatureProps) {
+  const [isActive, setIsActive] = useState(enabled);
+
+  return (
+    <div className="p-4 border rounded-lg">
+      <h3 className="text-lg font-medium">{title}</h3>
+      <button onClick={() => setIsActive(!isActive)}>
+        {isActive ? 'Disable' : 'Enable'}
+      </button>
+    </div>
+  );
+}
+\`\`\`
+
+## Next Steps
+
+- [ ] Test the component
+- [ ] Add documentation
+- [ ] Deploy to staging
+
+Let me know if you need any modifications!`,
 };
+
+// ============================================
+// Streaming Demo Component
+// ============================================
+
+function StreamingDemo() {
+  const [streamedText, setStreamedText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const fullText = sampleMarkdownContent.longStreaming;
+
+  const startStreaming = () => {
+    setStreamedText("");
+    setIsStreaming(true);
+    let index = 0;
+
+    const interval = setInterval(() => {
+      if (index < fullText.length) {
+        // Stream 3-8 characters at a time to simulate token streaming
+        const chunkSize = Math.floor(Math.random() * 6) + 3;
+        setStreamedText(fullText.slice(0, index + chunkSize));
+        index += chunkSize;
+      } else {
+        clearInterval(interval);
+        setIsStreaming(false);
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  };
+
+  const reset = () => {
+    setStreamedText("");
+    setIsStreaming(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button
+          onClick={startStreaming}
+          disabled={isStreaming}
+          className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50"
+        >
+          {isStreaming ? "Streaming..." : "Start Streaming Demo"}
+        </button>
+        <button
+          onClick={reset}
+          className="px-4 py-2 text-sm font-medium border rounded-md hover:bg-muted"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="border rounded-lg p-4 min-h-[400px] bg-background">
+        {streamedText ? (
+          isStreaming ? (
+            <StreamingMessage text={streamedText} />
+          ) : (
+            <StreamdownMessage variant="inline">{streamedText}</StreamdownMessage>
+          )
+        ) : (
+          <p className="text-muted-foreground italic">
+            Click &quot;Start Streaming Demo&quot; to see Streamdown handle incomplete markdown
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Incomplete Markdown Demo
+// ============================================
+
+function IncompleteMarkdownDemo() {
+  const incompleteExamples = [
+    { label: "Incomplete bold", content: "This is **incomplete bold" },
+    { label: "Incomplete italic", content: "This is *incomplete italic" },
+    { label: "Incomplete code", content: "Here's `incomplete code" },
+    { label: "Incomplete link", content: "Check [this link](https://example" },
+    {
+      label: "Incomplete code block",
+      content: "```typescript\nfunction hello() {\n  console.log('hi')",
+    },
+    { label: "Incomplete heading", content: "## Heading in progress" },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {incompleteExamples.map((example) => (
+        <div key={example.label} className="flex gap-4">
+          <div className="w-40 text-sm text-muted-foreground shrink-0">{example.label}</div>
+          <div className="flex-1 border rounded p-2 bg-muted/30">
+            <StreamdownMessage variant="inline" isAnimating={true}>
+              {example.content}
+            </StreamdownMessage>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ============================================
 // Main Page Component
@@ -147,9 +262,9 @@ export default function DevMarkdownPage() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Developer Tools
           </Link>
-          <h1 className="text-3xl font-bold">Markdown Component</h1>
+          <h1 className="text-3xl font-bold">Streamdown Message Component</h1>
           <p className="text-muted-foreground mt-2">
-            GitHub Flavored Markdown renderer with alert support
+            Streaming-optimized markdown renderer using Vercel&apos;s Streamdown
           </p>
           <Badge variant="outline" className="mt-2">
             Development Mode
@@ -157,116 +272,113 @@ export default function DevMarkdownPage() {
         </div>
 
         <div className="space-y-8">
+          {/* Streaming Demo - Featured */}
+          <ShowcaseSection
+            title="Live Streaming Demo"
+            description="Watch how Streamdown handles incomplete markdown during streaming"
+          >
+            <StreamingDemo />
+          </ShowcaseSection>
+
+          {/* Incomplete Markdown Handling */}
+          <ShowcaseSection
+            title="Incomplete Markdown Handling"
+            description="How Streamdown gracefully handles unterminated markdown syntax"
+          >
+            <IncompleteMarkdownDemo />
+          </ShowcaseSection>
+
           {/* Basic Markdown Formatting */}
           <ShowcaseSection
             title="Basic Formatting"
             description="Standard markdown formatting features"
           >
             <ShowcaseItem label="Text Formatting">
-              <InlineMarkdown content={sampleMarkdownContent.basicFormatting} />
+              <InlineStreamdownMessage>{sampleMarkdownContent.basicFormatting}</InlineStreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Code Block">
-              <InlineMarkdown content={sampleMarkdownContent.codeBlock} />
+            <ShowcaseItem label="Code Block (with Shiki highlighting)">
+              <StreamdownMessage variant="inline">{sampleMarkdownContent.codeBlock}</StreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Lists">
-              <InlineMarkdown content={sampleMarkdownContent.lists} />
+              <InlineStreamdownMessage>{sampleMarkdownContent.lists}</InlineStreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Table">
-              <InlineMarkdown content={sampleMarkdownContent.table} />
+              <InlineStreamdownMessage>{sampleMarkdownContent.table}</InlineStreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
-          {/* GitHub-Style Alerts Section */}
+          {/* Component Variants */}
           <ShowcaseSection
-            title="GitHub-Style Alerts"
-            description="GitHub Flavored Markdown alerts: NOTE, TIP, IMPORTANT, WARNING, CAUTION"
-          >
-            <ShowcaseItem label="[!NOTE] Alert">
-              <InlineMarkdown content={sampleMarkdownContent.noteAlert} />
-            </ShowcaseItem>
-
-            <ShowcaseItem label="[!TIP] Alert">
-              <InlineMarkdown content={sampleMarkdownContent.tipAlert} />
-            </ShowcaseItem>
-
-            <ShowcaseItem label="[!IMPORTANT] Alert">
-              <InlineMarkdown content={sampleMarkdownContent.importantAlert} />
-            </ShowcaseItem>
-
-            <ShowcaseItem label="[!WARNING] Alert">
-              <InlineMarkdown content={sampleMarkdownContent.warningAlert} />
-            </ShowcaseItem>
-
-            <ShowcaseItem label="[!CAUTION] Alert">
-              <InlineMarkdown content={sampleMarkdownContent.cautionAlert} />
-            </ShowcaseItem>
-
-            <ShowcaseItem label="All Alerts Together">
-              <InlineMarkdown content={sampleMarkdownContent.allAlerts} />
-            </ShowcaseItem>
-          </ShowcaseSection>
-
-          {/* Markdown Variants Section */}
-          <ShowcaseSection
-            title="Markdown Variants"
+            title="Component Variants"
             description="Different display variants for various contexts"
           >
             <ShowcaseItem label="Default Variant (with background)">
-              <Markdown content={sampleMarkdownContent.capabilityDescription} />
+              <StreamdownMessage>{sampleMarkdownContent.capabilityDescription}</StreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Compact Variant (no background)">
-              <Markdown content={sampleMarkdownContent.capabilityDescription} variant="compact" />
+              <StreamdownMessage variant="compact">
+                {sampleMarkdownContent.capabilityDescription}
+              </StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="InlineMarkdown (for descriptions)">
-              <InlineMarkdown
-                content={sampleMarkdownContent.capabilityDescription}
-                className="text-muted-foreground"
-              />
+            <ShowcaseItem label="Inline Variant (for descriptions)">
+              <InlineStreamdownMessage className="text-muted-foreground">
+                {sampleMarkdownContent.capabilityDescription}
+              </InlineStreamdownMessage>
+            </ShowcaseItem>
+          </ShowcaseSection>
+
+          {/* isAnimating States */}
+          <ShowcaseSection
+            title="Animation States"
+            description="Compare isAnimating=true vs isAnimating=false"
+          >
+            <ShowcaseItem label="isAnimating={false} (default - completed message)">
+              <StreamdownMessage variant="inline" isAnimating={false}>
+                {sampleMarkdownContent.codeBlock}
+              </StreamdownMessage>
+            </ShowcaseItem>
+
+            <ShowcaseItem label="isAnimating={true} (streaming message)">
+              <StreamdownMessage variant="inline" isAnimating={true}>
+                {sampleMarkdownContent.codeBlock}
+              </StreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* Usage Examples */}
-          <ShowcaseSection title="Usage in Code" description="How to use the Markdown components">
+          <ShowcaseSection title="Usage in Code" description="How to use the StreamdownMessage components">
             <ShowcaseItem label="Import">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                {`import { Markdown, InlineMarkdown } from "@/components/ui/markdown";`}
+                {`import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";`}
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Full Markdown Block">
+            <ShowcaseItem label="Streaming Message">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                {`<Markdown content={description} />
-<Markdown content={description} variant="compact" />`}
+                {`<StreamdownMessage isAnimating={true}>
+  {streamingText}
+</StreamdownMessage>`}
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Inline Markdown (for descriptions)">
+            <ShowcaseItem label="Completed Message">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                {`<InlineMarkdown content={capability.description} className="text-muted-foreground" />`}
+                {`<StreamdownMessage isAnimating={false}>
+  {messageContent}
+</StreamdownMessage>`}
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="GitHub Alert Syntax">
+            <ShowcaseItem label="Inline for Descriptions">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                {`> [!NOTE]
-> Your note content here.
-
-> [!TIP]
-> Your tip content here.
-
-> [!IMPORTANT]
-> Your important content here.
-
-> [!WARNING]
-> Your warning content here.
-
-> [!CAUTION]
-> Your caution content here.`}
+                {`<InlineStreamdownMessage className="text-muted-foreground">
+  {description}
+</InlineStreamdownMessage>`}
               </pre>
             </ShowcaseItem>
           </ShowcaseSection>

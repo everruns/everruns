@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { InlineMarkdown } from "@/components/ui/markdown";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -292,7 +292,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     <div>
                       <p className="text-sm font-medium">Description</p>
                       <div className="text-sm text-muted-foreground">
-                        <InlineMarkdown content={agent.description} />
+                        <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
                       </div>
                     </div>
                   )}

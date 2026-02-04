@@ -2,27 +2,28 @@
 
 ## Abstract
 
-Specification for rendering markdown content in chat messages with streaming support. Uses `llm-ui` for optimized LLM output rendering with frame-rate synchronization and broken syntax handling.
+Specification for rendering markdown content in chat messages with streaming support. Uses Streamdown for optimized LLM output rendering with broken syntax handling and memoized re-rendering.
 
 ## Requirements
 
-### Library: llm-ui
+### Library: Streamdown
 
-**Package**: `llm-ui` ([llm-ui.com](https://llm-ui.com/))
+**Package**: `streamdown` ([streamdown.ai](https://streamdown.ai/), [GitHub](https://github.com/vercel/streamdown))
 
-**Why llm-ui**:
-1. **Frame-rate sync** — Renders characters at display's native refresh rate, smoothing token-by-token streaming
-2. **Pause elimination** — Smooths LLM response delays for seamless UX
-3. **Broken syntax handling** — Removes incomplete markdown syntax during streaming
-4. **Syntax highlighting** — Shiki integration with 100+ languages
-5. **Custom blocks** — Extensible for tool results, buttons, etc.
-6. **Model agnostic** — Works with any LLM (Claude, GPT, Ollama, etc.)
+**Why Streamdown**:
+1. **React 19 support** — Requires React 19.1.1+, compatible with project's React 19.2.4
+2. **Drop-in replacement** — Same props API as react-markdown (remarkPlugins, rehypePlugins)
+3. **Unterminated block parsing** — Handles incomplete markdown during streaming gracefully
+4. **Memoized rendering** — Only re-renders changed portions of document
+5. **Syntax highlighting** — Shiki-based with copy/download buttons
+6. **Security hardening** — Built-in XSS protection via rehype-harden
+7. **GFM support** — Tables, task lists, strikethrough built-in
 
 ### Alternatives Considered
 
 | Library | Why Not |
 |---------|---------|
-| **Streamdown** (Vercel) | Good drop-in for react-markdown, but less UX polish (no frame-rate sync, no pause elimination) |
+| **llm-ui** | Unmaintained (2+ years), requires React 18, incompatible with React 19 |
 | **Incremark** | Best raw performance (6-16x faster), but newer ecosystem; overkill for typical message lengths |
 | **react-markdown** (current) | No streaming support; re-parses entire document on each token causing O(n²) perf |
 | **AI SDK memoization** | DIY approach; more code to maintain |
@@ -31,16 +32,19 @@ Specification for rendering markdown content in chat messages with streaming sup
 
 ```bash
 cd apps/ui
-npm install llm-ui @llm-ui/markdown @llm-ui/code
+npm install streamdown @streamdown/code
 ```
 
 ### Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| `llm-ui` | Core streaming renderer |
-| `@llm-ui/markdown` | Markdown block support |
-| `@llm-ui/code` | Syntax highlighting via Shiki |
+| `streamdown` | Core streaming markdown renderer |
+| `@streamdown/code` | Syntax highlighting via Shiki |
+
+Optional plugins (add when needed):
+- `@streamdown/math` — KaTeX math rendering
+- `@streamdown/mermaid` — Diagram rendering
 
 ## Architecture
 
@@ -49,80 +53,92 @@ npm install llm-ui @llm-ui/markdown @llm-ui/code
 ```
 components/
 ├── ui/
-│   └── markdown.tsx           # Existing - keep for static markdown (descriptions, prompts)
+│   └── markdown.tsx           # REMOVE - replaced by streamdown-message
 └── chat/
-    └── llm-message.tsx        # NEW - streaming message renderer using llm-ui
+    └── streamdown-message.tsx # NEW - unified markdown renderer using Streamdown
 ```
 
 ### Rendering Strategy
 
-| Content Type | Component | Library |
-|--------------|-----------|---------|
-| Streaming agent messages | `LlmMessage` | llm-ui |
-| Completed agent messages | `LlmMessage` | llm-ui (isStreamFinished=true) |
+| Content Type | Component | Props |
+|--------------|-----------|-------|
+| Streaming agent messages | `StreamdownMessage` | `isAnimating={true}` |
+| Completed agent messages | `StreamdownMessage` | `isAnimating={false}` |
 | User messages | Plain text | None (whitespace-pre-wrap) |
-| Static markdown (descriptions) | `Markdown` | react-markdown (existing) |
+| Static markdown (descriptions) | `StreamdownMessage` | `isAnimating={false}` |
 
 ### Integration Points
 
 1. **StreamingMessage component** (`streaming-message.tsx`)
-   - Replace plain text with `LlmMessage`
-   - Pass `isStreamFinished={false}` during streaming
+   - Replace plain text with `StreamdownMessage`
+   - Pass `isAnimating={true}` during streaming
 
 2. **Chat page** (`chat/page.tsx`)
-   - Agent messages use `LlmMessage` with `isStreamFinished={true}`
+   - Agent messages use `StreamdownMessage` with `isAnimating={false}`
    - User messages remain plain text
+
+3. **Static markdown** (descriptions, prompts)
+   - Migrate from `Markdown` to `StreamdownMessage`
+   - Unified component for all markdown rendering
 
 ## Usage
 
 ### Basic Streaming Message
 
 ```tsx
-import { LlmMessage } from "@/components/chat/llm-message";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 
-<LlmMessage
-  content={streamingText}
-  isStreamFinished={false}
-/>
+<StreamdownMessage isAnimating={true}>
+  {streamingText}
+</StreamdownMessage>
 ```
 
 ### Completed Message
 
 ```tsx
-<LlmMessage
-  content={message.text}
-  isStreamFinished={true}
-/>
+<StreamdownMessage isAnimating={false}>
+  {message.text}
+</StreamdownMessage>
 ```
 
-### Custom Blocks (Future)
+### With Code Highlighting
 
-llm-ui supports custom block syntax for rich content:
+```tsx
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 
+<StreamdownMessage
+  isAnimating={false}
+  enableCodeHighlighting={true}
+>
+  {contentWithCode}
+</StreamdownMessage>
 ```
-【{type:"tool_result",id:"abc123"}】
-```
-
-This can be used to embed tool results, buttons, or other interactive elements directly in message content.
 
 ## Styling
 
 Must integrate with existing design system:
-- Code blocks: Use brand colors, sharp corners (0px radius)
+- Code blocks: Use brand colors, sharp corners (0px radius per brand spec)
 - Links: Navy color (`--primary`)
 - Syntax highlighting: Theme compatible with light/dark mode
+- Tailwind integration via `@source` directive in globals.css
 
-## Unification Note
+### Tailwind Setup
 
-The existing `Markdown` component (`components/ui/markdown.tsx`) using react-markdown is kept for:
-- Agent/capability descriptions
-- System prompt preview in editor
-- Other static markdown content
+Add to `globals.css`:
+```css
+@source "../node_modules/streamdown/dist/*.js";
+```
 
-This avoids unnecessary migration of non-streaming content while providing optimized streaming for chat messages.
+## Unification
+
+Streamdown replaces both:
+1. The old `Markdown` component (react-markdown based)
+2. Plain text message rendering
+
+Single component for all markdown needs, with streaming support when needed.
 
 ## Future Considerations
 
 - **Incremark migration**: If performance becomes an issue with very long messages, consider migrating to Incremark for its O(n) incremental parsing
-- **Custom blocks**: Implement tool result rendering via llm-ui custom blocks instead of separate components
-- **Math support**: Add `@llm-ui/math` if LaTeX rendering is needed
+- **Math support**: Add `@streamdown/math` for LaTeX equations when needed
+- **Mermaid diagrams**: Add `@streamdown/mermaid` for diagram rendering

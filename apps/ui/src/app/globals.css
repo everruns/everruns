@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Enable Tailwind to scan Streamdown for classes */
+@source "../node_modules/streamdown/dist/*.js";
+
 /**
  * Slate Design System
  *

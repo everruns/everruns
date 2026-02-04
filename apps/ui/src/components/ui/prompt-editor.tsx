@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Textarea } from "./textarea";
 import { cn } from "@/lib/utils";
-import { Markdown } from "./markdown";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 
 interface PromptEditorProps {
   value: string;
@@ -65,7 +65,7 @@ export function PromptEditor({
       ) : (
         <div className="min-h-[300px] border bg-muted/50 p-4 text-sm">
           {value ? (
-            <Markdown content={value} variant="compact" />
+            <StreamdownMessage variant="compact">{value}</StreamdownMessage>
           ) : (
             <p className="text-muted-foreground italic">Nothing to preview</p>
           )}
@@ -81,5 +81,7 @@ interface MarkdownDisplayProps {
 }
 
 export function MarkdownDisplay({ content, className }: MarkdownDisplayProps) {
-  return <Markdown content={content} className={cn("text-sm", className)} />;
+  return (
+    <StreamdownMessage className={cn("text-sm", className)}>{content}</StreamdownMessage>
+  );
 }
