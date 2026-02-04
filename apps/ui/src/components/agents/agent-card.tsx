@@ -9,7 +9,7 @@ import { Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { InlineMarkdown } from "@/components/ui/markdown";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
 interface AgentCardProps {
   agent: Agent;
@@ -47,7 +47,7 @@ export function AgentCard({
       <CardContent>
         {agent.description ? (
           <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
-            <InlineMarkdown content={agent.description} />
+            <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>

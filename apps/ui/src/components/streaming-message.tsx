@@ -3,11 +3,12 @@
 /**
  * StreamingMessage - Displays streaming text while LLM is generating
  *
- * Shows the accumulated text from output.message.delta events with a cursor indicator
- * to show that more text is being generated.
+ * Shows the accumulated text from output.message.delta events with streaming
+ * indicator and markdown rendering via Streamdown.
  */
 
 import { cn } from "@/lib/utils";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 
 interface StreamingMessageProps {
   text: string;
@@ -26,10 +27,11 @@ export function StreamingMessage({ text, className }: StreamingMessageProps) {
         Generating
       </div>
 
-      {/* Streaming text content - plain text rendering for performance
-          The final output.message.completed will be rendered with full markdown */}
-      <div className="text-sm whitespace-pre-wrap pt-4">
-        {text}
+      {/* Streaming text content with markdown rendering */}
+      <div className="pt-4">
+        <StreamdownMessage variant="inline" isAnimating={true}>
+          {text}
+        </StreamdownMessage>
         {/* Blinking cursor to indicate more content coming */}
         <span className="inline-block w-0.5 h-4 ml-0.5 bg-primary/70 animate-pulse align-text-bottom" />
       </div>

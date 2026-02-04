@@ -18,7 +18,7 @@ import { Plus, Search, ChevronRight, Plug, Link, Lock } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { cn } from "@/lib/utils";
-import { InlineMarkdown } from "@/components/ui/markdown";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
 interface CapabilityDialogProps {
   capabilities: Capability[];
@@ -238,7 +238,9 @@ export function CapabilityDialog({
                                   )}
                                 </div>
                                 <div className="text-xs text-muted-foreground line-clamp-2">
-                                  <InlineMarkdown content={cap.description} />
+                                  <InlineStreamdownMessage>
+                                    {cap.description}
+                                  </InlineStreamdownMessage>
                                 </div>
                               </div>
                             </label>

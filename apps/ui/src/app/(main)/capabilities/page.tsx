@@ -10,7 +10,7 @@ import { CircleOff, Clock, CheckCircle2, AlertCircle, Info } from "lucide-react"
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { InlineMarkdown } from "@/components/ui/markdown";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
 function getStatusBadgeVariant(status: CapabilityStatus): "default" | "secondary" | "outline" {
   switch (status) {
@@ -56,7 +56,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground mb-4 line-clamp-3">
-            <InlineMarkdown content={capability.description} />
+            <InlineStreamdownMessage>{capability.description}</InlineStreamdownMessage>
           </div>
           {capability.category && (
             <Badge variant="outline" className="text-xs">
