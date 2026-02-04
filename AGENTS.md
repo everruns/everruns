@@ -25,6 +25,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
 - `specs/events.md` - Event types and SSE streaming
+- `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/mcp-servers.md` - MCP server registration
