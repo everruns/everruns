@@ -1302,14 +1302,17 @@
           {
             "name": "since_id",
             "in": "query",
-            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "description": "Filter events with ID greater than this event ID (prefixed format: event_{32-hex})",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "uuid"
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TypedId"
+                }
+              ]
             }
           },
           {
@@ -1930,14 +1933,17 @@
           {
             "name": "since_id",
             "in": "query",
-            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "description": "Filter events with ID greater than this event ID (prefixed format: event_{32-hex})",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "uuid"
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TypedId"
+                }
+              ]
             }
           },
           {
