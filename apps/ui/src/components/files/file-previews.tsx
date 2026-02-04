@@ -250,16 +250,20 @@ export function CSVPreview({ content }: { content: string }) {
 }
 
 export function JSONPreview({ content }: { content: string }) {
-  const formatted = useMemo(() => {
+  const { formatted, markdown } = useMemo(() => {
     try {
       const parsed = JSON.parse(content);
-      return JSON.stringify(parsed, null, 2);
+      const formattedJson = JSON.stringify(parsed, null, 2);
+      return {
+        formatted: formattedJson,
+        markdown: `\`\`\`json\n${formattedJson}\n\`\`\``,
+      };
     } catch {
-      return null;
+      return { formatted: null, markdown: null };
     }
   }, [content]);
 
-  if (!formatted) {
+  if (!formatted || !markdown) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
@@ -267,9 +271,6 @@ export function JSONPreview({ content }: { content: string }) {
       </div>
     );
   }
-
-  // Use Streamdown with Shiki for JSON highlighting
-  const markdown = useMemo(() => `\`\`\`json\n${formatted}\n\`\`\``, [formatted]);
 
   return (
     <ScrollArea className="h-full">
