@@ -298,7 +298,8 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setCronExpression(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Format: sec min hour day month day-of-week year (e.g., "0 0 * * * * *" for every hour)
+            Format: sec min hour day month day-of-week year (e.g., &quot;0 0 * * * * *&quot; for
+            every hour)
           </p>
         </div>
         <div className="grid gap-2">

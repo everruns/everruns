@@ -510,13 +510,7 @@ import {
   type ListSchedulesParams,
   type ListExecutionsParams,
 } from "@/lib/api/durable";
-import type {
-  DurableSchedule,
-  CreateScheduleRequest,
-  UpdateScheduleRequest,
-  ScheduleExecution,
-  ScheduleStats,
-} from "@/lib/api/types";
+import type { CreateScheduleRequest, UpdateScheduleRequest } from "@/lib/api/types";
 
 export function useSchedules(params?: ListSchedulesParams) {
   return useQuery({

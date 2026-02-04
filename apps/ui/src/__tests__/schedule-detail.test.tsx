@@ -435,7 +435,9 @@ describe("ScheduleDetailPage", () => {
 
       // Check for workflow link
       const workflowLinks = screen.getAllByRole("link");
-      const workflowLink = workflowLinks.find((link) => link.getAttribute("href")?.includes("workflows"));
+      const workflowLink = workflowLinks.find((link) =>
+        link.getAttribute("href")?.includes("workflows"),
+      );
       expect(workflowLink).toBeTruthy();
     });
   });
@@ -606,7 +608,9 @@ describe("ScheduleDetailPage", () => {
 
       await waitFor(() => {
         // Check that description is pre-filled
-        const descriptionInput = screen.getByDisplayValue("Runs daily backup workflow for all services");
+        const descriptionInput = screen.getByDisplayValue(
+          "Runs daily backup workflow for all services",
+        );
         expect(descriptionInput).toBeInTheDocument();
       });
     });
