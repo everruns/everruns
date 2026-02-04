@@ -12,7 +12,7 @@ use axum::{
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
 };
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
@@ -33,8 +33,8 @@ use utoipa::{IntoParams, ToSchema};
 /// Query parameters for event listing
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct EventsQuery {
-    /// Filter events with ID greater than this UUID v7 (monotonically increasing)
-    pub since_id: Option<Uuid>,
+    /// Filter events with ID greater than this event ID (prefixed format: event_{32-hex})
+    pub since_id: Option<EventId>,
     /// Event types to exclude from the response (can be specified multiple times).
     /// Common delta events to exclude: output.message.delta, reason.thinking.delta
     #[serde(default)]
@@ -187,7 +187,7 @@ pub async fn stream_sse(
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, exclude = ?query.exclude, "Starting event stream");
 
     let event_service = state.event_service.clone();
-    let initial_since_id = query.since_id;
+    let initial_since_id = query.since_id.map(|id| id.uuid());
     let exclude_types = query.exclude;
 
     // Use realtime config for session events (fast updates for interactive UX)
@@ -425,7 +425,12 @@ pub async fn list_events(
     // Optional exclude filter for filtering out event types (e.g., delta events)
     let events = state
         .event_service
-        .list(session_id.uuid(), None, query.since_id, &query.exclude)
+        .list(
+            session_id.uuid(),
+            None,
+            query.since_id.map(|id| id.uuid()),
+            &query.exclude,
+        )
         .await
         .map_err(|e| {
             tracing::error!("Failed to list events: {}", e);
@@ -438,4 +443,69 @@ pub async fn list_events(
         })?;
 
     Ok(Json(ListResponse { data: events }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that EventId correctly parses prefixed event IDs.
+    /// This was a bug where since_id was typed as Uuid instead of EventId,
+    /// causing "UUID parsing failed" errors when clients sent prefixed IDs
+    /// like `event_019c263feac17809a9d442e25317890b`.
+    #[test]
+    fn test_event_id_parses_prefixed_format() {
+        let event_id: EventId = "event_019c263feac17809a9d442e25317890b"
+            .parse()
+            .expect("Should parse prefixed event ID");
+
+        assert_eq!(
+            event_id.to_string(),
+            "event_019c263feac17809a9d442e25317890b"
+        );
+
+        // Verify we can extract the UUID
+        let uuid = event_id.uuid();
+        assert_eq!(uuid.to_string(), "019c263f-eac1-7809-a9d4-42e25317890b");
+    }
+
+    /// Test that EventsQuery JSON deserialization works with prefixed event IDs.
+    /// This simulates what axum Query extractor does when parsing query params.
+    #[test]
+    fn test_events_query_deserializes_prefixed_event_id() {
+        // axum internally uses serde to deserialize query params
+        // Test JSON deserialization to verify EventId's Deserialize impl works
+        let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": []}"#;
+        let query: EventsQuery = serde_json::from_str(json)
+            .expect("Should deserialize EventsQuery with prefixed event ID");
+
+        assert!(query.since_id.is_some());
+        let event_id = query.since_id.unwrap();
+        assert_eq!(
+            event_id.to_string(),
+            "event_019c263feac17809a9d442e25317890b"
+        );
+    }
+
+    #[test]
+    fn test_events_query_with_exclude() {
+        let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": ["output.message.delta", "reason.thinking.delta"]}"#;
+        let query: EventsQuery =
+            serde_json::from_str(json).expect("Should deserialize EventsQuery");
+
+        assert!(query.since_id.is_some());
+        assert_eq!(query.exclude.len(), 2);
+        assert!(query.exclude.contains(&"output.message.delta".to_string()));
+        assert!(query.exclude.contains(&"reason.thinking.delta".to_string()));
+    }
+
+    #[test]
+    fn test_events_query_empty_since_id() {
+        let json = r#"{"exclude": []}"#;
+        let query: EventsQuery =
+            serde_json::from_str(json).expect("Should deserialize EventsQuery without since_id");
+
+        assert!(query.since_id.is_none());
+        assert!(query.exclude.is_empty());
+    }
 }
