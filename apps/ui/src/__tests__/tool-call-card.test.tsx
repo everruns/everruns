@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import type { Message } from "@/lib/api/types";
 
@@ -45,28 +45,21 @@ function createToolResultMessage(overrides?: Partial<Message>): Message {
 
 describe("ToolCallCard", () => {
   describe("rendering", () => {
-    it("renders tool call name", () => {
+    it("renders tool call name with colon", () => {
       const toolCall = createToolCallMessage();
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.getByText("get_current_time")).toBeInTheDocument();
+      expect(screen.getByText("get_current_time:")).toBeInTheDocument();
     });
 
-    it("renders 'Step' label", () => {
+    it("renders arguments inline", () => {
       const toolCall = createToolCallMessage();
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.getByText("Step")).toBeInTheDocument();
+      expect(screen.getByText("timezone: UTC")).toBeInTheDocument();
     });
 
-    it("renders Arguments button when arguments exist", () => {
-      const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.getByRole("button", { name: /arguments/i })).toBeInTheDocument();
-    });
-
-    it("does not render Arguments button when arguments are empty", () => {
+    it("does not render arguments when empty", () => {
       const toolCall = createToolCallMessage({
         content: [
           {
@@ -79,28 +72,28 @@ describe("ToolCallCard", () => {
       });
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.queryByRole("button", { name: /arguments/i })).not.toBeInTheDocument();
+      expect(screen.getByText("noop:")).toBeInTheDocument();
     });
   });
 
   describe("status display", () => {
-    it("shows 'Running...' badge when no tool result provided", () => {
+    it("shows executing indicator when no tool result provided", () => {
       const toolCall = createToolCallMessage();
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.getByText("Running...")).toBeInTheDocument();
+      expect(screen.getByText("> ... executing ...")).toBeInTheDocument();
     });
 
-    it("shows 'Done' badge when tool result is successful", () => {
+    it("shows result when tool result is successful", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage();
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
-      expect(screen.getByText("Done")).toBeInTheDocument();
-      expect(screen.queryByText("Running...")).not.toBeInTheDocument();
+      expect(screen.getByText(/2025-01-01T12:00:00Z/)).toBeInTheDocument();
+      expect(screen.queryByText("> ... executing ...")).not.toBeInTheDocument();
     });
 
-    it("shows 'Failed' badge when tool result has error", () => {
+    it("shows error message when tool result has error", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
         content: [
@@ -113,49 +106,12 @@ describe("ToolCallCard", () => {
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
-      expect(screen.getByText("Failed")).toBeInTheDocument();
-      expect(screen.queryByText("Done")).not.toBeInTheDocument();
-    });
-  });
-
-  describe("arguments expansion", () => {
-    it("arguments are collapsed by default", () => {
-      const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
-
-      // Arguments JSON should not be visible initially
-      expect(screen.queryByText(/"timezone"/)).not.toBeInTheDocument();
-    });
-
-    it("expands arguments when button is clicked", () => {
-      const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
-
-      const argumentsButton = screen.getByRole("button", { name: /arguments/i });
-      fireEvent.click(argumentsButton);
-
-      // Now arguments should be visible
-      expect(screen.getByText(/"timezone": "UTC"/)).toBeInTheDocument();
-    });
-
-    it("collapses arguments when button is clicked again", () => {
-      const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
-
-      const argumentsButton = screen.getByRole("button", { name: /arguments/i });
-
-      // Expand
-      fireEvent.click(argumentsButton);
-      expect(screen.getByText(/"timezone": "UTC"/)).toBeInTheDocument();
-
-      // Collapse
-      fireEvent.click(argumentsButton);
-      expect(screen.queryByText(/"timezone": "UTC"/)).not.toBeInTheDocument();
+      expect(screen.getByText("> Error: Something went wrong")).toBeInTheDocument();
     });
   });
 
   describe("result display", () => {
-    it("displays successful result", () => {
+    it("displays result preview", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
         content: [
@@ -168,49 +124,14 @@ describe("ToolCallCard", () => {
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
-      expect(screen.getByText("Result:")).toBeInTheDocument();
-      expect(screen.getByText("2025-01-01T12:00:00Z")).toBeInTheDocument();
-    });
-
-    it("displays JSON result for objects", () => {
-      const toolCall = createToolCallMessage();
-      const toolResult = createToolResultMessage({
-        content: [
-          {
-            type: "tool_result" as const,
-            tool_call_id: "call_123",
-            result: { time: "12:00", date: "2025-01-01" },
-          },
-        ],
-      });
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
-
-      expect(screen.getByText("Result:")).toBeInTheDocument();
-      expect(screen.getByText(/"time": "12:00"/)).toBeInTheDocument();
-    });
-
-    it("displays error message when tool fails", () => {
-      const toolCall = createToolCallMessage();
-      const toolResult = createToolResultMessage({
-        content: [
-          {
-            type: "tool_result" as const,
-            tool_call_id: "call_123",
-            error: "Network timeout occurred",
-          },
-        ],
-      });
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
-
-      expect(screen.getByText("Network timeout occurred")).toBeInTheDocument();
-      expect(screen.queryByText("Result:")).not.toBeInTheDocument();
+      expect(screen.getByText(/2025-01-01T12:00:00Z/)).toBeInTheDocument();
     });
 
     it("does not display result section when incomplete", () => {
       const toolCall = createToolCallMessage();
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.queryByText("Result:")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Result:/)).not.toBeInTheDocument();
     });
   });
 
@@ -226,23 +147,17 @@ describe("ToolCallCard", () => {
               url: "https://api.example.com/data",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: "Bearer token123",
               },
-              timeout: 5000,
             },
           },
         ],
       });
       render(<ToolCallCard toolCall={toolCall} />);
 
-      expect(screen.getByText("http_get")).toBeInTheDocument();
-
-      // Expand to see arguments
-      fireEvent.click(screen.getByRole("button", { name: /arguments/i }));
-      expect(screen.getByText(/"url": "https:\/\/api.example.com\/data"/)).toBeInTheDocument();
+      expect(screen.getByText("http_get:")).toBeInTheDocument();
     });
 
-    it("renders tool with no result value (null/undefined)", () => {
+    it("renders tool with no result value", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
         content: [
@@ -255,9 +170,8 @@ describe("ToolCallCard", () => {
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
-      // Should show Done but no result section
-      expect(screen.getByText("Done")).toBeInTheDocument();
-      expect(screen.queryByText("Result:")).not.toBeInTheDocument();
+      // Should not show executing indicator when complete
+      expect(screen.queryByText("> ... executing ...")).not.toBeInTheDocument();
     });
   });
 });

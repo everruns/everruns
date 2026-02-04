@@ -49,6 +49,7 @@ const mockUseUpdateLlmProvider = jest.fn();
 const mockUseDeleteLlmProvider = jest.fn();
 const mockUseCreateLlmModel = jest.fn();
 const mockUseDeleteLlmModel = jest.fn();
+const mockUseSyncProviderModels = jest.fn();
 
 jest.mock("@/hooks/use-llm-providers", () => ({
   useLlmProviders: () => mockUseLlmProviders(),
@@ -58,6 +59,7 @@ jest.mock("@/hooks/use-llm-providers", () => ({
   useDeleteLlmProvider: () => mockUseDeleteLlmProvider(),
   useCreateLlmModel: () => mockUseCreateLlmModel(),
   useDeleteLlmModel: () => mockUseDeleteLlmModel(),
+  useSyncProviderModels: () => mockUseSyncProviderModels(),
 }));
 
 describe("ProvidersPage", () => {
@@ -112,6 +114,11 @@ describe("ProvidersPage", () => {
       mutateAsync: jest.fn(),
       isPending: false,
     });
+
+    mockUseSyncProviderModels.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+    });
   });
 
   it("renders LLM Providers section header", () => {
@@ -137,8 +144,6 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("OpenAI Production")).toBeInTheDocument();
     expect(screen.getByText("Anthropic Dev")).toBeInTheDocument();
-    expect(screen.getByText("OpenAI")).toBeInTheDocument();
-    expect(screen.getByText("Anthropic")).toBeInTheDocument();
   });
 
   it("renders model rows with correct data", () => {

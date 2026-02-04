@@ -2,12 +2,13 @@ import { render, screen } from "@testing-library/react";
 import { SessionCard } from "@/components/session/session-card";
 import type { Session, LlmModelWithProvider } from "@/lib/api/types";
 
-// Mock next/link
+// Mock next/link - using span with data-href to avoid linting issues
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    // Using span instead of anchor to avoid lint errors in tests
-    <span data-href={href}>{children}</span>
+    <span data-testid="session-link" data-href={href}>
+      {children}
+    </span>
   ),
 }));
 
@@ -77,7 +78,7 @@ describe("SessionCard - LLM Model Display", () => {
     render(<SessionCard session={mockSession} model={mockLlmModel} />);
 
     // Check that the link points to the org-level session path
-    const link = screen.getByRole("link");
+    const link = screen.getByTestId("session-link");
     expect(link).toHaveAttribute("data-href", "/sessions/session-1");
   });
 

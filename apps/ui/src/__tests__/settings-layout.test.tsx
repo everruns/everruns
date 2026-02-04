@@ -64,7 +64,7 @@ describe("SettingsLayout", () => {
     );
 
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
-    expect(providersLink).toHaveClass("bg-primary");
+    expect(providersLink).toHaveClass("border-accent");
   });
 
   it("highlights the active navigation item for api-keys", () => {
@@ -76,7 +76,7 @@ describe("SettingsLayout", () => {
     );
 
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
-    expect(apiKeysLink).toHaveClass("bg-primary");
+    expect(apiKeysLink).toHaveClass("border-accent");
   });
 
   it("renders children content", () => {
@@ -99,10 +99,10 @@ describe("SettingsLayout", () => {
     );
 
     const membersLink = screen.getByRole("link", { name: /Members/i });
-    expect(membersLink).toHaveClass("bg-primary");
+    expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 3 navigation items", () => {
+  it("has exactly 5 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -110,6 +110,6 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(3);
+    expect(navLinks).toHaveLength(5);
   });
 });

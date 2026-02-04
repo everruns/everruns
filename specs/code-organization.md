@@ -250,6 +250,8 @@ npm test -- --coverage      # With coverage report
 npm test -- --watch         # Watch mode for development
 ```
 
+**CI Integration:** UI tests run as part of the `ui-build` job in GitHub Actions CI. Tests must pass before PRs can be merged.
+
 ## Content Types
 
 `ContentPart` enum across all layers:

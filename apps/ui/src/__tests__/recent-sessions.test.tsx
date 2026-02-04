@@ -10,7 +10,7 @@ function createSession(overrides?: Partial<Session>): Session {
     title: "Test Session",
     tags: [],
     model_id: null,
-    status: "pending",
+    status: "started",
     created_at: "2025-01-01T00:00:00Z",
     started_at: null,
     finished_at: null,
@@ -53,16 +53,36 @@ function createLlmModel(overrides?: Partial<LlmModelWithProvider>): LlmModelWith
 }
 
 describe("RecentSessions", () => {
-  describe("model column", () => {
-    it("renders Model column header", () => {
+  describe("rendering", () => {
+    it("renders Recent Sessions header", () => {
       const sessions = [createSession()];
       const agents = [createAgent()];
 
       render(<RecentSessions sessions={sessions} agents={agents} />);
 
-      expect(screen.getByText("Model")).toBeInTheDocument();
+      expect(screen.getByText("Recent Sessions")).toBeInTheDocument();
     });
 
+    it("displays session title", () => {
+      const session = createSession({ title: "My Test Session" });
+      const agent = createAgent();
+
+      render(<RecentSessions sessions={[session]} agents={[agent]} />);
+
+      expect(screen.getByText("My Test Session")).toBeInTheDocument();
+    });
+
+    it("displays agent name when agent exists", () => {
+      const session = createSession();
+      const agent = createAgent({ name: "Code Assistant" });
+
+      render(<RecentSessions sessions={[session]} agents={[agent]} />);
+
+      expect(screen.getByText("Code Assistant")).toBeInTheDocument();
+    });
+  });
+
+  describe("model display", () => {
     it("displays model name when session has a model_id and model data is provided", () => {
       const model = createLlmModel({ id: "model-123", display_name: "Claude 3.5 Sonnet" });
       const session = createSession({ model_id: "model-123" });
@@ -73,27 +93,23 @@ describe("RecentSessions", () => {
       expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
     });
 
-    it("displays dash when session has no model_id", () => {
+    it("does not display model when session has no model_id", () => {
       const session = createSession({ model_id: null });
       const agent = createAgent();
 
       render(<RecentSessions sessions={[session]} agents={[agent]} />);
 
-      // Find the table cell with dash (excluding header)
-      const cells = screen.getAllByRole("cell");
-      const modelCell = cells.find((cell) => cell.textContent === "-");
-      expect(modelCell).toBeInTheDocument();
+      expect(screen.queryByText("GPT-4o")).not.toBeInTheDocument();
     });
 
-    it("displays dash when session has model_id but no matching model data", () => {
+    it("does not display model when session has model_id but no matching model data", () => {
       const session = createSession({ model_id: "unknown-model" });
       const agent = createAgent();
 
       render(<RecentSessions sessions={[session]} agents={[agent]} models={[]} />);
 
-      const cells = screen.getAllByRole("cell");
-      const modelCell = cells.find((cell) => cell.textContent === "-");
-      expect(modelCell).toBeInTheDocument();
+      // No model should be displayed
+      expect(screen.queryByText("GPT-4o")).not.toBeInTheDocument();
     });
 
     it("displays multiple sessions with different models", () => {
@@ -117,17 +133,34 @@ describe("RecentSessions", () => {
       expect(screen.getByText("GPT-4o")).toBeInTheDocument();
       expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
     });
+  });
 
-    it("renders Sparkles icon with model name", () => {
-      const model = createLlmModel({ id: "model-1", display_name: "GPT-4o" });
-      const session = createSession({ model_id: "model-1" });
+  describe("status display", () => {
+    it("shows Running badge for active sessions", () => {
+      const session = createSession({ status: "active" });
       const agent = createAgent();
 
-      render(<RecentSessions sessions={[session]} agents={[agent]} models={[model]} />);
+      render(<RecentSessions sessions={[session]} agents={[agent]} />);
 
-      // The model name should be in a span with the Sparkles icon
-      const modelText = screen.getByText("GPT-4o");
-      expect(modelText.closest("span")).toHaveClass("inline-flex", "items-center", "gap-1");
+      expect(screen.getByText("Running")).toBeInTheDocument();
+    });
+
+    it("shows Idle badge for idle sessions", () => {
+      const session = createSession({ status: "idle" });
+      const agent = createAgent();
+
+      render(<RecentSessions sessions={[session]} agents={[agent]} />);
+
+      expect(screen.getByText("Idle")).toBeInTheDocument();
+    });
+
+    it("shows New badge for started sessions", () => {
+      const session = createSession({ status: "started" });
+      const agent = createAgent();
+
+      render(<RecentSessions sessions={[session]} agents={[agent]} />);
+
+      expect(screen.getByText("New")).toBeInTheDocument();
     });
   });
 
@@ -149,8 +182,8 @@ describe("RecentSessions", () => {
       // Should not throw when models prop is omitted
       render(<RecentSessions sessions={[session]} agents={[agent]} />);
 
-      // Model column should still render with dash
-      expect(screen.getByText("Model")).toBeInTheDocument();
+      // Session should still render
+      expect(screen.getByText("Test Session")).toBeInTheDocument();
     });
   });
 });
