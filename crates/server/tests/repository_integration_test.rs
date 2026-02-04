@@ -178,6 +178,7 @@ async fn test_session_crud() {
             title: Some("Test Session".to_string()),
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");
@@ -263,6 +264,7 @@ async fn test_event_crud() {
             title: None,
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");
@@ -330,6 +332,7 @@ async fn test_event_exclude_types() {
             title: None,
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");
@@ -561,6 +564,7 @@ async fn test_session_file_crud() {
             title: None,
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");
@@ -926,6 +930,7 @@ async fn test_session_usage_tracking() {
             title: None,
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");
@@ -999,6 +1004,7 @@ async fn test_session_previews() {
             title: None,
             tags: vec![],
             model_id: None,
+            capabilities: serde_json::json!([]),
         })
         .await
         .expect("Failed to create session");

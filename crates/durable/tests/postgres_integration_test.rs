@@ -59,6 +59,7 @@ async fn register_test_worker(
             metadata: None,
             tasks_completed: 0,
             tasks_failed: 0,
+            avg_task_duration_ms: None,
         })
         .await
         .expect("Failed to register test worker");
