@@ -64,6 +64,21 @@ function greet(name: string): string {
 }
 \`\`\``,
 
+  markdownInMarkdown: `Here's markdown inside a code block:
+
+\`\`\`markdown
+# Documentation
+
+This is **bold** and *italic* text.
+
+- List item 1
+- List item 2
+
+| Col A | Col B |
+|-------|-------|
+| 1     | 2     |
+\`\`\``,
+
   lists: `Ordered list:
 1. First item
 2. Second item
@@ -299,6 +314,10 @@ export default function DevMarkdownPage() {
 
             <ShowcaseItem label="Code Block (with Shiki highlighting)">
               <StreamdownMessage variant="inline">{sampleMarkdownContent.codeBlock}</StreamdownMessage>
+            </ShowcaseItem>
+
+            <ShowcaseItem label="Markdown in Markdown (code block)">
+              <StreamdownMessage variant="inline">{sampleMarkdownContent.markdownInMarkdown}</StreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Lists">
