@@ -107,6 +107,8 @@ just --list             # All commands
 
 Types: feat, fix, docs, refactor, test, chore
 
+Use `chore` for updates to `specs/` and `AGENTS.md`.
+
 ### PRs
 
 **REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
