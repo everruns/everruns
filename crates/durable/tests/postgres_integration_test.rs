@@ -3,7 +3,7 @@
 //! Run with: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
 //!
 //! Requirements:
-//! - PostgreSQL running with DATABASE_URL set or postgres://localhost:5432/everruns_test
+//! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:5432/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 use std::time::Duration;
@@ -34,6 +34,44 @@ async fn create_test_store() -> PostgresWorkflowEventStore {
         .await
         .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.");
     PostgresWorkflowEventStore::new(pool)
+}
+
+/// Register a test worker with the given ID and activity types
+async fn register_test_worker(
+    store: &PostgresWorkflowEventStore,
+    worker_id: &str,
+    activity_types: Vec<String>,
+) {
+    store
+        .register_worker(WorkerInfo {
+            id: worker_id.to_string(),
+            worker_group: Some("default".to_string()),
+            activity_types,
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .expect("Failed to register test worker");
+}
+
+/// Clean up a test worker
+async fn cleanup_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
+    sqlx::query("DELETE FROM durable_workers WHERE id = $1")
+        .bind(worker_id)
+        .execute(store.pool())
+        .await
+        .ok();
 }
 
 /// Clean up test data for a specific workflow
@@ -291,6 +329,10 @@ async fn test_task_enqueue_and_claim() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
 
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["send_email".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["send_email".to_string()]).await;
+
     store
         .create_workflow(workflow_id, "task_test", json!({}), None)
         .await
@@ -324,12 +366,18 @@ async fn test_task_enqueue_and_claim() {
     assert!(claimed2.is_empty());
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
 }
 
 #[tokio::test]
 async fn test_task_claim_by_activity_type() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "email-worker", vec!["send_email".to_string()]).await;
+    register_test_worker(&store, "sms-worker", vec!["send_sms".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "activity_filter_test", json!({}), None)
@@ -376,12 +424,18 @@ async fn test_task_claim_by_activity_type() {
     assert_eq!(sms_tasks[0].activity_type, "send_sms");
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "email-worker").await;
+    cleanup_worker(&store, "sms-worker").await;
 }
 
 #[tokio::test]
 async fn test_task_complete() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker", vec!["process".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["process".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "complete_test", json!({}), None)
@@ -418,12 +472,17 @@ async fn test_task_complete() {
     assert!(claimed.is_empty());
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker").await;
+    cleanup_worker(&store, "worker-2").await;
 }
 
 #[tokio::test]
 async fn test_task_failure_with_retry() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register worker before claiming tasks
+    register_test_worker(&store, "worker", vec!["flaky_task".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "retry_test", json!({}), None)
@@ -476,12 +535,16 @@ async fn test_task_failure_with_retry() {
     assert_eq!(claimed[0].attempt, 2);
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker").await;
 }
 
 #[tokio::test]
 async fn test_task_exhausts_retries_to_dlq() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register worker before claiming tasks
+    register_test_worker(&store, "worker", vec!["doomed_task".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "dlq_test", json!({}), None)
@@ -526,12 +589,16 @@ async fn test_task_exhausts_retries_to_dlq() {
     assert!(matches!(outcome, TaskFailureOutcome::MovedToDlq));
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker").await;
 }
 
 #[tokio::test]
 async fn test_heartbeat() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register worker before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["long_task".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "heartbeat_test", json!({}), None)
@@ -570,12 +637,17 @@ async fn test_heartbeat() {
     assert!(!response.accepted);
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
 }
 
 #[tokio::test]
 async fn test_reclaim_stale_tasks() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "dead-worker", vec!["stale_task".to_string()]).await;
+    register_test_worker(&store, "new-worker", vec!["stale_task".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "stale_test", json!({}), None)
@@ -628,6 +700,8 @@ async fn test_reclaim_stale_tasks() {
     assert_eq!(claimed[0].attempt, 2); // Attempt incremented
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "dead-worker").await;
+    cleanup_worker(&store, "new-worker").await;
 }
 
 // ============================================
@@ -990,6 +1064,9 @@ async fn test_dlq_operations() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
 
+    // Register worker before claiming tasks
+    register_test_worker(&store, "worker", vec!["dlq_activity".to_string()]).await;
+
     store
         .create_workflow(workflow_id, "dlq_ops_test", json!({}), None)
         .await
@@ -1060,6 +1137,7 @@ async fn test_dlq_operations() {
     assert_eq!(claimed[0].id, new_task_id);
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker").await;
 }
 
 // ============================================
@@ -1070,6 +1148,11 @@ async fn test_dlq_operations() {
 async fn test_concurrent_task_claiming() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["concurrent_task".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["concurrent_task".to_string()]).await;
+    register_test_worker(&store, "worker-3", vec!["concurrent_task".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "concurrent_claim_test", json!({}), None)
@@ -1122,6 +1205,9 @@ async fn test_concurrent_task_claiming() {
     assert_eq!(all_ids.len(), 10);
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
+    cleanup_worker(&store, "worker-3").await;
 }
 
 // ============================================
@@ -1137,6 +1223,10 @@ async fn test_concurrent_task_claiming() {
 async fn test_task_completion_rejected_when_reclaimed() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["process".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["process".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "reclaim_test", json!({}), None)
@@ -1205,6 +1295,8 @@ async fn test_task_completion_rejected_when_reclaimed() {
         .expect("Worker 2 should be able to complete the task it claimed");
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
 }
 
 /// Test that task completion fails when wrong worker tries to complete
@@ -1212,6 +1304,9 @@ async fn test_task_completion_rejected_when_reclaimed() {
 async fn test_task_completion_rejected_wrong_worker() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["process".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "wrong_worker_test", json!({}), None)
@@ -1251,6 +1346,7 @@ async fn test_task_completion_rejected_wrong_worker() {
         .expect("Correct worker should be able to complete");
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
 }
 
 /// Test that task completion fails when task is already completed
@@ -1258,6 +1354,9 @@ async fn test_task_completion_rejected_wrong_worker() {
 async fn test_task_completion_rejected_already_completed() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register worker before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["process".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "double_complete_test", json!({}), None)
@@ -1296,6 +1395,7 @@ async fn test_task_completion_rejected_already_completed() {
     );
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
 }
 
 /// Test the full race condition scenario that causes duplicate act atoms
@@ -1314,6 +1414,11 @@ async fn test_task_completion_rejected_already_completed() {
 async fn test_duplicate_scheduling_prevention() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-A", vec!["reason".to_string()]).await;
+    register_test_worker(&store, "worker-B", vec!["reason".to_string()]).await;
+    register_test_worker(&store, "worker-C", vec!["reason".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "duplicate_prevention_test", json!({}), None)
@@ -1390,6 +1495,9 @@ async fn test_duplicate_scheduling_prevention() {
     );
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-A").await;
+    cleanup_worker(&store, "worker-B").await;
+    cleanup_worker(&store, "worker-C").await;
 }
 
 // ============================================
@@ -1408,6 +1516,11 @@ async fn test_duplicate_scheduling_prevention() {
 async fn test_stale_reclaim_respects_max_attempts() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["panic_activity".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["panic_activity".to_string()]).await;
+    register_test_worker(&store, "worker-3", vec!["panic_activity".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "stale_max_attempts_test", json!({}), None)
@@ -1512,6 +1625,9 @@ async fn test_stale_reclaim_respects_max_attempts() {
     );
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
+    cleanup_worker(&store, "worker-3").await;
 }
 
 /// Test that partially exhausted tasks can still be claimed
@@ -1521,6 +1637,10 @@ async fn test_stale_reclaim_respects_max_attempts() {
 async fn test_stale_reclaim_allows_remaining_attempts() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
+
+    // Register workers before claiming tasks
+    register_test_worker(&store, "worker-1", vec!["retry_activity".to_string()]).await;
+    register_test_worker(&store, "worker-2", vec!["retry_activity".to_string()]).await;
 
     store
         .create_workflow(workflow_id, "partial_attempts_test", json!({}), None)
@@ -1585,4 +1705,6 @@ async fn test_stale_reclaim_allows_remaining_attempts() {
         .unwrap();
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
 }

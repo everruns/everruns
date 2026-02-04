@@ -1,6 +1,19 @@
-// Integration tests for Everruns API
-// Run with: cargo test -p everruns-server --test integration_test -- --test-threads=1
-// Requires: API + Worker running (uses LlmSim for workflow tests, no real API keys needed)
+//! Workflow tests for Everruns API
+//!
+//! These tests require a RUNNING API server and Worker process.
+//! They test end-to-end workflows including LLM execution.
+//!
+//! For API endpoint testing without a running server, use:
+//! - `api_integration_test.rs` (in-process testing with PostgreSQL)
+//! - `repository_integration_test.rs` (direct repository testing)
+//!
+//! Run with: cargo test -p everruns-server --test workflow_test -- --test-threads=1
+//!
+//! Requirements:
+//! - API server running at localhost:9000
+//! - Worker process running
+//! - PostgreSQL with migrations applied
+//! - Uses LlmSim for workflow tests, no real API keys needed
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};

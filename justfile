@@ -46,6 +46,40 @@ test:
     cargo test --all-features
     cd apps/ui && npm run e2e 2>/dev/null || echo "(e2e skipped)"
 
+# Run pure unit tests (no PostgreSQL required) - fast feedback
+test-unit:
+    cargo test -p everruns-anthropic --lib --all-features
+    cargo test -p everruns-openai --lib --all-features
+    cargo test -p everruns-internal-protocol --lib --all-features
+    cargo test -p everruns-core --lib --all-features
+
+# Run integration tests (requires PostgreSQL via Docker or start-dev)
+test-integration: start-docker
+    #!/usr/bin/env bash
+    set -e
+    # Wait for postgres
+    for i in {1..30}; do
+        if pg_isready -h localhost -p 5432 -U everruns 2>/dev/null; then break; fi
+        sleep 1
+    done
+    # Run migrations
+    sqlx migrate run --source crates/server/migrations 2>/dev/null || true
+    # Run tests
+    cargo test -p everruns-server --lib
+    cargo test -p everruns-server --test api_integration_test -- --test-threads=1
+    cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+    cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+    cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
+
+# Run workflow tests (requires running server + worker)
+test-workflow:
+    cargo test -p everruns-server --test workflow_test -- --test-threads=1
+
+# Run LLM tests against real APIs (requires ANTHROPIC_API_KEY, OPENAI_API_KEY)
+test-llm:
+    cargo test -p everruns-core --test agent_run_basic
+    cargo test -p everruns-core --test agent_run_with_thinking
+
 # Run all formatters and linters (auto-fix)
 fmt:
     cargo fmt

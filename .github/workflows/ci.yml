@@ -12,8 +12,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Shared cache key prefix for better cache reuse across jobs
-  CACHE_VERSION: v1
 
 jobs:
   format:
@@ -57,23 +55,45 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-clippy-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+          shared-key: "clippy"
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  test:
-    name: Unit Tests
+  # Fast unit tests - no external dependencies (PostgreSQL, LLM APIs)
+  # Runs in ~30s, provides quick feedback on logic errors
+  unit-test:
+    name: Unit Tests (Pure)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
+      - name: Run pure unit tests
+        run: |
+          cargo test -p everruns-anthropic --lib --all-features
+          cargo test -p everruns-openai --lib --all-features
+          cargo test -p everruns-internal-protocol --lib --all-features
+          cargo test -p everruns-core --lib --all-features
+
+  # Integration tests requiring PostgreSQL
+  # Tests API endpoints, repositories, and durable execution against real database
+  integration-test:
+    name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -94,6 +114,7 @@ jobs:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
 
     steps:
       - uses: actions/checkout@v4
@@ -104,17 +125,10 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-test-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+          shared-key: "test"
 
       - name: Cache sqlx-cli
         uses: actions/cache@v4
@@ -131,8 +145,242 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/server/migrations
 
-      - name: Run unit tests
-        run: cargo test --all-features --lib --bins
+      - name: Run server unit tests (require DB for storage layer)
+        run: cargo test -p everruns-server --lib
+
+      - name: Run API integration tests (in-process)
+        run: cargo test -p everruns-server --test api_integration_test -- --test-threads=1
+
+      - name: Run repository integration tests
+        run: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+
+      - name: Run durable integration tests
+        run: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+
+      - name: Run durable repository tests
+        run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
+
+  # Build release binaries and upload as artifacts for E2E jobs
+  build-binaries:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "release"
+
+      - name: Build release binaries
+        run: cargo build --release -p everruns-server -p everruns-worker -p everruns-cli
+
+      - name: Upload server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: everruns-server
+          path: target/release/everruns-server
+          retention-days: 1
+
+      - name: Upload worker binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: everruns-worker
+          path: target/release/everruns-worker
+          retention-days: 1
+
+      - name: Upload CLI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: everruns-cli
+          path: target/release/everruns
+          retention-days: 1
+
+  workflow-test:
+    name: Workflow Tests (Server + Worker)
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      API_BASE_URL: http://localhost:9000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
+      - name: Cache sqlx-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
+
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
+
+      - name: Run migrations
+        run: sqlx migrate run --source crates/server/migrations
+
+      - name: Download server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-server
+          path: ./bin
+
+      - name: Download worker binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-worker
+          path: ./bin
+
+      - name: Make binaries executable
+        run: chmod +x ./bin/*
+
+      - name: Start API server
+        run: |
+          ./bin/everruns-server > server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      - name: Start Worker
+        run: |
+          ./bin/everruns-worker > worker.log 2>&1 &
+          echo $! > worker.pid
+          echo "Worker PID: $(cat worker.pid)"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for server to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            sleep 2
+          done
+          echo "Server failed to start"
+          cat server.log
+          exit 1
+
+      - name: Run workflow tests
+        run: cargo test -p everruns-server --test workflow_test -- --test-threads=1
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+          fi
+          if [ -f worker.pid ]; then
+            kill $(cat worker.pid) 2>/dev/null || true
+          fi
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Server logs ==="
+          cat server.log 2>/dev/null || echo "No server log"
+          echo ""
+          echo "=== Worker logs ==="
+          cat worker.log 2>/dev/null || echo "No worker log"
+
+  cli-e2e-test:
+    name: CLI E2E Tests
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    timeout-minutes: 10
+
+    env:
+      DEV_MODE: "true"
+      AUTH_MODE: none
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVERRUNS_API_KEY: "cli-e2e-test-key"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-server
+          path: ./bin
+
+      - name: Download CLI binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-cli
+          path: ./bin
+
+      - name: Make binaries executable
+        run: chmod +x ./bin/*
+
+      - name: Add bin to PATH
+        run: echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Start server (DEV_MODE with in-process worker)
+        run: |
+          ./bin/everruns-server > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          # Wait for server to be ready
+          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
+          echo "Server is ready (DEV_MODE with in-process worker)"
+
+      - name: Run CLI E2E tests
+        run: ./scripts/cli-e2e-test.sh
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Server Logs ==="
+          cat /tmp/server.log || true
+
+      - name: Stop server
+        if: always()
+        run: kill $SERVER_PID || true
 
   build:
     name: Build Check
@@ -147,17 +395,10 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-build-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+          shared-key: "release"
 
       - name: Build
         run: cargo build --all-features --release
@@ -187,7 +428,6 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apps/ui/.next/cache
-          # Generate a new cache whenever packages or source files change
           key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-
@@ -204,182 +444,6 @@ jobs:
 
       - name: Type check & build
         run: npm run build
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
-      GRPC_ADDRESS: 127.0.0.1:9001
-      AUTH_MODE: none
-      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
-
-      - name: Cache sqlx-cli
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
-
-      - name: Install sqlx-cli
-        run: |
-          if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
-          fi
-
-      - name: Run migrations
-        run: sqlx migrate run --source crates/server/migrations
-
-      - name: Build API and Worker
-        run: |
-          cargo build -p everruns-server
-          cargo build -p everruns-worker
-
-      - name: Start API server
-        run: |
-          cargo run -p everruns-server > /tmp/api.log 2>&1 &
-          API_PID=$!
-          echo "API_PID=$API_PID" >> $GITHUB_ENV
-          # Wait for API to be ready
-          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
-          echo "API is ready"
-
-      - name: Start Worker
-        run: |
-          cargo run -p everruns-worker > /tmp/worker.log 2>&1 &
-          WORKER_PID=$!
-          echo "WORKER_PID=$WORKER_PID" >> $GITHUB_ENV
-          # Give worker time to connect to server
-          sleep 5
-          # Verify worker is still running
-          if kill -0 $WORKER_PID 2>/dev/null; then
-            echo "Worker is running (PID: $WORKER_PID)"
-          else
-            echo "Worker failed to start"
-            cat /tmp/worker.log
-            exit 1
-          fi
-
-      - name: Run integration tests
-        run: |
-          # Run integration tests (uses LlmSim for workflow tests, no real API keys needed)
-          cargo test -p everruns-server --test integration_test -- --test-threads=1
-
-      - name: Show logs on failure
-        if: failure()
-        run: |
-          echo "=== API Logs ==="
-          cat /tmp/api.log || true
-          echo "=== Worker Logs ==="
-          cat /tmp/worker.log || true
-
-      - name: Stop Worker
-        if: always()
-        run: kill $WORKER_PID || true
-
-      - name: Stop API server
-        if: always()
-        run: kill $API_PID || true
-
-  cli-e2e-test:
-    name: CLI E2E Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    env:
-      DEV_MODE: "true"
-      AUTH_MODE: none
-      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      # CLI requires API key even with AUTH_MODE=none (server won't validate it)
-      EVERRUNS_API_KEY: "cli-e2e-test-key"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler jq
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-cli-e2e-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-cli-e2e-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
-
-      - name: Build server and CLI
-        run: |
-          cargo build -p everruns-server
-          cargo build -p everruns-cli
-
-      - name: Start server (DEV_MODE with in-process worker)
-        run: |
-          cargo run -p everruns-server > /tmp/server.log 2>&1 &
-          SERVER_PID=$!
-          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
-          # Wait for server to be ready
-          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
-          echo "Server is ready (DEV_MODE with in-process worker)"
-
-      - name: Run CLI E2E tests
-        run: ./scripts/cli-e2e-test.sh
-
-      - name: Show logs on failure
-        if: failure()
-        run: |
-          echo "=== Server Logs ==="
-          cat /tmp/server.log || true
-
-      - name: Stop server
-        if: always()
-        run: kill $SERVER_PID || true
 
   docs-build:
     name: Docs Build & Check
@@ -421,17 +485,10 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-openapi-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-openapi-
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+          shared-key: "release"
 
       - name: Generate fresh OpenAPI spec
         run: cargo run --bin export-openapi --release > /tmp/openapi-fresh.json
@@ -479,6 +536,5 @@ jobs:
           target: ${{ matrix.target }}
           push: false
           tags: ${{ matrix.image }}:ci
-          # Use shared cache scope for better layer reuse between server and worker
           cache-from: type=gha,scope=docker-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}

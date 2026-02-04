@@ -89,43 +89,111 @@ let result = db.operation().await.map_err(|e| {
 
 ## Testing
 
+### Test Philosophy
+
+Tests are organized by dependency requirements and execution speed:
+
+1. **Unit tests (pure)** - Fast, no external dependencies, run first for quick feedback
+2. **Integration tests (PostgreSQL)** - Test against real database, validate persistence
+3. **Workflow tests (Server + Worker)** - End-to-end LLM execution with running services
+4. **LLM tests** - Real API calls, require API keys, validate LLM integration
+
 ### Test Categories
 
-| Category | Location | Dependencies | Run Command |
-|----------|----------|--------------|-------------|
-| Unit Tests | Inline `#[cfg(test)]` modules | None | `cargo test --lib` |
-| Integration Tests | `tests/integration_test.rs` | PostgreSQL, workers | `cargo test --test integration_test` |
-| LLM Tests | `tests/agent_run_*.rs` | Real LLM API keys | `cargo test --test agent_run_basic` |
-| CLI E2E Tests | `scripts/cli-e2e-test.sh` | Server (DEV_MODE), LLM API keys | `./scripts/cli-e2e-test.sh` |
+| Category | CI Job | Dependencies | Speed | Run Command |
+|----------|--------|--------------|-------|-------------|
+| Unit (Pure) | `unit-test` | None | ~30s | `just test-unit` |
+| Integration | `integration-test` | PostgreSQL | ~2min | `just test-integration` |
+| Workflow | `workflow-test` | Server + Worker | ~3min | `just test-workflow` |
+| CLI E2E | `cli-e2e-test` | Server (DEV_MODE) | ~2min | `./scripts/cli-e2e-test.sh` |
+| LLM | (manual) | API keys | varies | `just test-llm` |
 
-### Unit Tests
+### Unit Tests (Pure)
 
-Inline `#[cfg(test)]` modules for:
+**Goal:** Fast feedback on logic errors without infrastructure.
+
+**Crates tested:**
+- `everruns-anthropic` - LLM client SDK, request/response parsing
+- `everruns-openai` - LLM client SDK, request/response parsing
+- `everruns-internal-protocol` - Protobuf definitions
+- `everruns-core` - Agent logic, tool handling, prompt building
+
+Note: `everruns-cli` is binary-only (no lib target) and tested via CLI E2E tests.
+
+**What to test:**
 - Serialization/deserialization
 - Pure functions
 - Business logic without external dependencies
+- Error handling paths
 
-### Integration Tests
+```bash
+just test-unit  # Runs in ~30s, no Docker needed
+```
 
-`tests/integration_test.rs` for:
-- API endpoints
-- Multi-service workflows
-- Requires infrastructure (PostgreSQL, workers)
+### Integration Tests (PostgreSQL)
+
+**Goal:** Validate API endpoints, repository layer, and durable execution against real PostgreSQL.
+
+**Test files:**
+- `crates/server/tests/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
+- `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
+- `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
+- `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
+
+**What to test:**
+- CRUD operations for all entities
+- Database constraints and migrations
+- Transaction handling
+- Query correctness
+- Soft-delete behavior (agents archived, not hard-deleted)
+- Append-only constraints (events cannot be deleted)
+
+**Durable test requirements:**
+- Tests using `claim_task` must register workers first via `register_test_worker()`
+- Workers must be cleaned up via `cleanup_worker()` at test end
+- This is required because `claim_task` SQL joins against `durable_workers` table
+
+```bash
+just test-integration  # Starts Docker, runs migrations, tests
+```
+
+### Workflow Tests (Server + Worker)
+
+**Goal:** End-to-end validation of LLM workflow execution.
+
+**Test file:** `crates/server/tests/workflow_test.rs`
+
+**What to test:**
+- Session creation and message handling
+- LLM provider integration
+- Worker job execution
+- SSE event streaming
+
+**Requirements:**
+- Running API server (`everruns-server`)
+- Running Worker (`everruns-worker`)
+- PostgreSQL database
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+
+```bash
+just start-all        # Start server + worker in another terminal
+just test-workflow    # Run workflow tests
+```
 
 ### LLM Tests
 
-`crates/core/tests/agent_run_*.rs` for testing against real LLM endpoints:
-- `agent_run_basic.rs` - Basic completion + tool calls (Anthropic + OpenAI)
-- `agent_run_with_thinking.rs` - Extended thinking tests (Anthropic only)
+**Goal:** Validate LLM client implementations against real APIs.
+
+**Test files:**
+- `crates/core/tests/agent_run_basic.rs` - Basic completion + tool calls
+- `crates/core/tests/agent_run_with_thinking.rs` - Extended thinking (Anthropic)
 
 **Requirements:**
 - `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` environment variables
 - Tests skip gracefully if API keys are not set
-- Feature flag: `llm-tests` (enabled by default)
 
 ```bash
-# Run LLM tests
-ANTHROPIC_API_KEY=key OPENAI_API_KEY=key cargo test -p everruns-core --test agent_run_basic
+just test-llm  # Run against real LLM APIs
 ```
 
 ### CLI E2E Tests
@@ -150,17 +218,38 @@ just start-dev --no-watch &
 ./scripts/cli-e2e-test.sh --skip-chat
 ```
 
-### When to Add
+### Test Infrastructure
 
-- New features: always
-- Bug fixes: regression tests
-- Security fixes: verification tests
+**In-process API testing:**
+- Uses Tower's `ServiceExt::oneshot` for HTTP testing without TCP listener
+- See `crates/server/tests/test_harness.rs` for `TestServer` implementation
+- Provides fast, isolated tests with full router stack
 
-### Running
+**Database setup:**
+- Tests use `DATABASE_URL` environment variable
+- Default: `postgres://everruns:everruns@localhost:5432/everruns_test`
+- CI uses PostgreSQL service container
+- Local: Docker via `just start-docker`
+
+### When to Add Tests
+
+| Scenario | Required Tests |
+|----------|----------------|
+| New feature | Unit + Integration |
+| Bug fix | Regression test reproducing the bug |
+| API endpoint | API integration test |
+| Database change | Repository integration test |
+| LLM behavior | LLM test (if critical) |
+
+### Running Tests
 
 ```bash
-just test          # All tests (Rust + UI e2e)
-just check         # Format + lint + test
+just test-unit         # Pure unit tests (~30s)
+just test-integration  # PostgreSQL tests (~2min)
+just test-workflow     # E2E with server/worker
+just test-llm          # Real LLM API tests
+just test              # All Rust tests + UI e2e
+just check             # Format + lint + test
 ```
 
 ### UI Component Testing
@@ -251,6 +340,28 @@ npm test -- --watch         # Watch mode for development
 ```
 
 **CI Integration:** UI tests run as part of the `ui-build` job in GitHub Actions CI. Tests must pass before PRs can be merged.
+
+### CI Jobs
+
+| Job | What it tests | Dependencies |
+|-----|---------------|--------------|
+| `unit-test` | Pure logic, no dependencies | None |
+| `integration-test` | PostgreSQL, in-process API | None |
+| `build-binaries` | Builds release binaries, uploads artifacts | None |
+| `workflow-test` | Server + worker E2E | `build-binaries` |
+| `cli-e2e-test` | CLI binary against DEV_MODE server | `build-binaries` |
+
+### CI Caching Strategy
+
+Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
+
+| Shared Key | Used By | Purpose |
+|------------|---------|---------|
+| `clippy` | clippy | Lint checks |
+| `test` | unit-test, integration-test, workflow-test | Test compilation |
+| `release` | build-binaries, build, openapi-check | Release builds |
+
+**Artifact sharing:** `build-binaries` uploads server/worker/cli binaries as GitHub artifacts. E2E jobs download pre-built binaries instead of rebuilding (~5 min saved per job).
 
 ## Content Types
 
