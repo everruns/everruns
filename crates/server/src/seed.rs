@@ -274,7 +274,7 @@ You have access to Microsoft Learn MCP tools that allow you to:
     },
     SeedAgent {
         id: seed_ids::PYTHON_CODER_AGENT,
-        name: "[Experimental] Python Coder",
+        name: "Python Coder",
         description: "A fast coding agent that writes, executes, and debugs Python code in a Docker container",
         system_prompt: r#"You are a Python Coder Agent with access to a Docker container running Python.
 You can write code, execute it, and iterate quickly to solve programming tasks.
@@ -321,7 +321,7 @@ To write and run a Python script:
 - Show your reasoning when debugging
 - Ask clarifying questions if the task is ambiguous
 - Celebrate when things work! 🎉"#,
-        tags: &["python", "coding", "docker", "experimental", "demo", "seed"],
+        tags: &["python", "coding", "docker", "demo", "seed"],
         capabilities: &["docker_container"],
         dev_only: true, // Experimental capability, only in dev environments
     },
