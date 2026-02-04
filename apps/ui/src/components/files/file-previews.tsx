@@ -1,6 +1,15 @@
 "use client";
 
+/**
+ * File Preview Components
+ *
+ * Uses Streamdown with @streamdown/code for Shiki-based syntax highlighting,
+ * matching the styling used in chat messages.
+ */
+
 import { useMemo } from "react";
+import { Streamdown } from "streamdown";
+import { code } from "@streamdown/code";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -10,8 +19,45 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Markdown } from "@/components/ui/markdown";
 import { AlertCircle } from "lucide-react";
+
+// Streamdown styling for code previews
+const previewStyles = `
+  .file-preview-streamdown pre { background: var(--color-muted); padding: 1em; overflow-x: auto; margin: 0; }
+  .file-preview-streamdown pre code { background: none; padding: 0; }
+  .file-preview-streamdown [data-streamdown-code] { border-radius: 0; }
+  .file-preview-streamdown p { margin: 0.5em 0; }
+  .file-preview-streamdown ul, .file-preview-streamdown ol { margin: 0.5em 0; padding-left: 1.5em; }
+  .file-preview-streamdown li { margin: 0.25em 0; }
+  .file-preview-streamdown code:not(pre code) { background: var(--color-muted); padding: 0.2em 0.4em; font-size: 0.9em; }
+  .file-preview-streamdown blockquote { border-left: 3px solid var(--color-border); padding-left: 1em; margin: 0.5em 0; color: var(--color-muted-foreground); }
+  .file-preview-streamdown hr { border: none; border-top: 1px solid var(--color-border); margin: 1em 0; }
+  .file-preview-streamdown a { color: var(--color-primary); text-decoration: underline; }
+  .file-preview-streamdown strong { font-weight: 600; }
+  .file-preview-streamdown em { font-style: italic; }
+  .file-preview-streamdown table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+  .file-preview-streamdown th, .file-preview-streamdown td { border: 1px solid var(--color-border); padding: 0.5em; text-align: left; }
+  .file-preview-streamdown th { background: var(--color-muted); font-weight: 600; }
+  .file-preview-streamdown img { max-width: 100%; height: auto; }
+  .file-preview-streamdown h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
+  .file-preview-streamdown h2 { font-size: 1.25em; font-weight: 600; margin: 1em 0 0.5em; }
+  .file-preview-streamdown h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.5em; }
+
+  /* GitHub-style alerts */
+  .file-preview-streamdown .markdown-alert { padding: 0.5em 1em; margin: 0.5em 0; border-left: 4px solid; }
+  .file-preview-streamdown .markdown-alert-title { display: flex; align-items: center; gap: 0.5em; font-weight: 600; margin-bottom: 0.25em; }
+  .file-preview-streamdown .markdown-alert-title svg { width: 1em; height: 1em; }
+  .file-preview-streamdown .markdown-alert-note { border-color: #0969da; background: rgba(9, 105, 218, 0.1); }
+  .file-preview-streamdown .markdown-alert-note .markdown-alert-title { color: #0969da; }
+  .file-preview-streamdown .markdown-alert-tip { border-color: #1a7f37; background: rgba(26, 127, 55, 0.1); }
+  .file-preview-streamdown .markdown-alert-tip .markdown-alert-title { color: #1a7f37; }
+  .file-preview-streamdown .markdown-alert-important { border-color: #8250df; background: rgba(130, 80, 223, 0.1); }
+  .file-preview-streamdown .markdown-alert-important .markdown-alert-title { color: #8250df; }
+  .file-preview-streamdown .markdown-alert-warning { border-color: #9a6700; background: rgba(154, 103, 0, 0.1); }
+  .file-preview-streamdown .markdown-alert-warning .markdown-alert-title { color: #9a6700; }
+  .file-preview-streamdown .markdown-alert-caution { border-color: #cf222e; background: rgba(207, 34, 46, 0.1); }
+  .file-preview-streamdown .markdown-alert-caution .markdown-alert-title { color: #cf222e; }
+`;
 
 // File extension categorization
 const CODE_EXTENSIONS = new Set([
@@ -48,6 +94,40 @@ const CODE_EXTENSIONS = new Set([
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
 
+// Map file extensions to Shiki language identifiers
+const EXTENSION_TO_LANG: Record<string, string> = {
+  js: "javascript",
+  jsx: "jsx",
+  ts: "typescript",
+  tsx: "tsx",
+  py: "python",
+  rs: "rust",
+  go: "go",
+  java: "java",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  hpp: "cpp",
+  rb: "ruby",
+  php: "php",
+  sql: "sql",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  xml: "xml",
+  html: "html",
+  css: "css",
+  scss: "scss",
+  sass: "sass",
+  less: "less",
+  vue: "vue",
+  svelte: "svelte",
+  json: "json",
+};
+
 export type PreviewType = "code" | "csv" | "json" | "markdown" | "image" | "text" | "binary";
 
 export function getPreviewType(extension: string, encoding: "text" | "base64"): PreviewType {
@@ -76,145 +156,16 @@ interface PreviewProps {
   encoding: "text" | "base64";
 }
 
-// Simple syntax highlighting using CSS classes
-function highlightCode(code: string, extension: string): React.ReactNode {
-  // Basic tokenization for common patterns
-  const lines = code.split("\n");
-
-  return lines.map((line, i) => (
-    <div key={i} className="code-line flex">
-      <span className="code-line-number select-none text-muted-foreground/50 pr-4 text-right w-12 shrink-0">
-        {i + 1}
-      </span>
-      <span className="code-line-content flex-1">
-        <HighlightedLine line={line} extension={extension} />
-      </span>
-    </div>
-  ));
-}
-
-function HighlightedLine({ line, extension }: { line: string; extension: string }) {
-  // Very simple syntax highlighting
-  const tokens = tokenizeLine(line, extension);
-  return (
-    <>
-      {tokens.map((token, i) => (
-        <span key={i} className={token.className}>
-          {token.text}
-        </span>
-      ))}
-    </>
-  );
-}
-
-interface Token {
-  text: string;
-  className: string;
-}
-
-function tokenizeLine(line: string, extension: string): Token[] {
-  const tokens: Token[] = [];
-
-  // Comment detection
-  const commentPatterns: Record<string, RegExp> = {
-    py: /^(\s*)(#.*)/,
-    sh: /^(\s*)(#.*)/,
-    bash: /^(\s*)(#.*)/,
-    rb: /^(\s*)(#.*)/,
-    yml: /^(\s*)(#.*)/,
-    yaml: /^(\s*)(#.*)/,
-    toml: /^(\s*)(#.*)/,
-    js: /^(\s*)(\/\/.*)/,
-    jsx: /^(\s*)(\/\/.*)/,
-    ts: /^(\s*)(\/\/.*)/,
-    tsx: /^(\s*)(\/\/.*)/,
-    java: /^(\s*)(\/\/.*)/,
-    go: /^(\s*)(\/\/.*)/,
-    rs: /^(\s*)(\/\/.*)/,
-    c: /^(\s*)(\/\/.*)/,
-    cpp: /^(\s*)(\/\/.*)/,
-    css: /^(\s*)(\/\*.*\*\/)/,
-    html: /^(\s*)(<!--.*-->)/,
-    xml: /^(\s*)(<!--.*-->)/,
-  };
-
-  const commentPattern = commentPatterns[extension];
-  if (commentPattern) {
-    const match = line.match(commentPattern);
-    if (match) {
-      if (match[1]) tokens.push({ text: match[1], className: "" });
-      tokens.push({ text: match[2], className: "text-muted-foreground italic" });
-      return tokens;
-    }
-  }
-
-  // Keywords by language
-  const jsKeywords =
-    /\b(const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|try|catch|throw|new|this|typeof|instanceof)\b/g;
-  const pyKeywords =
-    /\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|raise|with|lambda|yield|async|await|True|False|None)\b/g;
-  const rsKeywords =
-    /\b(fn|let|mut|const|struct|enum|impl|trait|pub|use|mod|match|if|else|for|while|loop|return|self|Self|async|await|move|where)\b/g;
-  const goKeywords =
-    /\b(func|var|const|type|struct|interface|package|import|if|else|for|range|return|defer|go|chan|select|case|default|switch|break|continue)\b/g;
-
-  const keywordPatterns: Record<string, RegExp> = {
-    js: jsKeywords,
-    jsx: jsKeywords,
-    ts: jsKeywords,
-    tsx: jsKeywords,
-    py: pyKeywords,
-    rs: rsKeywords,
-    go: goKeywords,
-  };
-
-  // String detection
-  const stringPattern = /(["'`])(?:(?!\1)[^\\]|\\.)*\1/g;
-
-  // Number detection
-  const numberPattern = /\b\d+\.?\d*\b/g;
-
-  // Build highlighted line
-  let remaining = line;
-  let lastIndex = 0;
-  const keywordPattern = keywordPatterns[extension];
-
-  // For simplicity, just highlight strings, numbers, and keywords
-  const allPatterns: { pattern: RegExp; className: string }[] = [
-    { pattern: stringPattern, className: "text-green-600 dark:text-green-400" },
-    { pattern: numberPattern, className: "text-blue-600 dark:text-blue-400" },
-  ];
-
-  if (keywordPattern) {
-    allPatterns.push({ pattern: keywordPattern, className: "text-purple-600 dark:text-purple-400" });
-  }
-
-  // Simple approach: just return the line with basic highlighting
-  let result = line;
-  for (const { pattern, className } of allPatterns) {
-    result = result.replace(pattern, (match) => `\x00${className}\x01${match}\x02`);
-  }
-
-  // Parse the result back into tokens
-  const parts = result.split(/(\x00[^\x01]+\x01[^\x02]*\x02)/);
-  for (const part of parts) {
-    const match = part.match(/\x00([^\x01]+)\x01([^\x02]*)\x02/);
-    if (match) {
-      tokens.push({ text: match[2], className: match[1] });
-    } else if (part) {
-      tokens.push({ text: part, className: "" });
-    }
-  }
-
-  return tokens.length > 0 ? tokens : [{ text: line, className: "" }];
-}
-
 export function CodePreview({ content, extension }: { content: string; extension: string }) {
-  const highlighted = useMemo(() => highlightCode(content, extension), [content, extension]);
+  const lang = EXTENSION_TO_LANG[extension.toLowerCase()] || "text";
+  const markdown = useMemo(() => `\`\`\`${lang}\n${content}\n\`\`\``, [content, lang]);
 
   return (
     <ScrollArea className="h-full">
-      <pre className="p-4 text-sm font-mono">{highlighted}</pre>
+      <style>{previewStyles}</style>
+      <div className="file-preview-streamdown text-sm">
+        <Streamdown plugins={{ code }}>{markdown}</Streamdown>
+      </div>
     </ScrollArea>
   );
 }
@@ -317,48 +268,15 @@ export function JSONPreview({ content }: { content: string }) {
     );
   }
 
-  // Highlight JSON
-  const highlighted = useMemo(() => {
-    const lines = formatted.split("\n");
-    return lines.map((line, i) => {
-      // Highlight keys
-      let result = line.replace(
-        /"([^"]+)":/g,
-        '<span class="text-purple-600 dark:text-purple-400">"$1"</span>:',
-      );
-      // Highlight string values
-      result = result.replace(
-        /: "([^"]*)"/g,
-        ': <span class="text-green-600 dark:text-green-400">"$1"</span>',
-      );
-      // Highlight numbers
-      result = result.replace(
-        /: (\d+\.?\d*)/g,
-        ': <span class="text-blue-600 dark:text-blue-400">$1</span>',
-      );
-      // Highlight booleans and null
-      result = result.replace(
-        /: (true|false|null)/g,
-        ': <span class="text-orange-600 dark:text-orange-400">$1</span>',
-      );
-
-      return (
-        <div key={i} className="code-line flex">
-          <span className="code-line-number select-none text-muted-foreground/50 pr-4 text-right w-12 shrink-0">
-            {i + 1}
-          </span>
-          <span
-            className="code-line-content flex-1"
-            dangerouslySetInnerHTML={{ __html: result }}
-          />
-        </div>
-      );
-    });
-  }, [formatted]);
+  // Use Streamdown with Shiki for JSON highlighting
+  const markdown = useMemo(() => `\`\`\`json\n${formatted}\n\`\`\``, [formatted]);
 
   return (
     <ScrollArea className="h-full">
-      <pre className="p-4 text-sm font-mono">{highlighted}</pre>
+      <style>{previewStyles}</style>
+      <div className="file-preview-streamdown text-sm">
+        <Streamdown plugins={{ code }}>{markdown}</Streamdown>
+      </div>
     </ScrollArea>
   );
 }
@@ -366,8 +284,9 @@ export function JSONPreview({ content }: { content: string }) {
 export function MarkdownPreview({ content }: { content: string }) {
   return (
     <ScrollArea className="h-full">
-      <div className="p-4">
-        <Markdown content={content} variant="compact" />
+      <style>{previewStyles}</style>
+      <div className="file-preview-streamdown text-sm p-4">
+        <Streamdown plugins={{ code }}>{content}</Streamdown>
       </div>
     </ScrollArea>
   );
