@@ -345,18 +345,25 @@ pub struct TriggerResponse {
 // Query parameters
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSchedulesQuery {
+    /// Filter by enabled status
     pub enabled: Option<bool>,
+    /// Filter by target type ("workflow" or "activity")
     pub target_type: Option<String>,
+    /// Pagination offset
     pub offset: Option<u32>,
+    /// Pagination limit (default: 20, max: 100)
     pub limit: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListExecutionsQuery {
+    /// Filter by execution status
     pub status: Option<String>,
+    /// Pagination offset
     pub offset: Option<u32>,
+    /// Pagination limit (default: 20, max: 100)
     pub limit: Option<u32>,
 }
 
