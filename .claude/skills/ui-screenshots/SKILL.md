@@ -97,6 +97,22 @@ agent-browser install --with-deps
 npx playwright install-deps chromium
 ```
 
+### Browser version mismatch
+
+If agent-browser reports a missing browser version (e.g., `chromium_headless_shell-1208`) but you have a similar version installed (e.g., `chromium_headless_shell-1200`), and network issues prevent downloading the correct version:
+
+```bash
+# Check available versions
+ls /root/.cache/ms-playwright/
+
+# Create symlinks to use a nearby version
+cd /root/.cache/ms-playwright
+ln -s chromium_headless_shell-1200 chromium_headless_shell-1208
+ln -s chromium-1200 chromium-1208
+```
+
+Note: This is a workaround when storage.googleapis.com is unreachable. Minor version differences (1200 vs 1208) are usually compatible.
+
 ### Page hangs on localhost
 
 The dev server may not be running. Start it first:
