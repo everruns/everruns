@@ -232,25 +232,46 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
           </div>
         </div>
         {/* Breadcrumbs */}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground overflow-x-auto">
-          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={navigateHome}>
-            <Home className="h-3 w-3" />
+        <div className="flex items-center gap-1 text-sm bg-muted/50 rounded-md px-2 py-1.5 overflow-x-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            onClick={navigateHome}
+            title="Go to workspace root"
+          >
+            <Home className="h-4 w-4" />
           </Button>
-          {breadcrumbs.map((crumb, index) => (
-            <span key={crumb} className="flex items-center">
-              <ChevronRight className="h-3 w-3 mx-0.5" />
-              <button
-                type="button"
-                className="hover:text-foreground hover:underline"
-                onClick={() => {
-                  const path = `/workspace/${breadcrumbs.slice(0, index + 1).join("/")}`;
-                  setCurrentPath(path);
-                }}
-              >
-                {crumb}
-              </button>
-            </span>
-          ))}
+          <span className="text-muted-foreground">/</span>
+          {breadcrumbs.length === 0 ? (
+            <span className="font-medium text-foreground">workspace</span>
+          ) : (
+            breadcrumbs.map((crumb, index) => {
+              const isLast = index === breadcrumbs.length - 1;
+              return (
+                <span key={crumb} className="flex items-center">
+                  {index > 0 && <span className="text-muted-foreground mx-1">/</span>}
+                  {isLast ? (
+                    <span className="font-medium text-foreground flex items-center gap-1">
+                      <Folder className="h-3.5 w-3.5 text-blue-500" />
+                      {crumb}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => {
+                        const path = `/workspace/${breadcrumbs.slice(0, index + 1).join("/")}`;
+                        setCurrentPath(path);
+                      }}
+                    >
+                      {crumb}
+                    </button>
+                  )}
+                </span>
+              );
+            })
+          )}
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
