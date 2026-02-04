@@ -3,7 +3,7 @@
 //! Run with: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
 //!
 //! Requirements:
-//! - PostgreSQL running with DATABASE_URL set or postgres://localhost:5432/everruns_test
+//! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:5432/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 use std::time::Duration;
