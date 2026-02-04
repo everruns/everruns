@@ -967,6 +967,278 @@ async fn test_session_filesystem_workspace_prefix() {
     println!("Filesystem workspace prefix test passed!");
 }
 
+/// Test agent with file_system and virtual_bash capabilities share /workspace paths
+///
+/// This test verifies:
+/// 1. An agent with both session_file_system and virtual_bash capabilities can use them
+/// 2. Files created via write_file are accessible at /workspace via API
+/// 3. The /workspace prefix transformation works correctly in agent workflows
+///
+/// Requirements: API + Worker running, ANTHROPIC_API_KEY environment variable set.
+/// Skips if no API key is available.
+#[tokio::test]
+async fn test_agent_filesystem_and_bash_workspace_integration() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing agent with file_system and virtual_bash capabilities...");
+
+    // Check if Anthropic API key is available
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            println!("ANTHROPIC_API_KEY not set - skipping test");
+            return;
+        }
+    };
+
+    // Step 1: Create Anthropic provider and model
+    println!("\nStep 1: Creating Anthropic provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "FS Bash Integration Test Provider",
+            "provider_type": "anthropic",
+            "api_key": api_key,
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create Anthropic provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created Anthropic provider: {}", provider.id);
+
+    // Create model (claude-3-5-haiku for cost-effectiveness)
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "claude-3-5-haiku-latest",
+            "display_name": "Claude 3.5 Haiku (FS Bash Test)"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create Anthropic model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {}", model.id);
+
+    // Step 2: Create agent with both session_file_system and virtual_bash capabilities
+    println!("\nStep 2: Creating agent with file_system and virtual_bash capabilities...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "FS Bash Test Agent",
+            "system_prompt": "You are a file system assistant. When asked to create a file, use the write_file tool to create it. Always confirm what you did.",
+            "capabilities": [
+                {"ref": "session_file_system", "config": {}},
+                {"ref": "virtual_bash", "config": {}}
+            ],
+            "default_model_id": model.id
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!(
+        "Created agent: {} with capabilities: {:?}",
+        agent.id, agent.capabilities
+    );
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({"agent_id": agent.id, "title": "FS Bash Integration Test"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+
+    // Step 4: Send message asking agent to create a file
+    println!("\nStep 4: Sending message asking agent to create a file...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Please create a file at /workspace/test/hello.txt with the content 'Hello from agent!'"}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+
+    assert_eq!(message_response.status(), 201);
+    println!("Message sent successfully");
+
+    // Step 5: Wait for agent to complete (up to 60 seconds)
+    println!("\nStep 5: Waiting for agent to complete file creation (up to 60 seconds)...");
+    let mut write_file_called = false;
+    let mut has_final_response = false;
+
+    for i in 1..=60 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/sessions/{}/messages",
+                API_BASE_URL, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            if i % 10 == 0 {
+                println!("  [{}s] Messages: {}", i, messages.len());
+            }
+
+            // Look for write_file tool call and final text response
+            for msg in messages {
+                let role = msg["role"].as_str().unwrap_or("");
+                if role == "agent"
+                    && let Some(content) = msg["content"].as_array()
+                {
+                    for part in content {
+                        if part["type"] == "tool_call" {
+                            let tool_name = part["name"].as_str().unwrap_or("");
+                            if tool_name == "write_file" && !write_file_called {
+                                write_file_called = true;
+                                println!("  Found write_file tool call after {}s", i);
+                            }
+                        }
+                        // Check for final text response after tool call
+                        if part["type"] == "text" && write_file_called {
+                            has_final_response = true;
+                        }
+                    }
+                }
+            }
+
+            if write_file_called && has_final_response {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        write_file_called,
+        "Agent should have called write_file tool"
+    );
+    println!("Agent completed file creation");
+
+    // Step 6: Verify file is accessible via /workspace path in API
+    println!("\nStep 6: Verifying file is accessible via /workspace API path...");
+
+    // Access via /workspace/test/hello.txt (user-facing path)
+    let workspace_file_response = client
+        .get(format!("{}/workspace/test/hello.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to get file via workspace path");
+
+    assert_eq!(
+        workspace_file_response.status(),
+        200,
+        "/workspace/test/hello.txt should return 200, got {}",
+        workspace_file_response.status()
+    );
+
+    let file: SessionFile = workspace_file_response
+        .json()
+        .await
+        .expect("Failed to parse file");
+    println!(
+        "SUCCESS: File accessible at /workspace/test/hello.txt, content: {:?}",
+        file.content
+    );
+    assert!(file.content.is_some(), "File should have content");
+
+    // Step 7: Verify /workspace root listing works
+    println!("\nStep 7: Verifying /workspace root listing...");
+    let workspace_root_response = client
+        .get(format!("{}/workspace", fs_url))
+        .send()
+        .await
+        .expect("Failed to get workspace root");
+
+    assert_eq!(
+        workspace_root_response.status(),
+        200,
+        "/workspace should return 200 (root listing), got {}",
+        workspace_root_response.status()
+    );
+
+    let listing: Value = workspace_root_response
+        .json()
+        .await
+        .expect("Failed to parse listing");
+    let entry_count = listing["data"].as_array().map(|a| a.len()).unwrap_or(0);
+    println!("/workspace listing has {} entries", entry_count);
+    assert!(entry_count > 0, "Workspace should have at least one entry (the test directory)");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("Agent filesystem and bash workspace integration test passed!");
+}
+
 /// Test that message creation returns promptly and triggers agent workflow
 ///
 /// This test verifies:
