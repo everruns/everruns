@@ -17,11 +17,48 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
-use bashkit::{Bash, DirEntry, ExecutionLimits, FileSystem, FileType, Metadata};
+use bashkit::{
+    Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileType, Metadata,
+    Tool as BashkitToolTrait,
+};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
+
+// ============================================================================
+// Static configuration
+// ============================================================================
+
+/// Shared execution limits for bashkit.
+fn execution_limits() -> ExecutionLimits {
+    ExecutionLimits::new()
+        .max_commands(1000)
+        .max_loop_iterations(10000)
+        .max_function_depth(100)
+        .max_input_bytes(1_000_000) // 1MB max script size
+        .max_ast_depth(100)
+        .parser_timeout(std::time::Duration::from_secs(5))
+}
+
+/// Configured bashkit tool instance with everruns settings.
+static BASHKIT_TOOL: LazyLock<BashkitTool> = LazyLock::new(|| {
+    BashkitTool::builder()
+        .username("everruns")
+        .hostname("everruns")
+        .limits(execution_limits())
+        .env("HOME", "/home/agent")
+        .env("SHELL", "/bin/bash")
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+        .env("WORKSPACE", "/workspace")
+        .build()
+});
+
+/// Tool description from bashkit library.
+static TOOL_DESCRIPTION: LazyLock<String> = LazyLock::new(|| BASHKIT_TOOL.description());
+
+/// System prompt addition from bashkit library.
+static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| BASHKIT_TOOL.system_prompt());
 
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
@@ -60,48 +97,7 @@ impl Capability for VirtualBashCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"You have access to a virtual bash shell that executes commands in an isolated environment.
-
-## Bash Tool
-
-Use the `bash` tool to execute shell commands. The environment includes:
-
-**Built-in Commands:**
-- File operations: `cat`, `ls`, `cp`, `mv`, `rm`, `mkdir`, `touch`
-- Text processing: `echo`, `printf`, `grep`, `sed`, `awk`, `jq`
-- Control flow: `if/else`, `for`, `while`, `case`
-- Variables: `export`, `set`, `unset`, `local`
-- Other: `cd`, `pwd`, `test`, `[`, `true`, `false`, `exit`, `source`
-
-**Shell Features:**
-- Pipes: `cmd1 | cmd2`
-- Redirections: `>`, `>>`, `<`, `<<<`
-- Command substitution: `$(cmd)`
-- Arithmetic: `$((1 + 2))`
-- Parameter expansion: `$VAR`, `${VAR:-default}`, `${#VAR}`
-- Glob patterns: `*.txt`, `**/*.rs`
-- Here documents: `<<EOF ... EOF`
-
-**Workspace:**
-- Session data is mounted at `/workspace`
-- Files you create with `write_file` are accessible in bash at `/workspace`
-- Files created in bash under `/workspace` are accessible via `read_file`
-- Working directory starts at `/workspace`
-- HOME is set to `/home/agent`
-
-**Limits:**
-- Maximum 1000 commands per execution
-- Maximum 10000 loop iterations
-- Maximum 100 function call depth
-- Maximum 1MB input script size
-- Parser timeout: 5 seconds
-
-**Best Practices:**
-- Use bash for complex text processing and file manipulation
-- Combine multiple operations with pipes for efficiency
-- Check exit codes for error handling: `cmd && echo "success" || echo "failed"`"#,
-        )
+        Some(&TOOL_SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -128,7 +124,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a bash command in a sandboxed environment. The session filesystem is mounted at root."
+        &TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
@@ -197,16 +193,7 @@ impl Tool for BashTool {
             file_store,
         ));
 
-        // Configure bash with resource limits
-        // Security limits added in bashkit 0.1.0: parser_timeout, max_input_bytes, max_ast_depth
-        let limits = ExecutionLimits::new()
-            .max_commands(1000)
-            .max_loop_iterations(10000)
-            .max_function_depth(100)
-            .max_input_bytes(1_000_000) // 1MB max script size
-            .max_ast_depth(100)
-            .parser_timeout(std::time::Duration::from_secs(5));
-
+        // Configure bash with resource limits (uses shared execution_limits)
         let mut bash = Bash::builder()
             .fs(session_fs)
             .cwd(working_dir)
@@ -216,7 +203,7 @@ impl Tool for BashTool {
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
             .env("WORKSPACE", "/workspace")
-            .limits(limits)
+            .limits(execution_limits())
             .build();
 
         // Execute with timeout
@@ -805,9 +792,13 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = VirtualBashCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("bash"));
-        assert!(prompt.contains("pipes"));
-        assert!(prompt.contains("/workspace"));
+        // System prompt is now provided by bashkit library
+        assert!(!prompt.is_empty(), "System prompt should not be empty");
+        // Should contain the configured username/hostname
+        assert!(
+            prompt.contains("everruns"),
+            "System prompt should contain configured identity"
+        );
     }
 
     #[test]
