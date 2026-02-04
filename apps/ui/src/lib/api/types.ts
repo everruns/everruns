@@ -1246,3 +1246,108 @@ export interface SecretInfo {
   /** When the secret was last updated */
   updated_at: string;
 }
+
+// ============================================
+// Durable Schedule types
+// ============================================
+
+/** Schedule target type */
+export type ScheduleTargetType = "workflow" | "activity";
+
+/** Schedule execution status */
+export type ScheduleExecutionStatus = "pending" | "running" | "completed" | "failed" | "skipped";
+
+/** Schedule target configuration */
+export interface ScheduleTarget {
+  type: ScheduleTargetType;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/** Scheduled task */
+export interface DurableSchedule {
+  id: string;
+  name: string;
+  description?: string;
+  cron_expression: string;
+  timezone: string;
+  target: ScheduleTarget;
+  enabled: boolean;
+  max_concurrent?: number;
+  catch_up_missed: boolean;
+  max_catch_up?: number;
+  retry_policy?: Record<string, unknown>;
+  last_triggered_at?: string;
+  next_trigger_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Schedule execution record */
+export interface ScheduleExecution {
+  id: string;
+  schedule_id: string;
+  scheduled_at: string;
+  started_at: string;
+  completed_at?: string;
+  status: ScheduleExecutionStatus;
+  workflow_id?: string;
+  task_id?: string;
+  error?: string;
+  duration_ms?: number;
+  created_at: string;
+}
+
+/** Schedule statistics */
+export interface ScheduleStats {
+  total_executions: number;
+  successful_executions: number;
+  failed_executions: number;
+  skipped_executions: number;
+  avg_duration_ms?: number;
+  last_execution_status?: ScheduleExecutionStatus;
+}
+
+/** Request to create a schedule */
+export interface CreateScheduleRequest {
+  name: string;
+  description?: string;
+  cron_expression: string;
+  timezone?: string;
+  target: ScheduleTarget;
+  enabled?: boolean;
+  max_concurrent?: number;
+  catch_up_missed?: boolean;
+  max_catch_up?: number;
+  retry_policy?: Record<string, unknown>;
+}
+
+/** Request to update a schedule */
+export interface UpdateScheduleRequest {
+  description?: string;
+  cron_expression?: string;
+  timezone?: string;
+  target?: ScheduleTarget;
+  enabled?: boolean;
+  max_concurrent?: number;
+  catch_up_missed?: boolean;
+  max_catch_up?: number;
+  retry_policy?: Record<string, unknown>;
+}
+
+/** Schedules list response */
+export interface SchedulesResponse {
+  data: DurableSchedule[];
+  total: number;
+}
+
+/** Schedule executions list response */
+export interface ScheduleExecutionsResponse {
+  data: ScheduleExecution[];
+  total: number;
+}
+
+/** Manual trigger response */
+export interface TriggerResponse {
+  execution_id: string;
+}
