@@ -132,19 +132,26 @@ just test-unit  # Runs in ~30s, no Docker needed
 
 ### Integration Tests (PostgreSQL)
 
-**Goal:** Validate API endpoints and database layer against real PostgreSQL.
+**Goal:** Validate API endpoints, repository layer, and durable execution against real PostgreSQL.
 
 **Test files:**
 - `crates/server/tests/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
 - `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
-- `crates/durable/tests/postgres_integration_test.rs` - Durable execution persistence
-- `crates/durable/tests/postgres_repository_test.rs` - Durable SQL operations
+- `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
+- `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
 
 **What to test:**
 - CRUD operations for all entities
 - Database constraints and migrations
 - Transaction handling
 - Query correctness
+- Soft-delete behavior (agents archived, not hard-deleted)
+- Append-only constraints (events cannot be deleted)
+
+**Durable test requirements:**
+- Tests using `claim_task` must register workers first via `register_test_worker()`
+- Workers must be cleaned up via `cleanup_worker()` at test end
+- This is required because `claim_task` SQL joins against `durable_workers` table
 
 ```bash
 just test-integration  # Starts Docker, runs migrations, tests
