@@ -1771,7 +1771,13 @@ mod tests {
 
         // List all schedules
         let all = store
-            .list_schedules(ScheduleFilter::default(), Pagination { limit: 100, offset: 0 })
+            .list_schedules(
+                ScheduleFilter::default(),
+                Pagination {
+                    limit: 100,
+                    offset: 0,
+                },
+            )
             .await
             .unwrap();
         assert_eq!(all.len(), 1);
@@ -1779,8 +1785,14 @@ mod tests {
         // Filter by enabled
         let enabled = store
             .list_schedules(
-                ScheduleFilter { enabled: Some(true), target_type: None },
-                Pagination { limit: 100, offset: 0 },
+                ScheduleFilter {
+                    enabled: Some(true),
+                    target_type: None,
+                },
+                Pagination {
+                    limit: 100,
+                    offset: 0,
+                },
             )
             .await
             .unwrap();
@@ -1931,5 +1943,4 @@ mod tests {
             Some(ScheduleExecutionStatus::Failed)
         );
     }
-
 }

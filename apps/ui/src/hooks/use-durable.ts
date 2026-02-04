@@ -602,12 +602,17 @@ export function useTriggerSchedule() {
     onSuccess: (_, scheduleId) => {
       queryClient.invalidateQueries({ queryKey: ["durable", "schedules"] });
       queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId] });
-      queryClient.invalidateQueries({ queryKey: ["durable", "schedule", scheduleId, "executions"] });
+      queryClient.invalidateQueries({
+        queryKey: ["durable", "schedule", scheduleId, "executions"],
+      });
     },
   });
 }
 
-export function useScheduleExecutions(scheduleId: string | undefined, params?: ListExecutionsParams) {
+export function useScheduleExecutions(
+  scheduleId: string | undefined,
+  params?: ListExecutionsParams,
+) {
   return useQuery({
     queryKey: ["durable", "schedule", scheduleId, "executions", params],
     queryFn: () => listScheduleExecutions(scheduleId!, params),

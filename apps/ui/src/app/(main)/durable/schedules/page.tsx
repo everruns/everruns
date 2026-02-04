@@ -152,9 +152,7 @@ function ScheduleRow({
               <TooltipTrigger className="text-sm text-muted-foreground">
                 {formatDistanceToNow(new Date(schedule.next_trigger_at), { addSuffix: true })}
               </TooltipTrigger>
-              <TooltipContent>
-                {new Date(schedule.next_trigger_at).toLocaleString()}
-              </TooltipContent>
+              <TooltipContent>{new Date(schedule.next_trigger_at).toLocaleString()}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -305,7 +303,10 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="grid gap-2">
           <Label>Target Type</Label>
-          <Select value={targetType} onValueChange={(v) => setTargetType(v as "workflow" | "activity")}>
+          <Select
+            value={targetType}
+            onValueChange={(v) => setTargetType(v as "workflow" | "activity")}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -359,8 +360,14 @@ export default function SchedulesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const enabledFilter = statusFilter === "active" ? true : statusFilter === "paused" ? false : undefined;
-  const { data: schedulesData, isLoading, error, refetch } = useSchedules({ enabled: enabledFilter });
+  const enabledFilter =
+    statusFilter === "active" ? true : statusFilter === "paused" ? false : undefined;
+  const {
+    data: schedulesData,
+    isLoading,
+    error,
+    refetch,
+  } = useSchedules({ enabled: enabledFilter });
 
   const pauseMutation = usePauseSchedule();
   const resumeMutation = useResumeSchedule();

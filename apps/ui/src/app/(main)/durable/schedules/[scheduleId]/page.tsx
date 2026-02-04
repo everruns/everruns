@@ -46,7 +46,11 @@ import {
   useResumeSchedule,
   useTriggerSchedule,
 } from "@/hooks";
-import type { ScheduleExecution, ScheduleExecutionStatus, UpdateScheduleRequest } from "@/lib/api/types";
+import type {
+  ScheduleExecution,
+  ScheduleExecutionStatus,
+  UpdateScheduleRequest,
+} from "@/lib/api/types";
 import {
   Clock,
   AlertTriangle,
@@ -334,12 +338,18 @@ export default function ScheduleDetailPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  const { data: schedule, isLoading: scheduleLoading, error: scheduleError, refetch } = useSchedule(scheduleId);
+  const {
+    data: schedule,
+    isLoading: scheduleLoading,
+    error: scheduleError,
+    refetch,
+  } = useSchedule(scheduleId);
   const executionsStatus = statusFilter !== "all" ? statusFilter : undefined;
-  const { data: executionsData, isLoading: executionsLoading, refetch: refetchExecutions } = useScheduleExecutions(
-    scheduleId,
-    { status: executionsStatus },
-  );
+  const {
+    data: executionsData,
+    isLoading: executionsLoading,
+    refetch: refetchExecutions,
+  } = useScheduleExecutions(scheduleId, { status: executionsStatus });
   const { data: stats, isLoading: statsLoading } = useScheduleStats(scheduleId);
 
   const pauseMutation = usePauseSchedule();
@@ -474,7 +484,10 @@ export default function ScheduleDetailPage() {
                       Edit
                     </Button>
                   </DialogTrigger>
-                  <EditScheduleDialog schedule={schedule} onClose={() => setEditDialogOpen(false)} />
+                  <EditScheduleDialog
+                    schedule={schedule}
+                    onClose={() => setEditDialogOpen(false)}
+                  />
                 </Dialog>
                 <Button
                   variant="outline"
@@ -492,7 +505,9 @@ export default function ScheduleDetailPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Cron Expression</p>
-                <code className="text-sm bg-muted px-2 py-0.5 rounded">{schedule.cron_expression}</code>
+                <code className="text-sm bg-muted px-2 py-0.5 rounded">
+                  {schedule.cron_expression}
+                </code>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Timezone</p>

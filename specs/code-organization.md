@@ -163,6 +163,93 @@ just test          # All tests (Rust + UI e2e)
 just check         # Format + lint + test
 ```
 
+### UI Component Testing
+
+Framework: Jest 30.x with React Testing Library
+
+Test files location: `apps/ui/src/__tests__/`
+
+Configuration: `apps/ui/jest.config.js`
+
+#### Test Patterns
+
+**Hook Mocking:**
+```typescript
+const mockUseSchedules = jest.fn();
+jest.mock("@/hooks/use-durable", () => ({
+  useSchedules: () => mockUseSchedules(),
+  useCreateSchedule: () => mockUseCreateSchedule(),
+}));
+
+// In beforeEach:
+mockUseSchedules.mockReturnValue({
+  data: { data: mockData, total: 10 },
+  isLoading: false,
+  error: null,
+  refetch: jest.fn(),
+});
+```
+
+**QueryClient Wrapper:**
+```typescript
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
+
+// In beforeEach:
+queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+    mutations: { retry: false },
+  },
+});
+```
+
+**Test Data Factories:**
+```typescript
+function createSchedule(overrides?: Partial<DurableSchedule>): DurableSchedule {
+  return {
+    id: "sched_123",
+    name: "Daily Backup",
+    cron_expression: "0 0 0 * * * *",
+    timezone: "UTC",
+    target: { type: "workflow", name: "backup", input: {} },
+    enabled: true,
+    ...overrides,
+  };
+}
+```
+
+**Confirm Dialog Mocking:**
+```typescript
+const mockConfirm = jest.fn();
+window.confirm = mockConfirm;
+
+// In test:
+mockConfirm.mockReturnValue(true);  // User confirms
+mockConfirm.mockReturnValue(false); // User cancels
+```
+
+#### Test Categories
+
+| Category | Focus | Example |
+|----------|-------|---------|
+| State Tests | Loading, error, empty states | `isLoading: true` |
+| Render Tests | Correct data display | Badge variants, formatted dates |
+| Interaction Tests | User actions | Button clicks, form submission |
+| Filter Tests | Search/filter behavior | Query filtering, status filter |
+| Dialog Tests | Modal interactions | Open, form fill, submit, close |
+
+#### Running UI Tests
+
+```bash
+cd apps/ui
+npm test                    # Run all tests
+npm test -- schedules       # Run tests matching pattern
+npm test -- --coverage      # With coverage report
+npm test -- --watch         # Watch mode for development
+```
+
 ## Content Types
 
 `ContentPart` enum across all layers:
