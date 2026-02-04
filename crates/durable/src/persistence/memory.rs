@@ -57,11 +57,6 @@ struct ScheduleExecutionMemState {
     row: ScheduleExecutionRow,
 }
 
-/// Rate limit window in memory
-struct RateLimitWindow {
-    count: u32,
-}
-
 /// In-memory implementation of WorkflowEventStore
 ///
 /// This is primarily for testing. It stores all data in memory and
@@ -82,7 +77,6 @@ pub struct InMemoryWorkflowEventStore {
     workers: RwLock<HashMap<String, WorkerInfo>>,
     schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
     schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
-    rate_limits: RwLock<HashMap<(i64, chrono::DateTime<chrono::Utc>), RateLimitWindow>>,
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
@@ -99,7 +93,6 @@ impl InMemoryWorkflowEventStore {
             workers: RwLock::new(HashMap::new()),
             schedules: RwLock::new(HashMap::new()),
             schedule_executions: RwLock::new(HashMap::new()),
-            rate_limits: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
         }
@@ -849,7 +842,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
         let row = ScheduleRow {
             id,
-            org_id: schedule.org_id,
             name: schedule.name,
             description: schedule.description,
             cron_expression: schedule.cron_expression,
@@ -883,15 +875,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .ok_or(StoreError::ScheduleNotFound(id))
     }
 
-    async fn get_schedule_for_org(&self, org_id: i64, id: Uuid) -> Result<ScheduleRow, StoreError> {
-        let schedules = self.schedules.read();
-        schedules
-            .get(&id)
-            .filter(|s| s.row.org_id == org_id)
-            .map(|s| s.row.clone())
-            .ok_or(StoreError::ScheduleNotFound(id))
-    }
-
     async fn list_schedules(
         &self,
         filter: ScheduleFilter,
@@ -901,9 +884,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let mut result: Vec<_> = schedules
             .values()
             .filter(|s| {
-                if filter.org_id.is_some_and(|id| s.row.org_id != id) {
-                    return false;
-                }
                 if filter.enabled.is_some_and(|e| s.row.enabled != e) {
                     return false;
                 }
@@ -926,9 +906,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let count = schedules
             .values()
             .filter(|s| {
-                if filter.org_id.is_some_and(|id| s.row.org_id != id) {
-                    return false;
-                }
                 if filter.enabled.is_some_and(|e| s.row.enabled != e) {
                     return false;
                 }
@@ -1014,11 +991,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let now = Utc::now();
         let mut schedules = self.schedules.write();
 
-        // Find due schedules, one per org (round-robin fairness)
-        let mut seen_orgs = std::collections::HashSet::new();
-        let mut claimed = Vec::new();
-
-        // Sort by org_id, then by next_trigger_at to get earliest per org
+        // Find due schedules sorted by next_trigger_at
         let mut candidates: Vec<_> = schedules
             .iter_mut()
             .filter(|(_, s)| {
@@ -1027,22 +1000,13 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                     && s.row.claimed_by.is_none()
             })
             .collect();
-        candidates.sort_by(|a, b| {
-            let org_cmp = a.1.row.org_id.cmp(&b.1.row.org_id);
-            if org_cmp != std::cmp::Ordering::Equal {
-                return org_cmp;
-            }
-            a.1.row.next_trigger_at.cmp(&b.1.row.next_trigger_at)
-        });
+        candidates.sort_by(|a, b| a.1.row.next_trigger_at.cmp(&b.1.row.next_trigger_at));
 
+        let mut claimed = Vec::new();
         for (_, state) in candidates {
             if claimed.len() >= limit as usize {
                 break;
             }
-            if seen_orgs.contains(&state.row.org_id) {
-                continue;
-            }
-            seen_orgs.insert(state.row.org_id);
             state.row.claimed_by = Some(scheduler_id.to_string());
             state.row.claimed_at = Some(now);
             claimed.push(state.row.clone());
@@ -1089,7 +1053,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
     async fn create_schedule_execution(
         &self,
-        org_id: i64,
         schedule_id: Uuid,
         scheduled_at: chrono::DateTime<Utc>,
     ) -> Result<Uuid, StoreError> {
@@ -1098,7 +1061,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
         let row = ScheduleExecutionRow {
             id,
-            org_id,
             schedule_id,
             scheduled_at,
             started_at: now,
@@ -1192,9 +1154,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let mut result: Vec<_> = executions
             .values()
             .filter(|e| {
-                if filter.org_id.is_some_and(|id| e.row.org_id != id) {
-                    return false;
-                }
                 if filter.schedule_id.is_some_and(|id| e.row.schedule_id != id) {
                     return false;
                 }
@@ -1271,55 +1230,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
     // =========================================================================
     // Rate Limit Operations
-    // =========================================================================
-
-    async fn check_and_increment_rate_limit(
-        &self,
-        org_id: i64,
-        limit: u32,
-    ) -> Result<(u32, u32), StoreError> {
-        use chrono::Timelike;
-        let now = Utc::now();
-        let window_start = now
-            .with_minute(0)
-            .and_then(|t| t.with_second(0))
-            .and_then(|t| t.with_nanosecond(0))
-            .unwrap_or(now);
-
-        let mut rate_limits = self.rate_limits.write();
-        let key = (org_id, window_start);
-        let window = rate_limits
-            .entry(key)
-            .or_insert(RateLimitWindow { count: 0 });
-        window.count += 1;
-        Ok((window.count, limit))
-    }
-
-    async fn get_rate_limit_count(&self, org_id: i64) -> Result<u32, StoreError> {
-        use chrono::Timelike;
-        let now = Utc::now();
-        let window_start = now
-            .with_minute(0)
-            .and_then(|t| t.with_second(0))
-            .and_then(|t| t.with_nanosecond(0))
-            .unwrap_or(now);
-
-        let rate_limits = self.rate_limits.read();
-        let key = (org_id, window_start);
-        Ok(rate_limits.get(&key).map(|w| w.count).unwrap_or(0))
-    }
-
-    async fn cleanup_rate_limit_windows(
-        &self,
-        older_than: chrono::DateTime<Utc>,
-    ) -> Result<u64, StoreError> {
-        let mut rate_limits = self.rate_limits.write();
-        let before_count = rate_limits.len();
-        rate_limits.retain(|(_, window_start), _| *window_start >= older_than);
-        let removed = before_count - rate_limits.len();
-        Ok(removed as u64)
-    }
-
     // =========================================================================
     // Scheduler Instance Operations
     // =========================================================================
@@ -1813,7 +1723,6 @@ mod tests {
         let store = InMemoryWorkflowEventStore::new();
 
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "test-schedule".to_string(),
             description: Some("Test description".to_string()),
             cron_expression: "*/5 * * * *".to_string(),
@@ -1833,19 +1742,17 @@ mod tests {
         let retrieved = store.get_schedule(id).await.unwrap();
 
         assert_eq!(retrieved.name, "test-schedule");
-        assert_eq!(retrieved.org_id, 1);
         assert_eq!(retrieved.cron_expression, "*/5 * * * *");
         assert_eq!(retrieved.target_type, ScheduleTargetType::Workflow);
         assert!(retrieved.enabled);
     }
 
     #[tokio::test]
-    async fn test_schedule_org_isolation() {
+    async fn test_schedule_list_and_filter() {
         let store = InMemoryWorkflowEventStore::new();
 
         let schedule = CreateScheduleRow {
-            org_id: 1,
-            name: "org1-schedule".to_string(),
+            name: "test-schedule".to_string(),
             description: None,
             cron_expression: "*/5 * * * *".to_string(),
             timezone: "UTC".to_string(),
@@ -1860,27 +1767,35 @@ mod tests {
             next_trigger_at: None,
         };
 
-        let id = store.create_schedule(schedule).await.unwrap();
+        let _id = store.create_schedule(schedule).await.unwrap();
 
-        // Can get with correct org
-        let result = store.get_schedule_for_org(1, id).await;
-        assert!(result.is_ok());
+        // List all schedules
+        let all = store
+            .list_schedules(ScheduleFilter::default(), Pagination { limit: 100, offset: 0 })
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 1);
 
-        // Cannot get with wrong org
-        let result = store.get_schedule_for_org(2, id).await;
-        assert!(matches!(result, Err(StoreError::ScheduleNotFound(_))));
+        // Filter by enabled
+        let enabled = store
+            .list_schedules(
+                ScheduleFilter { enabled: Some(true), target_type: None },
+                Pagination { limit: 100, offset: 0 },
+            )
+            .await
+            .unwrap();
+        assert_eq!(enabled.len(), 1);
     }
 
     #[tokio::test]
-    async fn test_schedule_claim_round_robin() {
+    async fn test_schedule_claim_due() {
         let store = InMemoryWorkflowEventStore::new();
         let now = Utc::now();
 
-        // Create schedules for org 1 (3 schedules)
+        // Create multiple due schedules
         for i in 0..3 {
             let schedule = CreateScheduleRow {
-                org_id: 1,
-                name: format!("org1-schedule-{}", i),
+                name: format!("schedule-{}", i),
                 description: None,
                 cron_expression: "* * * * *".to_string(),
                 timezone: "UTC".to_string(),
@@ -1897,35 +1812,13 @@ mod tests {
             store.create_schedule(schedule).await.unwrap();
         }
 
-        // Create schedule for org 2 (1 schedule)
-        let schedule = CreateScheduleRow {
-            org_id: 2,
-            name: "org2-schedule".to_string(),
-            description: None,
-            cron_expression: "* * * * *".to_string(),
-            timezone: "UTC".to_string(),
-            target_type: ScheduleTargetType::Workflow,
-            target_name: "test".to_string(),
-            target_input: serde_json::json!({}),
-            enabled: true,
-            max_concurrent: None,
-            catch_up_missed: false,
-            max_catch_up: None,
-            retry_policy: None,
-            next_trigger_at: Some(now - chrono::Duration::minutes(1)),
-        };
-        store.create_schedule(schedule).await.unwrap();
-
-        // Claim with limit 10 - should get one per org (round-robin)
+        // Claim with limit 10 - should get all 3
         let claimed = store.claim_due_schedules("scheduler-1", 10).await.unwrap();
+        assert_eq!(claimed.len(), 3);
 
-        // Should get exactly 2 (one from org 1, one from org 2)
-        assert_eq!(claimed.len(), 2);
-
-        // Verify we got one from each org
-        let org_ids: std::collections::HashSet<_> = claimed.iter().map(|s| s.org_id).collect();
-        assert!(org_ids.contains(&1));
-        assert!(org_ids.contains(&2));
+        // Second claim should get none (all claimed)
+        let claimed2 = store.claim_due_schedules("scheduler-2", 10).await.unwrap();
+        assert_eq!(claimed2.len(), 0);
     }
 
     #[tokio::test]
@@ -1935,7 +1828,6 @@ mod tests {
 
         // Create schedule
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "test-schedule".to_string(),
             description: None,
             cron_expression: "*/5 * * * *".to_string(),
@@ -1954,7 +1846,7 @@ mod tests {
 
         // Create execution
         let exec_id = store
-            .create_schedule_execution(1, schedule_id, now)
+            .create_schedule_execution(schedule_id, now)
             .await
             .unwrap();
 
@@ -1991,7 +1883,6 @@ mod tests {
 
         // Create schedule
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "test-schedule".to_string(),
             description: None,
             cron_expression: "*/5 * * * *".to_string(),
@@ -2011,7 +1902,7 @@ mod tests {
         // Create and complete some executions
         for _ in 0..3 {
             let exec_id = store
-                .create_schedule_execution(1, schedule_id, now)
+                .create_schedule_execution(schedule_id, now)
                 .await
                 .unwrap();
             store
@@ -2022,7 +1913,7 @@ mod tests {
 
         // Create a failed execution
         let exec_id = store
-            .create_schedule_execution(1, schedule_id, now)
+            .create_schedule_execution(schedule_id, now)
             .await
             .unwrap();
         store
@@ -2041,23 +1932,4 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_rate_limit() {
-        let store = InMemoryWorkflowEventStore::new();
-
-        // Increment rate limit multiple times
-        for i in 1..=5 {
-            let (count, limit) = store.check_and_increment_rate_limit(1, 1000).await.unwrap();
-            assert_eq!(count, i);
-            assert_eq!(limit, 1000);
-        }
-
-        // Check current count
-        let count = store.get_rate_limit_count(1).await.unwrap();
-        assert_eq!(count, 5);
-
-        // Different org should have 0
-        let count = store.get_rate_limit_count(2).await.unwrap();
-        assert_eq!(count, 0);
-    }
 }

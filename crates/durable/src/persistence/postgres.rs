@@ -1750,16 +1750,15 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         sqlx::query(
             r#"
             INSERT INTO durable_schedules (
-                id, org_id, name, description, cron_expression, timezone,
+                id, name, description, cron_expression, timezone,
                 target_type, target_name, target_input, enabled,
                 max_concurrent, catch_up_missed, max_catch_up, retry_policy,
                 next_trigger_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             "#,
         )
         .bind(id)
-        .bind(schedule.org_id)
         .bind(&schedule.name)
         .bind(&schedule.description)
         .bind(&schedule.cron_expression)
@@ -1788,7 +1787,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     async fn get_schedule(&self, id: Uuid) -> Result<ScheduleRow, StoreError> {
         let row = sqlx::query(
             r#"
-            SELECT id, org_id, name, description, cron_expression, timezone,
+            SELECT id, name, description, cron_expression, timezone,
                    target_type, target_name, target_input, enabled,
                    max_concurrent, catch_up_missed, max_catch_up, retry_policy,
                    last_triggered_at, next_trigger_at, claimed_by, claimed_at,
@@ -1810,32 +1809,6 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
-    async fn get_schedule_for_org(&self, org_id: i64, id: Uuid) -> Result<ScheduleRow, StoreError> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, org_id, name, description, cron_expression, timezone,
-                   target_type, target_name, target_input, enabled,
-                   max_concurrent, catch_up_missed, max_catch_up, retry_policy,
-                   last_triggered_at, next_trigger_at, claimed_by, claimed_at,
-                   created_at, updated_at
-            FROM durable_schedules
-            WHERE id = $1 AND org_id = $2
-            "#,
-        )
-        .bind(id)
-        .bind(org_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to get schedule for org: {}", e);
-            StoreError::Database(e.to_string())
-        })?
-        .ok_or(StoreError::ScheduleNotFound(id))?;
-
-        parse_schedule_row(row)
-    }
-
-    #[instrument(skip(self))]
     async fn list_schedules(
         &self,
         filter: ScheduleFilter,
@@ -1843,20 +1816,18 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     ) -> Result<Vec<ScheduleRow>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, org_id, name, description, cron_expression, timezone,
+            SELECT id, name, description, cron_expression, timezone,
                    target_type, target_name, target_input, enabled,
                    max_concurrent, catch_up_missed, max_catch_up, retry_policy,
                    last_triggered_at, next_trigger_at, claimed_by, claimed_at,
                    created_at, updated_at
             FROM durable_schedules
-            WHERE ($1::bigint IS NULL OR org_id = $1)
-              AND ($2::boolean IS NULL OR enabled = $2)
-              AND ($3::text IS NULL OR target_type = $3)
+            WHERE ($1::boolean IS NULL OR enabled = $1)
+              AND ($2::text IS NULL OR target_type = $2)
             ORDER BY created_at DESC
-            OFFSET $4 LIMIT $5
+            OFFSET $3 LIMIT $4
             "#,
         )
-        .bind(filter.org_id)
         .bind(filter.enabled)
         .bind(
             filter
@@ -1881,12 +1852,10 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             r#"
             SELECT COUNT(*) as count
             FROM durable_schedules
-            WHERE ($1::bigint IS NULL OR org_id = $1)
-              AND ($2::boolean IS NULL OR enabled = $2)
-              AND ($3::text IS NULL OR target_type = $3)
+            WHERE ($1::boolean IS NULL OR enabled = $1)
+              AND ($2::text IS NULL OR target_type = $2)
             "#,
         )
-        .bind(filter.org_id)
         .bind(filter.enabled)
         .bind(
             filter
@@ -1994,23 +1963,24 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         scheduler_id: &str,
         limit: u32,
     ) -> Result<Vec<ScheduleRow>, StoreError> {
-        // Round-robin fair scheduling: one schedule per org per batch
+        // Claim due schedules ordered by next_trigger_at
         let rows = sqlx::query(
             r#"
             WITH due_schedules AS (
-                SELECT DISTINCT ON (org_id) *
+                SELECT *
                 FROM durable_schedules
                 WHERE enabled = true
                   AND next_trigger_at <= NOW()
                   AND (claimed_by IS NULL OR claimed_at < NOW() - INTERVAL '30 seconds')
-                ORDER BY org_id, next_trigger_at
+                ORDER BY next_trigger_at
                 FOR UPDATE SKIP LOCKED
+                LIMIT $2
             )
             UPDATE durable_schedules s
             SET claimed_by = $1, claimed_at = NOW()
-            FROM (SELECT id FROM due_schedules LIMIT $2) d
+            FROM due_schedules d
             WHERE s.id = d.id
-            RETURNING s.id, s.org_id, s.name, s.description, s.cron_expression, s.timezone,
+            RETURNING s.id, s.name, s.description, s.cron_expression, s.timezone,
                       s.target_type, s.target_name, s.target_input, s.enabled,
                       s.max_concurrent, s.catch_up_missed, s.max_catch_up, s.retry_policy,
                       s.last_triggered_at, s.next_trigger_at, s.claimed_by, s.claimed_at,
@@ -2103,7 +2073,6 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     #[instrument(skip(self))]
     async fn create_schedule_execution(
         &self,
-        org_id: i64,
         schedule_id: Uuid,
         scheduled_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<Uuid, StoreError> {
@@ -2111,12 +2080,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         sqlx::query(
             r#"
-            INSERT INTO durable_schedule_executions (id, org_id, schedule_id, scheduled_at, status)
-            VALUES ($1, $2, $3, $4, 'running')
+            INSERT INTO durable_schedule_executions (id, schedule_id, scheduled_at, status)
+            VALUES ($1, $2, $3, 'running')
             "#,
         )
         .bind(id)
-        .bind(org_id)
         .bind(schedule_id)
         .bind(scheduled_at)
         .execute(&self.pool)
@@ -2134,7 +2102,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     async fn get_schedule_execution(&self, id: Uuid) -> Result<ScheduleExecutionRow, StoreError> {
         let row = sqlx::query(
             r#"
-            SELECT id, org_id, schedule_id, scheduled_at, started_at, completed_at,
+            SELECT id, schedule_id, scheduled_at, started_at, completed_at,
                    status, workflow_id, task_id, error, duration_ms, created_at
             FROM durable_schedule_executions
             WHERE id = $1
@@ -2262,17 +2230,15 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     ) -> Result<Vec<ScheduleExecutionRow>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, org_id, schedule_id, scheduled_at, started_at, completed_at,
+            SELECT id, schedule_id, scheduled_at, started_at, completed_at,
                    status, workflow_id, task_id, error, duration_ms, created_at
             FROM durable_schedule_executions
-            WHERE ($1::bigint IS NULL OR org_id = $1)
-              AND ($2::uuid IS NULL OR schedule_id = $2)
-              AND ($3::text IS NULL OR status = $3)
+            WHERE ($1::uuid IS NULL OR schedule_id = $1)
+              AND ($2::text IS NULL OR status = $2)
             ORDER BY created_at DESC
-            OFFSET $4 LIMIT $5
+            OFFSET $3 LIMIT $4
             "#,
         )
-        .bind(filter.org_id)
         .bind(filter.schedule_id)
         .bind(
             filter
@@ -2373,83 +2339,6 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             avg_duration_ms: avg_duration.map(|v| v as u64),
             last_execution_status,
         })
-    }
-
-    // =========================================================================
-    // Rate Limit Operations
-    // =========================================================================
-
-    #[instrument(skip(self))]
-    async fn check_and_increment_rate_limit(
-        &self,
-        org_id: i64,
-        limit: u32,
-    ) -> Result<(u32, u32), StoreError> {
-        let row = sqlx::query(
-            r#"
-            INSERT INTO durable_schedule_rate_limits (org_id, window_start, execution_count)
-            VALUES ($1, date_trunc('hour', NOW()), 1)
-            ON CONFLICT (org_id, window_start)
-            DO UPDATE SET execution_count = durable_schedule_rate_limits.execution_count + 1
-            RETURNING execution_count
-            "#,
-        )
-        .bind(org_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to check rate limit: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
-
-        let count: i32 = row.get("execution_count");
-        Ok((count as u32, limit))
-    }
-
-    #[instrument(skip(self))]
-    async fn get_rate_limit_count(&self, org_id: i64) -> Result<u32, StoreError> {
-        let row = sqlx::query(
-            r#"
-            SELECT COALESCE(execution_count, 0) as count
-            FROM durable_schedule_rate_limits
-            WHERE org_id = $1 AND window_start = date_trunc('hour', NOW())
-            "#,
-        )
-        .bind(org_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to get rate limit count: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
-
-        Ok(row.map(|r| r.get::<i32, _>("count") as u32).unwrap_or(0))
-    }
-
-    #[instrument(skip(self))]
-    async fn cleanup_rate_limit_windows(
-        &self,
-        older_than: chrono::DateTime<chrono::Utc>,
-    ) -> Result<u64, StoreError> {
-        let result = sqlx::query(
-            r#"
-            DELETE FROM durable_schedule_rate_limits
-            WHERE window_start < $1
-            "#,
-        )
-        .bind(older_than)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to cleanup rate limit windows: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
-
-        debug!(
-            removed = result.rows_affected(),
-            "cleaned up rate limit windows"
-        );
-        Ok(result.rows_affected())
     }
 
     // =========================================================================
@@ -2569,7 +2458,6 @@ fn parse_schedule_row(row: sqlx::postgres::PgRow) -> Result<ScheduleRow, StoreEr
 
     Ok(ScheduleRow {
         id: row.get("id"),
-        org_id: row.get("org_id"),
         name: row.get("name"),
         description: row.get("description"),
         cron_expression: row.get("cron_expression"),
@@ -2602,7 +2490,6 @@ fn parse_schedule_execution_row(
 
     Ok(ScheduleExecutionRow {
         id: row.get("id"),
-        org_id: row.get("org_id"),
         schedule_id: row.get("schedule_id"),
         scheduled_at: row.get("scheduled_at"),
         started_at: row.get("started_at"),

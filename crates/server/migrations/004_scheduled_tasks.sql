@@ -4,14 +4,10 @@
 -- Provides:
 -- - Schedule definitions with cron expressions
 -- - Execution history tracking
--- - Rate limiting per organization
 -- - Scheduler instance registration for horizontal scaling
--- - Multi-tenant isolation via org_id
 --
 -- Design decisions:
--- - org_id on all tables for multi-tenant isolation
--- - Round-robin fair scheduling across organizations
--- - Database-backed rate limits for horizontal scalability
+-- - No org_id yet - multi-tenancy deferred until entire durable engine supports it
 -- - SKIP LOCKED for multi-instance scheduler coordination
 
 -- ============================================
@@ -21,12 +17,11 @@
 
 CREATE TABLE durable_schedules (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     description TEXT,
 
     -- Cron configuration
-    cron_expression TEXT NOT NULL,  -- Standard 5 or 6 field cron
+    cron_expression TEXT NOT NULL,  -- 7-field cron (sec min hour day month day-of-week year)
     timezone TEXT NOT NULL DEFAULT 'UTC',  -- IANA timezone
 
     -- Target configuration
@@ -49,19 +44,12 @@ CREATE TABLE durable_schedules (
 
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Unique name within organization
-    CONSTRAINT uq_durable_schedules_org_name UNIQUE (org_id, name)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for organization queries
-CREATE INDEX idx_durable_schedules_org ON durable_schedules(org_id);
-
--- Index for scheduler polling with fair distribution across orgs
--- Query: SELECT DISTINCT ON (org_id) ... WHERE enabled AND next_trigger_at <= NOW()
+-- Index for scheduler polling
 CREATE INDEX idx_durable_schedules_polling
-    ON durable_schedules (org_id, next_trigger_at)
+    ON durable_schedules (next_trigger_at)
     WHERE enabled = true;
 
 -- Index for enabled schedules by next trigger time
@@ -76,7 +64,6 @@ CREATE INDEX idx_durable_schedules_next_trigger
 
 CREATE TABLE durable_schedule_executions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
     schedule_id UUID NOT NULL REFERENCES durable_schedules(id) ON DELETE CASCADE,
 
     -- Timing
@@ -101,13 +88,9 @@ CREATE TABLE durable_schedule_executions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for organization queries
-CREATE INDEX idx_durable_schedule_executions_org
-    ON durable_schedule_executions(org_id);
-
--- Index for listing executions by schedule (within org)
+-- Index for listing executions by schedule
 CREATE INDEX idx_durable_schedule_executions_schedule
-    ON durable_schedule_executions (org_id, schedule_id, created_at DESC);
+    ON durable_schedule_executions (schedule_id, created_at DESC);
 
 -- Index for counting running executions (max_concurrent enforcement)
 CREATE INDEX idx_durable_schedule_executions_running
@@ -115,24 +98,7 @@ CREATE INDEX idx_durable_schedule_executions_running
     WHERE status = 'running';
 
 -- ============================================
--- V003: Rate Limit Tracking
--- ============================================
--- Tracks execution counts per organization for rate limiting
--- Uses hourly windows with atomic increment via upsert
-
-CREATE TABLE durable_schedule_rate_limits (
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-    window_start TIMESTAMPTZ NOT NULL,  -- Truncated to hour
-    execution_count INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (org_id, window_start)
-);
-
--- Index for cleanup of old windows
-CREATE INDEX idx_durable_schedule_rate_limits_window
-    ON durable_schedule_rate_limits(window_start);
-
--- ============================================
--- V004: Scheduler Instance Registration
+-- V003: Scheduler Instance Registration
 -- ============================================
 -- Tracks active scheduler instances for monitoring and debugging
 -- Not required for coordination (handled by SKIP LOCKED)

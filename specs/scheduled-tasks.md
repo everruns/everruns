@@ -359,10 +359,10 @@ async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, S
 
 ```sql
 -- Create schedules table
+-- Note: No org_id - multi-tenancy will be added to entire durable engine in a future PR
 CREATE TABLE durable_schedules (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     description TEXT,
     cron_expression TEXT NOT NULL,
     timezone TEXT NOT NULL DEFAULT 'UTC',
@@ -379,23 +379,17 @@ CREATE TABLE durable_schedules (
     claimed_by TEXT,
     claimed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    -- Name unique within organization, not globally
-    CONSTRAINT uq_durable_schedules_org_name UNIQUE (org_id, name)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for organization queries
-CREATE INDEX idx_durable_schedules_org ON durable_schedules(org_id);
-
--- Index for scheduler polling (fair scheduling across orgs)
-CREATE INDEX idx_durable_schedules_next_trigger
-ON durable_schedules (org_id, next_trigger_at)
+-- Index for scheduler polling
+CREATE INDEX idx_durable_schedules_polling
+ON durable_schedules (next_trigger_at)
 WHERE enabled = true;
 
 -- Create executions table
 CREATE TABLE durable_schedule_executions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
     schedule_id UUID NOT NULL REFERENCES durable_schedules(id) ON DELETE CASCADE,
     scheduled_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -408,25 +402,14 @@ CREATE TABLE durable_schedule_executions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for organization queries
-CREATE INDEX idx_durable_schedule_executions_org ON durable_schedule_executions(org_id);
-
--- Index for listing executions (within org)
+-- Index for listing executions by schedule
 CREATE INDEX idx_durable_schedule_executions_schedule
-ON durable_schedule_executions (org_id, schedule_id, created_at DESC);
+ON durable_schedule_executions (schedule_id, created_at DESC);
 
 -- Index for counting running executions
 CREATE INDEX idx_durable_schedule_executions_running
 ON durable_schedule_executions (schedule_id)
 WHERE status = 'running';
-
--- Rate limit tracking table
-CREATE TABLE durable_schedule_rate_limits (
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-    window_start TIMESTAMPTZ NOT NULL,
-    execution_count INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (org_id, window_start)
-);
 
 -- Scheduler instance registration (for horizontal scaling)
 CREATE TABLE durable_scheduler_instances (
@@ -937,61 +920,11 @@ chrono-tz = "0.10"      # Timezone handling
 
 ## Multi-Tenancy
 
-All schedule resources are scoped to organizations per `specs/multitenancy.md`.
-
-### Organization Scoping
-
-Add `org_id` to all schedule tables:
-
-```sql
-CREATE TABLE durable_schedules (
-    -- ... existing fields ...
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-);
-
-CREATE INDEX idx_durable_schedules_org ON durable_schedules(org_id);
-
-CREATE TABLE durable_schedule_executions (
-    -- ... existing fields ...
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-);
-
-CREATE INDEX idx_durable_schedule_executions_org ON durable_schedule_executions(org_id);
-```
-
-### API Layer Requirements
-
-- Extract organization from authentication context
-- Filter ALL queries by `org_id`
-- Return 404 (not 403) for cross-org access attempts (prevents enumeration)
-- Schedule names are unique within an organization, not globally
-
-### Updated Data Models
-
-Add to Schedule model:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| org_id | BIGINT | FK to organizations (required) |
-
-Add to ScheduleExecution model:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| org_id | BIGINT | FK to organizations (inherited from schedule) |
+**Note**: Multi-tenancy is deferred until the entire durable engine supports it. The core durable tables (workflows, tasks, events) don't have `org_id`, so schedules are consistent with them. Multi-tenancy will be added in a future PR that updates all durable tables simultaneously.
 
 ## Resource Limits
 
-### Per-Organization Limits
-
-| Limit | Default | Description |
-|-------|---------|-------------|
-| `max_schedules_per_org` | 100 | Maximum active schedules per organization |
-| `min_cron_interval_seconds` | 60 | Minimum interval between triggers (prevents `* * * * * *`) |
-| `max_executions_per_hour` | 1000 | Rate limit on executions per organization per hour |
-| `max_catch_up_executions` | 10 | Maximum catch-up runs after downtime |
-
-### Global System Limits
+### System Limits
 
 | Limit | Default | Description |
 |-------|---------|-------------|
@@ -1000,102 +933,15 @@ Add to ScheduleExecution model:
 | `scheduler_claim_timeout_s` | 30 | Reclaim schedules from dead scheduler instances |
 | `max_pending_triggers` | 10000 | Backpressure: pause scheduling if queue exceeds this |
 
-### Enforcement Points
-
-1. **Create schedule**:
-   - Check `max_schedules_per_org` (return 429 if exceeded)
-   - Validate `min_cron_interval_seconds` (return 400 if cron interval < 60s)
-
-2. **Trigger schedule**:
-   - Check `max_executions_per_hour` rate limit (return 429 if exceeded)
-
-3. **Scheduler loop**:
-   - Check `max_pending_triggers` backpressure (pause scheduling if exceeded)
-
-### Cron Interval Validation
-
-```rust
-fn validate_cron_interval(cron_expression: &str, min_interval_seconds: u64) -> Result<(), ValidationError> {
-    let expr = CronExpression::parse(cron_expression)?;
-    let now = Utc::now();
-    let next1 = expr.next_after(now);
-    let next2 = expr.next_after(next1);
-
-    let interval = (next2 - next1).num_seconds() as u64;
-    if interval < min_interval_seconds {
-        return Err(ValidationError::CronIntervalTooShort {
-            actual: interval,
-            minimum: min_interval_seconds,
-        });
-    }
-    Ok(())
-}
-```
-
-### Rate Limit Storage (Database-Backed)
-
-Rate limits are stored in PostgreSQL for:
-- Persistence across restarts
-- Horizontal scalability (hundreds of scheduler instances)
-- Accurate counting across distributed system
-
-```sql
-CREATE TABLE durable_schedule_rate_limits (
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id),
-    window_start TIMESTAMPTZ NOT NULL,
-    execution_count INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (org_id, window_start)
-);
-
--- Atomic increment with upsert
-INSERT INTO durable_schedule_rate_limits (org_id, window_start, execution_count)
-VALUES ($1, date_trunc('hour', NOW()), 1)
-ON CONFLICT (org_id, window_start)
-DO UPDATE SET execution_count = durable_schedule_rate_limits.execution_count + 1
-RETURNING execution_count;
-```
-
-Cleanup old windows via scheduled maintenance task or PostgreSQL TTL extension.
-
-## Fairness (Cross-Organization)
-
-### Problem
-
-Organization A with 100 every-minute schedules should not starve Organization B with 1 schedule.
-
-### Solution: Round-Robin Claiming
-
-The scheduler uses round-robin claiming across organizations to ensure fair distribution:
-
-```sql
--- Fair scheduling: one schedule per org per batch
-WITH org_schedules AS (
-    SELECT DISTINCT ON (org_id) *
-    FROM durable_schedules
-    WHERE enabled = true
-      AND next_trigger_at <= NOW()
-      AND (claimed_by IS NULL OR claimed_at < NOW() - INTERVAL '30 seconds')
-    ORDER BY org_id, next_trigger_at
-    FOR UPDATE SKIP LOCKED
-)
-SELECT * FROM org_schedules LIMIT $batch_size;
-```
-
-This ensures:
-- Each organization gets at most one schedule processed per batch
-- Organizations with many due schedules don't monopolize the scheduler
-- Small organizations get their schedules processed promptly
-
 ## Horizontal Scalability
 
-The scheduler must support hundreds of control-plane instances running concurrently.
+The scheduler supports multiple control-plane instances running concurrently.
 
 ### Multi-Instance Coordination
 
 1. **Schedule claiming**: `SELECT ... FOR UPDATE SKIP LOCKED` ensures only one instance processes each due schedule
-2. **Rate limits**: Database-backed counters with atomic upsert (no Redis required)
-3. **Heartbeats**: Each scheduler instance registers in `durable_scheduler_instances` table
-4. **Leader election**: Not required - all instances are equal, work is distributed via SKIP LOCKED
+2. **Heartbeats**: Each scheduler instance registers in `durable_scheduler_instances` table
+3. **Leader election**: Not required - all instances are equal, work is distributed via SKIP LOCKED
 
 ### Scheduler Instance Registration
 
@@ -1114,8 +960,8 @@ Stale instances (no heartbeat for 60s) are ignored when reclaiming schedules.
 
 ### Load Distribution
 
-With round-robin fairness + SKIP LOCKED:
-- 100 instances can process 100 organizations simultaneously
+With SKIP LOCKED:
+- Multiple instances can claim schedules concurrently
 - No hot spots or contention
 - Linear horizontal scaling
 
@@ -1136,17 +982,17 @@ Prometheus metrics on `/metrics` endpoint - defined for future implementation:
 
 ```
 # Counters
-durable_schedule_triggers_total{org_id, status}
-durable_schedule_executions_total{org_id, status}
+durable_schedule_triggers_total{status}
+durable_schedule_executions_total{status}
 
 # Gauges
-durable_schedules_active{org_id}
+durable_schedules_active
 durable_schedules_pending_triggers
 durable_scheduler_queue_depth
 
 # Histograms
-durable_schedule_trigger_latency_seconds{org_id}
-durable_schedule_execution_duration_seconds{org_id, activity_type}
+durable_schedule_trigger_latency_seconds
+durable_schedule_execution_duration_seconds{activity_type}
 ```
 
 ### Alerting Thresholds (Future Implementation)
@@ -1171,7 +1017,6 @@ Add fail points following naming convention `{module}_{operation}_{phase}` per `
 | `postgres_complete_schedule_trigger_update` | Test partial completion scenarios |
 | `scheduler_trigger_workflow_create` | Test workflow creation failure |
 | `scheduler_trigger_activity_enqueue` | Test activity enqueue failure |
-| `scheduler_rate_limit_check` | Test rate limit enforcement under failure |
 
 ### Example Test
 
@@ -1203,7 +1048,6 @@ Add to `crates/durable/benches/`:
 |-----------|--------|-------------|
 | `scheduler_throughput` | 1000 triggers/second | Sustained trigger rate |
 | `scheduler_cold_start` | P50 < 2s | Time from due to trigger start |
-| `concurrent_orgs_fairness` | Max 10% variance | Fair distribution across orgs |
 
 ### Benchmark Implementation
 
@@ -1220,7 +1064,7 @@ fn scheduler_throughput_benchmark(c: &mut Criterion) {
     group.bench_function("trigger_1000_schedules", |b| {
         b.iter(|| {
             rt.block_on(async {
-                // Create 1000 due schedules across 100 orgs
+                // Create 1000 due schedules
                 // Measure time to process all
             })
         })
@@ -1231,17 +1075,4 @@ fn scheduler_throughput_benchmark(c: &mut Criterion) {
 
 criterion_group!(benches, scheduler_throughput_benchmark);
 criterion_main!(benches);
-```
-
-### Fairness Benchmark
-
-```rust
-// benches/scheduler_fairness.rs
-fn fairness_benchmark(c: &mut Criterion) {
-    // Create 10 orgs with varying schedule counts
-    // Org 1: 100 schedules, Org 2: 10 schedules, ..., Org 10: 1 schedule
-    // Run scheduler for 10 batches
-    // Measure executions per org
-    // Assert max variance < 10%
-}
 ```

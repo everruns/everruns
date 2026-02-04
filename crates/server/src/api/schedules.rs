@@ -412,9 +412,7 @@ pub async fn create_schedule(
     };
 
     // Create schedule row
-    // Note: org_id is hardcoded to 1 for now, would come from auth context
     let create_row = CreateScheduleRow {
-        org_id: 1, // TODO: Get from auth context
         name: req.name,
         description: req.description,
         cron_expression: req.cron_expression,
@@ -500,7 +498,6 @@ pub async fn list_schedules(
     });
 
     let filter = ScheduleFilter {
-        org_id: Some(1), // TODO: Get from auth context
         enabled: query.enabled,
         target_type,
     };
@@ -891,8 +888,8 @@ pub async fn trigger_schedule(
 ) -> Result<Json<TriggerResponse>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
 
-    // Get schedule to verify it exists and get org_id
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| match e {
+    // Get schedule to verify it exists
+    let _schedule = store.get_schedule(schedule_id).await.map_err(|e| match e {
         StoreError::ScheduleNotFound(_) => (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -912,7 +909,7 @@ pub async fn trigger_schedule(
 
     // Create execution record for manual trigger
     let execution_id = store
-        .create_schedule_execution(schedule.org_id, schedule_id, Utc::now())
+        .create_schedule_execution(schedule_id, Utc::now())
         .await
         .map_err(|e| {
             tracing::error!("Failed to create execution: {}", e);
@@ -982,7 +979,6 @@ pub async fn list_schedule_executions(
     });
 
     let filter = ScheduleExecutionFilter {
-        org_id: Some(1), // TODO: Get from auth context
         schedule_id: Some(schedule_id),
         status,
     };
@@ -1147,7 +1143,6 @@ mod tests {
     fn test_schedule_response_from_row() {
         let row = ScheduleRow {
             id: Uuid::now_v7(),
-            org_id: 1,
             name: "test-schedule".to_string(),
             description: Some("A test".to_string()),
             cron_expression: "0 * * * * * *".to_string(),
@@ -1179,7 +1174,6 @@ mod tests {
     fn test_execution_response_from_row() {
         let row = ScheduleExecutionRow {
             id: Uuid::now_v7(),
-            org_id: 1,
             schedule_id: Uuid::now_v7(),
             scheduled_at: Utc::now(),
             started_at: Utc::now(),

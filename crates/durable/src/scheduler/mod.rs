@@ -223,7 +223,7 @@ impl<S: WorkflowEventStore> DurableScheduler<S> {
         // Create execution record (already sets status to Running)
         let execution_id = self
             .store
-            .create_schedule_execution(schedule.org_id, schedule.id, scheduled_at)
+            .create_schedule_execution(schedule.id, scheduled_at)
             .await?;
 
         // Trigger the target
@@ -355,7 +355,7 @@ impl<S: WorkflowEventStore> DurableScheduler<S> {
         // Create execution record (it will be in Running status initially)
         let execution_id = self
             .store
-            .create_schedule_execution(schedule.org_id, schedule.id, scheduled_at)
+            .create_schedule_execution(schedule.id, scheduled_at)
             .await?;
 
         // Mark as skipped
@@ -428,7 +428,6 @@ mod tests {
 
         // Create a schedule that's due now
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "test-schedule".to_string(),
             description: None,
             cron_expression: "0 * * * * * *".to_string(), // every minute (7-field cron)
@@ -467,7 +466,6 @@ mod tests {
 
         // Create a schedule with max_concurrent = 1
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "limited-schedule".to_string(),
             description: None,
             cron_expression: "* * * * *".to_string(),
@@ -501,7 +499,6 @@ mod tests {
 
         // Create an activity schedule
         let schedule = CreateScheduleRow {
-            org_id: 1,
             name: "activity-schedule".to_string(),
             description: None,
             cron_expression: "* * * * *".to_string(),
@@ -567,7 +564,6 @@ mod tests {
 
         let schedule = ScheduleRow {
             id: Uuid::now_v7(),
-            org_id: 1,
             name: "test".to_string(),
             description: None,
             cron_expression: "0 0 * * * * *".to_string(), // every hour (7-field cron)

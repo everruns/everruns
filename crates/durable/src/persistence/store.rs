@@ -36,21 +36,9 @@ pub enum StoreError {
     #[error("schedule execution not found: {0}")]
     ScheduleExecutionNotFound(Uuid),
 
-    /// Rate limit exceeded
-    #[error("rate limit exceeded for org {org_id}: {current}/{limit} executions per hour")]
-    RateLimitExceeded {
-        org_id: i64,
-        current: u32,
-        limit: u32,
-    },
-
     /// Schedule limit exceeded
-    #[error("schedule limit exceeded for org {org_id}: {current}/{limit} schedules")]
-    ScheduleLimitExceeded {
-        org_id: i64,
-        current: u32,
-        limit: u32,
-    },
+    #[error("schedule limit exceeded: {current}/{limit} schedules")]
+    ScheduleLimitExceeded { current: u32, limit: u32 },
 
     /// Invalid cron expression
     #[error("invalid cron expression: {0}")]
@@ -682,15 +670,6 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Err(StoreError::ScheduleNotFound(Uuid::nil()))
     }
 
-    /// Get a schedule by ID within an organization
-    async fn get_schedule_for_org(
-        &self,
-        _org_id: i64,
-        _id: Uuid,
-    ) -> Result<ScheduleRow, StoreError> {
-        Err(StoreError::ScheduleNotFound(Uuid::nil()))
-    }
-
     /// List schedules with filtering and pagination
     async fn list_schedules(
         &self,
@@ -720,7 +699,7 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     // =========================================================================
 
     /// Claim due schedules for processing (uses SKIP LOCKED for multi-instance)
-    /// Returns schedules with next_trigger_at <= now, one per org (round-robin fairness)
+    /// Returns schedules with next_trigger_at <= now
     async fn claim_due_schedules(
         &self,
         _scheduler_id: &str,
@@ -751,7 +730,6 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Create a schedule execution record
     async fn create_schedule_execution(
         &self,
-        _org_id: i64,
         _schedule_id: Uuid,
         _scheduled_at: DateTime<Utc>,
     ) -> Result<Uuid, StoreError> {
@@ -808,33 +786,6 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Get schedule statistics
     async fn get_schedule_stats(&self, _schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
         Ok(ScheduleStats::default())
-    }
-
-    // =========================================================================
-    // Rate Limit Operations
-    // =========================================================================
-
-    /// Check and increment rate limit for an organization
-    /// Returns (current_count, limit) - caller should check if current >= limit
-    async fn check_and_increment_rate_limit(
-        &self,
-        _org_id: i64,
-        _limit: u32,
-    ) -> Result<(u32, u32), StoreError> {
-        Ok((0, _limit))
-    }
-
-    /// Get current rate limit count for an organization
-    async fn get_rate_limit_count(&self, _org_id: i64) -> Result<u32, StoreError> {
-        Ok(0)
-    }
-
-    /// Clean up old rate limit windows
-    async fn cleanup_rate_limit_windows(
-        &self,
-        _older_than: DateTime<Utc>,
-    ) -> Result<u64, StoreError> {
-        Ok(0)
     }
 
     // =========================================================================
@@ -930,7 +881,6 @@ impl std::fmt::Display for ScheduleExecutionStatus {
 #[derive(Debug, Clone)]
 pub struct ScheduleRow {
     pub id: Uuid,
-    pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub cron_expression: String,
@@ -954,7 +904,6 @@ pub struct ScheduleRow {
 /// Input for creating a schedule
 #[derive(Debug, Clone)]
 pub struct CreateScheduleRow {
-    pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub cron_expression: String,
@@ -991,7 +940,6 @@ pub struct UpdateSchedule {
 /// Filter for listing schedules
 #[derive(Debug, Clone, Default)]
 pub struct ScheduleFilter {
-    pub org_id: Option<i64>,
     pub enabled: Option<bool>,
     pub target_type: Option<ScheduleTargetType>,
 }
@@ -1000,7 +948,6 @@ pub struct ScheduleFilter {
 #[derive(Debug, Clone)]
 pub struct ScheduleExecutionRow {
     pub id: Uuid,
-    pub org_id: i64,
     pub schedule_id: Uuid,
     pub scheduled_at: DateTime<Utc>,
     pub started_at: DateTime<Utc>,
@@ -1027,7 +974,6 @@ pub struct ScheduleStats {
 /// Filter for listing schedule executions
 #[derive(Debug, Clone, Default)]
 pub struct ScheduleExecutionFilter {
-    pub org_id: Option<i64>,
     pub schedule_id: Option<Uuid>,
     pub status: Option<ScheduleExecutionStatus>,
 }
