@@ -316,7 +316,8 @@ export default function DevFilePreviewsPage() {
           </Link>
           <h1 className="text-3xl font-bold">File Preview Components</h1>
           <p className="text-muted-foreground mt-2">
-            Preview components for code, CSV, JSON, markdown, and images using Shiki syntax highlighting
+            Preview components for code, CSV, JSON, markdown, and images using Shiki syntax
+            highlighting
           </p>
           <Badge variant="outline" className="mt-2">
             Development Mode
@@ -406,7 +407,9 @@ export default function DevFilePreviewsPage() {
                     {["ts", "py", "rs", "csv", "json", "md", "png", "txt", "exe"].map((ext) => (
                       <tr key={ext} className="border-b">
                         <td className="py-1">.{ext}</td>
-                        <td className="py-1">{getPreviewType(ext, ext === "png" ? "base64" : "text")}</td>
+                        <td className="py-1">
+                          {getPreviewType(ext, ext === "png" ? "base64" : "text")}
+                        </td>
                         <td className="py-1">
                           {canPreview(ext, ext === "png" ? "base64" : "text") ? "✅" : "❌"}
                         </td>

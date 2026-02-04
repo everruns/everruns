@@ -343,7 +343,9 @@ export function FilePreview({ content, extension, encoding }: PreviewProps) {
     case "markdown":
       return <MarkdownPreview content={content} />;
     case "image":
-      return <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />;
+      return (
+        <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />
+      );
     default:
       return null;
   }

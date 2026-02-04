@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 
 // Mock streamdown to avoid ESM issues in Jest
 jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => <pre data-testid="streamdown-mock">{children}</pre>,
+  Streamdown: ({ children }: { children: string }) => (
+    <pre data-testid="streamdown-mock">{children}</pre>
+  ),
 }));
 
 jest.mock("@streamdown/code", () => ({
