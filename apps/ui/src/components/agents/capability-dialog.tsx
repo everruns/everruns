@@ -238,7 +238,9 @@ export function CapabilityDialog({
                                   )}
                                 </div>
                                 <div className="text-xs text-muted-foreground line-clamp-2">
-                                  <InlineStreamdownMessage>{cap.description}</InlineStreamdownMessage>
+                                  <InlineStreamdownMessage>
+                                    {cap.description}
+                                  </InlineStreamdownMessage>
                                 </div>
                               </div>
                             </label>

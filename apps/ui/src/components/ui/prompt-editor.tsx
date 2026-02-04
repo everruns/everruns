@@ -81,7 +81,5 @@ interface MarkdownDisplayProps {
 }
 
 export function MarkdownDisplay({ content, className }: MarkdownDisplayProps) {
-  return (
-    <StreamdownMessage className={cn("text-sm", className)}>{content}</StreamdownMessage>
-  );
+  return <StreamdownMessage className={cn("text-sm", className)}>{content}</StreamdownMessage>;
 }

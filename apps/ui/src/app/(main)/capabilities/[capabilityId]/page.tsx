@@ -149,7 +149,9 @@ export default function CapabilityDetailPage({
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <InlineStreamdownMessage className="text-muted-foreground">{capability.description}</InlineStreamdownMessage>
+              <InlineStreamdownMessage className="text-muted-foreground">
+                {capability.description}
+              </InlineStreamdownMessage>
             </CardContent>
           </Card>
 

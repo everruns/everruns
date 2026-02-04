@@ -38,7 +38,8 @@ const devPages = [
   },
   {
     title: "Streamdown Message",
-    description: "Streaming-optimized markdown renderer with GFM, code highlighting, and incomplete syntax handling",
+    description:
+      "Streaming-optimized markdown renderer with GFM, code highlighting, and incomplete syntax handling",
     href: "/dev/markdown",
     icon: FileText,
   },

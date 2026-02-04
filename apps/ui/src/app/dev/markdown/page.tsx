@@ -5,10 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
-import {
-  StreamdownMessage,
-  InlineStreamdownMessage,
-} from "@/components/chat/streamdown-message";
+import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { StreamingMessage } from "@/components/streaming-message";
 
 // Check if we're in development mode
@@ -326,15 +323,21 @@ export default function DevMarkdownPage() {
             description="Standard markdown formatting features"
           >
             <ShowcaseItem label="Text Formatting">
-              <InlineStreamdownMessage>{sampleMarkdownContent.basicFormatting}</InlineStreamdownMessage>
+              <InlineStreamdownMessage>
+                {sampleMarkdownContent.basicFormatting}
+              </InlineStreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Code Block (with Shiki highlighting)">
-              <StreamdownMessage variant="inline">{sampleMarkdownContent.codeBlock}</StreamdownMessage>
+              <StreamdownMessage variant="inline">
+                {sampleMarkdownContent.codeBlock}
+              </StreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Markdown in Markdown (code block)">
-              <StreamdownMessage variant="inline">{sampleMarkdownContent.markdownInMarkdown}</StreamdownMessage>
+              <StreamdownMessage variant="inline">
+                {sampleMarkdownContent.markdownInMarkdown}
+              </StreamdownMessage>
             </ShowcaseItem>
 
             <ShowcaseItem label="Lists">
@@ -397,7 +400,10 @@ export default function DevMarkdownPage() {
           </ShowcaseSection>
 
           {/* Usage Examples */}
-          <ShowcaseSection title="Usage in Code" description="How to use the StreamdownMessage components">
+          <ShowcaseSection
+            title="Usage in Code"
+            description="How to use the StreamdownMessage components"
+          >
             <ShowcaseItem label="Import">
               <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
                 {`import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";`}
