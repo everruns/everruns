@@ -836,6 +836,137 @@ async fn test_session_filesystem() {
     println!("Session filesystem test passed!");
 }
 
+/// Test that filesystem API handles /workspace prefix correctly
+///
+/// The file_system and virtual_bash capabilities present files to users with
+/// a /workspace prefix (e.g., /workspace/demo/a.txt), but internally store
+/// them without the prefix (e.g., /demo/a.txt). The API should handle both
+/// formats transparently.
+#[tokio::test]
+async fn test_session_filesystem_workspace_prefix() {
+    let client = reqwest::Client::new();
+
+    println!("Testing filesystem workspace prefix handling...");
+
+    // Step 1: Create an agent and session
+    println!("\nStep 1: Creating agent and session...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Workspace Test Agent",
+            "system_prompt": "Test agent"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "agent_id": agent.id,
+            "title": "Workspace Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+
+    // Step 2: Create a file at /demo/a.txt (internal path)
+    println!("\nStep 2: Creating file at internal path /demo/a.txt...");
+    let create_response = client
+        .post(format!("{}/demo/a.txt", fs_url))
+        .json(&json!({
+            "content": "hello",
+            "encoding": "text"
+        }))
+        .send()
+        .await
+        .expect("Failed to create file");
+
+    assert_eq!(create_response.status(), 201);
+    println!("File created at /demo/a.txt");
+
+    // Step 3: Access /workspace should return root listing (maps to /)
+    println!("\nStep 3: Accessing /workspace path...");
+    let workspace_response = client
+        .get(format!("{}/workspace", fs_url))
+        .send()
+        .await
+        .expect("Failed to get workspace");
+
+    // This is the bug: /workspace returns 404 instead of root listing
+    assert_eq!(
+        workspace_response.status(),
+        200,
+        "Expected 200 OK for /workspace, got {} - workspace prefix not handled",
+        workspace_response.status()
+    );
+
+    let workspace_result: Value = workspace_response
+        .json()
+        .await
+        .expect("Failed to parse workspace response");
+    assert!(
+        workspace_result.get("data").is_some(),
+        "Expected directory listing"
+    );
+    println!("/workspace returned listing successfully");
+
+    // Step 4: Access /workspace/demo should list the demo directory
+    println!("\nStep 4: Accessing /workspace/demo path...");
+    let workspace_demo_response = client
+        .get(format!("{}/workspace/demo", fs_url))
+        .send()
+        .await
+        .expect("Failed to get workspace/demo");
+
+    assert_eq!(
+        workspace_demo_response.status(),
+        200,
+        "Expected 200 OK for /workspace/demo, got {}",
+        workspace_demo_response.status()
+    );
+    println!("/workspace/demo returned listing successfully");
+
+    // Step 5: Access /workspace/demo/a.txt should return the file
+    println!("\nStep 5: Accessing /workspace/demo/a.txt...");
+    let workspace_file_response = client
+        .get(format!("{}/workspace/demo/a.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to get workspace file");
+
+    assert_eq!(
+        workspace_file_response.status(),
+        200,
+        "Expected 200 OK for /workspace/demo/a.txt, got {}",
+        workspace_file_response.status()
+    );
+
+    let file: SessionFile = workspace_file_response
+        .json()
+        .await
+        .expect("Failed to parse file");
+    assert_eq!(file.content.as_deref(), Some("hello"));
+    println!("/workspace/demo/a.txt returned file content successfully");
+
+    // Cleanup
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Filesystem workspace prefix test passed!");
+}
+
 /// Test that message creation returns promptly and triggers agent workflow
 ///
 /// This test verifies:

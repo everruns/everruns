@@ -177,13 +177,42 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-// Helper to normalize path from URL
+/// Workspace prefix used by capabilities (file_system, virtual_bash)
+const WORKSPACE_PREFIX: &str = "/workspace";
+
+/// Normalize path from URL, stripping /workspace prefix if present.
+///
+/// The file_system and virtual_bash capabilities present paths to users with
+/// a /workspace prefix (e.g., /workspace/demo/a.txt), but store them without
+/// the prefix (e.g., /demo/a.txt). This function handles that transformation
+/// so the API accepts both formats.
+///
+/// Examples:
+/// - "workspace" -> "/" (workspace root = storage root)
+/// - "workspace/demo/a.txt" -> "/demo/a.txt"
+/// - "demo/a.txt" -> "/demo/a.txt" (no prefix = pass through)
+/// - "" -> "/" (empty = root)
 fn normalize_path(path: &str) -> String {
     let path = path.trim_start_matches('/');
     if path.is_empty() {
+        return "/".to_string();
+    }
+
+    // Add leading slash for consistent handling
+    let abs_path = format!("/{}", path);
+
+    // Strip /workspace prefix if present
+    if abs_path == WORKSPACE_PREFIX {
         "/".to_string()
+    } else if let Some(stripped) = abs_path.strip_prefix(WORKSPACE_PREFIX) {
+        if stripped.starts_with('/') {
+            stripped.to_string()
+        } else {
+            // /workspacefoo is not a valid workspace path
+            abs_path
+        }
     } else {
-        format!("/{}", path)
+        abs_path
     }
 }
 
@@ -780,4 +809,59 @@ pub async fn stat_file(
         .ok_or((StatusCode::NOT_FOUND, "Path not found".to_string()))?;
 
     Ok(Json(stat))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_path_empty() {
+        assert_eq!(normalize_path(""), "/");
+    }
+
+    #[test]
+    fn test_normalize_path_root() {
+        assert_eq!(normalize_path("/"), "/");
+    }
+
+    #[test]
+    fn test_normalize_path_simple() {
+        assert_eq!(normalize_path("demo"), "/demo");
+        assert_eq!(normalize_path("/demo"), "/demo");
+    }
+
+    #[test]
+    fn test_normalize_path_nested() {
+        assert_eq!(normalize_path("demo/a.txt"), "/demo/a.txt");
+        assert_eq!(normalize_path("/demo/a.txt"), "/demo/a.txt");
+    }
+
+    #[test]
+    fn test_normalize_path_workspace_root() {
+        // /workspace maps to /
+        assert_eq!(normalize_path("workspace"), "/");
+        assert_eq!(normalize_path("/workspace"), "/");
+    }
+
+    #[test]
+    fn test_normalize_path_workspace_file() {
+        // /workspace/demo/a.txt maps to /demo/a.txt
+        assert_eq!(normalize_path("workspace/demo/a.txt"), "/demo/a.txt");
+        assert_eq!(normalize_path("/workspace/demo/a.txt"), "/demo/a.txt");
+    }
+
+    #[test]
+    fn test_normalize_path_workspace_dir() {
+        // /workspace/demo maps to /demo
+        assert_eq!(normalize_path("workspace/demo"), "/demo");
+        assert_eq!(normalize_path("/workspace/demo"), "/demo");
+    }
+
+    #[test]
+    fn test_normalize_path_workspacefoo_not_stripped() {
+        // /workspacefoo is NOT a workspace path (no slash after workspace)
+        assert_eq!(normalize_path("workspacefoo"), "/workspacefoo");
+        assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
 }
