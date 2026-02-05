@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -139,17 +139,18 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
     }
   };
 
-  // Skip "workspace" in breadcrumbs since Home icon represents it
-  const breadcrumbs = currentPath.split("/").filter(Boolean).slice(1);
+  // Normalize path and extract breadcrumbs
+  // Handle both /workspace/foo and /foo style paths
+  const normalizedPath = currentPath.startsWith("/workspace")
+    ? currentPath.slice("/workspace".length)
+    : currentPath;
+  const breadcrumbs = normalizedPath.split("/").filter(Boolean);
+  const isAtRoot = currentPath === "/workspace" || currentPath === "/" || normalizedPath === "";
 
   return (
     <Card className="h-full flex flex-col gap-0">
       <CardHeader className="pb-1">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Folder className="h-4 w-4" />
-            Workspace
-          </CardTitle>
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -243,27 +244,29 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
             <Home className="h-4 w-4" />
           </Button>
           <span className="text-muted-foreground">/</span>
-          {breadcrumbs.length === 0 ? (
-            <span className="font-medium text-foreground">workspace</span>
+          {isAtRoot ? (
+            <span className="font-medium text-foreground flex items-center gap-1">
+              <Folder className="h-3.5 w-3.5" />
+              workspace
+            </span>
           ) : (
             breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
+              // Build path from breadcrumbs - use /workspace prefix for consistency
+              const crumbPath = `/workspace/${breadcrumbs.slice(0, index + 1).join("/")}`;
               return (
                 <span key={crumb} className="flex items-center">
                   {index > 0 && <span className="text-muted-foreground mx-1">/</span>}
                   {isLast ? (
                     <span className="font-medium text-foreground flex items-center gap-1">
-                      <Folder className="h-3.5 w-3.5 text-blue-500" />
+                      <Folder className="h-3.5 w-3.5" />
                       {crumb}
                     </span>
                   ) : (
                     <button
                       type="button"
                       className="text-muted-foreground hover:text-foreground hover:underline"
-                      onClick={() => {
-                        const path = `/workspace/${breadcrumbs.slice(0, index + 1).join("/")}`;
-                        setCurrentPath(path);
-                      }}
+                      onClick={() => setCurrentPath(crumbPath)}
                     >
                       {crumb}
                     </button>
@@ -283,7 +286,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
           ) : (
             <div className="p-2">
               {/* Show parent directory link if not at workspace root */}
-              {currentPath !== "/workspace" && (
+              {!isAtRoot && (
                 <button
                   type="button"
                   className="w-full flex items-center gap-2 p-2 text-sm text-muted-foreground hover:bg-muted rounded-md"
