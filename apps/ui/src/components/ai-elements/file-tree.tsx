@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * FileTree Component (AI Elements)
+ *
+ * Styled for Slate Design System:
+ * - Sharp corners (0px radius)
+ * - Grayscale dominant with accent colors
+ * - Compact spacing for dense file trees
+ */
+
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -59,11 +68,12 @@ export const FileTree = ({
   return (
     <FileTreeContext.Provider value={{ expandedPaths, onSelect, selectedPath, togglePath }}>
       <div
-        className={cn("rounded-lg border bg-background font-mono text-sm", className)}
+        className={cn("bg-background font-mono text-sm", className)}
         role="tree"
+        aria-label="File tree"
         {...props}
       >
-        <div className="p-2">{children}</div>
+        <div className="py-1">{children}</div>
       </div>
     </FileTreeContext.Provider>
   );
@@ -108,34 +118,35 @@ export const FileTreeFolder = ({
   return (
     <FileTreeFolderContext.Provider value={{ isExpanded, name, path }}>
       <Collapsible onOpenChange={handleOpenChange} open={isExpanded}>
-        <div className={cn("", className)} role="treeitem" tabIndex={0} {...props}>
+        <div className={cn("group", className)} role="treeitem" {...props}>
           <CollapsibleTrigger asChild>
             <button
               className={cn(
-                "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-                isSelected && "bg-muted",
+                "flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors",
+                "hover:bg-muted/60",
+                isSelected && "bg-accent/20 text-accent-foreground",
               )}
               onClick={handleSelect}
               type="button"
             >
               <ChevronRightIcon
                 className={cn(
-                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  "size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150",
                   isExpanded && "rotate-90",
                 )}
               />
               <FileTreeIcon>
                 {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-blue-500" />
+                  <FolderOpenIcon className="size-4 text-amber-500" />
                 ) : (
-                  <FolderIcon className="size-4 text-blue-500" />
+                  <FolderIcon className="size-4 text-amber-500/80" />
                 )}
               </FileTreeIcon>
-              <FileTreeName>{name}</FileTreeName>
+              <FileTreeName className="font-medium">{name}</FileTreeName>
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="ml-4 border-l pl-2">{children}</div>
+            <div className="ml-3 border-l border-border/50 pl-2">{children}</div>
           </CollapsibleContent>
         </div>
       </Collapsible>
@@ -177,6 +188,7 @@ export const FileTreeFile = ({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
         onSelect?.(path);
       }
     },
@@ -187,20 +199,22 @@ export const FileTreeFile = ({
     <FileTreeFileContext.Provider value={{ name, path }}>
       <div
         className={cn(
-          "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50",
-          isSelected && "bg-muted",
+          "group flex cursor-pointer items-center gap-1.5 px-2 py-1 transition-colors",
+          "hover:bg-muted/60",
+          isSelected && "bg-accent/20 text-accent-foreground",
           className,
         )}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         role="treeitem"
         tabIndex={0}
+        aria-selected={isSelected}
         {...props}
       >
         {children ?? (
           <>
-            {/* Spacer for alignment */}
-            <span className="size-4" />
+            {/* Spacer for alignment with folder chevrons */}
+            <span className="size-3.5" />
             <FileTreeIcon>
               {icon ?? <FileIcon className="size-4 text-muted-foreground" />}
             </FileTreeIcon>
@@ -223,7 +237,7 @@ export const FileTreeIcon = ({ className, children, ...props }: FileTreeIconProp
 export type FileTreeNameProps = HTMLAttributes<HTMLSpanElement>;
 
 export const FileTreeName = ({ className, children, ...props }: FileTreeNameProps) => (
-  <span className={cn("truncate", className)} {...props}>
+  <span className={cn("truncate text-foreground/90", className)} {...props}>
     {children}
   </span>
 );
@@ -236,10 +250,14 @@ export const FileTreeActions = ({ className, children, ...props }: FileTreeActio
   // biome-ignore lint/a11y/noNoninteractiveElementInteractions: stopPropagation required for nested interactions
   // biome-ignore lint/a11y/useSemanticElements: fieldset doesn't fit this UI pattern
   <div
-    className={cn("ml-auto flex items-center gap-1", className)}
+    className={cn(
+      "ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity",
+      className,
+    )}
     onClick={stopPropagation}
     onKeyDown={stopPropagation}
     role="group"
+    aria-label="File actions"
     {...props}
   >
     {children}
