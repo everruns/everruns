@@ -17,7 +17,7 @@ The Everruns SDK provides official client libraries for building AI agent applic
 
 ## Installation
 
-<Tabs>
+<Tabs syncKey="lang">
   <TabItem label="Rust">
     Requires Rust 1.70+
 
@@ -45,7 +45,7 @@ The Everruns SDK provides official client libraries for building AI agent applic
 
 All SDKs use the `EVERRUNS_API_KEY` environment variable by default. You can also pass the API key explicitly when initializing the client.
 
-<Tabs>
+<Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
     use everruns_sdk::Client;
@@ -85,7 +85,7 @@ All SDKs use the `EVERRUNS_API_KEY` environment variable by default. You can als
 
 ### Create an Agent and Start a Session
 
-<Tabs>
+<Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
     use everruns_sdk::{Client, CreateAgentRequest, CreateSessionRequest, CreateMessageRequest};
@@ -171,7 +171,7 @@ All SDKs use the `EVERRUNS_API_KEY` environment variable by default. You can als
 
 ### Stream Events
 
-<Tabs>
+<Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
     use everruns_sdk::{Client, Event};
@@ -244,7 +244,7 @@ SDKs provide standardized error types for common API errors:
 | `RateLimitError` | Rate limit exceeded |
 | `ApiError` | General API error |
 
-<Tabs>
+<Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
     use everruns_sdk::Error;
