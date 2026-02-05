@@ -2,10 +2,28 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://docs.everruns.com",
+  vite: {
+    resolve: {
+      // Enable Starlight component imports from symlinked docs/ directory
+      alias: [
+        {
+          find: /^@astrojs\/starlight\/components$/,
+          replacement: path.resolve(
+            __dirname,
+            "node_modules/@astrojs/starlight/components.ts"
+          ),
+        },
+      ],
+    },
+  },
   integrations: [
     starlight({
       title: "Everruns",
