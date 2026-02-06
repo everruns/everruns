@@ -1,6 +1,6 @@
 // Error types for the agent loop
 
-use crate::typed_id::{AgentId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, SessionId};
 use thiserror::Error;
 
 /// Result type alias for agent loop operations
@@ -50,6 +50,10 @@ pub enum AgentLoopError {
     #[error("Agent not found: {0}")]
     AgentNotFound(AgentId),
 
+    /// Harness not found
+    #[error("Harness not found: {0}")]
+    HarnessNotFound(HarnessId),
+
     /// Session not found
     #[error("Session not found: {0}")]
     SessionNotFound(SessionId),
@@ -94,6 +98,11 @@ impl AgentLoopError {
     /// Create an agent not found error
     pub fn agent_not_found(agent_id: AgentId) -> Self {
         AgentLoopError::AgentNotFound(agent_id)
+    }
+
+    /// Create a harness not found error
+    pub fn harness_not_found(harness_id: HarnessId) -> Self {
+        AgentLoopError::HarnessNotFound(harness_id)
     }
 
     /// Create a session not found error

@@ -3,5 +3,6 @@ source: crates/core/src/events.rs
 expression: data
 ---
 {
+  "harness_id": "harness_00000000000000000000000000000005",
   "agent_id": "agent_00000000000000000000000000000004"
 }

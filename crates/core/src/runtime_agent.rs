@@ -2,10 +2,17 @@
 //
 // RuntimeAgent is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
-// - Built from an Agent entity via the `with_agent` builder method
+// - Built from a Harness and/or Agent entity via builder methods
+//
+// Prompt layering order (via prepend pattern):
+// 1. with_harness() - sets harness system_prompt + harness caps
+// 2. with_agent() - prepends agent prompt + agent caps (optional)
+// 3. with_capabilities() - prepends session caps
+// Result: [session_caps] [agent_caps] [agent_prompt] [harness_caps] [harness_prompt]
 
 use crate::agent::Agent;
 use crate::capabilities::{CapabilityRegistry, collect_capabilities, resolve_dependencies};
+use crate::harness::Harness;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -82,27 +89,34 @@ impl RuntimeAgentBuilder {
         }
     }
 
+    /// Apply a Harness's configuration to this builder.
+    ///
+    /// Sets the system prompt from the harness and applies harness capabilities.
+    /// Call this BEFORE `with_agent()` to establish the base prompt layer.
+    pub fn with_harness(self, harness: &Harness, registry: &CapabilityRegistry) -> Self {
+        let capability_ids: Vec<String> = harness
+            .capabilities
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
+
+        self.system_prompt(&harness.system_prompt)
+            .with_capabilities(&capability_ids, registry)
+    }
+
     /// Apply an Agent's configuration to this builder.
     ///
-    /// This sets the system prompt from the agent and applies the agent's
-    /// capabilities (tools and system prompt additions).
-    ///
-    /// # Arguments
-    ///
-    /// * `agent` - The Agent entity to apply
-    /// * `registry` - The capability registry containing capability implementations
+    /// Prepends the agent's system prompt and capabilities on top of the
+    /// existing prompt (typically from a harness). Call after `with_harness()`.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::runtime_agent::RuntimeAgentBuilder;
-    /// use everruns_core::capabilities::CapabilityRegistry;
-    ///
-    /// let registry = CapabilityRegistry::with_builtins();
     /// let runtime_agent = RuntimeAgentBuilder::new()
+    ///     .with_harness(&harness, &registry)
     ///     .with_agent(&agent, &registry)
+    ///     .with_capabilities(&session_caps, &registry)
     ///     .model("gpt-4o")
-    ///     .temperature(0.7)
     ///     .build();
     /// ```
     pub fn with_agent(self, agent: &Agent, registry: &CapabilityRegistry) -> Self {

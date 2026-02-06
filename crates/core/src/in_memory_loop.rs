@@ -25,8 +25,8 @@ use crate::llm_driver_registry::{DriverRegistry, ProviderType};
 use crate::llm_models::LlmProviderType;
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use crate::memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryLlmProviderStore, InMemoryMessageRetriever,
-    InMemorySessionStore,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
+    InMemoryMessageRetriever, InMemorySessionStore,
 };
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
@@ -35,7 +35,7 @@ use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use crate::traits::{EventEmitter, ModelWithProvider};
 use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
-use crate::typed_id::{AgentId, SessionId, TurnId};
+use crate::typed_id::{AgentId, HarnessId, SessionId, TurnId};
 
 // ============================================================================
 // Bridging Event Emitter
@@ -311,6 +311,7 @@ impl InMemoryAgenticLoopBuilder {
     /// Build the agentic loop
     pub async fn build(self) -> Result<InMemoryAgenticLoop> {
         // Create stores
+        let harness_store = InMemoryHarnessStore::new();
         let agent_store = InMemoryAgentStore::new();
         let session_store = InMemorySessionStore::new();
         let message_retriever = InMemoryMessageRetriever::new();
@@ -323,9 +324,25 @@ impl InMemoryAgenticLoopBuilder {
             .map(|cap| AgentCapabilityConfig::new(cap.id()))
             .collect();
 
+        // Create harness
+        let harness_id = HarnessId::new();
+        let now = Utc::now();
+        let harness = crate::harness::Harness {
+            id: harness_id,
+            name: "In-Memory Harness".to_string(),
+            description: None,
+            system_prompt: self.system_prompt.clone(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            status: crate::harness::HarnessStatus::Active,
+            created_at: now,
+            updated_at: now,
+        };
+        harness_store.add_harness(harness).await;
+
         // Create agent
         let agent_id = AgentId::new();
-        let now = Utc::now();
         let agent = Agent {
             public_id: agent_id,
             internal_id: agent_id.uuid(),
@@ -348,7 +365,8 @@ impl InMemoryAgenticLoopBuilder {
         let session = Session {
             id: session_id,
             organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            agent_id,
+            harness_id,
+            agent_id: Some(agent_id),
             title: Some("In-Memory Session".to_string()),
             preview: None,
             output_preview: None,
@@ -418,6 +436,7 @@ impl InMemoryAgenticLoopBuilder {
 
         let input_atom = InputAtom::new(message_retriever.clone());
         let reason_atom = ReasonAtom::new(
+            harness_store.clone(),
             agent_store.clone(),
             session_store.clone(),
             message_retriever.clone(),
@@ -429,8 +448,10 @@ impl InMemoryAgenticLoopBuilder {
         let act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone());
 
         Ok(InMemoryAgenticLoop {
+            harness_id,
             agent_id,
             session_id,
+            harness_store,
             agent_store,
             session_store,
             message_retriever,
@@ -478,8 +499,11 @@ impl InMemoryAgenticLoopBuilder {
 ///     .await?;
 /// ```
 pub struct InMemoryAgenticLoop {
+    harness_id: HarnessId,
     agent_id: AgentId,
     session_id: SessionId,
+    #[allow(dead_code)]
+    harness_store: InMemoryHarnessStore,
     #[allow(dead_code)]
     agent_store: InMemoryAgentStore,
     #[allow(dead_code)]
@@ -492,6 +516,7 @@ pub struct InMemoryAgenticLoop {
     input_atom: Arc<InputAtom<InMemoryMessageRetriever>>,
     reason_atom: Arc<
         ReasonAtom<
+            InMemoryHarnessStore,
             InMemoryAgentStore,
             InMemorySessionStore,
             InMemoryMessageRetriever,
@@ -592,7 +617,8 @@ impl InMemoryAgenticLoop {
                         .reason_atom
                         .execute(ReasonInput {
                             context: base_context.next_exec(),
-                            agent_id: self.agent_id,
+                            harness_id: self.harness_id,
+                            agent_id: Some(self.agent_id),
                             org_id: 0,
                             mcp_tool_definitions: vec![],
                         })
@@ -625,7 +651,8 @@ impl InMemoryAgenticLoop {
                     self.act_atom
                         .execute(ActInput {
                             context: base_context.next_exec(),
-                            agent_id: self.agent_id,
+                            harness_id: self.harness_id,
+                            agent_id: Some(self.agent_id),
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
                         })

@@ -9,8 +9,8 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, ImageId, McpServerId, ModelId,
-    ProviderId, SessionId,
+    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
+    ModelId, ProviderId, SessionId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -35,6 +35,8 @@ pub struct InMemoryDatabase {
     llm_providers: RwLock<HashMap<ProviderId, LlmProviderRow>>,
     llm_models: RwLock<HashMap<ModelId, LlmModelRow>>,
     agent_capabilities: RwLock<HashMap<(AgentId, String), AgentCapabilityRow>>,
+    harnesses: RwLock<HashMap<HarnessId, HarnessRow>>,
+    harness_capabilities: RwLock<HashMap<(HarnessId, String), HarnessCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
@@ -75,6 +77,8 @@ impl Default for InMemoryDatabase {
             llm_providers: RwLock::new(HashMap::new()),
             llm_models: RwLock::new(HashMap::new()),
             agent_capabilities: RwLock::new(HashMap::new()),
+            harnesses: RwLock::new(HashMap::new()),
+            harness_capabilities: RwLock::new(HashMap::new()),
             session_files: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
@@ -533,6 +537,126 @@ impl InMemoryDatabase {
     }
 
     // ============================================
+    // Harnesses
+    // ============================================
+
+    pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
+        let now = Self::now();
+        let id = HarnessId::new();
+        let row = HarnessRow {
+            id,
+            org_id,
+            name: input.name,
+            description: input.description,
+            system_prompt: input.system_prompt,
+            default_model_id: input.default_model_id,
+            tags: input.tags,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.harnesses.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    /// Create harness with a specific ID, idempotent (returns None if exists)
+    pub async fn create_harness_with_id(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: CreateHarnessRow,
+    ) -> Result<Option<HarnessRow>> {
+        let mut harnesses = self.harnesses.write();
+        if harnesses.contains_key(&id) {
+            return Ok(None); // Already exists
+        }
+        let now = Self::now();
+        let row = HarnessRow {
+            id,
+            org_id,
+            name: input.name,
+            description: input.description,
+            system_prompt: input.system_prompt,
+            default_model_id: input.default_model_id,
+            tags: input.tags,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        harnesses.insert(id, row.clone());
+        Ok(Some(row))
+    }
+
+    pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
+        Ok(self
+            .harnesses
+            .read()
+            .get(&id)
+            .filter(|h| h.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
+        let harnesses = self.harnesses.read();
+        let mut result: Vec<_> = harnesses
+            .values()
+            .filter(|h| h.org_id == org_id && h.status == "active")
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn update_harness(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: UpdateHarness,
+    ) -> Result<Option<HarnessRow>> {
+        let mut harnesses = self.harnesses.write();
+        if let Some(harness) = harnesses.get_mut(&id).filter(|h| h.org_id == org_id) {
+            if let Some(name) = input.name {
+                harness.name = name;
+            }
+            if let Some(description) = input.description {
+                harness.description = Some(description);
+            }
+            if let Some(system_prompt) = input.system_prompt {
+                harness.system_prompt = system_prompt;
+            }
+            if let Some(default_model_id) = input.default_model_id {
+                harness.default_model_id = Some(default_model_id);
+            }
+            if let Some(tags) = input.tags {
+                harness.tags = tags;
+            }
+            if let Some(status) = input.status {
+                harness.status = status;
+            }
+            harness.updated_at = Self::now();
+            return Ok(Some(harness.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        // Delete capabilities first
+        {
+            let mut caps = self.harness_capabilities.write();
+            let to_remove: Vec<_> = caps.keys().filter(|(hid, _)| *hid == id).cloned().collect();
+            for key in to_remove {
+                caps.remove(&key);
+            }
+        }
+        // Only delete if org_id matches
+        let mut harnesses = self.harnesses.write();
+        if harnesses.get(&id).map(|h| h.org_id) == Some(org_id) {
+            return Ok(harnesses.remove(&id).is_some());
+        }
+        Ok(false)
+    }
+
+    // ============================================
     // Sessions
     // ============================================
 
@@ -542,6 +666,7 @@ impl InMemoryDatabase {
         let row = SessionRow {
             id,
             org_id: input.org_id,
+            harness_id: input.harness_id,
             agent_id: input.agent_id,
             title: input.title,
             tags: input.tags,
@@ -601,7 +726,7 @@ impl InMemoryDatabase {
                 // Filter by org_id
                 s.org_id == org_id
                     // Optionally filter by agent_id
-                    && agent_id.is_none_or(|aid| s.agent_id == aid)
+                    && agent_id.is_none_or(|aid| s.agent_id == Some(aid))
             })
             .cloned()
             .collect();
@@ -1515,6 +1640,62 @@ impl InMemoryDatabase {
             .write()
             .remove(&(agent_id, capability_id.to_string()))
             .is_some())
+    }
+
+    // ============================================
+    // Harness Capabilities
+    // ============================================
+
+    pub async fn get_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let harness_id = HarnessId::from_uuid(harness_id);
+        let caps = self.harness_capabilities.read();
+        let mut result: Vec<_> = caps
+            .iter()
+            .filter(|((hid, _), _)| *hid == harness_id)
+            .map(|(_, c)| c.clone())
+            .collect();
+        result.sort_by_key(|c| c.position);
+        Ok(result)
+    }
+
+    pub async fn set_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let harness_id = HarnessId::from_uuid(harness_id);
+        let now = Self::now();
+        let mut caps = self.harness_capabilities.write();
+
+        // Remove existing capabilities for this harness
+        let to_remove: Vec<_> = caps
+            .keys()
+            .filter(|(hid, _)| *hid == harness_id)
+            .cloned()
+            .collect();
+        for key in to_remove {
+            caps.remove(&key);
+        }
+
+        // Add new capabilities
+        let mut result = Vec::new();
+        for (capability_id, position, config) in capabilities.into_iter() {
+            let row = HarnessCapabilityRow {
+                id: Uuid::now_v7(),
+                harness_id,
+                capability_id: capability_id.clone(),
+                position,
+                config,
+                created_at: now,
+            };
+            caps.insert((harness_id, capability_id), row.clone());
+            result.push(row);
+        }
+
+        Ok(result)
     }
 
     // ============================================
@@ -2454,7 +2635,8 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
-                agent_id: agent.id,
+                harness_id: None,
+                agent_id: Some(agent.id),
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
@@ -2498,7 +2680,8 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
-                agent_id: agent.id,
+                harness_id: None,
+                agent_id: Some(agent.id),
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
@@ -2557,7 +2740,8 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
-                agent_id: agent.id,
+                harness_id: None,
+                agent_id: Some(agent.id),
                 title: None,
                 tags: vec![],
                 model_id: None,
@@ -2613,7 +2797,8 @@ mod tests {
         for i in 0..15 {
             db.create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
-                agent_id: agent.id,
+                harness_id: None,
+                agent_id: Some(agent.id),
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,
@@ -2694,7 +2879,8 @@ mod tests {
         for i in 1..=5 {
             db.create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
-                agent_id: agent.id,
+                harness_id: None,
+                agent_id: Some(agent.id),
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,

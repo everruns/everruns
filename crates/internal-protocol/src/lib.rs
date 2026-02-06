@@ -300,6 +300,62 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
     }
 }
 
+/// Convert schemas Harness to proto Harness
+pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness {
+    proto::Harness {
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
+        name: value.name.clone(),
+        description: value.description.clone().unwrap_or_default(),
+        system_prompt: value.system_prompt.clone(),
+        default_model_id: value
+            .default_model_id
+            .map(|id| uuid_to_proto_uuid(id.uuid())),
+        status: value.status.to_string(),
+        created_at: Some(datetime_to_proto_timestamp(value.created_at)),
+        updated_at: Some(datetime_to_proto_timestamp(value.updated_at)),
+        capability_ids: value
+            .capabilities
+            .iter()
+            .map(|c| c.capability_id().to_string())
+            .collect(),
+    }
+}
+
+/// Convert proto Harness to schemas Harness
+pub fn proto_harness_to_schema(
+    value: proto::Harness,
+) -> Result<everruns_core::Harness, ConversionError> {
+    let id_str = value
+        .id
+        .as_ref()
+        .map(|u| format!("harness_{}", u.value.replace("-", "")))
+        .unwrap_or_default();
+    let model_id_str = value
+        .default_model_id
+        .as_ref()
+        .map(|u| format!("model_{}", u.value.replace("-", "")));
+
+    let capabilities: Vec<serde_json::Value> = value
+        .capability_ids
+        .iter()
+        .map(|id| serde_json::json!({"ref": id, "config": {}}))
+        .collect();
+
+    let json = serde_json::json!({
+        "id": id_str,
+        "name": value.name,
+        "description": if value.description.is_empty() { None } else { Some(&value.description) },
+        "system_prompt": value.system_prompt,
+        "default_model_id": model_id_str,
+        "tags": Vec::<String>::new(),
+        "capabilities": capabilities,
+        "status": value.status,
+        "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
+        "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
+    });
+    serde_json::from_value(json).map_err(ConversionError::from)
+}
+
 /// Convert proto Session to schemas Session using JSON
 pub fn proto_session_to_schema(
     value: proto::Session,
@@ -317,8 +373,12 @@ pub fn proto_session_to_schema(
     let agent_id_str = value
         .agent_id
         .as_ref()
-        .map(|u| format!("agent_{}", u.value.replace("-", "")))
-        .unwrap_or_default();
+        .map(|u| format!("agent_{}", u.value.replace("-", "")));
+    let harness_id_str = value
+        .harness_id
+        .as_ref()
+        .map(|u| format!("harness_{}", u.value.replace("-", "")))
+        .unwrap_or_else(|| format!("harness_{}", uuid::Uuid::nil().simple()));
     let model_id_str = value
         .default_model_id
         .as_ref()
@@ -326,6 +386,7 @@ pub fn proto_session_to_schema(
 
     let json = serde_json::json!({
         "id": id_str,
+        "harness_id": harness_id_str,
         "agent_id": agent_id_str,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
         "tags": tags,
@@ -342,7 +403,7 @@ pub fn proto_session_to_schema(
 pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session {
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
-        agent_id: Some(uuid_to_proto_uuid(value.agent_id.uuid())),
+        agent_id: value.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         title: value.title.clone().unwrap_or_default(),
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
@@ -354,6 +415,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .iter()
             .filter_map(|c| serde_json::to_string(c).ok())
             .collect(),
+        harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
     }
 }
 

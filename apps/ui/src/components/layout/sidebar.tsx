@@ -35,12 +35,14 @@ import {
   Workflow,
   Building2,
   Check,
+  Shield,
 } from "lucide-react";
 
 const isDev = process.env.NODE_ENV === "development";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },

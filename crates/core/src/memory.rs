@@ -6,11 +6,12 @@
 // - Quick prototyping
 
 use crate::agent::Agent;
+use crate::harness::Harness;
 use crate::llm_models::LlmProviderType;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
-use crate::typed_id::{AgentId, EventId, MessageId, ModelId, SessionId};
+use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
-use crate::traits::{AgentStore, LlmProviderStore, SessionStore, ToolExecutor};
+use crate::traits::{AgentStore, HarnessStore, LlmProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
 
 // ============================================================================
@@ -181,6 +182,40 @@ impl InMemoryAgentStore {
 impl AgentStore for InMemoryAgentStore {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
+    }
+}
+
+// ============================================================================
+// InMemoryHarnessStore - Stores harnesses in memory
+// ============================================================================
+
+/// In-memory harness store
+///
+/// Stores harnesses in a HashMap keyed by harness ID.
+/// Useful for testing and examples where you want to configure harnesses without a database.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryHarnessStore {
+    harnesses: Arc<RwLock<HashMap<HarnessId, Harness>>>,
+}
+
+impl InMemoryHarnessStore {
+    /// Create a new in-memory harness store
+    pub fn new() -> Self {
+        Self {
+            harnesses: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Add a harness to the store
+    pub async fn add_harness(&self, harness: Harness) {
+        self.harnesses.write().await.insert(harness.id, harness);
+    }
+}
+
+#[async_trait]
+impl HarnessStore for InMemoryHarnessStore {
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
+        Ok(self.harnesses.read().await.get(&harness_id).cloned())
     }
 }
 
@@ -846,7 +881,8 @@ mod tests {
                 session_id,
                 event_context,
                 ReasonStartedData {
-                    agent_id: AgentId::new(),
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: Some(AgentId::new()),
                     metadata: None,
                 },
             ))

@@ -230,6 +230,8 @@ pub async fn run(
     ));
     let capabilities_state =
         api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
+    let harnesses_state =
+        api::harnesses::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
     let agents_state =
         api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
     let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
@@ -271,6 +273,7 @@ pub async fn run(
     // Build API routes
     let mut api_routes = Router::new()
         .merge(api::agents::routes(agents_state))
+        .merge(api::harnesses::routes(harnesses_state))
         .merge(api::sessions::routes(sessions_state))
         .merge(api::messages::routes(messages_state))
         .merge(api::tool_results::routes(tool_results_state))

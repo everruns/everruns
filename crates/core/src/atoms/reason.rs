@@ -45,10 +45,10 @@ use crate::openresponses_protocol::{
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
-    AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
-    SessionStore,
+    AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
+    ResolvedImage, SessionStore,
 };
-use crate::typed_id::{AgentId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, SessionId};
 
 // ============================================================================
 // Helper Functions
@@ -98,8 +98,11 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 pub struct ReasonInput {
     /// Atom execution context
     pub context: AtomContext,
-    /// Agent ID for loading configuration
-    pub agent_id: AgentId,
+    /// Harness ID for loading base configuration
+    pub harness_id: HarnessId,
+    /// Agent ID for loading configuration (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<AgentId>,
     /// Organization ID for multi-tenancy tracking
     #[serde(default)]
     pub org_id: i64,
@@ -158,14 +161,16 @@ fn default_max_iterations() -> usize {
 /// 9. Stores the assistant response
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
-pub struct ReasonAtom<A, S, M, P, E>
+pub struct ReasonAtom<H, A, S, M, P, E>
 where
+    H: HarnessStore,
     A: AgentStore,
     S: SessionStore,
     M: MessageRetriever,
     P: LlmProviderStore,
     E: EventEmitter,
 {
+    harness_store: H,
     agent_store: A,
     session_store: S,
     message_retriever: M,
@@ -179,8 +184,9 @@ where
     file_store: Option<Arc<dyn crate::traits::SessionFileStore>>,
 }
 
-impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
+impl<H, A, S, M, P, E> ReasonAtom<H, A, S, M, P, E>
 where
+    H: HarnessStore,
     A: AgentStore,
     S: SessionStore,
     M: MessageRetriever,
@@ -188,7 +194,9 @@ where
     E: EventEmitter,
 {
     /// Create a new ReasonAtom
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        harness_store: H,
         agent_store: A,
         session_store: S,
         message_retriever: M,
@@ -198,6 +206,7 @@ where
         event_emitter: E,
     ) -> Self {
         Self {
+            harness_store,
             agent_store,
             session_store,
             message_retriever,
@@ -239,8 +248,9 @@ where
 }
 
 #[async_trait]
-impl<A, S, M, P, E> Atom for ReasonAtom<A, S, M, P, E>
+impl<H, A, S, M, P, E> Atom for ReasonAtom<H, A, S, M, P, E>
 where
+    H: HarnessStore + Send + Sync,
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
     M: MessageRetriever + Send + Sync,
@@ -257,6 +267,7 @@ where
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
         let ReasonInput {
             context,
+            harness_id,
             agent_id,
             org_id,
             mcp_tool_definitions,
@@ -266,7 +277,8 @@ where
             session_id = %context.session_id,
             turn_id = %context.turn_id,
             exec_id = %context.exec_id,
-            agent_id = %agent_id,
+            harness_id = %harness_id,
+            agent_id = ?agent_id,
             mcp_tools_count = %mcp_tool_definitions.len(),
             "ReasonAtom: starting LLM call"
         );
@@ -299,6 +311,7 @@ where
                 context.session_id,
                 event_context.clone(),
                 ReasonStartedData {
+                    harness_id,
                     agent_id,
                     metadata: None, // Will be populated after model resolution
                 },
@@ -316,6 +329,7 @@ where
         let result = match self
             .execute_llm_call(
                 context.session_id,
+                harness_id,
                 agent_id,
                 org_id,
                 &context,
@@ -449,8 +463,9 @@ where
     }
 }
 
-impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
+impl<H, A, S, M, P, E> ReasonAtom<H, A, S, M, P, E>
 where
+    H: HarnessStore + Send + Sync,
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
     M: MessageRetriever + Send + Sync,
@@ -462,21 +477,34 @@ where
     async fn execute_llm_call(
         &self,
         session_id: SessionId,
-        agent_id: AgentId,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
         org_id: i64,
         context: &AtomContext,
         mcp_tool_definitions: &[ToolDefinition],
         trace_id: &str,
         reason_span_id: &str,
     ) -> Result<ReasonResult> {
-        // 1. Retrieve agent
-        let agent = self
-            .agent_store
-            .get_agent(agent_id)
+        // 1. Retrieve harness
+        let harness = self
+            .harness_store
+            .get_harness(harness_id)
             .await?
-            .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?;
+            .ok_or_else(|| AgentLoopError::harness_not_found(harness_id))?;
 
-        // 2. Retrieve session
+        // 2. Retrieve agent (optional)
+        let agent = if let Some(agent_id) = agent_id {
+            Some(
+                self.agent_store
+                    .get_agent(agent_id)
+                    .await?
+                    .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?,
+            )
+        } else {
+            None
+        };
+
+        // 3. Retrieve session
         let session = self
             .session_store
             .get_session(session_id)
@@ -498,21 +526,29 @@ where
             .and_then(|m| m.controls.as_ref())
             .and_then(|c| c.model_id);
 
-        // 5. Resolve model using chain: controls.model_id > session.model_id > agent.default_model_id
+        // 5. Resolve model: controls > session > agent > harness
+        let agent_model_id = agent.as_ref().and_then(|a| a.default_model_id);
         let (model_with_provider, resolved_model_id) = self
-            .resolve_model(controls_model_id, session.model_id, agent.default_model_id)
+            .resolve_model(
+                controls_model_id,
+                session.model_id,
+                agent_model_id,
+                harness.default_model_id,
+            )
             .await?;
 
-        // 6. Build runtime agent from agent with capabilities applied
-        // Then apply session-level capabilities (additive to agent capabilities)
-        // Also include MCP tool definitions that were pre-resolved by control-plane
+        // 6. Build runtime agent: harness (base) → agent (optional) → session caps
         let session_capability_ids: Vec<String> = session
             .capabilities
             .iter()
             .map(|cap| cap.capability_id().to_string())
             .collect();
-        let mut builder = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &self.capability_registry)
+        let mut builder =
+            RuntimeAgentBuilder::new().with_harness(&harness, &self.capability_registry);
+        if let Some(ref agent) = agent {
+            builder = builder.with_agent(agent, &self.capability_registry);
+        }
+        builder = builder
             .with_capabilities(&session_capability_ids, &self.capability_registry)
             .tools(mcp_tool_definitions.iter().cloned())
             .model(&model_with_provider.model);
@@ -523,10 +559,15 @@ where
         }
 
         // 6b. Read AGENTS.md if agent_instructions capability is enabled
-        let has_agent_instructions =
-            agent.capabilities.iter().any(|c| {
-                c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
-            }) || session_capability_ids
+        let has_agent_instructions = agent
+            .as_ref()
+            .map(|a| {
+                a.capabilities.iter().any(|c| {
+                    c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
+                })
+            })
+            .unwrap_or(false)
+            || session_capability_ids
                 .iter()
                 .any(|id| id == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID);
 
@@ -620,10 +661,13 @@ where
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", session_id.to_string())
-            .with_metadata("agent_id", agent_id.to_string())
+            .with_metadata("harness_id", harness_id.to_string())
             .with_metadata("turn_id", context.turn_id.to_string())
             .with_metadata("exec_id", context.exec_id.to_string())
             .with_metadata("org_id", format!("org_{:032x}", org_id));
+        if let Some(agent_id) = agent_id {
+            llm_config_builder = llm_config_builder.with_metadata("agent_id", agent_id.to_string());
+        }
 
         // Add model_id if we have one (not available for system default model)
         if let Some(model_id) = &resolved_model_id {
@@ -1181,42 +1225,31 @@ where
         })
     }
 
-    /// Resolve model using priority chain
-    /// Resolve model and return both the ModelWithProvider and the resolved model_id (if known)
+    /// Resolve model using priority chain: controls > session > agent > harness > system default
     async fn resolve_model(
         &self,
         controls_model_id: Option<crate::typed_id::ModelId>,
         session_model_id: Option<crate::typed_id::ModelId>,
         agent_model_id: Option<crate::typed_id::ModelId>,
+        harness_model_id: Option<crate::typed_id::ModelId>,
     ) -> Result<(ModelWithProvider, Option<crate::typed_id::ModelId>)> {
-        // Try controls.model_id first (highest priority)
-        if let Some(model_id) = controls_model_id
-            && let Some(model_with_provider) = self
+        // Try in priority order: controls > session > agent > harness
+        for model_id in [
+            controls_model_id,
+            session_model_id,
+            agent_model_id,
+            harness_model_id,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(model_with_provider) = self
                 .provider_store
                 .get_model_with_provider(model_id)
                 .await?
-        {
-            return Ok((model_with_provider, Some(model_id)));
-        }
-
-        // Try session.model_id second
-        if let Some(model_id) = session_model_id
-            && let Some(model_with_provider) = self
-                .provider_store
-                .get_model_with_provider(model_id)
-                .await?
-        {
-            return Ok((model_with_provider, Some(model_id)));
-        }
-
-        // Try agent.default_model_id third
-        if let Some(model_id) = agent_model_id
-            && let Some(model_with_provider) = self
-                .provider_store
-                .get_model_with_provider(model_id)
-                .await?
-        {
-            return Ok((model_with_provider, Some(model_id)));
+            {
+                return Ok((model_with_provider, Some(model_id)));
+            }
         }
 
         // Fall back to system default model (no model_id available)

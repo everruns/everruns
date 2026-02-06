@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, ModelId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -68,9 +68,13 @@ pub struct Session {
     /// Organization this session belongs to (format: org_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "org_00000000000000000000000000000001"))]
     pub organization_id: String,
-    /// ID of the agent working in this session (format: agent_{32-hex}).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
-    pub agent_id: AgentId,
+    /// ID of the harness for this session (format: harness_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
+    pub harness_id: HarnessId,
+    /// ID of the agent working in this session (format: agent_{32-hex}). Optional.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: Option<AgentId>,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

@@ -68,6 +68,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -77,11 +78,13 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
+    const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
+    expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
     expect(settingsLink).toHaveAttribute("href", "/settings");
@@ -90,10 +93,8 @@ describe("Sidebar", () => {
   it("does not render legacy navigation items", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("Harnesses")).not.toBeInTheDocument();
     expect(screen.queryByText("Runs")).not.toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /harnesses/i })).not.toBeInTheDocument();
   });
 
   it("highlights the active navigation item", () => {
@@ -118,7 +119,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Everruns v0.1.0")).toBeInTheDocument();
   });
 
-  it("has exactly 4 navigation items", () => {
+  it("has exactly 5 navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
@@ -128,11 +129,11 @@ describe("Sidebar", () => {
         (link) =>
           link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
       );
-    // Filter to only nav items (Dashboard, Agents, Capabilities, Settings)
-    const navItems = ["Dashboard", "Agents", "Capabilities", "Settings"];
+    // Filter to only nav items (Dashboard, Harnesses, Agents, Capabilities, Settings)
+    const navItems = ["Dashboard", "Harnesses", "Agents", "Capabilities", "Settings"];
     const foundNavLinks = navLinks.filter((link) =>
       navItems.some((item) => link.textContent?.includes(item)),
     );
-    expect(foundNavLinks).toHaveLength(4);
+    expect(foundNavLinks).toHaveLength(5);
   });
 });

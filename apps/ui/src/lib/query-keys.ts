@@ -19,6 +19,13 @@ export const queryKeys = {
     detail: (agentId: string) => ["agent", agentId] as const,
   },
 
+  // Harness queries
+  harnesses: {
+    all: ["harnesses"] as const,
+    list: () => ["harnesses"] as const,
+    detail: (harnessId: string) => ["harness", harnessId] as const,
+  },
+
   // Session queries (sessions are org-level, with optional agent filter)
   sessions: {
     all: () => ["sessions"] as const,

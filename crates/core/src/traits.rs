@@ -6,10 +6,11 @@
 // - Channel-based implementations for streaming
 
 use crate::agent::Agent;
+use crate::harness::Harness;
 use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::typed_id::{AgentId, ModelId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,6 +37,21 @@ use crate::error::Result;
 pub trait AgentStore: Send + Sync {
     /// Get an agent by ID
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
+}
+
+// ============================================================================
+// HarnessStore - For retrieving harness configurations
+// ============================================================================
+
+/// Trait for retrieving harness configurations
+///
+/// Implementations can:
+/// - Load harnesses from a database
+/// - Keep harnesses in memory for testing
+#[async_trait]
+pub trait HarnessStore: Send + Sync {
+    /// Get a harness by ID
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>>;
 }
 
 // ============================================================================

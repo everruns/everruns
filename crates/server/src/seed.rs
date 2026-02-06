@@ -8,8 +8,8 @@
 use crate::storage::{
     StorageBackend,
     models::{
-        CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
-        CreateOrganizationRow,
+        CreateAgentRow, CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow,
+        CreateMcpServerRow, CreateOrganizationRow,
     },
 };
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
@@ -44,6 +44,9 @@ mod seed_ids {
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
+
+    // Harnesses (0x600-0x6FF)
+    pub const DEFAULT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -102,7 +105,7 @@ mod seed_ids {
 
 /// Result of running a seeder
 #[derive(Debug, Default)]
-struct SeedResult {
+pub struct SeedResult {
     created: usize,
     skipped: usize,
 }
@@ -146,6 +149,72 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
                 "Default organization already exists, skipping"
             );
             result.skipped += 1;
+        }
+    }
+
+    Ok(result)
+}
+
+// ============================================
+// Harness Seeder
+// ============================================
+
+/// Seed harness definition
+struct SeedHarness {
+    id: Uuid,
+    name: &'static str,
+    description: &'static str,
+    system_prompt: &'static str,
+    tags: &'static [&'static str],
+    capabilities: &'static [&'static str],
+}
+
+/// Built-in seed harnesses
+const SEED_HARNESSES: &[SeedHarness] = &[SeedHarness {
+    id: seed_ids::DEFAULT_HARNESS,
+    name: "Default",
+    description: "Default harness with no special configuration. Provides a blank canvas for sessions.",
+    system_prompt: "You are a helpful assistant.",
+    tags: &["default", "seed"],
+    capabilities: &[],
+}];
+
+/// Seed harnesses into the database
+async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    for seed in SEED_HARNESSES {
+        let input = CreateHarnessRow {
+            name: seed.name.to_string(),
+            description: Some(seed.description.to_string()),
+            system_prompt: seed.system_prompt.to_string(),
+            default_model_id: None,
+            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        };
+
+        match db
+            .create_harness_with_id(DEFAULT_ORG_ID, seed.id.into(), input)
+            .await?
+        {
+            Some(row) => {
+                // Set capabilities if any
+                if !seed.capabilities.is_empty() {
+                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
+                        .capabilities
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+                        .collect();
+                    db.set_harness_capabilities(row.id.uuid(), cap_tuples)
+                        .await?;
+                }
+                tracing::info!(name = seed.name, id = %seed.id, "Created seed harness");
+                result.created += 1;
+            }
+            None => {
+                tracing::debug!(name = seed.name, id = %seed.id, "Harness already exists, skipping");
+                result.skipped += 1;
+            }
         }
     }
 
@@ -1125,7 +1194,7 @@ async fn run_seed_with_retry(
 /// Run all seeders in order
 /// Order: organization → providers → models → mcp_servers → agents
 /// Organization must be seeded first (all resources have org_id FK)
-async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
+pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     // Seed default organization first (all other resources depend on it)
@@ -1163,6 +1232,15 @@ async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result
         "MCP servers seeded"
     );
     result.merge(mcp_result);
+
+    // Seed harnesses (before agents, sessions may reference them)
+    let harness_result = seed_harnesses(db).await?;
+    tracing::debug!(
+        created = harness_result.created,
+        skipped = harness_result.skipped,
+        "Harnesses seeded"
+    );
+    result.merge(harness_result);
 
     // Seed agents (respects deployment grade for dev-only agents)
     let agent_result = seed_agents(db, grade).await?;

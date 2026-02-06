@@ -13,7 +13,7 @@ use axum::{
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
@@ -25,9 +25,13 @@ use utoipa::{IntoParams, ToSchema};
 /// Request to create a session
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
-    /// ID of the agent to work in this session (format: agent_{32-hex}).
-    #[schema(value_type = String, example = "agent_01933b5a00007000800000000000001")]
-    pub agent_id: AgentId,
+    /// ID of the harness for this session (format: harness_{32-hex}).
+    #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
+    pub harness_id: HarnessId,
+    /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -165,25 +169,32 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
-    // Resolve agent public_id to internal UUID for FK storage
-    let agent_row = state
-        .db
-        .get_agent_by_public_id(org.org_id, &req.agent_id.to_string())
-        .await
-        .log_internal_error_json("resolve agent")?
-        .ok_or_not_found_json("Agent")?;
+    // Resolve agent public_id to internal UUID for FK storage (if agent specified)
+    let (agent_internal_id, agent_public_id) = if let Some(ref agent_id) = req.agent_id {
+        let agent_row = state
+            .db
+            .get_agent_by_public_id(org.org_id, &agent_id.to_string())
+            .await
+            .log_internal_error_json("resolve agent")?
+            .ok_or_not_found_json("Agent")?;
 
-    let agent_public_id: AgentId = agent_row
-        .public_id
-        .parse()
-        .unwrap_or_else(|_| AgentId::from_uuid(agent_row.id.uuid()));
+        let public_id: AgentId = agent_row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| AgentId::from_uuid(agent_row.id.uuid()));
+
+        (Some(agent_row.id.uuid()), Some(public_id))
+    } else {
+        (None, None)
+    };
 
     let session = state
         .session_service
         .create(
             org.org_id,
             &org.public_id,
-            agent_row.id.uuid(),
+            req.harness_id.uuid(),
+            agent_internal_id,
             agent_public_id,
             req,
         )
@@ -456,14 +467,16 @@ pub async fn cancel_turn(
 mod tests {
     use super::*;
 
+    const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
     const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
 
     #[test]
     fn test_create_session_request_minimal() {
-        // Test with only required agent_id
-        let json = format!(r#"{{"agent_id": "{}"}}"#, TEST_AGENT_ID);
+        // Test with only required harness_id
+        let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(req.agent_id.to_string(), TEST_AGENT_ID);
+        assert_eq!(req.harness_id.to_string(), TEST_HARNESS_ID);
+        assert_eq!(req.agent_id, None);
         assert_eq!(req.title, None);
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
@@ -471,18 +484,30 @@ mod tests {
     }
 
     #[test]
-    fn test_create_session_request_missing_agent_id() {
-        // agent_id is required, so this should fail
+    fn test_create_session_request_missing_harness_id() {
+        // harness_id is required, so this should fail
         let json = r#"{}"#;
         let result: Result<CreateSessionRequest, _> = serde_json::from_str(json);
         assert!(result.is_err());
     }
 
     #[test]
+    fn test_create_session_request_with_agent_id() {
+        // agent_id is optional
+        let json = format!(
+            r#"{{"harness_id": "{}", "agent_id": "{}"}}"#,
+            TEST_HARNESS_ID, TEST_AGENT_ID
+        );
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        let expected_agent_id: AgentId = TEST_AGENT_ID.parse().unwrap();
+        assert_eq!(req.agent_id, Some(expected_agent_id));
+    }
+
+    #[test]
     fn test_create_session_request_with_title() {
         let json = format!(
-            r#"{{"agent_id": "{}", "title": "Test Session"}}"#,
-            TEST_AGENT_ID
+            r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Test Session"}}"#,
+            TEST_HARNESS_ID, TEST_AGENT_ID
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Test Session".to_string()));
@@ -494,8 +519,8 @@ mod tests {
     fn test_create_session_request_with_model_id() {
         let model_id: ModelId = "model_550e8400e29b41d4a716446655440000".parse().unwrap();
         let json = format!(
-            r#"{{"agent_id": "{}", "model_id": "{}"}}"#,
-            TEST_AGENT_ID, model_id
+            r#"{{"harness_id": "{}", "agent_id": "{}", "model_id": "{}"}}"#,
+            TEST_HARNESS_ID, TEST_AGENT_ID, model_id
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.model_id, Some(model_id));
@@ -505,8 +530,8 @@ mod tests {
     fn test_create_session_request_full() {
         let model_id: ModelId = "model_550e8400e29b41d4a716446655440001".parse().unwrap();
         let json = format!(
-            r#"{{"agent_id": "{}", "title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
-            TEST_AGENT_ID, model_id
+            r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
+            TEST_HARNESS_ID, TEST_AGENT_ID, model_id
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Full Session".to_string()));
@@ -519,13 +544,14 @@ mod tests {
     fn test_create_session_request_with_capabilities() {
         let json = format!(
             r#"{{
+                "harness_id": "{}",
                 "agent_id": "{}",
                 "capabilities": [
                     {{"ref": "current_time"}},
                     {{"ref": "web_fetch", "config": {{"timeout_ms": 30000}}}}
                 ]
             }}"#,
-            TEST_AGENT_ID
+            TEST_HARNESS_ID, TEST_AGENT_ID
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.capabilities.len(), 2);

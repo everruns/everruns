@@ -21,8 +21,8 @@ use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcImageResolver, GrpcLlmProviderStore,
-    GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
+    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -150,7 +150,7 @@ pub async fn reason_activity(
         org_id = org_id,
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
-        agent_id = %input.agent_id,
+        agent_id = ?input.agent_id,
         "Executing reason_activity"
     );
 
@@ -159,6 +159,7 @@ pub async fn reason_activity(
     let input_message_id = input.context.input_message_id;
 
     // Create atom dependencies using gRPC adapters
+    let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
     let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
     let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
     let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
@@ -174,6 +175,7 @@ pub async fn reason_activity(
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever,
@@ -296,7 +298,9 @@ pub async fn act_activity(
 
     // Load agent capabilities and register their tools
     let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-    if let Ok(Some(agent)) = agent_store.get_agent(input.agent_id).await {
+    if let Some(agent_id) = input.agent_id
+        && let Ok(Some(agent)) = agent_store.get_agent(agent_id).await
+    {
         // Extract capability IDs, filtering out MCP capabilities (handled separately)
         let builtin_cap_ids: Vec<String> = agent
             .capabilities
@@ -356,7 +360,7 @@ pub mod activity_types {
 mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
-    use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
+    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
     use serde_json::json;
     use uuid::Uuid;
@@ -385,8 +389,11 @@ mod tests {
 
         let input = ReasonInput {
             context: context.clone(),
-            agent_id: AgentId::from_uuid(
+            agent_id: Some(AgentId::from_uuid(
                 Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap(),
+            )),
+            harness_id: HarnessId::from_uuid(
+                Uuid::parse_str("990e8400-e29b-41d4-a716-446655440000").unwrap(),
             ),
             org_id: 1,
             mcp_tool_definitions: vec![],
@@ -395,7 +402,7 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: ReasonInput = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            parsed.agent_id.uuid(),
+            parsed.agent_id.unwrap().uuid(),
             Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap()
         );
     }
@@ -406,7 +413,8 @@ mod tests {
 
         let input = ActInput {
             context: context.clone(),
-            agent_id: AgentId::new(),
+            agent_id: Some(AgentId::new()),
+            harness_id: HarnessId::new(),
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "get_weather".to_string(),

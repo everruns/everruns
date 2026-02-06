@@ -25,7 +25,7 @@ use uuid::Uuid;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-use crate::typed_id::{AgentId, EventId, ExecId, MessageId, ModelId, SessionId, TurnId};
+use crate::typed_id::{AgentId, EventId, ExecId, HarnessId, MessageId, ModelId, SessionId, TurnId};
 
 // ============================================================================
 // Event Type Constants
@@ -506,8 +506,12 @@ impl OutputMessageCompletedData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasonStartedData {
-    /// Agent ID being used
-    pub agent_id: AgentId,
+    /// Harness ID being used
+    pub harness_id: HarnessId,
+
+    /// Agent ID being used (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<AgentId>,
 
     /// Metadata about the model being used
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1177,9 +1181,14 @@ pub struct TurnCancelledData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionStartedData {
-    /// Agent ID
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
-    pub agent_id: AgentId,
+    /// Harness ID
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
+    pub harness_id: HarnessId,
+
+    /// Agent ID (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: Option<AgentId>,
 
     /// Model ID if specified
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1685,7 +1694,8 @@ mod tests {
             .with_turn(turn_id, input_message_id)
             .with_exec(exec_id)
             .build(ReasonStartedData {
-                agent_id: AgentId::new(),
+                harness_id: HarnessId::from_seed(1),
+                agent_id: Some(AgentId::new()),
                 metadata: Some(ModelMetadata {
                     model: "gpt-4o".to_string(),
                     model_id: None,
@@ -2162,6 +2172,12 @@ mod contract_tests {
         ))
     }
 
+    fn test_harness_id() -> HarnessId {
+        HarnessId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0005,
+        ))
+    }
+
     // ========================================================================
     // Serialization Snapshot Tests
     // ========================================================================
@@ -2284,7 +2300,8 @@ mod contract_tests {
     #[test]
     fn snapshot_reason_started() {
         let data = ReasonStartedData {
-            agent_id: test_agent_id(),
+            harness_id: test_harness_id(),
+            agent_id: Some(test_agent_id()),
             metadata: Some(ModelMetadata {
                 model: "gpt-4o".to_string(),
                 model_id: None,
@@ -2445,7 +2462,8 @@ mod contract_tests {
     #[test]
     fn snapshot_session_started() {
         let data = SessionStartedData {
-            agent_id: test_agent_id(),
+            harness_id: test_harness_id(),
+            agent_id: Some(test_agent_id()),
             model_id: None,
         };
         with_settings!({
@@ -2620,7 +2638,8 @@ mod contract_tests {
             (
                 REASON_STARTED,
                 ReasonStartedData {
-                    agent_id: test_agent_id(),
+                    harness_id: test_harness_id(),
+                    agent_id: Some(test_agent_id()),
                     metadata: None,
                 }
                 .into(),
@@ -2643,7 +2662,8 @@ mod contract_tests {
             (
                 SESSION_STARTED,
                 SessionStartedData {
-                    agent_id: test_agent_id(),
+                    harness_id: test_harness_id(),
+                    agent_id: Some(test_agent_id()),
                     model_id: None,
                 }
                 .into(),

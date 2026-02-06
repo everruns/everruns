@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod capability;
 pub mod event;
+pub mod harness;
 pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_resolver;
@@ -17,6 +18,7 @@ pub mod usage_tracking;
 pub use agent::AgentService;
 pub use capability::CapabilityService;
 pub use event::EventService;
+pub use harness::HarnessService;
 pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use llm_resolver::{LlmResolverService, ResolvedModel};

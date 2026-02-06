@@ -803,7 +803,7 @@ mod tests {
     };
     use crate::message::Message;
     use crate::tool_types::ToolCall;
-    use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
+    use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -1040,7 +1040,8 @@ mod tests {
 
         // Start reason with context
         let started = ReasonStartedData {
-            agent_id: AgentId::from_uuid(Uuid::now_v7()),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
             metadata: None,
         };
         let event = event_with_context(
@@ -1603,7 +1604,8 @@ mod tests {
         // 2. Start reason (child of turn)
         let reason_span_id = "reason_r1";
         let reason_started = ReasonStartedData {
-            agent_id: AgentId::from_uuid(Uuid::now_v7()),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
             metadata: None,
         };
         listener
@@ -1716,7 +1718,8 @@ mod tests {
                 Some(r1),
                 Some(&turn_id.to_string()),
                 EventData::ReasonStarted(ReasonStartedData {
-                    agent_id: AgentId::from_uuid(Uuid::now_v7()),
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
                     metadata: None,
                 }),
             ))
@@ -1773,7 +1776,8 @@ mod tests {
                 Some(r2),
                 Some(&turn_id.to_string()),
                 EventData::ReasonStarted(ReasonStartedData {
-                    agent_id: AgentId::from_uuid(Uuid::now_v7()),
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
                     metadata: None,
                 }),
             ))
@@ -1849,7 +1853,8 @@ mod tests {
                 Some(r1),
                 Some(&turn_key),
                 EventData::ReasonStarted(ReasonStartedData {
-                    agent_id: AgentId::from_uuid(Uuid::now_v7()),
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
                     metadata: None,
                 }),
             ))
@@ -1983,7 +1988,8 @@ mod tests {
                 Some(r2),
                 Some(&turn_key),
                 EventData::ReasonStarted(ReasonStartedData {
-                    agent_id: AgentId::from_uuid(Uuid::now_v7()),
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: Some(AgentId::from_uuid(Uuid::now_v7())),
                     metadata: None,
                 }),
             ))

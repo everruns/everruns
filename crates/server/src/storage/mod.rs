@@ -12,6 +12,7 @@
 pub mod agent_store;
 pub mod backend;
 pub mod encryption;
+pub mod harness_store;
 pub mod llm_provider_store;
 pub mod memory;
 pub mod message_store;
@@ -31,6 +32,7 @@ pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
     generate_encryption_key,
 };
+pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};

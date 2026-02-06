@@ -15,7 +15,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::typed_id::{AgentId, MessageId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::InMemoryWorkflowEventStore;
 use std::sync::Arc;
 
@@ -40,7 +40,8 @@ pub trait AgentRunner: Send + Sync {
         &self,
         org_id: i64,
         session_id: SessionId,
-        agent_id: AgentId,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
         input_message_id: MessageId,
     ) -> Result<()>;
 

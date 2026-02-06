@@ -68,7 +68,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
         ) : (
           <div className="space-y-2">
             {recentSessions.map((session) => {
-              const agent = agentMap.get(session.agent_id);
+              const agent = session.agent_id ? agentMap.get(session.agent_id) : undefined;
               const model = session.model_id ? modelMap.get(session.model_id) : undefined;
               return (
                 <Link

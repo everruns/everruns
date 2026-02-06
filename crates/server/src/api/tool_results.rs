@@ -222,11 +222,12 @@ pub async fn submit_tool_results(
 
     // Resume the workflow by starting another run
     let runner = state.runner.clone();
+    let harness_id = session.harness_id;
     let agent_id = session.agent_id;
     let org_id = org.org_id;
     tokio::spawn(async move {
         if let Err(e) = runner
-            .start_run(org_id, session_id, agent_id, input_message_id)
+            .start_run(org_id, session_id, harness_id, agent_id, input_message_id)
             .await
         {
             tracing::error!(

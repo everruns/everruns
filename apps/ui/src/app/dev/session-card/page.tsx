@@ -52,6 +52,7 @@ const sampleSessions = {
   running: {
     id: "019234ab-cdef-7890-1234-567890abcdef",
     organization_id: "org_default",
+    harness_id: "harness-default",
     agent_id: "agent-123",
     title:
       "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
@@ -76,6 +77,7 @@ const sampleSessions = {
   idle: {
     id: "019234cd-efgh-7890-1234-567890abcdef",
     organization_id: "org_default",
+    harness_id: "harness-default",
     agent_id: "agent-123",
     title: "Completed code review for the API endpoints",
     preview: "Please review the changes in src/api/routes.ts and check for any issues",
@@ -98,6 +100,7 @@ const sampleSessions = {
   new: {
     id: "019234ef-ijkl-7890-1234-567890abcdef",
     organization_id: "org_default",
+    harness_id: "harness-default",
     agent_id: "agent-123",
     title: null,
     preview: null,
@@ -114,6 +117,7 @@ const sampleSessions = {
   withPreviewOnly: {
     id: "019234ab-wxyz-7890-1234-567890abcdef",
     organization_id: "org_default",
+    harness_id: "harness-default",
     agent_id: "agent-123",
     title: null,
     preview: "Help me debug this failing test in the authentication module",
@@ -136,6 +140,7 @@ const sampleSessions = {
   longSummary: {
     id: "019234gh-mnop-7890-1234-567890abcdef",
     organization_id: "org_default",
+    harness_id: "harness-default",
     agent_id: "agent-123",
     title: "Investigating the performance bottleneck in the database query layer",
     preview:
