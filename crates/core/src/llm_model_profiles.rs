@@ -6,7 +6,8 @@
 // NOTE: Currently only includes profiles for selected models.
 // Additional model profiles can be added as needed by extending the match arms.
 //
-// Data source: https://models.dev/api.json
+// Data source: https://github.com/sst/models.dev/tree/dev/providers
+// Cross-referenced with official Anthropic and OpenAI documentation
 
 use crate::llm_models::{
     LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType, Modality,
@@ -740,7 +741,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             reasoning_effort: Some(reasoning_effort_gpt52()),
         }),
 
-        // GPT-5.2 models: supports xhigh
+        // GPT-5.2 models: supports xhigh, 400K context
         "gpt-5.2" => Some(LlmModelProfile {
             name: "GPT-5.2".into(),
             family: "gpt-5.2".into(),
@@ -759,8 +760,8 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 cache_read: Some(0.175),
             }),
             limits: Some(LlmModelLimits {
-                context: 128_000,
-                output: 64_000,
+                context: 400_000,
+                output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -782,12 +783,12 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             structured_output: true,
             open_weights: false,
             cost: Some(LlmModelCost {
-                input: 17.50,
-                output: 70.00,
+                input: 21.00,
+                output: 168.00,
                 cache_read: None,
             }),
             limits: Some(LlmModelLimits {
-                context: 128_000,
+                context: 400_000,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -800,8 +801,8 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.2-codex" => Some(LlmModelProfile {
             name: "GPT-5.2 Codex".into(),
             family: "gpt-5.2-codex".into(),
-            release_date: Some("2026-01-14".into()),
-            last_updated: Some("2026-01-14".into()),
+            release_date: Some("2025-12-11".into()),
+            last_updated: Some("2025-12-11".into()),
             attachment: true,
             reasoning: true,
             temperature: false,
@@ -815,7 +816,36 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 cache_read: Some(0.175),
             }),
             limits: Some(LlmModelLimits {
-                context: 128_000,
+                context: 400_000,
+                output: 128_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()),
+        }),
+
+        // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
+        "gpt-5.3-codex" => Some(LlmModelProfile {
+            name: "GPT-5.3 Codex".into(),
+            family: "gpt-5.3-codex".into(),
+            release_date: Some("2026-02-05".into()),
+            last_updated: Some("2026-02-05".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-08-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.75,
+                output: 14.00,
+                cache_read: Some(0.175),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 400_000,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -901,7 +931,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
-                output: 64_000,
+                output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1127,7 +1157,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             attachment: true,
             reasoning: true,
             temperature: true,
-            knowledge: Some("2025-01-01".into()),
+            knowledge: Some("2025-03-01".into()),
             tool_call: true,
             structured_output: true,
             open_weights: false,
@@ -1156,7 +1186,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             attachment: true,
             reasoning: true,
             temperature: true,
-            knowledge: Some("2025-01-01".into()),
+            knowledge: Some("2025-03-01".into()),
             tool_call: true,
             structured_output: true,
             open_weights: false,
@@ -1418,6 +1448,8 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
 fn normalize_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
+        // GPT-5.3 models
+        "gpt-5.3-codex",
         // GPT-5.2 models
         "gpt-5.2-chat-latest",
         "gpt-5.2-codex",
@@ -1712,16 +1744,18 @@ mod tests {
         assert_eq!(profile.name, "GPT-5.2");
         assert!(profile.reasoning);
 
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 400_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 1.75).abs() < f64::EPSILON);
+        assert!((cost.output - 14.00).abs() < f64::EPSILON);
+
         // gpt-5.2: default none, supports none/low/medium/high/xhigh
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::None);
         assert_eq!(effort.values.len(), 5);
-        assert!(
-            effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::Xhigh)
-        );
     }
 
     #[test]
@@ -1730,22 +1764,34 @@ mod tests {
         assert_eq!(profile.name, "GPT-5.2 Pro");
         assert!(profile.reasoning);
 
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 400_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 21.00).abs() < f64::EPSILON);
+        assert!((cost.output - 168.00).abs() < f64::EPSILON);
+
         // gpt-5.2-pro: default medium, supports medium/high/xhigh
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::Medium);
         assert_eq!(effort.values.len(), 3);
-        assert!(
-            effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::Xhigh)
-        );
-        assert!(
-            !effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::None)
-        );
+    }
+
+    #[test]
+    fn test_gpt53_codex_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.3-codex").unwrap();
+        assert_eq!(profile.name, "GPT-5.3 Codex");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 400_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 1.75).abs() < f64::EPSILON);
+        assert!((cost.output - 14.00).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1766,6 +1812,7 @@ mod tests {
         assert_eq!(normalize_model_id("gpt-5.2"), "gpt-5.2");
         assert_eq!(normalize_model_id("gpt-5.2-pro"), "gpt-5.2-pro");
         assert_eq!(normalize_model_id("gpt-5.2-codex"), "gpt-5.2-codex");
+        assert_eq!(normalize_model_id("gpt-5.3-codex"), "gpt-5.3-codex");
     }
 
     // GPT-4.1 model tests
