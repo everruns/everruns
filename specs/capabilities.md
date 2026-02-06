@@ -130,6 +130,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `stateless_todo_list` | Task Management | Productivity | Available |
 | `sample_data` | Sample Data | Data | Available |
 | `docker_container` | Docker Container | Development | Available (Dev only) |
+| `session_sql_database` | SQL Database | Data | Available |
 | `research` | Research | AI | Coming Soon |
 | `sandbox` | Sandbox | Execution | Coming Soon |
 
