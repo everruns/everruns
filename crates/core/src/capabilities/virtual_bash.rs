@@ -417,8 +417,7 @@ impl FileSystem for SessionFileSystemAdapter {
         // Check if it's a file
         match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
-                let content = file.content.unwrap_or_default();
-                let size = content.len() as u64;
+                let size = file.size_bytes as u64;
                 let now = SystemTime::now();
 
                 Ok(Metadata {
