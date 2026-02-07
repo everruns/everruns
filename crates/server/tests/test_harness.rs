@@ -156,6 +156,13 @@ impl TestServer {
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
+        // Session SQL database store (in-memory for all test modes)
+        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
+            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+        );
+        let session_databases_state =
+            api::session_databases::AppState::new(sqldb_store, auth_state.clone());
         let users_state = api::users::UsersState {
             db: db.clone(),
             auth: auth_state.clone(),
@@ -176,6 +183,7 @@ impl TestServer {
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
             .merge(api::session_storage::routes(session_storage_state))
+            .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))
             .merge(api::durable::routes(durable_state))
             .merge(api::images::routes(images_state))
