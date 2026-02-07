@@ -13,7 +13,7 @@ but using Everruns capabilities instead of hand-coded tool functions.
 | Build a UI | Everruns UI included (or use the API) |
 | In-memory state | Durable execution with automatic retries |
 
-The agent definition is a single markdown file: [`examples/agents/hackernews-reader.md`](../agents/hackernews-reader.md)
+The agent definition is a single markdown file: [`hackernews-reader.md`](hackernews-reader.md)
 
 ## Quick Start
 

@@ -34,9 +34,7 @@ BASE_URL = os.environ.get("EVERRUNS_API_URL", "http://localhost:9000")
 API = f"{BASE_URL}/v1"
 
 # Read agent definition from the markdown file
-AGENT_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "agents", "hackernews-reader.md"
-)
+AGENT_FILE = os.path.join(os.path.dirname(__file__), "hackernews-reader.md")
 
 DEFAULT_PROMPT = (
     "What are the top 5 stories on HackerNews right now? "
