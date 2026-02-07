@@ -162,6 +162,13 @@ async fn main() -> Result<()> {
     // This creates default agents if they don't exist
     seed::spawn_seed_task(db.clone());
 
+    // Create session SQL database store (in-memory for now, both dev and prod)
+    let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+    let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
+        everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+    );
+    tracing::info!("Session SQL database store initialized (in-memory)");
+
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {
         Ok(svc) => {
@@ -244,6 +251,8 @@ async fn main() -> Result<()> {
         api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
     let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
     let session_storage_state = api::session_storage::AppState::new(db.clone(), auth_state.clone());
+    let session_databases_state =
+        api::session_databases::AppState::new(sqldb_store.clone(), auth_state.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),
         auth: auth_state.clone(),
@@ -305,6 +314,7 @@ async fn main() -> Result<()> {
         .merge(api::capabilities::routes(capabilities_state))
         .merge(api::session_files::routes(session_files_state))
         .merge(api::session_storage::routes(session_storage_state))
+        .merge(api::session_databases::routes(session_databases_state))
         .merge(api::users::routes(users_state))
         .merge(api::durable::routes(durable_state))
         .merge(api::schedules::routes(schedules_state))
@@ -538,7 +548,8 @@ async fn main() -> Result<()> {
                 llm_resolver,
                 mcp_server_service,
                 capability_registry,
-            );
+            )
+            .with_sqldb_store(sqldb_store.clone());
 
             // Create and spawn the task worker with in-memory store
             let worker_config = TaskWorkerConfig::dev_mode();

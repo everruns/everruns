@@ -54,6 +54,7 @@ parking_lot.workspace = true
 cron = "0.15"
 
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
+everruns-session-sqldb = { path = "../session-sqldb" }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-durable = { path = "../durable" }  # For durable execution gRPC service

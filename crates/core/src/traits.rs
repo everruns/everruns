@@ -293,6 +293,9 @@ pub trait SessionStorageStore: Send + Sync {
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
+/// Type alias for the session SQL DB store trait object.
+pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
@@ -311,6 +314,9 @@ pub struct ToolContext {
 
     /// Optional storage store for key/value and secret storage
     pub storage_store: Option<Arc<dyn SessionStorageStore>>,
+
+    /// Optional session SQL database store
+    pub sqldb_store: Option<SessionSqlDbStoreRef>,
 }
 
 impl ToolContext {
@@ -320,6 +326,7 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: None,
+            sqldb_store: None,
         }
     }
 
@@ -329,6 +336,7 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: None,
+            sqldb_store: None,
         }
     }
 
@@ -341,6 +349,7 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: Some(storage_store),
+            sqldb_store: None,
         }
     }
 
@@ -354,7 +363,14 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: Some(storage_store),
+            sqldb_store: None,
         }
+    }
+
+    /// Add a SQL database store to this context
+    pub fn with_sqldb_store(mut self, sqldb_store: SessionSqlDbStoreRef) -> Self {
+        self.sqldb_store = Some(sqldb_store);
+        self
     }
 }
 
@@ -364,6 +380,7 @@ impl std::fmt::Debug for ToolContext {
             .field("session_id", &self.session_id)
             .field("file_store", &self.file_store.is_some())
             .field("storage_store", &self.storage_store.is_some())
+            .field("sqldb_store", &self.sqldb_store.is_some())
             .finish()
     }
 }

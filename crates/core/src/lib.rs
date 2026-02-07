@@ -46,6 +46,7 @@ pub mod mcp_server;
 pub mod organization;
 pub mod session;
 pub mod session_file;
+pub mod session_sqldb;
 
 pub mod atoms;
 pub mod capabilities;
@@ -92,8 +93,8 @@ pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
     EventEmitter, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider, NoopEventEmitter,
-    ResolvedImage, SecretInfo, SessionFileStore, SessionStorageStore, SessionStore, ToolContext,
-    ToolExecutor,
+    ResolvedImage, SecretInfo, SessionFileStore, SessionSqlDbStoreRef, SessionStorageStore,
+    SessionStore, ToolContext, ToolExecutor,
 };
 
 // Event listener re-exports
@@ -136,7 +137,8 @@ pub use capabilities::{
     MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability, MountAccess,
     MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool, NoopCapability,
     ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
-    SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    SandboxCapability, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
+    StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
     TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
     collect_capabilities_with_configs, get_dependencies, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id, resolve_dependencies,
@@ -189,6 +191,10 @@ pub use organization::{
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+pub use session_sqldb::{
+    ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
+    SqlQueryResult, TableSchema,
+};
 pub use typed_id::{
     AgentId, EventId, ExecId, IdMarker, IdParseError, ImageId, McpServerId, MessageId, ModelId,
     OrgId, ProviderId, SessionId, TurnId, TypedId,
