@@ -2764,8 +2764,8 @@
           },
           "id": {
             "type": "string",
-            "description": "Unique identifier for the agent (format: agent_{32-hex}).",
-            "example": "agent_01933b5a00007000800000000000001"
+            "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
+            "example": "agent_01933b5a000070008000000000000001"
           },
           "name": {
             "type": "string",
@@ -3125,6 +3125,14 @@
             ],
             "description": "A human-readable description of what the agent does.",
             "example": "Handles customer inquiries and support tickets"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Client-supplied agent ID (format: agent_{32-hex}).\nIf not provided, one is auto-generated.",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
@@ -4092,8 +4100,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Unique identifier for the agent (format: agent_{32-hex}).",
-                  "example": "agent_01933b5a00007000800000000000001"
+                  "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
+                  "example": "agent_01933b5a000070008000000000000001"
                 },
                 "name": {
                   "type": "string",

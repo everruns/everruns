@@ -23,7 +23,8 @@ const SSE_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Debug, Deserialize)]
 struct Agent {
-    id: String,
+    #[serde(rename = "id")]
+    public_id: String,
     name: String,
 }
 
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let agent: Agent = create_response.json().await?;
-    println!("   Agent ID: {}", agent.id);
+    println!("   Agent ID: {}", agent.public_id);
     println!("   Name: {}", agent.name);
 
     // Step 2: Create a session
@@ -95,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Dad Joke Time"
         }))
         .send()
@@ -103,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if !session_response.status().is_success() {
         eprintln!("Failed to create session: {}", session_response.status());
-        cleanup(&client, &agent.id).await;
+        cleanup(&client, &agent.public_id).await;
         return Ok(());
     }
 
@@ -131,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if !message_response.status().is_success() {
         eprintln!("Failed to send message: {}", message_response.status());
-        cleanup(&client, &agent.id).await;
+        cleanup(&client, &agent.public_id).await;
         return Ok(());
     }
 
@@ -159,7 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Cleanup
-    cleanup(&client, &agent.id).await;
+    cleanup(&client, &agent.public_id).await;
 
     println!("\nExample completed!");
     Ok(())

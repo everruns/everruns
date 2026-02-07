@@ -834,7 +834,7 @@ async fn test_session_databases_crud() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id.to_string()
+                "agent_id": agent.public_id.to_string()
             }),
         )
         .await
@@ -934,7 +934,10 @@ async fn test_session_databases_schema() {
         .json();
 
     let session: Session = server
-        .post("/v1/sessions", json!({"agent_id": agent.id.to_string()}))
+        .post(
+            "/v1/sessions",
+            json!({"agent_id": agent.public_id.to_string()}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -985,7 +988,10 @@ async fn test_session_databases_invalid_name() {
         .json();
 
     let session: Session = server
-        .post("/v1/sessions", json!({"agent_id": agent.id.to_string()}))
+        .post(
+            "/v1/sessions",
+            json!({"agent_id": agent.public_id.to_string()}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
