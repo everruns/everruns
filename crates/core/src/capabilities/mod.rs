@@ -44,6 +44,7 @@ mod noop;
 mod research;
 mod sample_data;
 mod sandbox;
+mod session_sql_database;
 mod session_storage;
 mod stateless_todo_list;
 mod test_math;
@@ -91,6 +92,9 @@ pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use sandbox::SandboxCapability;
+pub use session_sql_database::{
+    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
+};
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
@@ -274,6 +278,7 @@ impl CapabilityRegistry {
         registry.register(SandboxCapability);
         registry.register(FileSystemCapability);
         registry.register(SessionStorageCapability);
+        registry.register(SessionSqlDatabaseCapability);
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
@@ -852,6 +857,7 @@ mod tests {
         assert!(registry.has("sandbox"));
         assert!(registry.has("session_file_system"));
         assert!(registry.has("session_storage"));
+        assert!(registry.has("session_sql_database"));
         assert!(registry.has("test_math"));
         assert!(registry.has("test_weather"));
         assert!(registry.has("stateless_todo_list"));
@@ -864,7 +870,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 17);
+        assert_eq!(registry.len(), 18);
     }
 
     #[test]
@@ -878,6 +884,7 @@ mod tests {
         assert!(registry.has("sandbox"));
         assert!(registry.has("session_file_system"));
         assert!(registry.has("session_storage"));
+        assert!(registry.has("session_sql_database"));
         assert!(registry.has("test_math"));
         assert!(registry.has("test_weather"));
         assert!(registry.has("stateless_todo_list"));
@@ -890,7 +897,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 16);
+        assert_eq!(registry.len(), 17);
     }
 
     #[test]

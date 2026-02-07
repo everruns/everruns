@@ -165,6 +165,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Create a tool registry with defaults and agent capabilities
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry>;
+
+    /// Get the session SQL database store (if available).
+    /// Default returns None (not all backends support session SQL databases).
+    fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
+        None
+    }
 }
 
 // =============================================================================

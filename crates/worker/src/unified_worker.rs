@@ -712,7 +712,10 @@ async fn execute_act_activity<A: WorkerAdapters>(
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
 
-    let atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store);
+    let mut atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store);
+    if let Some(sqldb_store) = adapters.sqldb_store() {
+        atom = atom.with_sqldb_store(sqldb_store);
+    }
 
     let result = atom.execute(input.clone()).await?;
 

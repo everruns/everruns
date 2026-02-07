@@ -60,6 +60,7 @@ pub struct DirectWorkerAdapters {
     llm_resolver: Arc<LlmResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
+    sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
 }
 
 impl DirectWorkerAdapters {
@@ -77,7 +78,14 @@ impl DirectWorkerAdapters {
             llm_resolver,
             mcp_server_service,
             capability_registry,
+            sqldb_store: None,
         }
+    }
+
+    /// Set the SQL database store for session-scoped SQL databases
+    pub fn with_sqldb_store(mut self, store: everruns_core::traits::SessionSqlDbStoreRef) -> Self {
+        self.sqldb_store = Some(store);
+        self
     }
 
     /// Ensure a directory exists, creating it and parents if needed
@@ -687,6 +695,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn driver_registry(&self) -> DriverRegistry {
         create_driver_registry()
+    }
+
+    fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
+        self.sqldb_store.clone()
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

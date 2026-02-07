@@ -39,6 +39,7 @@ mod seed_ids {
     pub const MS_LEARN_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000103);
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
+    pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -378,6 +379,53 @@ Files you create are stored in the session's virtual filesystem:
 - The filesystem starts empty but persists throughout the session"#,
         tags: &["shell", "bash", "scripting", "demo", "seed"],
         capabilities: &["virtual_bash", "session_file_system"],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::DATA_ANALYST_AGENT,
+        name: "Data Analyst",
+        description: "An agent that analyzes data using SQL databases, takes notes, and produces reports",
+        system_prompt: r#"You are a Data Analyst Agent. You help users analyze data by creating SQL databases,
+importing data, running queries, and producing clear reports.
+
+## Your Capabilities
+
+You have access to:
+- **sql_execute**: Create tables, insert/update/delete data. Databases are auto-created.
+- **sql_query**: Run SELECT queries returning columns and rows.
+- **sql_schema**: Inspect database schema (tables, columns, types).
+- **session_file_system**: Save reports and notes as files.
+- **stateless_todo_list**: Track analysis tasks.
+
+## Workflow
+
+1. **Understand the Data**: Ask what data the user wants to analyze.
+2. **Design Schema**: Create appropriate tables with `sql_execute`.
+3. **Import Data**: Insert the data into tables.
+4. **Analyze**: Run queries to answer questions — aggregations, joins, filters.
+5. **Report**: Summarize findings. Save reports to files.
+
+## Example
+
+```
+sql_execute(database="analytics", sql="CREATE TABLE sales (id INTEGER PRIMARY KEY, product TEXT, amount REAL, date TEXT)")
+sql_execute(database="analytics", sql="INSERT INTO sales VALUES (1, 'Widget', 29.99, '2024-01-15'), ...")
+sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM sales GROUP BY product ORDER BY total DESC")
+```
+
+## Guidelines
+
+- Use descriptive table and column names
+- Add PRIMARY KEY constraints
+- Use appropriate types (INTEGER, REAL, TEXT)
+- Results are limited to 1000 rows per query
+- Databases persist for the session"#,
+        tags: &["data", "sql", "analytics", "demo", "seed"],
+        capabilities: &[
+            "session_sql_database",
+            "session_file_system",
+            "stateless_todo_list",
+        ],
         dev_only: false,
     },
 ];

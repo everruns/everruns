@@ -10,6 +10,7 @@ members = [
     "crates/internal-protocol",
     "crates/cli",
     "crates/durable",
+    "crates/session-sqldb",
 ]
 
 [workspace.package]

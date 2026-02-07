@@ -802,3 +802,206 @@ async fn test_agent_with_capabilities() {
         "Agent should have 2 capabilities"
     );
 }
+
+// ============================================
+// Session SQL Database Tests
+// ============================================
+
+#[tokio::test]
+async fn test_session_databases_crud() {
+    let server = TestServer::new().await;
+
+    // Create agent + session for the test
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "SQL Test Agent",
+                "system_prompt": "Test",
+                "capabilities": [{"ref": "session_sql_database", "config": {}}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "agent_id": agent.id.to_string()
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session_id = session.id.to_string();
+
+    // List databases (should be empty)
+    let list: Value = server
+        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(list["data"].as_array().unwrap().len(), 0);
+
+    // Create a database
+    let db_info: Value = server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({"name": "analytics"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(db_info["name"], "analytics");
+    assert_eq!(db_info["size_bytes"], 0);
+
+    // Get database
+    let db_info: Value = server
+        .get(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(db_info["name"], "analytics");
+
+    // List databases (should have 1)
+    let list: Value = server
+        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(list["data"].as_array().unwrap().len(), 1);
+
+    // Create duplicate (should conflict)
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({"name": "analytics"}),
+        )
+        .await
+        .assert_status(StatusCode::CONFLICT);
+
+    // Get nonexistent database (should 404)
+    server
+        .get(&format!("/v1/sessions/{session_id}/databases/nope"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    // Delete database
+    server
+        .delete(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // Delete again (should 404)
+    server
+        .delete(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    // List should be empty again
+    let list: Value = server
+        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(list["data"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_session_databases_schema() {
+    let server = TestServer::new().await;
+
+    // Create agent + session
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "SQL Schema Agent",
+                "system_prompt": "Test",
+                "capabilities": [{"ref": "session_sql_database", "config": {}}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post("/v1/sessions", json!({"agent_id": agent.id.to_string()}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session_id = session.id.to_string();
+
+    // Create a database
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({"name": "test_db"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // Schema of empty database should have no tables
+    let schema: Value = server
+        .get(&format!(
+            "/v1/sessions/{session_id}/databases/test_db/schema"
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(schema["database"], "test_db");
+    assert_eq!(schema["tables"].as_array().unwrap().len(), 0);
+
+    // Schema of nonexistent database should 404
+    server
+        .get(&format!("/v1/sessions/{session_id}/databases/nope/schema"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_session_databases_invalid_name() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "SQL Invalid Name Agent",
+                "system_prompt": "Test",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post("/v1/sessions", json!({"agent_id": agent.id.to_string()}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session_id = session.id.to_string();
+
+    // Invalid name (starts with number)
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({"name": "1bad"}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // Invalid name (contains dash)
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({"name": "my-db"}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}

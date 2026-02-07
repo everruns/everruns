@@ -1,0 +1,42 @@
+[package]
+name = "everruns-session-sqldb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Session-scoped SQLite databases backed by PostgreSQL page-level storage"
+
+[dependencies]
+# SQLite
+rusqlite = { version = "0.32", features = ["bundled", "serialize", "column_decltype", "hooks"] }
+
+# Core types
+everruns-core = { path = "../core" }
+
+# Async
+tokio = { workspace = true, features = ["rt", "time", "sync"] }
+async-trait.workspace = true
+
+# Sync
+parking_lot.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Types
+chrono.workspace = true
+uuid.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Base64 for BLOB encoding
+base64.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
