@@ -29,6 +29,7 @@ import sys
 
 import yaml
 from everruns_sdk import Everruns
+from everruns_sdk.models import Agent
 
 AGENT_FILE = os.path.join(os.path.dirname(__file__), "hackernews-reader.md")
 
@@ -37,6 +38,10 @@ DEFAULT_PROMPT = (
     "For the most popular one, show me the top comments and "
     "look up the author's profile."
 )
+
+# Dev mode needs no real key; use EVERRUNS_API_KEY env var in production
+DEFAULT_API_KEY = "dev"
+DEFAULT_BASE_URL = "http://localhost:9000"
 
 
 def parse_agent_markdown(path: str) -> dict:
@@ -60,16 +65,21 @@ async def main():
     prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PROMPT
     spec = parse_agent_markdown(AGENT_FILE)
 
-    client = Everruns()
+    api_key = os.environ.get("EVERRUNS_API_KEY", DEFAULT_API_KEY)
+    base_url = os.environ.get("EVERRUNS_API_URL", DEFAULT_BASE_URL)
+    client = Everruns(api_key=api_key, base_url=base_url)
 
-    # Create agent with capabilities from the markdown spec
-    agent = await client.agents.create(
-        name=spec["name"],
-        system_prompt=spec["system_prompt"],
-        description=spec.get("description", ""),
-        tags=spec.get("tags", []),
-        capabilities=spec.get("capabilities", []),
-    )
+    # SDK's agents.create() doesn't support capabilities yet,
+    # so we POST the full request body directly.
+    capabilities = [{"ref": c} for c in spec.get("capabilities", [])]
+    agent_resp = await client._post("/agents", {
+        "name": spec["name"],
+        "system_prompt": spec["system_prompt"],
+        "description": spec.get("description", ""),
+        "tags": spec.get("tags", []),
+        "capabilities": capabilities,
+    })
+    agent = Agent(**agent_resp)
     print(f"Agent created: {agent.id} ({agent.name})")
 
     # Create session
@@ -110,12 +120,16 @@ async def print_events(client: Everruns, session_id: str):
     """Stream events and print agent responses / tool calls."""
     async for event in client.events.stream(session_id):
         if event.type == "output.message.completed":
-            print(f"Agent: {event.data}")
+            # Extract text from message content parts
+            message = event.data.get("message", {})
+            for part in message.get("content", []):
+                if part.get("type") == "text":
+                    print(f"Agent: {part['text']}")
 
         elif event.type == "tool.started":
-            data = event.data if isinstance(event.data, dict) else {}
-            tool_name = data.get("name", "unknown")
-            args = data.get("arguments", {})
+            tool_call = event.data.get("tool_call", {})
+            tool_name = tool_call.get("name", "unknown")
+            args = tool_call.get("arguments", {})
             if tool_name == "web_fetch":
                 print(f"  -> Fetching: {args.get('url', '?')}")
             elif tool_name == "get_current_time":
@@ -128,8 +142,7 @@ async def print_events(client: Everruns, session_id: str):
             return
 
         elif event.type == "turn.failed":
-            data = event.data if isinstance(event.data, dict) else {}
-            print(f"\n[Turn failed: {data.get('error', 'unknown')}]")
+            print(f"\n[Turn failed: {event.data.get('error', 'unknown')}]")
             return
 
 
