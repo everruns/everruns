@@ -233,11 +233,17 @@ pub async fn create_agent(
     )?;
 
     let client_id = req.id;
-    let agent = state
-        .service
-        .create(org.org_id, client_id, req)
-        .await
-        .log_internal_error_json("create agent")?;
+    let agent = match state.service.create(org.org_id, client_id, req).await {
+        Ok(agent) => agent,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("duplicate key") || msg.contains("already exists") {
+                return Err(ErrorResponse::conflict("Agent with this ID already exists"));
+            }
+            tracing::error!("Failed to create agent: {}", msg);
+            return Err(ErrorResponse::internal_error());
+        }
+    };
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
@@ -579,9 +585,12 @@ pub async fn import_agent(
         .create(org.org_id, client_id, request)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to import agent: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            let msg = e.to_string();
+            if msg.contains("duplicate key") || msg.contains("already exists") {
+                return ErrorResponse::conflict("Agent with this ID already exists");
+            }
+            tracing::error!("Failed to import agent: {}", msg);
+            ErrorResponse::internal_error()
         })?;
 
     Ok((StatusCode::CREATED, Json(agent)))
