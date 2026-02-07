@@ -61,6 +61,10 @@ pub mod gen_ai {
     pub const USAGE_INPUT_TOKENS: &str = "gen_ai.usage.input_tokens";
     /// Number of tokens in the output/completion
     pub const USAGE_OUTPUT_TOKENS: &str = "gen_ai.usage.output_tokens";
+    /// Number of tokens read from cache (reduces cost)
+    pub const USAGE_CACHE_READ_TOKENS: &str = "gen_ai.usage.cache_read_tokens";
+    /// Number of tokens written to cache (Anthropic-specific)
+    pub const USAGE_CACHE_CREATION_TOKENS: &str = "gen_ai.usage.cache_creation_tokens";
 
     // Content attributes (opt-in, may contain sensitive data)
     /// Input messages/prompts
@@ -118,6 +122,10 @@ pub mod gen_ai {
     /// GenAI server port
     pub const SERVER_PORT: &str = "server.port";
 
+    // System attribute (gen_ai.system — provider identifier for older convention usage)
+    /// Provider system identifier (e.g., "openai", "anthropic")
+    pub const SYSTEM: &str = "gen_ai.system";
+
     /// Operation names as per semantic conventions
     pub mod operation {
         pub const CHAT: &str = "chat";
@@ -127,6 +135,10 @@ pub mod gen_ai {
         pub const EXECUTE_TOOL: &str = "execute_tool";
         pub const CREATE_AGENT: &str = "create_agent";
         pub const INVOKE_AGENT: &str = "invoke_agent";
+        // Phase operations (agentic loop specific)
+        pub const REASON: &str = "reason";
+        pub const ACT: &str = "act";
+        pub const THINKING: &str = "thinking";
     }
 
     /// Provider names as per semantic conventions
@@ -199,7 +211,8 @@ impl TelemetryConfig {
     /// - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (e.g., "http://localhost:4317")
     /// - `OTEL_ENVIRONMENT`: Deployment environment
     /// - `RUST_LOG` or `LOG_LEVEL`: Log filter
-    /// - `OTEL_RECORD_CONTENT`: Whether to record input/output content ("true" to enable)
+    /// - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`: Record input/output content (standard OTel)
+    /// - `OTEL_RECORD_CONTENT`: Legacy alias for content recording
     pub fn from_env() -> Self {
         // Check if SDK is disabled via environment variable
         let sdk_disabled = std::env::var("OTEL_SDK_DISABLED")
@@ -221,7 +234,9 @@ impl TelemetryConfig {
             log_filter: std::env::var("RUST_LOG")
                 .ok()
                 .or_else(|| std::env::var("LOG_LEVEL").ok()),
-            record_content: std::env::var("OTEL_RECORD_CONTENT")
+            // Standard OTel env var, with legacy alias fallback
+            record_content: std::env::var("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
+                .or_else(|_| std::env::var("OTEL_RECORD_CONTENT"))
                 .map(|v| v.to_lowercase() == "true")
                 .unwrap_or(false),
         }

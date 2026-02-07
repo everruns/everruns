@@ -286,12 +286,15 @@ Enable recording of LLM input/output content in traces. **Warning:** May contain
 **Example:**
 
 ```bash
-# Enable content recording (use with caution)
+# Standard OTel env var (preferred)
+OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true
+
+# Legacy alias (also works)
 OTEL_RECORD_CONTENT=true
 ```
 
 **Notes:**
-- When enabled, `gen_ai.input.messages` and `gen_ai.output.messages` are recorded
+- When enabled, `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, and thinking content are recorded
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 
@@ -318,21 +321,50 @@ open http://localhost:16686
 | 4318 | OTLP HTTP receiver |
 | 16686 | Jaeger UI |
 
+### Gen-AI Trace Structure
+
+Traces follow the agentic execution lifecycle with 13 event types:
+
+```
+invoke_agent {turn_id} (root span)
+├── reason (LLM reasoning phase)
+│   ├── thinking (extended thinking, if enabled)
+│   └── chat {model} (LLM API call)
+├── act (tool execution phase)
+│   ├── execute_tool {name}
+│   └── execute_tool {name}
+├── reason (iteration 2)
+│   └── chat {model}
+└── ...
+```
+
 ### Gen-AI Trace Attributes
 
-LLM calls include the following OpenTelemetry attributes:
+All spans include OpenTelemetry attributes following the Gen-AI semantic conventions:
 
-| Attribute | Description |
-|-----------|-------------|
-| `gen_ai.operation.name` | Operation type (`chat`, `embeddings`) |
-| `gen_ai.provider.name` | Provider (`openai`, `anthropic`) |
-| `gen_ai.request.model` | Requested model name |
-| `gen_ai.request.max_tokens` | Maximum tokens requested |
-| `gen_ai.request.temperature` | Sampling temperature |
-| `gen_ai.usage.input_tokens` | Prompt tokens used |
-| `gen_ai.usage.output_tokens` | Completion tokens used |
-| `gen_ai.response.finish_reasons` | Why generation stopped |
-| `server.address` | API endpoint URL |
+| Attribute | Span Types | Description |
+|-----------|-----------|-------------|
+| `gen_ai.operation.name` | All | Operation type (`invoke_agent`, `chat`, `execute_tool`, `reason`, `act`, `thinking`) |
+| `gen_ai.system` | chat | Provider (`openai`, `anthropic`) |
+| `gen_ai.request.model` | chat, thinking | Requested model name |
+| `gen_ai.response.model` | chat | Model actually used |
+| `gen_ai.response.id` | chat | Response identifier |
+| `gen_ai.response.finish_reasons` | chat | Why generation stopped |
+| `gen_ai.usage.input_tokens` | chat, reason, invoke_agent | Prompt tokens used |
+| `gen_ai.usage.output_tokens` | chat, reason, invoke_agent | Completion tokens used |
+| `gen_ai.usage.cache_read_tokens` | chat | Tokens read from prompt cache |
+| `gen_ai.usage.cache_creation_tokens` | chat | Tokens written to prompt cache |
+| `gen_ai.output.type` | chat | `text` or `tool_calls` |
+| `gen_ai.conversation.id` | All | Session identifier |
+| `gen_ai.tool.name` | execute_tool | Tool name |
+| `gen_ai.tool.call.id` | execute_tool | Tool call identifier |
+| `tool.success` | execute_tool | Whether tool succeeded |
+| `turn.id` | invoke_agent | Turn identifier |
+| `turn.iterations` | invoke_agent | Number of reason/act iterations |
+| `error.type` | invoke_agent, chat, execute_tool | Error description (on failure) |
+| `otel.status_code` | invoke_agent | `ERROR` on failure/cancellation |
+| `duration_ms` | All | Span duration in milliseconds |
+| `time_to_first_token_ms` | chat | Streaming latency |
 
 ## Braintrust Integration
 
