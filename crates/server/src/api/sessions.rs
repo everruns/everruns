@@ -161,9 +161,28 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
+    // Resolve agent public_id to internal UUID for FK storage
+    let agent_row = state
+        .db
+        .get_agent_by_public_id(org.org_id, &req.agent_id.to_string())
+        .await
+        .log_internal_error_json("resolve agent")?
+        .ok_or_not_found_json("Agent")?;
+
+    let agent_public_id: AgentId = agent_row
+        .public_id
+        .parse()
+        .unwrap_or_else(|_| AgentId::from_uuid(agent_row.id.uuid()));
+
     let session = state
         .session_service
-        .create(org.org_id, &org.public_id, req.agent_id.uuid(), req)
+        .create(
+            org.org_id,
+            &org.public_id,
+            agent_row.id.uuid(),
+            agent_public_id,
+            req,
+        )
         .await
         .log_internal_error_json("create session")?;
 
@@ -190,14 +209,21 @@ pub async fn list_sessions(
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
 
+    // Resolve agent public_id to internal UUID if filtering by agent
+    let agent_internal_id = if let Some(ref agent_id) = query.agent_id {
+        let row = state
+            .db
+            .get_agent_by_public_id(org.org_id, &agent_id.to_string())
+            .await
+            .log_internal_error_json("resolve agent for filter")?;
+        row.map(|r| r.id.uuid())
+    } else {
+        None
+    };
+
     let (sessions, total) = state
         .session_service
-        .list(
-            org.org_id,
-            &org.public_id,
-            query.agent_id.map(|id| id.uuid()),
-            pagination,
-        )
+        .list(org.org_id, &org.public_id, agent_internal_id, pagination)
         .await
         .log_internal_error_json("list sessions")?;
 

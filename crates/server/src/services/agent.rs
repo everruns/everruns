@@ -24,18 +24,46 @@ impl AgentService {
         Self { db }
     }
 
-    pub async fn create(&self, org_id: i64, req: CreateAgentRequest) -> Result<Agent> {
-        // Note: OTel instrumentation is handled via event listeners.
-        // Agent creation events would be handled by listeners rather than direct spans.
-        let input = CreateAgentRow {
-            name: req.name,
-            description: req.description,
-            system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id,
-            tags: req.tags,
+    pub async fn create(
+        &self,
+        org_id: i64,
+        client_id: Option<AgentId>,
+        req: CreateAgentRequest,
+    ) -> Result<Agent> {
+        // When no client_id, generate internal UUID and derive public_id from it.
+        // This keeps public_id == AgentId::from_uuid(internal_id), so session FKs
+        // (which store the internal UUID) serialize to the same agent_<hex> string.
+        // When client_id is supplied, public_id differs from internal_id.
+        let (row, agent_id_uuid) = if let Some(client_id) = client_id {
+            let input = CreateAgentRow {
+                public_id: client_id.to_string(),
+                name: req.name.clone(),
+                description: req.description.clone(),
+                system_prompt: req.system_prompt.clone(),
+                default_model_id: req.default_model_id,
+                tags: req.tags.clone(),
+            };
+            let row = self.db.create_agent(org_id, input).await?;
+            let uuid = row.id.uuid();
+            (row, uuid)
+        } else {
+            let internal_uuid = Uuid::now_v7();
+            let public_id = AgentId::from_uuid(internal_uuid);
+            let input = CreateAgentRow {
+                public_id: public_id.to_string(),
+                name: req.name.clone(),
+                description: req.description.clone(),
+                system_prompt: req.system_prompt.clone(),
+                default_model_id: req.default_model_id,
+                tags: req.tags.clone(),
+            };
+            let row = self
+                .db
+                .create_agent_with_id(org_id, AgentId::from_uuid(internal_uuid), input)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Agent UUID collision"))?;
+            (row, internal_uuid)
         };
-        let row = self.db.create_agent(org_id, input).await?;
-        let agent_id = row.id;
 
         // Set capabilities if provided
         let capabilities = if !req.capabilities.is_empty() {
@@ -52,7 +80,7 @@ impl AgentService {
                 })
                 .collect();
             self.db
-                .set_agent_capabilities(agent_id.uuid(), cap_tuples)
+                .set_agent_capabilities(agent_id_uuid, cap_tuples)
                 .await?;
             req.capabilities
         } else {
@@ -67,6 +95,17 @@ impl AgentService {
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(id).await?;
+                Ok(Some(Self::row_to_agent(row, capabilities)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub async fn get_by_public_id(&self, org_id: i64, public_id: &str) -> Result<Option<Agent>> {
+        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+        match row {
+            Some(row) => {
+                let capabilities = self.get_capabilities(row.id.uuid()).await?;
                 Ok(Some(Self::row_to_agent(row, capabilities)))
             }
             None => Ok(None),
@@ -89,9 +128,16 @@ impl AgentService {
     pub async fn update(
         &self,
         org_id: i64,
-        id: Uuid,
+        public_id: &str,
         req: UpdateAgentRequest,
     ) -> Result<Option<Agent>> {
+        // Resolve public_id -> internal AgentId
+        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+        let Some(existing) = row else {
+            return Ok(None);
+        };
+        let internal_id = existing.id;
+
         let input = UpdateAgent {
             name: req.name,
             description: req.description,
@@ -100,10 +146,7 @@ impl AgentService {
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
         };
-        let row = self
-            .db
-            .update_agent(org_id, AgentId::from_uuid(id), input)
-            .await?;
+        let row = self.db.update_agent(org_id, internal_id, input).await?;
 
         match row {
             Some(row) => {
@@ -120,10 +163,12 @@ impl AgentService {
                             )
                         })
                         .collect();
-                    self.db.set_agent_capabilities(id, cap_tuples).await?;
+                    self.db
+                        .set_agent_capabilities(internal_id.uuid(), cap_tuples)
+                        .await?;
                     caps
                 } else {
-                    self.get_capabilities(id).await?
+                    self.get_capabilities(internal_id.uuid()).await?
                 };
 
                 Ok(Some(Self::row_to_agent(row, capabilities)))
@@ -132,8 +177,59 @@ impl AgentService {
         }
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_agent(org_id, AgentId::from_uuid(id)).await
+    pub async fn delete(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        // Resolve public_id -> internal AgentId
+        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+        let Some(existing) = row else {
+            return Ok(false);
+        };
+        self.db.delete_agent(org_id, existing.id).await
+    }
+
+    /// Upsert agent by public_id. Returns (agent, was_created).
+    pub async fn upsert(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        req: CreateAgentRequest,
+    ) -> Result<(Agent, bool)> {
+        let input = CreateAgentRow {
+            public_id: public_id.to_string(),
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: req.default_model_id,
+            tags: req.tags,
+        };
+        let (row, was_created) = self.db.upsert_agent(org_id, input).await?;
+        let agent_id_uuid = row.id.uuid();
+
+        // Set capabilities if provided (replace existing on upsert)
+        let capabilities = if !req.capabilities.is_empty() {
+            let cap_tuples: Vec<(String, i32, serde_json::Value)> = req
+                .capabilities
+                .iter()
+                .enumerate()
+                .map(|(idx, cap)| {
+                    (
+                        cap.capability_ref.to_string(),
+                        idx as i32,
+                        cap.config.clone(),
+                    )
+                })
+                .collect();
+            self.db
+                .set_agent_capabilities(agent_id_uuid, cap_tuples)
+                .await?;
+            req.capabilities
+        } else if was_created {
+            vec![]
+        } else {
+            // Existing agent, no capabilities in request -> keep existing
+            self.get_capabilities(agent_id_uuid).await?
+        };
+
+        Ok((Self::row_to_agent(row, capabilities), was_created))
     }
 
     async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
@@ -165,8 +261,15 @@ impl AgentService {
             None
         };
 
+        // Parse public_id from the stored string
+        let public_id: AgentId = row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+
         Agent {
-            id: row.id,
+            public_id,
+            internal_id: row.id.uuid(),
             name: row.name,
             description: row.description,
             system_prompt: row.system_prompt,

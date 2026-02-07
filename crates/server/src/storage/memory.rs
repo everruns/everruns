@@ -326,13 +326,14 @@ impl InMemoryDatabase {
         let id = AgentId::new();
         let row = AgentRow {
             id,
+            public_id: input.public_id,
             org_id,
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
-            status: "active".to_string(), // Default status for new agents
+            status: "active".to_string(),
             created_at: now,
             updated_at: now,
             total_input_tokens: 0,
@@ -358,6 +359,7 @@ impl InMemoryDatabase {
         let now = Self::now();
         let row = AgentRow {
             id,
+            public_id: input.public_id,
             org_id,
             name: input.name,
             description: input.description,
@@ -382,6 +384,19 @@ impl InMemoryDatabase {
             .read()
             .get(&id)
             .filter(|a| a.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn get_agent_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .find(|a| a.org_id == org_id && a.public_id == public_id)
             .cloned())
     }
 
@@ -452,6 +467,63 @@ impl InMemoryDatabase {
             return Ok(agents.remove(&id).is_some());
         }
         Ok(false)
+    }
+
+    /// Upsert agent by public_id. Returns (row, was_created).
+    pub async fn upsert_agent(
+        &self,
+        org_id: i64,
+        input: CreateAgentRow,
+    ) -> Result<(AgentRow, bool)> {
+        let mut agents = self.agents.write();
+        let existing_key = agents
+            .iter()
+            .find(|(_, a)| a.org_id == org_id && a.public_id == input.public_id)
+            .map(|(k, _)| *k);
+
+        if let Some(key) = existing_key {
+            let agent = agents.get_mut(&key).unwrap();
+            agent.name = input.name;
+            agent.description = input.description;
+            agent.system_prompt = input.system_prompt;
+            agent.default_model_id = input.default_model_id;
+            agent.tags = input.tags;
+            agent.status = "active".to_string();
+            agent.updated_at = Self::now();
+            Ok((agent.clone(), false))
+        } else {
+            let now = Self::now();
+            let id = AgentId::new();
+            let row = AgentRow {
+                id,
+                public_id: input.public_id,
+                org_id,
+                name: input.name,
+                description: input.description,
+                system_prompt: input.system_prompt,
+                default_model_id: input.default_model_id,
+                tags: input.tags,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                total_cache_read_tokens: 0,
+                total_cache_creation_tokens: 0,
+            };
+            agents.insert(id, row.clone());
+            Ok((row, true))
+        }
+    }
+
+    /// Get agent public_id from internal UUID
+    pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
+        Ok(self
+            .agents
+            .read()
+            .get(&id)
+            .filter(|a| a.org_id == org_id)
+            .map(|a| a.public_id.clone()))
     }
 
     // ============================================
@@ -2262,6 +2334,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: Some("A test agent".to_string()),
                     system_prompt: "You are helpful".to_string(),
@@ -2287,6 +2360,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: None,
                     system_prompt: String::new(),
@@ -2327,6 +2401,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: None,
                     system_prompt: String::new(),
@@ -2384,6 +2459,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: None,
                     system_prompt: String::new(),
@@ -2436,6 +2512,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: None,
                     system_prompt: String::new(),
@@ -2514,6 +2591,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
                     name: "Test Agent".to_string(),
                     description: None,
                     system_prompt: String::new(),

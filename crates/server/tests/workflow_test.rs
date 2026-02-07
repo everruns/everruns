@@ -54,7 +54,7 @@ async fn test_full_agent_session_workflow() {
         .await
         .expect("Failed to parse agent response");
 
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
     assert_eq!(agent.name, "Test Agent");
     assert_eq!(agent.status.to_string(), "active");
 
@@ -77,7 +77,7 @@ async fn test_full_agent_session_workflow() {
     // Step 3: Get agent by ID
     println!("\nStep 3: Getting agent by ID...");
     let get_response = client
-        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to get agent");
@@ -85,12 +85,12 @@ async fn test_full_agent_session_workflow() {
     assert_eq!(get_response.status(), 200);
     let fetched_agent: Agent = get_response.json().await.expect("Failed to parse agent");
     println!("Fetched agent: {}", fetched_agent.name);
-    assert_eq!(fetched_agent.id, agent.id);
+    assert_eq!(fetched_agent.public_id, agent.public_id);
 
     // Step 4: Update agent
     println!("\nStep 4: Updating agent...");
     let update_response = client
-        .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .json(&json!({
             "name": "Updated Test Agent",
             "description": "Updated description"
@@ -109,7 +109,7 @@ async fn test_full_agent_session_workflow() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Test Session"
         }))
         .send()
@@ -122,7 +122,7 @@ async fn test_full_agent_session_workflow() {
         .await
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
-    assert_eq!(session.agent_id, agent.id);
+    assert_eq!(session.agent_id, agent.public_id);
 
     // Step 6: Add message (user message)
     println!("\nStep 6: Adding user message...");
@@ -493,7 +493,7 @@ async fn test_session_inherits_agent_default_model() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with default_model_id: {:?}",
-        agent.id, agent.default_model_id
+        agent.public_id, agent.default_model_id
     );
     assert_eq!(agent.default_model_id, Some(model.id));
 
@@ -502,7 +502,7 @@ async fn test_session_inherits_agent_default_model() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Test Session"
         }))
         .send()
@@ -552,7 +552,7 @@ async fn test_session_inherits_agent_default_model() {
     let session2_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Test Session 2",
             "model_id": model2.id.to_string()
         }))
@@ -580,7 +580,7 @@ async fn test_session_inherits_agent_default_model() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -622,14 +622,14 @@ async fn test_session_filesystem() {
         .expect("Failed to create agent");
 
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 2: Create a session
     println!("\nStep 2: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Filesystem Test Session"
         }))
         .send()
@@ -841,7 +841,7 @@ async fn test_session_filesystem() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -878,7 +878,7 @@ async fn test_session_filesystem_workspace_prefix() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Workspace Test Session"
         }))
         .send()
@@ -972,7 +972,7 @@ async fn test_session_filesystem_workspace_prefix() {
 
     // Cleanup
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1083,14 +1083,14 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with capabilities: {:?}",
-        agent.id, agent.capabilities
+        agent.public_id, agent.capabilities
     );
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "FS Bash Integration Test"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "FS Bash Integration Test"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1240,7 +1240,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1339,14 +1339,14 @@ async fn test_message_triggers_agent_workflow() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with model: {:?}",
-        agent.id, agent.default_model_id
+        agent.public_id, agent.default_model_id
     );
 
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Workflow Test Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Workflow Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1515,7 +1515,7 @@ async fn test_message_triggers_agent_workflow() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1617,14 +1617,14 @@ async fn test_no_duplicate_tool_calls() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with capabilities: {:?}",
-        agent.id, agent.capabilities
+        agent.public_id, agent.capabilities
     );
 
     // Step 4: Create a session
     println!("\nStep 4: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id}))
+        .json(&json!({"agent_id": agent.public_id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1779,7 +1779,7 @@ async fn test_no_duplicate_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1816,14 +1816,14 @@ async fn test_sessions_pagination() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Create 15 sessions
     println!("Creating 15 sessions...");
     for i in 1..=15 {
         let response = client
             .post(format!("{}/v1/sessions", API_BASE_URL))
-            .json(&json!({ "agent_id": agent.id, "title": format!("Session {}", i) }))
+            .json(&json!({ "agent_id": agent.public_id, "title": format!("Session {}", i) }))
             .send()
             .await
             .expect("Failed to create session");
@@ -1836,7 +1836,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1860,7 +1860,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}&limit=5",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1883,7 +1883,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}&offset=5&limit=5",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1903,7 +1903,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}&offset=10&limit=10",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1925,7 +1925,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}&offset=20",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1947,7 +1947,7 @@ async fn test_sessions_pagination() {
     let response = client
         .get(format!(
             "{}/v1/sessions?agent_id={}&limit=200",
-            API_BASE_URL, agent.id
+            API_BASE_URL, agent.public_id
         ))
         .send()
         .await
@@ -1962,7 +1962,7 @@ async fn test_sessions_pagination() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2059,14 +2059,14 @@ async fn test_second_message_triggers_workflow() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with model: {:?}",
-        agent.id, agent.default_model_id
+        agent.public_id, agent.default_model_id
     );
 
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Second Message Test Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Second Message Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -2281,7 +2281,7 @@ async fn test_second_message_triggers_workflow() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2337,7 +2337,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with capabilities: {:?}",
-        agent.id, agent.capabilities
+        agent.public_id, agent.capabilities
     );
     assert_eq!(
         agent.capabilities.len(),
@@ -2350,7 +2350,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Mount Test Session"
         }))
         .send()
@@ -2470,7 +2470,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let session2_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Second Mount Test Session"
         }))
         .send()
@@ -2504,7 +2504,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -2878,14 +2878,14 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!(
         "Created agent: {} with capabilities: {:?}",
-        agent.id, agent.capabilities
+        agent.public_id, agent.capabilities
     );
 
     // Step 3: Create a session
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Dad Jokes Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3052,7 +3052,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3170,13 +3170,13 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "OpenAI Dad Jokes Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "OpenAI Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3284,7 +3284,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3418,13 +3418,13 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Anthropic Dad Jokes Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Anthropic Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3532,7 +3532,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3644,13 +3644,13 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 3: Create session and send message
     println!("\nStep 3: Creating session and sending message...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id}))
+        .json(&json!({"agent_id": agent.public_id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3719,7 +3719,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -3823,13 +3823,13 @@ async fn test_streaming_events_emitted() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Streaming Test Session"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Streaming Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -4053,7 +4053,7 @@ async fn test_streaming_events_emitted() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4147,14 +4147,14 @@ async fn test_cancel_turn_endpoint() {
 
     assert_eq!(agent_response.status(), 201, "Failed to create agent");
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 4: Create session
     println!("\nStep 4: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
-            "agent_id": agent.id,
+            "agent_id": agent.public_id,
             "title": "Cancel Test Session"
         }))
         .send()
@@ -4199,7 +4199,7 @@ async fn test_cancel_turn_endpoint() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4306,12 +4306,15 @@ async fn test_anthropic_extended_thinking() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!("Created agent: {}", agent.public_id);
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/agents/{}/sessions",
+            API_BASE_URL, agent.public_id
+        ))
         .json(&json!({"title": "Extended Thinking Test Session"}))
         .send()
         .await
@@ -4330,7 +4333,7 @@ async fn test_anthropic_extended_thinking() {
     let message_response = client
         .post(format!(
             "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .json(&json!({
             "message": {
@@ -4365,7 +4368,7 @@ async fn test_anthropic_extended_thinking() {
         let session_response = client
             .get(format!(
                 "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.id, session.id
+                API_BASE_URL, agent.public_id, session.id
             ))
             .send()
             .await;
@@ -4391,7 +4394,7 @@ async fn test_anthropic_extended_thinking() {
     let events_response = client
         .get(format!(
             "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .send()
         .await
@@ -4467,7 +4470,7 @@ async fn test_anthropic_extended_thinking() {
     let followup_response = client
         .post(format!(
             "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .json(&json!({
             "message": {
@@ -4494,7 +4497,7 @@ async fn test_anthropic_extended_thinking() {
         let session_response = client
             .get(format!(
                 "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.id, session.id
+                API_BASE_URL, agent.public_id, session.id
             ))
             .send()
             .await;
@@ -4524,7 +4527,7 @@ async fn test_anthropic_extended_thinking() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4664,12 +4667,18 @@ async fn test_anthropic_extended_thinking_with_tools() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {} with current_time capability", agent.id);
+    println!(
+        "Created agent: {} with current_time capability",
+        agent.public_id
+    );
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/agents/{}/sessions",
+            API_BASE_URL, agent.public_id
+        ))
         .json(&json!({"title": "Time Reporting with Thinking Test"}))
         .send()
         .await
@@ -4688,7 +4697,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let message_response = client
         .post(format!(
             "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .json(&json!({
             "message": {
@@ -4721,7 +4730,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         let session_response = client
             .get(format!(
                 "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.id, session.id
+                API_BASE_URL, agent.public_id, session.id
             ))
             .send()
             .await;
@@ -4754,7 +4763,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let events_response = client
         .get(format!(
             "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .send()
         .await
@@ -4806,7 +4815,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let followup_response = client
         .post(format!(
             "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            API_BASE_URL, agent.public_id, session.id
         ))
         .json(&json!({
             "message": {
@@ -4833,7 +4842,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         let session_response = client
             .get(format!(
                 "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.id, session.id
+                API_BASE_URL, agent.public_id, session.id
             ))
             .send()
             .await;
@@ -4869,7 +4878,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -4944,7 +4953,7 @@ async fn test_events_api_contract() {
 
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "Events Contract Test"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "Events Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")
@@ -5022,7 +5031,7 @@ async fn test_events_api_contract() {
 
     // Cleanup
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -5055,7 +5064,7 @@ async fn test_events_sse_contract() {
 
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.id, "title": "SSE Contract Test"}))
+        .json(&json!({"agent_id": agent.public_id, "title": "SSE Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")
@@ -5110,7 +5119,7 @@ async fn test_events_sse_contract() {
 
     // Cleanup
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await
         .expect("Failed to delete agent");

@@ -107,12 +107,12 @@ async fn test_get_agent_by_id() {
 
     // Get the agent by ID
     let fetched_agent: Agent = server
-        .get(&format!("/v1/agents/{}", agent.id))
+        .get(&format!("/v1/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
 
-    assert_eq!(fetched_agent.id, agent.id);
+    assert_eq!(fetched_agent.public_id, agent.public_id);
     assert_eq!(fetched_agent.name, "Get Test Agent");
 }
 
@@ -136,7 +136,7 @@ async fn test_update_agent() {
     // Update the agent
     let updated_agent: Agent = server
         .patch(
-            &format!("/v1/agents/{}", agent.id),
+            &format!("/v1/agents/{}", agent.public_id),
             json!({
                 "name": "Updated Name",
                 "description": "Updated description"
@@ -172,13 +172,13 @@ async fn test_delete_agent() {
 
     // Delete the agent (soft-delete: archives the agent)
     server
-        .delete(&format!("/v1/agents/{}", agent.id))
+        .delete(&format!("/v1/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     // Verify agent is archived (not hard-deleted)
     let archived_agent: Agent = server
-        .get(&format!("/v1/agents/{}", agent.id))
+        .get(&format!("/v1/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -211,7 +211,7 @@ async fn test_create_session() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id,
+                "agent_id": agent.public_id,
                 "title": "Test Session"
             }),
         )
@@ -219,7 +219,7 @@ async fn test_create_session() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(session.agent_id, agent.id);
+    assert_eq!(session.agent_id, agent.public_id);
     assert_eq!(session.title.as_deref(), Some("Test Session"));
 }
 
@@ -244,7 +244,7 @@ async fn test_get_session() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id,
+                "agent_id": agent.public_id,
                 "title": "Get Test Session"
             }),
         )
@@ -285,7 +285,7 @@ async fn test_sessions_pagination() {
             .post(
                 "/v1/sessions",
                 json!({
-                    "agent_id": agent.id,
+                    "agent_id": agent.public_id,
                     "title": format!("Session {}", i)
                 }),
             )
@@ -296,7 +296,7 @@ async fn test_sessions_pagination() {
 
     // Test default pagination
     let body: Value = server
-        .get(&format!("/v1/sessions?agent_id={}", agent.id))
+        .get(&format!("/v1/sessions?agent_id={}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -305,7 +305,10 @@ async fn test_sessions_pagination() {
 
     // Test custom limit
     let body: Value = server
-        .get(&format!("/v1/sessions?agent_id={}&limit=5", agent.id))
+        .get(&format!(
+            "/v1/sessions?agent_id={}&limit=5",
+            agent.public_id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -316,7 +319,7 @@ async fn test_sessions_pagination() {
     let body: Value = server
         .get(&format!(
             "/v1/sessions?agent_id={}&offset=10&limit=10",
-            agent.id
+            agent.public_id
         ))
         .await
         .assert_status(StatusCode::OK)
@@ -349,7 +352,7 @@ async fn test_create_user_message() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id
+                "agent_id": agent.public_id
             }),
         )
         .await
@@ -395,7 +398,7 @@ async fn test_list_messages() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id
+                "agent_id": agent.public_id
             }),
         )
         .await
@@ -453,7 +456,7 @@ async fn test_list_events() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id
+                "agent_id": agent.public_id
             }),
         )
         .await
@@ -630,7 +633,7 @@ async fn test_session_inherits_agent_default_model() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id,
+                "agent_id": agent.public_id,
                 "title": "Inheritance Test"
             }),
         )
@@ -647,7 +650,9 @@ async fn test_session_inherits_agent_default_model() {
 
     // Cleanup in correct order: session -> agent -> model -> provider
     server.delete(&format!("/v1/sessions/{}", session.id)).await;
-    server.delete(&format!("/v1/agents/{}", agent.id)).await;
+    server
+        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .await;
     server.delete(&format!("/v1/llm-models/{}", model.id)).await;
     server
         .delete(&format!("/v1/llm-providers/{}", provider.id))
@@ -679,7 +684,7 @@ async fn test_session_filesystem() {
         .post(
             "/v1/sessions",
             json!({
-                "agent_id": agent.id
+                "agent_id": agent.public_id
             }),
         )
         .await

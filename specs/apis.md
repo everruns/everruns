@@ -38,9 +38,10 @@ See [authentication.md](authentication.md) for full authentication specification
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents` | Create agent |
+| POST | `/v1/agents` | Create agent (optional client-supplied `id`) |
 | GET | `/v1/agents` | List agents (paginated) |
 | GET | `/v1/agents/{id}` | Get agent by ID |
+| PUT | `/v1/agents/{id}` | Upsert agent (create 201, update 200) |
 | PATCH | `/v1/agents/{id}` | Update agent |
 | DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
 | POST | `/v1/agents/import` | Import agent from file content |

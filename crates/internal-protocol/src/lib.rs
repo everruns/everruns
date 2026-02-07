@@ -278,7 +278,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
 /// Convert schemas Agent to proto Agent
 pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
     proto::Agent {
-        id: Some(uuid_to_proto_uuid(value.id.uuid())),
+        id: Some(uuid_to_proto_uuid(value.internal_id)),
         name: value.name.clone(),
         description: value.description.clone().unwrap_or_default(),
         system_prompt: value.system_prompt.clone(),
@@ -968,8 +968,10 @@ mod tests {
         use uuid::Uuid;
 
         // Create an Agent with capabilities
+        let id = Uuid::now_v7();
         let agent = everruns_core::Agent {
-            id: Uuid::now_v7().into(),
+            public_id: everruns_core::AgentId::from_uuid(id),
+            internal_id: id,
             name: "Test Agent".to_string(),
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
@@ -1022,8 +1024,10 @@ mod tests {
         use uuid::Uuid;
 
         // Create an Agent without capabilities
+        let id = Uuid::now_v7();
         let agent = everruns_core::Agent {
-            id: Uuid::now_v7().into(),
+            public_id: everruns_core::AgentId::from_uuid(id),
+            internal_id: id,
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),

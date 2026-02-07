@@ -56,7 +56,11 @@ impl AgentStore for DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
-                    id: row.id,
+                    public_id: row
+                        .public_id
+                        .parse()
+                        .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid())),
+                    internal_id: row.id.uuid(),
                     name: row.name,
                     description: row.description,
                     system_prompt: row.system_prompt,

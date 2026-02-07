@@ -64,16 +64,61 @@ IDs must pass validation:
 // ^agent_[0-9a-f]{32}$
 ```
 
-### Database Storage
+### Database Storage — Dual-ID Pattern
 
-IDs are stored as:
-- **Primary Key Column:** `TEXT` (the full prefixed string)
-- **Index:** B-tree index on ID columns for efficient lookups
+All entities use a **dual-ID pattern** with an internal UUID primary key and an external public_id:
 
-This approach:
-- Preserves type information in the database
-- Makes debugging easier (can identify entity type from ID)
-- Maintains compatibility with external systems expecting string IDs
+| Layer | Column | Type | Purpose |
+|-------|--------|------|---------|
+| Internal | `id` | `UUID` (PK) | FK references, joins, internal queries. Never exposed in API. |
+| External | `public_id` | `TEXT` (UNIQUE per org) | API-facing identifier. Client-supplied or auto-generated. Format: `{prefix}_{32-hex}`. |
+
+**Rules:**
+- API always shows `public_id` as `"id"` — internal UUID is never exposed
+- Client can supply `public_id` on create; server auto-generates `{prefix}_{uuidv7_hex}` if omitted
+- `UNIQUE(org_id, public_id)` — same public_id allowed across orgs
+- Format validated: `^{prefix}_[0-9a-f]{32}$`
+- FKs between tables use internal `UUID` columns
+- When auto-generating: derive `public_id` from the internal UUID for consistency (`{prefix}_{uuid_hex}`)
+
+**Domain struct convention:**
+
+```rust
+pub struct Agent {
+    #[serde(rename = "id")]
+    pub public_id: AgentId,       // External, shown in API as "id"
+
+    #[serde(skip, default = "Uuid::nil")]
+    pub internal_id: Uuid,        // Internal, never serialized
+
+    // ... other fields
+}
+```
+
+**Migration for existing tables:**
+
+```sql
+ALTER TABLE {table} ADD COLUMN public_id TEXT;
+UPDATE {table} SET public_id = '{prefix}_' || replace(id::text, '-', '');
+ALTER TABLE {table} ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX idx_{table}_org_public_id ON {table}(org_id, public_id);
+ALTER TABLE {table} ADD CONSTRAINT {table}_public_id_format
+    CHECK (public_id ~ '^{prefix}_[0-9a-f]{32}$');
+```
+
+**Implementation status:**
+- Organizations: uses `public_id` pattern (original adopter)
+- Agents: uses `public_id` pattern (implemented)
+- Sessions, Messages, etc.: follow in subsequent PRs
+
+**Upsert semantics (PUT):**
+- `PUT /v1/{entity}/{public_id}` creates if not exists (201), updates if exists (200)
+- Enabled by the `UNIQUE(org_id, public_id)` constraint + `ON CONFLICT DO UPDATE`
+
+**Session FK resolution:**
+- `sessions.agent_id` stores the agent's internal UUID (FK to `agents.id`)
+- API responses resolve this to the agent's `public_id` via a lookup/JOIN
+- Session creation accepts the agent's `public_id`, resolves to internal UUID for storage
 
 ### API Serialization
 
@@ -113,7 +158,8 @@ org_00000000000000000000000000000001
 |----------|----------|
 | Why prefixed IDs? | Type safety, debuggability, prevents mixing ID types |
 | Why UUIDv7? | Time-ordering benefits, sortable, globally unique |
-| Why TEXT storage? | Preserves type info, debuggable, no conversion needed |
+| Why dual-ID? | Internal UUID PK for FK integrity; external public_id for client-facing API, client-supplied IDs, upsert |
+| Why not expose UUID? | Decouples internal PK from API contract; allows client-supplied IDs |
 | Why lowercase hex? | Consistency, case-insensitive matching, URL-safe |
 
 ## Migration Strategy

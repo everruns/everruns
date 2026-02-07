@@ -5,6 +5,7 @@
 //
 // Run with: cargo test -p everruns-core --test reason_atom_test
 
+use everruns_core::AgentId;
 use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
@@ -39,7 +40,8 @@ async fn setup_test_environment() -> (
     // Create a test agent
     let agent_id = Uuid::now_v7();
     let agent = Agent {
-        id: agent_id.into(),
+        public_id: AgentId::from_uuid(agent_id),
+        internal_id: agent_id,
         name: "Test Agent".to_string(),
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),

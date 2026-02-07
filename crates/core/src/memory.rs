@@ -163,7 +163,7 @@ impl InMemoryAgentStore {
 
     /// Add an agent to the store
     pub async fn add_agent(&self, agent: Agent) {
-        self.agents.write().await.insert(agent.id, agent);
+        self.agents.write().await.insert(agent.public_id, agent);
     }
 
     /// Get all agent IDs

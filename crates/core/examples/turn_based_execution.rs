@@ -24,7 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    InputMessage, MessageRetriever,
+    AgentId, InputMessage, MessageRetriever,
     agent::{Agent, AgentStatus},
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -112,7 +112,8 @@ async fn main() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let now = Utc::now();
     let agent = Agent {
-        id: agent_id.into(),
+        public_id: AgentId::from_uuid(agent_id),
+        internal_id: agent_id,
         name: "Weather Assistant".to_string(),
         description: Some("A helpful weather assistant".to_string()),
         system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),

@@ -449,6 +449,7 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
             continue;
         }
         let input = CreateAgentRow {
+            public_id: everruns_core::AgentId::from_uuid(seed.id).to_string(),
             name: seed.name.to_string(),
             description: Some(seed.description.to_string()),
             system_prompt: seed.system_prompt.to_string(),

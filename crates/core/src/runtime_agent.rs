@@ -226,6 +226,7 @@ mod tests {
     use super::*;
     use crate::agent::AgentStatus;
     use crate::capabilities::AgentCapabilityConfig;
+    use crate::typed_id::AgentId;
 
     #[test]
     fn test_runtime_agent_new() {
@@ -346,8 +347,10 @@ mod tests {
 
         let registry = CapabilityRegistry::with_builtins();
         let ts = Timestamp::now(NoContext);
+        let uuid = Uuid::new_v7(ts);
         let agent = Agent {
-            id: Uuid::new_v7(ts).into(),
+            public_id: AgentId::from_uuid(uuid),
+            internal_id: uuid,
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),
@@ -444,8 +447,10 @@ mod tests {
         let ts = Timestamp::now(NoContext);
 
         // Agent has current_time capability
+        let uuid = Uuid::new_v7(ts);
         let agent = Agent {
-            id: Uuid::new_v7(ts).into(),
+            public_id: AgentId::from_uuid(uuid),
+            internal_id: uuid,
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),
