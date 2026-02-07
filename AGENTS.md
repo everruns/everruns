@@ -44,6 +44,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/release-process.md` - Release workflow with CHANGELOG.md
 - `specs/id-schema.md` - Standardized prefixed ID format
 - `specs/braintrust-integration.md` - Braintrust observability
+- `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/test-cases.md` - Manual test case format
 - `specs/session-sqldb.md` - Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 
