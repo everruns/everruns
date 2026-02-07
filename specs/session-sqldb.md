@@ -21,12 +21,13 @@ Session-scoped SQLite databases backed by PostgreSQL page-level storage. Each se
 - Raw FFI via `libsqlite3-sys`: Maximum control but maximum unsafety
 **Rationale:** Centralized `Vfs` trait model fits PostgreSQL connection pooling. Falls back to raw FFI if integration issues arise.
 
-### Decision 3: Serialize/Deserialize for DEV_MODE
-**Chosen:** rusqlite `serialize`/`deserialize` feature for in-memory backend
+### Decision 3: Live Connections for DEV_MODE
+**Chosen:** Persistent `Arc<Mutex<Connection>>` per database in-memory
 **Alternatives considered:**
+- Serialize/deserialize per access: rusqlite 0.32 `serialize`/`deserialize` API is cumbersome (`OwnedData`, `DatabaseName`) and unnecessary overhead
 - Full VFS for DEV_MODE too: Unnecessary complexity
 - No DEV_MODE support: Breaks dev workflow
-**Rationale:** Same API surface via trait. Serialize captures full DB as `Vec<u8>`, stored in HashMap. No VFS complexity for development.
+**Rationale:** Same API surface via trait. Each database holds a live in-memory SQLite connection. No VFS complexity for development. Size estimated via `conn.serialize()` length.
 
 ### Decision 4: Rollback Journal Mode
 **Chosen:** `PRAGMA journal_mode=MEMORY` (rollback journal in memory)
@@ -129,7 +130,7 @@ GET /v1/sessions/{session_id}/databases
 
 Response 200:
 {
-  "items": [
+  "data": [
     {
       "name": "analytics",
       "size_bytes": 12288,
@@ -137,8 +138,7 @@ Response 200:
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
     }
-  ],
-  "total": 1
+  ]
 }
 ```
 
@@ -353,11 +353,12 @@ You have access to session-scoped SQL databases. Use these tools to create table
 
 In-memory backend provides full API parity without PostgreSQL:
 
-1. `Connection::open_in_memory()` for each database
-2. After each mutation: `conn.serialize("main")` → `Vec<u8>` stored in HashMap
-3. On next access: `conn.deserialize("main", data)` restores state
+1. `Connection::open_in_memory()` for each database, held as `Arc<Mutex<Connection>>`
+2. Live connections persist for session lifetime — no serialize/deserialize round-trips
+3. Size tracking via `conn.serialize(DatabaseName::Main)` length estimation
 4. No VFS complexity — standard rusqlite in-memory mode
-5. Concurrency via `parking_lot::RwLock` per database
+5. Concurrency via `RwLock` on the database map, `Mutex` per connection
+6. Async wrapper (`InMemorySqlDbStore`) uses `tokio::task::spawn_blocking`
 
 ## Future Extensibility
 
@@ -405,7 +406,22 @@ CREATE TABLE session_database_pages (
 CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id);
 ```
 
-## UI Integration
+## Implementation Status
+
+- [x] Core types and async trait (`crates/core/src/session_sqldb.rs`)
+- [x] Capability + 3 tools (`crates/core/src/capabilities/session_sql_database.rs`)
+- [x] In-memory backend (`crates/session-sqldb/src/memory.rs`)
+- [x] Async store wrapper (`crates/session-sqldb/src/store.rs`)
+- [x] Query executor with authorizer and limits (`crates/session-sqldb/src/executor.rs`)
+- [x] HTTP API routes (`crates/server/src/api/session_databases.rs`)
+- [x] Wired into server main, worker adapters, ActAtom
+- [x] Seed agent: Data Analyst
+- [x] Integration tests (CRUD, schema, validation)
+- [x] E2E verified: agent session with LLM using sql_execute/sql_query tools
+- [ ] PostgreSQL VFS backend (production)
+- [ ] UI integration
+
+## UI Integration (Future)
 
 - "Databases" tab on session detail page
 - Database list with name, size, page count
