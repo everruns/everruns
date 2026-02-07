@@ -27,6 +27,11 @@ use utoipa::ToSchema;
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
+    /// Client-supplied agent ID (format: agent_{32-hex}).
+    /// If not provided, one is auto-generated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub id: Option<AgentId>,
     /// The name of the agent. Used for display purposes.
     #[schema(example = "Customer Support Agent")]
     pub name: String,
@@ -141,6 +146,9 @@ impl AgentFileCapability {
 /// Supports both legacy (string list) and new (object with ref/config) capability formats.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct AgentFile {
+    /// Optional agent ID (format: agent_{32-hex}). Preserved during import/export.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<AgentId>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
@@ -190,7 +198,10 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/preview", post(preview_agent))
         .route(
             "/v1/agents/:agent_id",
-            get(get_agent).patch(update_agent).delete(delete_agent),
+            get(get_agent)
+                .put(upsert_agent)
+                .patch(update_agent)
+                .delete(delete_agent),
         )
         .route("/v1/agents/:agent_id/export", get(export_agent))
         .with_state(state)
@@ -221,11 +232,18 @@ pub async fn create_agent(
         req.capabilities.len(),
     )?;
 
-    let agent = state
-        .service
-        .create(org.org_id, req)
-        .await
-        .log_internal_error_json("create agent")?;
+    let client_id = req.id;
+    let agent = match state.service.create(org.org_id, client_id, req).await {
+        Ok(agent) => agent,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("duplicate key") || msg.contains("already exists") {
+                return Err(ErrorResponse::conflict("Agent with this ID already exists"));
+            }
+            tracing::error!("Failed to create agent: {}", msg);
+            return Err(ErrorResponse::internal_error());
+        }
+    };
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
@@ -284,7 +302,7 @@ pub async fn get_agent(
 
     let agent = state
         .service
-        .get(org.org_id, agent_id.uuid())
+        .get_by_public_id(org.org_id, &agent_id.to_string())
         .await
         .log_internal_error_json("get agent")?
         .ok_or_not_found_json("Agent")?;
@@ -333,7 +351,7 @@ pub async fn update_agent(
 
     let agent = state
         .service
-        .update(org.org_id, agent_id.uuid(), req)
+        .update(org.org_id, &agent_id.to_string(), req)
         .await
         .log_internal_error_json("update agent")?
         .ok_or_not_found_json("Agent")?;
@@ -372,7 +390,7 @@ pub async fn delete_agent(
 
     let deleted = state
         .service
-        .delete(org.org_id, agent_id.uuid())
+        .delete(org.org_id, &agent_id.to_string())
         .await
         .log_internal_error_json("delete agent")?;
 
@@ -386,6 +404,63 @@ pub async fn delete_agent(
             }),
         ))
     }
+}
+
+/// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
+///
+/// If agent with this ID exists, update it. If not, create it.
+/// Returns 201 on create, 200 on update.
+#[utoipa::path(
+    put,
+    path = "/v1/agents/{agent_id}",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (format: agent_{32-hex})")
+    ),
+    request_body = CreateAgentRequest,
+    responses(
+        (status = 200, description = "Agent updated", body = Agent),
+        (status = 201, description = "Agent created", body = Agent),
+        (status = 400, description = "Invalid agent ID or input exceeds allowed limits", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn upsert_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+    Json(req): Json<CreateAgentRequest>,
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
+    // Validate input sizes
+    validate_create_agent_input(
+        &req.name,
+        req.description.as_deref(),
+        &req.system_prompt,
+        req.capabilities.len(),
+    )?;
+
+    let (agent, was_created) = state
+        .service
+        .upsert(org.org_id, &agent_id.to_string(), req)
+        .await
+        .log_internal_error_json("upsert agent")?;
+
+    let status = if was_created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+
+    Ok((status, Json(agent)))
 }
 
 /// GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
@@ -419,7 +494,7 @@ pub async fn export_agent(
 
     let agent = state
         .service
-        .get(org.org_id, agent_id.uuid())
+        .get_by_public_id(org.org_id, &agent_id.to_string())
         .await
         .log_internal_error_json("get agent for export")?
         .ok_or_not_found_json("Agent")?;
@@ -490,7 +565,9 @@ pub async fn import_agent(
         agent_file.capabilities.len(),
     )?;
 
+    let client_id = agent_file.id;
     let request = CreateAgentRequest {
+        id: None, // Already extracted as client_id
         name,
         description: agent_file.description,
         system_prompt,
@@ -505,12 +582,15 @@ pub async fn import_agent(
 
     let agent = state
         .service
-        .create(org.org_id, request)
+        .create(org.org_id, client_id, request)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to import agent: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            let msg = e.to_string();
+            if msg.contains("duplicate key") || msg.contains("already exists") {
+                return ErrorResponse::conflict("Agent with this ID already exists");
+            }
+            tracing::error!("Failed to import agent: {}", msg);
+            ErrorResponse::internal_error()
         })?;
 
     Ok((StatusCode::CREATED, Json(agent)))
@@ -520,6 +600,7 @@ pub async fn import_agent(
 fn agent_to_markdown(agent: &Agent) -> String {
     // Build YAML front matter (skip empty/default fields)
     let mut yaml_lines = vec![];
+    yaml_lines.push(format!("id: \"{}\"", agent.public_id));
     yaml_lines.push(format!("name: \"{}\"", agent.name.replace('"', "\\\"")));
 
     if let Some(desc) = &agent.description {
@@ -584,6 +665,7 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
 
     // Fall back to treating entire content as system prompt
     Ok(AgentFile {
+        id: None,
         name: None, // Will be auto-generated
         description: None,
         system_prompt: Some(content.to_string()),

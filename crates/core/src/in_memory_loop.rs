@@ -327,7 +327,8 @@ impl InMemoryAgenticLoopBuilder {
         let agent_id = AgentId::new();
         let now = Utc::now();
         let agent = Agent {
-            id: agent_id,
+            public_id: agent_id,
+            internal_id: agent_id.uuid(),
             name: self.agent_name,
             description: None,
             system_prompt: self.system_prompt,

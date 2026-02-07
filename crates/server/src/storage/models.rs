@@ -160,6 +160,7 @@ pub struct CreateRefreshTokenRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
     pub id: AgentId,
+    pub public_id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
@@ -185,6 +186,7 @@ pub struct AgentRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentRow {
+    pub public_id: String,
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,

@@ -50,10 +50,11 @@ impl SessionService {
         &self,
         org_id: i64,
         org_public_id: &str,
-        agent_id: Uuid,
+        agent_internal_id: Uuid,
+        agent_public_id: AgentId,
         req: CreateSessionRequest,
     ) -> Result<Session> {
-        let agent_id = AgentId::from_uuid(agent_id);
+        let agent_id = AgentId::from_uuid(agent_internal_id);
 
         // If model_id not provided, use the agent's default_model_id
         let model_id: Option<ModelId> = match req.model_id {
@@ -77,10 +78,12 @@ impl SessionService {
             capabilities: capabilities_json,
         };
         let row = self.db.create_session(input).await?;
-        let session = Self::row_to_session(row, org_public_id);
+        let mut session = Self::row_to_session(row, org_public_id);
+        // Override agent_id with public_id (DB stores internal UUID as FK)
+        session.agent_id = agent_public_id;
 
         // Apply capability mounts to the session filesystem (agent + session capabilities)
-        self.apply_capability_mounts(agent_id.uuid(), &req.capabilities, session.id.uuid())
+        self.apply_capability_mounts(agent_internal_id, &req.capabilities, session.id.uuid())
             .await?;
 
         Ok(session)
@@ -159,7 +162,14 @@ impl SessionService {
             .db
             .get_session(org_id, SessionId::from_uuid(id))
             .await?;
-        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
+        match row {
+            Some(r) => {
+                let mut session = Self::row_to_session(r, org_public_id);
+                self.resolve_session_agent_id(org_id, &mut session).await?;
+                Ok(Some(session))
+            }
+            None => Ok(None),
+        }
     }
 
     /// List sessions for an organization with optional agent filter.
@@ -178,6 +188,11 @@ impl SessionService {
             .into_iter()
             .map(|r| Self::row_to_session(r, org_public_id))
             .collect();
+
+        // Resolve agent internal UUIDs to public IDs
+        for session in &mut sessions {
+            self.resolve_session_agent_id(org_id, session).await?;
+        }
 
         // Fetch previews for all sessions in batch queries
         let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id.uuid()).collect();
@@ -213,7 +228,14 @@ impl SessionService {
             .db
             .update_session(org_id, SessionId::from_uuid(id), input)
             .await?;
-        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
+        match row {
+            Some(r) => {
+                let mut session = Self::row_to_session(r, org_public_id);
+                self.resolve_session_agent_id(org_id, &mut session).await?;
+                Ok(Some(session))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Update session status (used by worker via gRPC)
@@ -232,13 +254,34 @@ impl SessionService {
             .db
             .update_session(org_id, SessionId::from_uuid(id), input)
             .await?;
-        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
+        match row {
+            Some(r) => {
+                let mut session = Self::row_to_session(r, org_public_id);
+                self.resolve_session_agent_id(org_id, &mut session).await?;
+                Ok(Some(session))
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
         self.db
             .delete_session(org_id, SessionId::from_uuid(id))
             .await
+    }
+
+    /// Resolve a session's agent_id from internal UUID to the agent's public_id.
+    /// The DB stores the internal UUID as FK; the API should return the public_id.
+    async fn resolve_session_agent_id(&self, org_id: i64, session: &mut Session) -> Result<()> {
+        if let Some(public_id) = self
+            .db
+            .get_agent_public_id(org_id, session.agent_id)
+            .await?
+            && let Ok(agent_id) = public_id.parse::<AgentId>()
+        {
+            session.agent_id = agent_id;
+        }
+        Ok(())
     }
 
     fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {

@@ -55,6 +55,7 @@ async fn test_agent_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Repo Test Agent".to_string(),
                 description: Some("Test description".to_string()),
                 system_prompt: "Test prompt".to_string(),
@@ -125,6 +126,7 @@ async fn test_agent_get_by_name() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: unique_name.clone(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -160,6 +162,7 @@ async fn test_session_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Session Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -247,6 +250,7 @@ async fn test_event_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Event Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -315,6 +319,7 @@ async fn test_event_exclude_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Event Exclude Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -547,6 +552,7 @@ async fn test_session_file_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "File Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -716,6 +722,7 @@ async fn test_agent_capabilities() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Capability Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -913,6 +920,7 @@ async fn test_session_usage_tracking() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Usage Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -987,6 +995,7 @@ async fn test_session_previews() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
                 name: "Preview Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),

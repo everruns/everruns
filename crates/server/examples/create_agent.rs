@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let agent: Agent = create_response.json().await?;
     println!("Created agent:");
-    println!("   ID: {}", agent.id);
+    println!("   ID: {}", agent.public_id);
     println!("   Name: {}", agent.name);
     println!("   Status: {:?}", agent.status);
     println!("   Created at: {}", agent.created_at);
@@ -43,13 +43,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Retrieve the agent
     println!("\nRetrieving agent...");
     let get_response = client
-        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .send()
         .await?;
 
     let retrieved_agent: Agent = get_response.json().await?;
     println!("Retrieved agent:");
-    println!("   ID: {}", retrieved_agent.id);
+    println!("   ID: {}", retrieved_agent.public_id);
     println!("   Name: {}", retrieved_agent.name);
     println!(
         "   Description: {}",
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agents: Vec<Agent> = serde_json::from_value(response["data"].clone())?;
     println!("Found {} agent(s):", agents.len());
     for a in agents {
-        println!("   - {} ({})", a.name, a.id);
+        println!("   - {} ({})", a.name, a.public_id);
     }
 
     println!("\nExample completed successfully!");

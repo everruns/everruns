@@ -12,7 +12,8 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | AgentId | Typed ID with `agent_` prefix (UUIDv7) |
+| `id` (public_id) | AgentId | Typed ID with `agent_` prefix. Client-supplied or auto-generated. API-facing. |
+| `internal_id` | UUID | Internal PK. Used for FK references. Never exposed in API. |
 | `name` | string | Display name |
 | `description` | string? | Optional description (supports markdown) |
 | `system_prompt` | string | System prompt for the LLM |
@@ -23,7 +24,7 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
-**Note:** All entity IDs use typed wrappers (AgentId, SessionId, etc.) for compile-time type safety. See `specs/id-schema.md` for details.
+**Note:** All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md` for details.
 
 **Input Validation Limits:**
 

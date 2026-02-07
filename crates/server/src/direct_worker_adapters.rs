@@ -160,7 +160,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
         };
 
         Ok(row.map(|r| Agent {
-            id: r.id,
+            public_id: r
+                .public_id
+                .parse()
+                .unwrap_or_else(|_| AgentId::from_uuid(r.id.uuid())),
+            internal_id: r.id.uuid(),
             name: r.name,
             description: r.description,
             system_prompt: r.system_prompt,
@@ -672,7 +676,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Build MCP tool definitions
         let mcp_tool_definitions = self
-            .build_mcp_tool_definitions(agent.id.uuid())
+            .build_mcp_tool_definitions(agent.internal_id)
             .await
             .unwrap_or_default();
 

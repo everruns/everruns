@@ -35,6 +35,11 @@ impl ErrorResponse {
     pub fn not_found(resource: &str) -> (StatusCode, Json<Self>) {
         Self::new(format!("{} not found", resource)).into_response(StatusCode::NOT_FOUND)
     }
+
+    /// Create a conflict error response (409)
+    pub fn conflict(message: &str) -> (StatusCode, Json<Self>) {
+        Self::new(message).into_response(StatusCode::CONFLICT)
+    }
 }
 
 // ============================================================================

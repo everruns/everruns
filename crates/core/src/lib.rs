@@ -157,7 +157,7 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 
 // Domain entity re-exports
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
-pub use agent::{Agent, AgentStatus};
+pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_public_id};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventBuilder,

@@ -373,7 +373,8 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     };
 
     Ok(Agent {
-        id: id.into(),
+        public_id: everruns_core::AgentId::from_uuid(id),
+        internal_id: id,
         name: proto_agent.name,
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,

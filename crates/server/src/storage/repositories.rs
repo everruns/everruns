@@ -319,16 +319,21 @@ impl Database {
     // Agents (configuration for agentic loop)
     // ============================================
 
+    /// Standard agent column list for SELECT queries
+    #[allow(dead_code)]
+    const AGENT_COLUMNS: &str = "id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens";
+
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active')
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(org_id)
+        .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
@@ -340,7 +345,7 @@ impl Database {
         Ok(row)
     }
 
-    /// Create agent with a specific ID, idempotent (ON CONFLICT DO NOTHING)
+    /// Create agent with a specific internal ID, idempotent (ON CONFLICT DO NOTHING)
     /// Returns None if agent already exists with this ID
     pub async fn create_agent_with_id(
         &self,
@@ -350,15 +355,16 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(id.uuid())
         .bind(org_id)
+        .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
@@ -373,7 +379,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -387,10 +393,31 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_agent_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM agents
+            WHERE org_id = $1 AND public_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND status = 'active'
@@ -407,7 +434,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status = 'active'
@@ -439,7 +466,7 @@ impl Database {
                 status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -472,6 +499,59 @@ impl Database {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    /// Upsert agent by public_id. Returns (row, was_created).
+    pub async fn upsert_agent(
+        &self,
+        org_id: i64,
+        input: CreateAgentRow,
+    ) -> Result<(AgentRow, bool)> {
+        // Use CTE to detect insert vs update
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            WITH existing AS (
+                SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
+            )
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            ON CONFLICT (org_id, public_id) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                system_prompt = EXCLUDED.system_prompt,
+                default_model_id = EXCLUDED.default_model_id,
+                tags = EXCLUDED.tags,
+                status = 'active',
+                updated_at = NOW()
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id)
+        .bind(&input.tags)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Detect if insert or update: if created_at == updated_at, it was a fresh insert
+        let was_created = row.created_at == row.updated_at;
+        Ok((row, was_created))
+    }
+
+    /// Get agent public_id from internal UUID (for session responses)
+    pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT public_id FROM agents WHERE org_id = $1 AND id = $2")
+                .bind(org_id)
+                .bind(id.uuid())
+                .fetch_optional(&self.pool)
+                .await?;
+
+        Ok(row.map(|r| r.0))
     }
 
     // ============================================
