@@ -188,16 +188,17 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
             onChange={(e) => setEditContent(e.target.value)}
             spellCheck={false}
           />
+        ) : !fileData?.content && fileData?.content !== "" ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <File className="h-12 w-12 mb-2 opacity-30" />
+            <p className="text-sm">Empty file</p>
+          </div>
         ) : hasPreview && viewMode === "preview" ? (
-          <FilePreview
-            content={fileData?.content ?? ""}
-            extension={extension}
-            encoding={encoding}
-          />
+          <FilePreview content={fileData.content} extension={extension} encoding={encoding} />
         ) : (
           <ScrollArea className="h-full">
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-words">
-              {fileData?.content ?? "Empty file"}
+              {fileData?.content || "Empty file"}
             </pre>
           </ScrollArea>
         )}

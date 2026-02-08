@@ -38,7 +38,7 @@ import {
   useCreateDirectory,
   useDeleteFile,
 } from "@/hooks/use-session-files";
-import { formatFileSize, joinPath } from "@/lib/api/session-files";
+import { formatFileSize, joinPath, listFiles } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileBrowserProps {
@@ -149,13 +149,8 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
   const loadDirectory = useCallback(
     async (path: string) => {
       try {
-        const response = await fetch(
-          `/api/sessions/${sessionId}/files?path=${encodeURIComponent(path)}`,
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setLoadedDirs((prev) => new Map(prev).set(path, data.data || data));
-        }
+        const files = await listFiles(sessionId, path);
+        setLoadedDirs((prev) => new Map(prev).set(path, files));
       } catch {
         // Error loading directory
       }
@@ -180,7 +175,13 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
   const handleRefresh = useCallback(() => {
     setLoadedDirs(new Map());
     refetchRoot();
-  }, [refetchRoot]);
+    // Reload expanded subdirectories
+    for (const path of expandedPaths) {
+      if (path !== "/workspace") {
+        loadDirectory(path);
+      }
+    }
+  }, [refetchRoot, expandedPaths, loadDirectory]);
 
   const handleCreateFile = async () => {
     if (!newFileName.trim()) return;

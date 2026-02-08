@@ -52,9 +52,11 @@ jest.mock("@/hooks/use-session-files", () => ({
 }));
 
 // Mock the session-files utilities
+const mockListFiles = jest.fn();
 jest.mock("@/lib/api/session-files", () => ({
   formatFileSize: (bytes: number) => `${bytes} B`,
   joinPath: (base: string, name: string) => `${base}/${name}`,
+  listFiles: (...args: unknown[]) => mockListFiles(...args),
 }));
 
 import { FileBrowser } from "@/components/files/file-browser";
@@ -477,50 +479,42 @@ describe("FileBrowser Delete", () => {
 // ============================================
 
 describe("FileBrowser Directory Expansion", () => {
+  const mockDirectory = {
+    id: "1",
+    session_id: "test-session",
+    path: "/src",
+    name: "src",
+    is_directory: true,
+    is_readonly: false,
+    size_bytes: 0,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+
+  const mockSubFile = {
+    id: "2",
+    session_id: "test-session",
+    path: "/src/index.ts",
+    name: "index.ts",
+    is_directory: false,
+    is_readonly: false,
+    size_bytes: 500,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn();
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it("loads directory contents when expanded", async () => {
-    const mockDirectory = {
-      id: "1",
-      session_id: "test-session",
-      path: "/workspace/src",
-      name: "src",
-      is_directory: true,
-      is_readonly: false,
-      size_bytes: 0,
-      created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-01T00:00:00Z",
-    };
-
-    const mockSubFile = {
-      id: "2",
-      session_id: "test-session",
-      path: "/workspace/src/index.ts",
-      name: "index.ts",
-      is_directory: false,
-      is_readonly: false,
-      size_bytes: 500,
-      created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-01T00:00:00Z",
-    };
-
+  it("calls listFiles API when directory is expanded", async () => {
     (useFiles as jest.Mock).mockReturnValue({
       data: [mockDirectory],
       isLoading: false,
       refetch: mockRefetch,
     });
 
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: [mockSubFile] }),
-    });
+    mockListFiles.mockResolvedValue([mockSubFile]);
 
     renderWithProviders(<FileBrowser sessionId="test-session" />);
 
@@ -528,9 +522,54 @@ describe("FileBrowser Directory Expansion", () => {
     fireEvent.click(screen.getByText("src"));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        "/api/sessions/test-session/files?path=%2Fworkspace%2Fsrc",
-      );
+      expect(mockListFiles).toHaveBeenCalledWith("test-session", "/src");
+    });
+  });
+
+  it("renders subdirectory files after expansion", async () => {
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [mockDirectory],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    mockListFiles.mockResolvedValue([mockSubFile]);
+
+    renderWithProviders(<FileBrowser sessionId="test-session" />);
+
+    fireEvent.click(screen.getByText("src"));
+
+    await waitFor(() => {
+      expect(screen.getByText("index.ts")).toBeInTheDocument();
+    });
+  });
+
+  it("reloads expanded directories on refresh", async () => {
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [mockDirectory],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    mockListFiles.mockResolvedValue([mockSubFile]);
+
+    renderWithProviders(<FileBrowser sessionId="test-session" />);
+
+    // Expand directory first
+    fireEvent.click(screen.getByText("src"));
+    await waitFor(() => {
+      expect(mockListFiles).toHaveBeenCalledWith("test-session", "/src");
+    });
+
+    mockListFiles.mockClear();
+    mockListFiles.mockResolvedValue([mockSubFile]);
+
+    // Click refresh
+    fireEvent.click(screen.getByTitle("Refresh"));
+
+    await waitFor(() => {
+      expect(mockRefetch).toHaveBeenCalled();
+      expect(mockListFiles).toHaveBeenCalledWith("test-session", "/src");
     });
   });
 });
