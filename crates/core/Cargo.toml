@@ -70,7 +70,7 @@ reqwest = { version = "0.13", features = ["json", "stream", "rustls-native-certs
 eventsource-stream = "0.2"
 
 # LLM simulation for testing
-llmsim = "0.2.0"
+llmsim = "0.2.1"
 
 [features]
 default = ["llm-tests"]
