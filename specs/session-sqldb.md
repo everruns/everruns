@@ -420,6 +420,7 @@ CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id
 - [x] E2E verified: agent session with LLM using sql_execute/sql_query tools
 - [ ] PostgreSQL VFS backend (production)
 - [ ] UI integration
+- [ ] Load testing (concurrent queries, size limit enforcement, connection pool exhaustion)
 
 ## UI Integration (Future)
 
