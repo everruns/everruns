@@ -20,6 +20,7 @@ use uuid::Uuid;
 /// Environment variables (for development convenience):
 /// - DEFAULT_OPENAI_API_KEY: Fallback API key for OpenAI providers
 /// - DEFAULT_ANTHROPIC_API_KEY: Fallback API key for Anthropic providers
+/// - DEFAULT_OPENROUTER_API_KEY: Fallback API key for OpenRouter providers
 ///
 /// These are only used when the provider doesn't have an API key set in the database.
 pub fn get_default_api_key_from_env(provider_type: &str) -> Option<String> {
@@ -35,6 +36,7 @@ where
         "openai" => "DEFAULT_OPENAI_API_KEY",
         "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
         "gemini" => "DEFAULT_GEMINI_API_KEY",
+        "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
         _ => return None,
     };
 

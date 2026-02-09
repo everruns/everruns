@@ -24,6 +24,9 @@ pub enum LlmProviderType {
     Anthropic,
     /// Google Gemini API
     Gemini,
+    /// OpenRouter API (https://openrouter.ai/) - multi-provider router
+    #[serde(rename = "openrouter")]
+    OpenRouter,
     /// LLM simulator for testing
     #[serde(rename = "llmsim")]
     LlmSim,
@@ -36,6 +39,7 @@ impl std::fmt::Display for LlmProviderType {
             LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
             LlmProviderType::Gemini => write!(f, "gemini"),
+            LlmProviderType::OpenRouter => write!(f, "openrouter"),
             LlmProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -50,6 +54,7 @@ impl std::str::FromStr for LlmProviderType {
             "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
             "anthropic" => Ok(LlmProviderType::Anthropic),
             "gemini" => Ok(LlmProviderType::Gemini),
+            "openrouter" => Ok(LlmProviderType::OpenRouter),
             "llmsim" => Ok(LlmProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -333,6 +338,10 @@ mod tests {
             "\"gemini\""
         );
         assert_eq!(
+            serde_json::to_string(&LlmProviderType::OpenRouter).unwrap(),
+            "\"openrouter\""
+        );
+        assert_eq!(
             serde_json::to_string(&LlmProviderType::LlmSim).unwrap(),
             "\"llmsim\""
         );
@@ -356,6 +365,10 @@ mod tests {
         assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"gemini\"").unwrap(),
             LlmProviderType::Gemini
+        ));
+        assert!(matches!(
+            serde_json::from_str::<LlmProviderType>("\"openrouter\"").unwrap(),
+            LlmProviderType::OpenRouter
         ));
         assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"llmsim\"").unwrap(),
@@ -383,6 +396,10 @@ mod tests {
             LlmProviderType::Gemini
         ));
         assert!(matches!(
+            "openrouter".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::OpenRouter
+        ));
+        assert!(matches!(
             "llmsim".parse::<LlmProviderType>().unwrap(),
             LlmProviderType::LlmSim
         ));
@@ -398,6 +415,7 @@ mod tests {
         );
         assert_eq!(LlmProviderType::Anthropic.to_string(), "anthropic");
         assert_eq!(LlmProviderType::Gemini.to_string(), "gemini");
+        assert_eq!(LlmProviderType::OpenRouter.to_string(), "openrouter");
         assert_eq!(LlmProviderType::LlmSim.to_string(), "llmsim");
     }
 }

@@ -8,6 +8,7 @@ members = [
     "crates/openai",
     "crates/anthropic",
     "crates/gemini",
+    "crates/openrouter",
     "crates/internal-protocol",
     "crates/cli",
     "crates/durable",

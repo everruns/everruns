@@ -649,7 +649,7 @@ export interface RefreshTokenRequest {
 // LLM Provider types
 // ============================================
 
-export type LlmProviderType = "openai" | "openai_completions" | "anthropic" | "gemini";
+export type LlmProviderType = "openai" | "openai_completions" | "anthropic" | "gemini" | "openrouter";
 
 export type LlmProviderStatus = "active" | "disabled";
 export type LlmModelStatus = "active" | "disabled";

@@ -693,6 +693,9 @@ pub enum ProviderType {
     Anthropic,
     /// Google Gemini API
     Gemini,
+    /// OpenRouter API (https://openrouter.ai/) - multi-provider router
+    /// Uses OpenAI-compatible Chat Completions API with OpenRouter's model catalog.
+    OpenRouter,
     /// LLM simulator for testing (uses llmsim crate)
     LlmSim,
 }
@@ -706,6 +709,7 @@ impl std::str::FromStr for ProviderType {
             "openai_completions" => Ok(ProviderType::OpenAICompletions),
             "anthropic" => Ok(ProviderType::Anthropic),
             "gemini" => Ok(ProviderType::Gemini),
+            "openrouter" => Ok(ProviderType::OpenRouter),
             "llmsim" => Ok(ProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -719,6 +723,7 @@ impl std::fmt::Display for ProviderType {
             ProviderType::OpenAICompletions => write!(f, "openai_completions"),
             ProviderType::Anthropic => write!(f, "anthropic"),
             ProviderType::Gemini => write!(f, "gemini"),
+            ProviderType::OpenRouter => write!(f, "openrouter"),
             ProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -948,6 +953,10 @@ mod tests {
             "gemini".parse::<ProviderType>().unwrap(),
             ProviderType::Gemini
         );
+        assert_eq!(
+            "openrouter".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenRouter
+        );
         // Azure, Ollama and Custom are no longer supported
         assert!("azure_openai".parse::<ProviderType>().is_err());
         assert!("ollama".parse::<ProviderType>().is_err());
@@ -963,6 +972,7 @@ mod tests {
         );
         assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
         assert_eq!(ProviderType::Gemini.to_string(), "gemini");
+        assert_eq!(ProviderType::OpenRouter.to_string(), "openrouter");
     }
 
     #[test]

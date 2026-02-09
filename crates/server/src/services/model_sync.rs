@@ -87,6 +87,7 @@ impl ModelSyncService {
             LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
             LlmProviderType::Anthropic => ProviderType::Anthropic,
             LlmProviderType::Gemini => ProviderType::Gemini,
+            LlmProviderType::OpenRouter => ProviderType::OpenRouter,
             LlmProviderType::LlmSim => {
                 // LlmSim doesn't support model discovery
                 return Ok(SyncResult::NotSupported);
@@ -269,6 +270,7 @@ impl ModelSyncService {
             "openai" => "DEFAULT_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
             "gemini" => "DEFAULT_GEMINI_API_KEY",
+            "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
             _ => return Ok(None),
         };
 
@@ -348,6 +350,7 @@ mod tests {
             "openai" => "DEFAULT_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
             "gemini" => "DEFAULT_GEMINI_API_KEY",
+            "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
             _ => return None,
         };
 

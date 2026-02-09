@@ -1191,6 +1191,7 @@ where
             }
             crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
             crate::llm_models::LlmProviderType::Gemini => ProviderType::Gemini,
+            crate::llm_models::LlmProviderType::OpenRouter => ProviderType::OpenRouter,
             crate::llm_models::LlmProviderType::LlmSim => ProviderType::LlmSim,
         };
 

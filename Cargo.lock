@@ -1324,6 +1324,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-openrouter"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "futures",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "everruns-sdk"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1424,6 +1440,7 @@ dependencies = [
  "everruns-gemini",
  "everruns-internal-protocol",
  "everruns-openai",
+ "everruns-openrouter",
  "futures",
  "hex",
  "reqwest 0.13.1",

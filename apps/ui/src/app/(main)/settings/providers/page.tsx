@@ -58,6 +58,7 @@ const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai_completions", label: "OpenAI (Completions API)" },
   { value: "anthropic", label: "Anthropic" },
   { value: "gemini", label: "Google Gemini" },
+  { value: "openrouter", label: "OpenRouter" },
 ];
 
 // Get API key placeholder based on provider type
@@ -68,6 +69,8 @@ function getApiKeyPlaceholder(providerType: LlmProviderType): string {
       return "sk-...";
     case "anthropic":
       return "sk-ant-api03-...";
+    case "openrouter":
+      return "sk-or-v1-...";
     default:
       return "your-api-key";
   }
