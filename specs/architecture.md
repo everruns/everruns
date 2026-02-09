@@ -375,6 +375,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 2. **Dev Mode**: In-memory storage mode for quick local development without PostgreSQL
 3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 4. **License Compliance**: cargo-deny for dependency license checking
+5. **Secrets Management**: [Doppler](https://www.doppler.com/) for development secrets (API keys, tokens). Project: `everruns-dev`, config: `dev`. Use `doppler run -- <command>` to inject secrets into processes.
 
 ### Development Mode (DEV_MODE)
 
