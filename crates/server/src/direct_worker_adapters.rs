@@ -812,6 +812,7 @@ fn string_to_provider_type(s: &str) -> LlmProviderType {
         "openai" => LlmProviderType::Openai,
         "openai_completions" => LlmProviderType::OpenaiCompletions,
         "anthropic" => LlmProviderType::Anthropic,
+        "openrouter" => LlmProviderType::OpenRouter,
         "llmsim" => LlmProviderType::LlmSim,
         _ => LlmProviderType::Openai,
     }

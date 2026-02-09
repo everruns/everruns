@@ -7,12 +7,14 @@ const PROVIDER_ICONS: Record<LlmProviderType, string> = {
   openai: "/providers/openai.svg",
   openai_completions: "/providers/openai.svg",
   anthropic: "/providers/anthropic.svg",
+  openrouter: "/providers/openrouter.svg",
 };
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
   openai: "OpenAI (Responses)",
   openai_completions: "OpenAI (Completions)",
   anthropic: "Anthropic",
+  openrouter: "OpenRouter",
 };
 
 interface ProviderIconProps {

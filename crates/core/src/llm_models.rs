@@ -22,6 +22,9 @@ pub enum LlmProviderType {
     #[serde(rename = "openai_completions")]
     OpenaiCompletions,
     Anthropic,
+    /// OpenRouter API (https://openrouter.ai/) - multi-provider router
+    #[serde(rename = "openrouter")]
+    OpenRouter,
     /// LLM simulator for testing
     #[serde(rename = "llmsim")]
     LlmSim,
@@ -33,6 +36,7 @@ impl std::fmt::Display for LlmProviderType {
             LlmProviderType::Openai => write!(f, "openai"),
             LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
+            LlmProviderType::OpenRouter => write!(f, "openrouter"),
             LlmProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -46,6 +50,7 @@ impl std::str::FromStr for LlmProviderType {
             "openai" => Ok(LlmProviderType::Openai),
             "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
             "anthropic" => Ok(LlmProviderType::Anthropic),
+            "openrouter" => Ok(LlmProviderType::OpenRouter),
             "llmsim" => Ok(LlmProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -325,6 +330,10 @@ mod tests {
             "\"anthropic\""
         );
         assert_eq!(
+            serde_json::to_string(&LlmProviderType::OpenRouter).unwrap(),
+            "\"openrouter\""
+        );
+        assert_eq!(
             serde_json::to_string(&LlmProviderType::LlmSim).unwrap(),
             "\"llmsim\""
         );
@@ -344,6 +353,10 @@ mod tests {
         assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"anthropic\"").unwrap(),
             LlmProviderType::Anthropic
+        ));
+        assert!(matches!(
+            serde_json::from_str::<LlmProviderType>("\"openrouter\"").unwrap(),
+            LlmProviderType::OpenRouter
         ));
         assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"llmsim\"").unwrap(),
@@ -367,6 +380,10 @@ mod tests {
             LlmProviderType::Anthropic
         ));
         assert!(matches!(
+            "openrouter".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::OpenRouter
+        ));
+        assert!(matches!(
             "llmsim".parse::<LlmProviderType>().unwrap(),
             LlmProviderType::LlmSim
         ));
@@ -381,6 +398,7 @@ mod tests {
             "openai_completions"
         );
         assert_eq!(LlmProviderType::Anthropic.to_string(), "anthropic");
+        assert_eq!(LlmProviderType::OpenRouter.to_string(), "openrouter");
         assert_eq!(LlmProviderType::LlmSim.to_string(), "llmsim");
     }
 }

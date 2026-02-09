@@ -139,6 +139,9 @@ pub fn get_model_profile(
             get_openai_profile(model_id)
         }
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
+        // OpenRouter uses provider-prefixed model IDs (e.g., "openai/gpt-4o", "anthropic/claude-3-opus").
+        // Strip the prefix and try matching against both OpenAI and Anthropic profiles.
+        LlmProviderType::OpenRouter => get_openrouter_profile(model_id),
         LlmProviderType::LlmSim => get_llmsim_profile(model_id),
     }
 }
@@ -1441,6 +1444,19 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
         }),
         _ => None,
     }
+}
+
+/// Get OpenRouter model profile by stripping provider prefix and delegating
+/// OpenRouter model IDs are formatted as "provider/model" (e.g., "openai/gpt-4o", "anthropic/claude-3-opus-20240229")
+fn get_openrouter_profile(model_id: &str) -> Option<LlmModelProfile> {
+    // Strip the provider prefix if present (e.g., "openai/gpt-4o" -> "gpt-4o")
+    let bare_model = model_id
+        .split_once('/')
+        .map(|(_, model)| model)
+        .unwrap_or(model_id);
+
+    // Try OpenAI profiles first, then Anthropic
+    get_openai_profile(bare_model).or_else(|| get_anthropic_profile(bare_model))
 }
 
 /// Normalize OpenAI model ID to base name

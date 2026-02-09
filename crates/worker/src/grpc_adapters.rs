@@ -551,6 +551,7 @@ fn proto_model_with_provider_to_model(
         "openai" => everruns_core::LlmProviderType::Openai,
         "openai_completions" => everruns_core::LlmProviderType::OpenaiCompletions,
         "anthropic" => everruns_core::LlmProviderType::Anthropic,
+        "openrouter" => everruns_core::LlmProviderType::OpenRouter,
         "llmsim" => everruns_core::LlmProviderType::LlmSim,
         _ => {
             return Err(grpc_error(format!(

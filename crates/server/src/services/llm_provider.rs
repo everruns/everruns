@@ -121,10 +121,12 @@ impl LlmProviderService {
 /// Environment variables (for development convenience):
 /// - DEFAULT_OPENAI_API_KEY: Fallback API key for OpenAI providers
 /// - DEFAULT_ANTHROPIC_API_KEY: Fallback API key for Anthropic providers
+/// - DEFAULT_OPENROUTER_API_KEY: Fallback API key for OpenRouter providers
 fn has_default_api_key_from_env(provider_type: &str) -> bool {
     let env_var = match provider_type.to_lowercase().as_str() {
         "openai" => "DEFAULT_OPENAI_API_KEY",
         "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+        "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
         _ => return false,
     };
 
@@ -144,6 +146,7 @@ mod tests {
         let env_var = match provider_type.to_lowercase().as_str() {
             "openai" => "DEFAULT_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+            "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
             _ => return false,
         };
 

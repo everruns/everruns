@@ -86,6 +86,7 @@ impl ModelSyncService {
             LlmProviderType::Openai => ProviderType::OpenAI,
             LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
             LlmProviderType::Anthropic => ProviderType::Anthropic,
+            LlmProviderType::OpenRouter => ProviderType::OpenRouter,
             LlmProviderType::LlmSim => {
                 // LlmSim doesn't support model discovery
                 return Ok(SyncResult::NotSupported);
@@ -267,6 +268,7 @@ impl ModelSyncService {
         let env_var = match provider_row.provider_type.as_str() {
             "openai" => "DEFAULT_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+            "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
             _ => return Ok(None),
         };
 
@@ -345,6 +347,7 @@ mod tests {
         let env_var = match provider_type {
             "openai" => "DEFAULT_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+            "openrouter" => "DEFAULT_OPENROUTER_API_KEY",
             _ => return None,
         };
 

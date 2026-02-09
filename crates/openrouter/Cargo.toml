@@ -1,0 +1,39 @@
+# OpenRouter Provider Implementation
+# Decision: Wraps OpenAI Chat Completions protocol with OpenRouter-specific model discovery
+# Decision: Reuses OpenAIProtocolLlmDriver from everruns-core (same wire protocol)
+
+[package]
+name = "everruns-openrouter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenRouter provider implementation for Everruns"
+
+[dependencies]
+# Core dependencies
+anyhow.workspace = true
+async-trait.workspace = true
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Date/time
+chrono.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-core = { path = "../core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

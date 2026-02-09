@@ -2,7 +2,7 @@
 
 ## Abstract
 
-LLM drivers provide a provider-agnostic interface for interacting with Large Language Model APIs. The driver abstraction enables dependency inversion - provider implementations (OpenAI, Anthropic) register their drivers at startup, while core business logic operates against the trait interface.
+LLM drivers provide a provider-agnostic interface for interacting with Large Language Model APIs. The driver abstraction enables dependency inversion - provider implementations (OpenAI, Anthropic, OpenRouter) register their drivers at startup, while core business logic operates against the trait interface.
 
 ## Architecture
 
@@ -17,6 +17,7 @@ graph TD
     subgraph Providers
         OpenAI[everruns-openai]
         Anthropic[everruns-anthropic]
+        OpenRouter[everruns-openrouter]
     end
 
     subgraph Consumer
@@ -25,8 +26,10 @@ graph TD
 
     OpenAI -->|implements| LlmDriver
     Anthropic -->|implements| LlmDriver
+    OpenRouter -->|implements| LlmDriver
     OpenAI -->|registers| Registry
     Anthropic -->|registers| Registry
+    OpenRouter -->|registers| Registry
     ReasonAtom -->|uses| Registry
     ReasonAtom -->|handles| Errors
 ```
@@ -57,6 +60,7 @@ graph TD
    - `OpenAI` - OpenAI API using Open Responses API (recommended)
    - `OpenAICompletions` - OpenAI API using Chat Completions API (legacy)
    - `Anthropic` - Anthropic Claude API
+   - `OpenRouter` - OpenRouter API (multi-provider router, OpenAI-compatible)
    - `LlmSim` - Testing simulator (llmsim crate)
 
 ### Error Types (Contract)
@@ -211,6 +215,7 @@ sequenceDiagram
 | Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
 | Chat Completions protocol | `crates/core/src/openai_protocol.rs` |
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
+| OpenRouter driver | `crates/openrouter/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -228,6 +233,18 @@ The OpenAI crate provides two driver implementations:
    - Wraps `OpenAIProtocolLlmDriver`
 
 Both drivers share the same base URL handling and can work with OpenAI-compatible endpoints.
+
+## OpenRouter Driver
+
+**OpenRouterLlmDriver** (`ProviderType::OpenRouter`)
+- Uses OpenAI-compatible Chat Completions API (`https://openrouter.ai/api/v1/chat/completions`)
+- Provides access to models from multiple providers (OpenAI, Anthropic, Google, Meta, etc.)
+- Wraps `OpenAIProtocolLlmDriver` from everruns-core
+- Model IDs use provider-prefixed format (e.g., `openai/gpt-4o`, `anthropic/claude-3-opus`)
+- Model discovery via `https://openrouter.ai/api/v1/models`
+- API key format: `sk-or-v1-...`
+- Environment variable fallback: `DEFAULT_OPENROUTER_API_KEY`
+- Model profiles: strips provider prefix and delegates to OpenAI/Anthropic profiles
 
 ## Automatic Retry for Transient Errors
 
@@ -393,6 +410,7 @@ if driver.supports_compact() {
 | OpenAI (Responses API) | Yes |
 | OpenAI (Completions API) | No |
 | Anthropic | No |
+| OpenRouter | No |
 | LlmSim | No |
 
 ## Testing
