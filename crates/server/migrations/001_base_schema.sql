@@ -1,5 +1,6 @@
--- Everruns Base Schema (v0.4.0)
+-- Everruns Base Schema (v0.5.0)
 -- Squashed migration - represents final state of all base migrations
+-- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
 --
 -- Key design decisions:
 -- - UUID v7 for time-ordered, sortable IDs (better for DB performance)
@@ -259,6 +260,8 @@ COMMENT ON COLUMN llm_models.provider_metadata IS 'Raw metadata from provider AP
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
+    -- Dual-ID pattern: internal UUID (id) + external public_id (API-facing)
+    public_id TEXT NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     system_prompt TEXT NOT NULL,
@@ -271,12 +274,18 @@ CREATE TABLE agents (
     total_cache_read_tokens BIGINT NOT NULL DEFAULT 0,
     total_cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Format validation: agent_ prefix + 32 lowercase hex chars
+    CONSTRAINT agents_public_id_format
+        CHECK (public_id ~ '^agent_[0-9a-f]{32}$')
 );
 
 CREATE INDEX idx_agents_status ON agents(status);
 CREATE INDEX idx_agents_tags ON agents USING GIN(tags);
 CREATE INDEX idx_agents_org_id ON agents(org_id);
+-- Unique per org (same public_id allowed across orgs)
+CREATE UNIQUE INDEX idx_agents_org_public_id ON agents(org_id, public_id);
 
 CREATE TRIGGER update_agents_updated_at BEFORE UPDATE ON agents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -321,6 +330,8 @@ CREATE TABLE sessions (
     tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
     status VARCHAR(50) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'active', 'idle')),
+    -- Session-level capabilities (additive to agent capabilities)
+    capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- Denormalized usage totals
     total_input_tokens BIGINT NOT NULL DEFAULT 0,
     total_output_tokens BIGINT NOT NULL DEFAULT 0,
@@ -682,6 +693,41 @@ COMMENT ON TABLE images IS 'Global image storage for message attachments';
 COMMENT ON COLUMN images.content_type IS 'MIME type: image/png, image/jpeg, image/gif, image/webp';
 COMMENT ON COLUMN images.metadata IS 'JSON metadata including optional session_id for tracking';
 COMMENT ON COLUMN images.thumbnail_data IS 'Thumbnail image for efficient display (max 200x200)';
+
+-- ============================================
+-- Session SQL Databases
+-- ============================================
+-- Page-level SQLite storage backed by PostgreSQL.
+-- Each session can have multiple named SQLite databases.
+-- Database content is stored as individual 4KB pages for efficient
+-- partial read/write via custom SQLite VFS.
+
+CREATE TABLE session_databases (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    page_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT session_databases_unique_name UNIQUE (session_id, name),
+    CONSTRAINT session_databases_name_check CHECK (name ~ '^[a-zA-Z_][a-zA-Z0-9_]{0,63}$')
+);
+
+CREATE INDEX idx_session_databases_session_id ON session_databases(session_id);
+
+CREATE TRIGGER update_session_databases_updated_at
+    BEFORE UPDATE ON session_databases
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE session_database_pages (
+    database_id UUID NOT NULL REFERENCES session_databases(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    data BYTEA NOT NULL,
+    PRIMARY KEY (database_id, page_number)
+);
+
+CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id);
 
 -- ============================================
 -- Helper Functions
