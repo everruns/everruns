@@ -22,6 +22,8 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-SCHED | Scheduled Tasks | Schedule injection, catch-up explosion |
 | TM-OBS | Observability | Data leakage via traces/logs |
 | TM-WEB | Web Security | XSS, CSRF, CORS misconfiguration |
+| TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
+| TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
 
 ### Managing Threat IDs
@@ -58,12 +60,18 @@ Format: `TM-<CATEGORY>-<NNN>`
               ┌────────────▼───┐   ┌────▼─────────┐
               │    Workers     │   │  PostgreSQL   │
               │  (stateless)   │   │              │
-              └────────┬───────┘   └──────────────┘
-                       │ HTTPS
-              ┌────────▼───────┐
-              │  LLM Providers │ ← Trust boundary 3
-              │  MCP Servers   │
-              └────────────────┘
+              └────┬───────┬───┘   └──────────────┘
+                   │       │
+         ┌─────────▼──┐ ┌──▼──────────────┐
+         │ LLM Call   │ │ Agent Loop       │ ← Trust boundary 4
+         │ (HTTPS)    │ │ (LLM → Tools)    │
+         └─────┬──────┘ └──┬──────────────┘
+               │           │ Tool execution
+    ┌──────────▼──┐  ┌─────▼────────────────────────┐
+    │ LLM Provider│  │ Sandboxed Tools               │
+    │ MCP Servers │  │ (Bash, SQL, FS, WebFetch)     │
+    └─────────────┘  └──────────────────────────────┘
+                          ← Trust boundary 3
 ```
 
 **Trust boundary 1 — User → API:** All user input is untrusted. Authentication, authorization, input validation applied here.
@@ -71,6 +79,8 @@ Format: `TM-<CATEGORY>-<NNN>`
 **Trust boundary 2 — Control Plane → Workers:** Workers are stateless executors with no database credentials. Communication via gRPC. Currently relies on network isolation (no mutual auth).
 
 **Trust boundary 3 — Workers → External Services:** LLM providers and MCP servers are external. API keys transmitted over HTTPS. MCP responses parsed defensively.
+
+**Trust boundary 4 — LLM → Agent Tools:** The LLM decides which tools to call and with what arguments. The agent loop executes LLM-chosen tool calls within sandboxed capabilities. The LLM is semi-trusted: it operates within registered tools and iteration limits, but its outputs (tool arguments, text) are not validated for intent.
 
 ## 1. Authentication (TM-AUTH)
 
@@ -444,7 +454,160 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
   ```
 - **Priority:** Medium
 
-## 13. Denial of Service (TM-DOS)
+## 13. AI Agent Behavior (TM-AGENT)
+
+The agent loop is a core trust boundary: an LLM decides which tools to call with what arguments. The system prompt, user messages, tool results, and MCP tool descriptions all influence LLM behavior. Agents are semi-trusted within organizational scope — the agent creator (org member) is trusted, but the LLM's runtime decisions are not fully controllable.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-AGENT-001 | Direct prompt injection via user message | High | Role separation (user vs system); LLM providers apply safety training; no complete defense | **ACCEPTED** |
+| TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
+| TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
+| TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
+| TM-AGENT-005 | Capability escalation via agent creation | High | Agent creator chooses capabilities; no approval workflow for dangerous capabilities (virtual_bash, docker) | **OPEN** |
+| TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
+| TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
+| TM-AGENT-008 | Context window poisoning | Medium | Full message history sent to LLM; no truncation; adversarial early messages persist | **OPEN** |
+| TM-AGENT-009 | Agent self-modification | Low | No tools for agent/session CRUD; system prompt immutable within a session | MITIGATED |
+| TM-AGENT-010 | Agent spawning agent chains | Low | No agent-creation tools; agents cannot spawn child agents or sessions | MITIGATED |
+| TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts stored plaintext in DB; not encrypted at rest | **OPEN** (see TM-CRYPTO-007) |
+| TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
+| TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
+| TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
+| TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
+
+### Mitigation Details
+
+**TM-AGENT-001 / TM-AGENT-002 — Prompt Injection (ACCEPTED):**
+Prompt injection is an inherent limitation of current LLM architecture. Defense-in-depth:
+1. **Role separation:** System, user, assistant, tool_result messages are distinct roles
+2. **Iteration limits:** Max turns prevents infinite manipulation loops
+3. **Tool registry:** LLM can only call registered tools (no arbitrary code execution)
+4. **Session isolation:** Even if manipulated, agent is confined to its session
+5. **No auto-escalation:** Agent cannot grant itself new capabilities
+
+There is no reliable way to prevent an LLM from following adversarial instructions embedded in tool results or user messages. This is an industry-wide limitation.
+
+**TM-AGENT-004 — System Prompt Trust Model:**
+```
+Agent creator (org member) → sets system_prompt → stored in agents table
+    ↓
+Session created → system_prompt loaded (immutable for session)
+    ↓
+Capability prompts appended (hardcoded in Rust, not user-controlled)
+    ↓
+Combined prompt sent to LLM as system message
+```
+The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
+
+**TM-AGENT-005 — Capability Escalation (OPEN):**
+Capabilities are all-or-nothing. An org member can create an agent with `virtual_bash` + `web_fetch`, giving it the ability to execute bash commands and exfiltrate results via HTTP. No approval workflow exists for dangerous capability combinations.
+
+- **Recommendation:** Implement HITL approval for high-risk capabilities (`virtual_bash`, `docker_container`). Consider capability scoping (e.g., read-only filesystem).
+- **Priority:** Medium
+
+**TM-AGENT-006 — Iteration Limit:**
+```rust
+// Turn state machine enforces max iterations
+if self.current_iteration >= self.max_iterations {
+    TurnAction::Complete(TurnOutcome::MaxIterationsReached { ... })
+}
+```
+Default: 100 iterations. Each Reason→Act cycle counts as one iteration. Configurable per agent.
+
+**TM-AGENT-008 — Context Window Poisoning (OPEN):**
+Full conversation history is sent to the LLM on every turn. An adversarial user message early in the session persists across all future turns. No message compaction or truncation is implemented.
+- **Recommendation:** Implement sliding window or summarization for long sessions. Consider allowing agents to "forget" old messages.
+- **Priority:** Low (defense-in-depth, not primary attack vector)
+
+**TM-AGENT-013 — Exfiltration via web_fetch (ACCEPTED):**
+An agent with `web_fetch` capability can:
+1. Read session files via `read_file` tool
+2. Send file contents to external URL via `web_fetch` tool
+
+This is accepted because:
+- Agent capabilities are chosen by org members (trusted)
+- `web_fetch` is an opt-in capability, not default
+- The intended use case requires external HTTP access
+- Removing this would break legitimate functionality
+
+## 14. Bash Sandbox (TM-BASH)
+
+Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.1.2) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-BASH-001 | Workspace boundary escape | Critical | `SessionFileSystemAdapter` rejects paths outside `/workspace`; returns `PermissionDenied` | MITIGATED |
+| TM-BASH-002 | Read host /etc/passwd or system files | Critical | No real filesystem; all I/O goes through `SessionFileSystemAdapter` → session file store | MITIGATED |
+| TM-BASH-003 | Network access from bash | Critical | Bashkit has no network builtins; curl/wget not available (no real process execution) | MITIGATED |
+| TM-BASH-004 | Fork bomb / process spawning | Critical | No real process execution; `exec`, subprocesses, background processes not implemented (exit 127) | MITIGATED |
+| TM-BASH-005 | Infinite loop CPU exhaustion | High | `max_loop_iterations: 10000`; `max_commands: 1000`; parser timeout 5s | MITIGATED |
+| TM-BASH-006 | Deep recursion stack overflow | High | `max_function_depth: 100`; `max_ast_depth: 100` | MITIGATED |
+| TM-BASH-007 | Large script input DoS | High | `max_input_bytes: 1_000_000` (1 MB) | MITIGATED |
+| TM-BASH-008 | Execution timeout | High | Default 30s, max 60s; enforced by tool executor | MITIGATED |
+| TM-BASH-009 | Environment variable leak | Medium | Controlled env: only HOME, SHELL, PATH, WORKSPACE; hardcoded username/hostname ("everruns") | MITIGATED |
+| TM-BASH-010 | Symlink escape | Medium | `SessionFileSystemAdapter.symlink()` returns `Error (unsupported)` | MITIGATED |
+| TM-BASH-011 | Path traversal via bash | High | Paths normalized by bashkit; `to_session_path()` rejects paths outside `/workspace` | MITIGATED |
+| TM-BASH-012 | Privilege escalation (sudo, su) | Low | No privilege commands implemented; sandboxed interpreter only | MITIGATED |
+| TM-BASH-013 | eval/bash re-invocation escape | Medium | `eval` and `bash`/`sh` commands re-invoke the sandboxed interpreter, not real shell | MITIGATED |
+| TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
+| TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values | MITIGATED |
+| TM-BASH-016 | Write amplification via bash | Medium | No per-session storage quota on files written by bash (see TM-FS-008) | **OPEN** (see TM-FS-008) |
+
+### Mitigation Details
+
+**TM-BASH-001 / TM-BASH-011 — Workspace Boundary:**
+```rust
+fn to_session_path(path: &Path) -> Option<String> {
+    // /workspace       → /
+    // /workspace/foo   → /foo
+    // /tmp/foo         → None  → PermissionDenied
+    // /etc/passwd      → None  → PermissionDenied
+}
+```
+All bashkit filesystem operations go through `SessionFileSystemAdapter`, which maps paths rooted at `/workspace` to session file store paths. Anything outside `/workspace` returns `PermissionDenied`.
+
+**TM-BASH-005 — Resource Limits:**
+```rust
+ExecutionLimits::new()
+    .max_commands(1000)
+    .max_loop_iterations(10000)
+    .max_function_depth(100)
+    .max_input_bytes(1_000_000)
+    .max_ast_depth(100)
+    .parser_timeout(Duration::from_secs(5))
+```
+
+**TM-BASH-009 — Controlled Environment:**
+```rust
+BashkitTool::builder()
+    .username("everruns")
+    .hostname("everruns")
+    .env("HOME", "/home/agent")
+    .env("SHELL", "/bin/bash")
+    .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+    .env("WORKSPACE", "/workspace")
+    .build()
+```
+No host environment variables leaked. Username and hostname are hardcoded sandbox values.
+
+**TM-BASH-013 — Sandboxed Re-invocation:**
+When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its own sandboxed interpreter rather than spawning a real shell process. All execution limits and filesystem isolation are preserved across re-invocations.
+
+### Bashkit Isolation Summary
+
+| Property | Status |
+|----------|--------|
+| Real filesystem access | Blocked (VFS adapter only) |
+| Real process execution | Blocked (exit 127) |
+| Network access | Blocked (no builtins) |
+| Host environment leak | Blocked (controlled env) |
+| Host info disclosure | Blocked (hardcoded values) |
+| Symlink following | Blocked (unsupported) |
+| Privilege escalation | Blocked (no sudo/su) |
+| Resource exhaustion | Limited (commands, loops, depth, timeout) |
+
+## 15. Denial of Service (TM-DOS)
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -464,8 +627,12 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 |----|--------|----------|----------------|
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
 | TM-DURABLE-002 | gRPC unauthenticated | High | mTLS or bearer token auth for workers |
+| TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
+| TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
+| TM-AGENT-008 | Context window poisoning | Medium | Sliding window or message compaction |
+| TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
 | TM-CRYPTO-006 | Re-encryption job missing | Medium | Implement background re-encryption CLI |
-| TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt additional sensitive fields |
+| TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
 | TM-WEB-004 | Missing clickjacking protection | Medium | Add X-Frame-Options: DENY |
 | TM-WEB-005 | Missing security headers | Low | Add CSP, X-Content-Type-Options, Referrer-Policy |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
@@ -483,6 +650,10 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-FS-006 | File content unencrypted at rest | Relies on infrastructure encryption |
 | TM-FS-007 | No file access audit log | Privacy tradeoff; not compliance-required |
 | TM-LLM-007 | Indirect prompt injection | Inherent LLM limitation; mitigated by role separation |
+| TM-AGENT-001 | Direct prompt injection | Inherent LLM limitation; role separation + iteration limits |
+| TM-AGENT-002 | Indirect prompt injection via tool results | Tool results role-separated; no complete defense exists |
+| TM-AGENT-003 | MCP tool description poisoning | MCP servers org-configured; descriptions used as schemas only |
+| TM-AGENT-013 | Data exfiltration via web_fetch | Opt-in capability; org members trusted; intended functionality |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 
 ### Caller Responsibilities
@@ -496,6 +667,8 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
 | Secure OTLP endpoint | TM-OBS-003 | Use trusted internal infrastructure only |
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |
+| Review agent capabilities | TM-AGENT-005, TM-AGENT-013 | Audit capability assignments; avoid virtual_bash + web_fetch on untrusted agents |
+| System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
 
 ## Security Controls Matrix
 
@@ -508,11 +681,13 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | Input validation | TM-API | Size limits, path validation, regex constraints |
 | SQL injection prevention | TM-API | sqlx prepared statements (parameterized queries) |
 | SQLite sandboxing | TM-SQL | Authorizer callback, VFS isolation, resource limits |
+| Bash sandboxing | TM-BASH | Bashkit WASM-like isolation, VFS adapter, resource limits |
 | Session isolation | TM-FS, TM-SQL | FK constraints, session-scoped storage |
+| Agent loop controls | TM-AGENT | Max iterations, tool registry, session-scoped tools, no self-modification |
 | Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only |
 | Cookie security | TM-WEB | HTTP-only, SameSite=Lax, Secure flag in production |
 | Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing |
-| Resource limits | TM-DOS | Input sizes, iteration limits, query timeouts |
+| Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 
 ## References
@@ -530,3 +705,5 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 - `specs/otel-observability.md` — OpenTelemetry tracing
 - `specs/braintrust-integration.md` — Braintrust event forwarding
 - `specs/apis.md` — HTTP API endpoints and error handling
+- `specs/capabilities.md` — Agent capabilities system
+- `specs/bashkit-requirements.md` — Bashkit integration requirements
