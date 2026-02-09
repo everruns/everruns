@@ -1,51 +1,35 @@
-//! Extended thinking tests against real LLM endpoints (Anthropic only).
-//!
-//! These tests verify extended thinking (reasoning) works with the InMemoryAgenticLoop.
-//! Extended thinking is an Anthropic-specific feature.
-//!
-//! Run with:
-//!   cargo test -p everruns-core --test agent_run_with_thinking
-//!
-//! Required environment variables:
-//!   - ANTHROPIC_API_KEY: For Anthropic tests
+// Extended thinking tests against real LLM endpoints.
+//
+// Thinking/reasoning is provider-specific (Anthropic, Gemini, some OpenAI models).
+// Uses rstest so new thinking-capable providers can be added as cases.
+//
+// Run with:
+//   cargo test -p everruns-core --test agent_run_with_thinking
+//
+// Required environment variables:
+//   - ANTHROPIC_API_KEY: For Anthropic tests
 #![cfg(feature = "llm-tests")]
+
+mod llm_test_matrix;
+
+use llm_test_matrix::*;
+use rstest::rstest;
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
-use everruns_core::traits::ModelWithProvider;
 
 // ============================================================================
-// Helpers
+// Scenario: extended thinking (reasoning)
 // ============================================================================
 
-fn anthropic_model(model_name: &str) -> Option<ModelWithProvider> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY").ok()?;
-    Some(ModelWithProvider {
-        model: model_name.to_string(),
-        provider_type: LlmProviderType::Anthropic,
-        api_key: Some(api_key),
-        base_url: None,
-    })
-}
-
-fn anthropic_registry() -> DriverRegistry {
-    let mut registry = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut registry);
-    registry
-}
-
-// ============================================================================
-// Extended Thinking Tests
-// ============================================================================
-
+#[rstest]
+#[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[tokio::test]
-async fn test_extended_thinking() {
-    let Some(model) = anthropic_model("claude-sonnet-4-20250514") else {
-        eprintln!("Skipping test: ANTHROPIC_API_KEY not set");
+async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     };
 
@@ -53,7 +37,7 @@ async fn test_extended_thinking() {
         .agent_name("Thinking Agent")
         .system_prompt("You are a helpful assistant.")
         .model(model)
-        .driver_registry(anthropic_registry())
+        .driver_registry(all_providers_registry())
         .max_iterations(3)
         .build()
         .await
@@ -82,10 +66,16 @@ async fn test_extended_thinking() {
     );
 }
 
+// ============================================================================
+// Scenario: thinking + tool calling
+// ============================================================================
+
+#[rstest]
+#[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[tokio::test]
-async fn test_thinking_with_tool_call() {
-    let Some(model) = anthropic_model("claude-sonnet-4-20250514") else {
-        eprintln!("Skipping test: ANTHROPIC_API_KEY not set");
+async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     };
 
@@ -93,7 +83,7 @@ async fn test_thinking_with_tool_call() {
         .agent_name("Thinking Time Agent")
         .system_prompt("Use get_current_time tool when asked about time.")
         .model(model)
-        .driver_registry(anthropic_registry())
+        .driver_registry(all_providers_registry())
         .capability(CurrentTimeCapability)
         .max_iterations(5)
         .build()

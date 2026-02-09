@@ -104,6 +104,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 
 # Fault injection testing
 fail = "0.5"
+rstest = "0.25"
 
 [profile.dev]
 opt-level = 0

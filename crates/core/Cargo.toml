@@ -82,9 +82,11 @@ llm-tests = []  # LLM integration tests (requires API keys)
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
+rstest.workspace = true
 # Provider crates for examples (dev-only, not a runtime dependency)
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
+everruns-gemini = { path = "../gemini" }
 # Snapshot testing for contract tests
 insta = { version = "1.40", features = ["json", "redactions"] }
 
