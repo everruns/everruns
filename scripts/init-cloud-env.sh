@@ -103,9 +103,39 @@ install_doppler() {
         return 0
     fi
 
-    info "Installing Doppler CLI..."
+    info "Installing Doppler CLI (pre-built binary)..."
 
-    curl -sS https://cli.doppler.com/install.sh | sh 2>/dev/null
+    # Detect architecture
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  DOP_ARCH="amd64" ;;
+        aarch64) DOP_ARCH="arm64" ;;
+        *)       error "Unsupported architecture: $ARCH" ;;
+    esac
+
+    # Get latest version from GitHub API
+    DOP_VERSION=$(curl -sS https://api.github.com/repos/DopplerHQ/cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+
+    if [[ -z "$DOP_VERSION" ]]; then
+        DOP_VERSION="3.75.2"
+        warn "Could not fetch latest doppler version, using fallback: $DOP_VERSION"
+    fi
+
+    DOP_TARBALL="doppler_${DOP_VERSION}_linux_${DOP_ARCH}.tar.gz"
+    DOP_URL="https://github.com/DopplerHQ/cli/releases/download/${DOP_VERSION}/${DOP_TARBALL}"
+
+    # Download and extract
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
+    info "Downloading doppler v${DOP_VERSION}..."
+    curl -sSL "$DOP_URL" -o "$TEMP_DIR/$DOP_TARBALL"
+
+    tar -xzf "$TEMP_DIR/$DOP_TARBALL" -C "$TEMP_DIR"
+
+    # Install binary
+    cp "$TEMP_DIR/doppler" "$INSTALL_DIR/doppler"
+    chmod +x "$INSTALL_DIR/doppler"
 
     if command -v doppler &> /dev/null; then
         info "doppler installed: $(doppler --version 2>/dev/null)"
@@ -171,6 +201,23 @@ configure_gh_repo() {
     fi
 }
 
+configure_doppler() {
+    if [[ -z "${DOPPLER_TOKEN:-}" ]]; then
+        warn "DOPPLER_TOKEN not set, skipping Doppler configuration"
+        return 0
+    fi
+
+    if ! command -v doppler &> /dev/null; then
+        warn "doppler not installed, skipping configuration"
+        return 0
+    fi
+
+    info "Configuring Doppler (project: everruns-dev, config: dev)..."
+    doppler setup --project everruns-dev --config dev --no-interactive 2>/dev/null \
+        && info "Doppler configured for everruns-dev/dev" \
+        || warn "Failed to configure Doppler"
+}
+
 main() {
     echo "================================================"
     echo "  Cloud Environment Initialization"
@@ -184,6 +231,7 @@ main() {
     install_gh
     install_doppler
     configure_gh_repo
+    configure_doppler
 
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
