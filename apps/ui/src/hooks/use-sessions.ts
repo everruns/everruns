@@ -11,7 +11,7 @@ import {
   updateSession,
   sendUserMessage,
 } from "@/lib/api/sessions";
-import { getSseUrl } from "@/lib/api/events";
+import { getSseUrl, listEvents } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
 import type {
   CreateSessionRequest,
@@ -133,15 +133,43 @@ export function useSendMessage() {
 }
 
 // ============================================
-// Events hook - uses SSE for real-time updates
+// Events hook - REST batch load + SSE for live updates
 // ============================================
 
+// SSE event types to listen for
+const SSE_EVENT_TYPES = [
+  "input.message",
+  "output.message.started",
+  "output.message.delta",
+  "output.message.completed",
+  "turn.started",
+  "turn.completed",
+  "turn.failed",
+  "turn.cancelled",
+  "reason.started",
+  "reason.completed",
+  "act.started",
+  "act.completed",
+  "tool.started",
+  "tool.completed",
+  "llm.generation",
+  "session.started",
+  "session.activated",
+  "session.idled",
+  "reason.thinking.started",
+  "reason.thinking.delta",
+  "reason.thinking.completed",
+];
+
 /**
- * Fetch events for a session using SSE (Server-Sent Events)
+ * Fetch events for a session using REST + SSE.
  *
- * Uses SSE for real-time streaming with since_id for incremental updates.
- * Falls back to initial fetch + SSE reconnection for reliability.
- * The enabled option controls whether to connect to SSE (useful for inactive sessions).
+ * Strategy: REST first, SSE second.
+ * 1. Fetch all existing events via REST (single HTTP response → single setState)
+ * 2. Connect SSE with since_id from last REST event for live incremental updates
+ *
+ * This is critical for large sessions (1000+ turns, 30k+ events) where
+ * SSE-only would trigger one state update per event on initial load.
  */
 export function useEvents(sessionId: string | undefined, options?: { enabled?: boolean }) {
   const { currentOrg } = useOrg();
@@ -157,7 +185,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Track events by ID to avoid duplicates
   const eventIdsRef = useRef<Set<string>>(new Set());
 
-  // Cleanup function
+  // Track whether initial REST fetch has completed
+  const [restLoaded, setRestLoaded] = useState(false);
+
+  // Cleanup SSE connection
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -172,92 +203,87 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     setError(null);
     lastEventIdRef.current = null;
     eventIdsRef.current.clear();
-  }, [org, sessionId]);
+    setRestLoaded(false);
+    cleanup();
+  }, [org, sessionId, cleanup]);
 
-  // SSE connection
+  // Step 1: REST batch load existing events
   useEffect(() => {
-    if (!org || !sessionId || !isEnabled) {
-      cleanup();
+    if (!org || !sessionId || !isEnabled) return;
+
+    let cancelled = false;
+
+    async function fetchInitialEvents() {
+      try {
+        const batch = await listEvents(sessionId!);
+        if (cancelled) return;
+
+        if (batch.length > 0) {
+          for (const e of batch) {
+            eventIdsRef.current.add(e.id);
+          }
+          lastEventIdRef.current = batch[batch.length - 1].id;
+          // Single state update for entire batch
+          setEvents(batch);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        console.error("Failed to fetch initial events, falling back to SSE-only:", e);
+      }
+
+      if (!cancelled) {
+        setIsLoading(false);
+        setRestLoaded(true);
+      }
+    }
+
+    fetchInitialEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [org, sessionId, isEnabled]);
+
+  // Step 2: SSE for live updates (starts after REST completes)
+  useEffect(() => {
+    if (!org || !sessionId || !isEnabled || !restLoaded) {
       return;
     }
 
     const connectSSE = () => {
-      // Close existing connection
       cleanup();
 
       const sseUrl = getSseUrl(sessionId, lastEventIdRef.current ?? undefined);
       const eventSource = new EventSource(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
-      // Listen for "connected" event to know SSE stream is ready
-      // This is sent immediately by the server when connection is established
       eventSource.addEventListener("connected", () => {
-        setIsLoading(false);
         setError(null);
       });
 
-      // Listen for "disconnecting" event for graceful connection cycling
-      // Server sends this before closing to allow immediate reconnect with since_id
       eventSource.addEventListener("disconnecting", (messageEvent) => {
         try {
           const data = JSON.parse(messageEvent.data);
           const retryMs = data.retry_ms ?? 100;
-          console.debug("SSE disconnecting event received, reconnecting in", retryMs, "ms");
           cleanup();
           setTimeout(() => {
-            if (isEnabled) {
-              connectSSE();
-            }
+            if (isEnabled) connectSSE();
           }, retryMs);
         } catch {
-          // Fallback: reconnect immediately
           cleanup();
-          if (isEnabled) {
-            connectSSE();
-          }
+          if (isEnabled) connectSSE();
         }
       });
 
-      // Fallback: onopen may fire, but "connected" event is more reliable
       eventSource.onopen = () => {
         setError(null);
       };
 
-      // Listen for typed events (the backend sends event type as SSE event name)
-      const eventTypes = [
-        "input.message",
-        "output.message.started",
-        "output.message.delta",
-        "output.message.completed",
-        "turn.started",
-        "turn.completed",
-        "turn.failed",
-        "turn.cancelled",
-        "reason.started",
-        "reason.completed",
-        "act.started",
-        "act.completed",
-        "tool.started",
-        "tool.completed",
-        "llm.generation",
-        "session.started",
-        "session.activated",
-        "session.idled",
-        // Streaming events for real-time text updates
-        "reason.thinking.started",
-        "reason.thinking.delta",
-        "reason.thinking.completed",
-      ];
-
-      for (const eventType of eventTypes) {
+      for (const eventType of SSE_EVENT_TYPES) {
         eventSource.addEventListener(eventType, (messageEvent) => {
           try {
             const event: Event = JSON.parse(messageEvent.data);
 
-            // Skip if we already have this event
-            if (eventIdsRef.current.has(event.id)) {
-              return;
-            }
+            if (eventIdsRef.current.has(event.id)) return;
 
             eventIdsRef.current.add(event.id);
             lastEventIdRef.current = event.id;
@@ -269,14 +295,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       }
 
       eventSource.onerror = () => {
-        // SSE will auto-reconnect, but we track the error state
         setError(new Error("SSE connection error"));
-        // Reconnect after a delay if the connection was lost
         cleanup();
         setTimeout(() => {
-          if (isEnabled) {
-            connectSSE();
-          }
+          if (isEnabled) connectSSE();
         }, 2000);
       };
     };
@@ -284,7 +306,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     connectSSE();
 
     return cleanup;
-  }, [org, sessionId, isEnabled, cleanup]);
+  }, [org, sessionId, isEnabled, restLoaded, cleanup]);
 
   return {
     data: events,
