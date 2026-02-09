@@ -7,6 +7,7 @@
 # This script installs:
 # - just: command runner (see justfile)
 # - gh: GitHub CLI (for PR/issue operations)
+# - doppler: secrets manager CLI
 #
 # Run this BEFORE any other commands in a fresh cloud environment.
 
@@ -96,6 +97,23 @@ install_gh() {
     fi
 }
 
+install_doppler() {
+    if command -v doppler &> /dev/null; then
+        info "doppler already installed: $(doppler --version 2>/dev/null)"
+        return 0
+    fi
+
+    info "Installing Doppler CLI..."
+
+    curl -sS https://cli.doppler.com/install.sh | sh 2>/dev/null
+
+    if command -v doppler &> /dev/null; then
+        info "doppler installed: $(doppler --version 2>/dev/null)"
+    else
+        error "Failed to install doppler"
+    fi
+}
+
 configure_gh_repo() {
     # Set default repo for gh CLI (needed when git remote uses local proxy)
     # Extract repo from git remote URL (handles both github.com and proxy URLs)
@@ -164,6 +182,7 @@ main() {
 
     install_just
     install_gh
+    install_doppler
     configure_gh_repo
 
     END_TIME=$(date +%s)
@@ -176,6 +195,7 @@ main() {
     echo "Installed tools:"
     echo "  - just $(just --version 2>/dev/null || echo '(not in PATH)')"
     echo "  - gh $(gh --version 2>/dev/null | head -1 || echo '(not in PATH)')"
+    echo "  - doppler $(doppler --version 2>/dev/null || echo '(not in PATH)')"
     echo ""
     echo "Next steps:"
     echo "  just --list              # See available commands"

@@ -64,11 +64,13 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 ### Cloud Agent Start
 
 ```bash
-./scripts/init-cloud-env.sh       # Install just + gh
+./scripts/init-cloud-env.sh       # Install just + gh + doppler
 just start-dev --no-watch         # DEV MODE (no Docker)
 ```
 
 Pre-configured: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`
+
+Doppler CLI is available in cloud environments for secrets management. Use `doppler run -- <command>` to inject secrets.
 
 ### Local Dev
 
