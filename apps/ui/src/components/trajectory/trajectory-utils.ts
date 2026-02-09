@@ -1,5 +1,10 @@
 // Transforms session events into React Flow nodes and edges for trajectory visualization.
-// Designed for large trajectories (thousands of iterations) by keeping nodes compact.
+//
+// Performance design for large trajectories (1000+ turns):
+// - buildTurns() is O(n) single-pass over events
+// - buildTrajectory() is O(n) over turns
+// - Callers should gate recomputation on STRUCTURAL_EVENT_TYPES count,
+//   NOT on every SSE delta event (which fires 10-30x per second during streaming).
 
 import type { Node, Edge } from "@xyflow/react";
 import type {
@@ -86,6 +91,34 @@ export type TrajectoryNodeType =
   | "turnStart"
   | "turnEnd";
 
+// --- Trajectory stats ---
+
+export interface TrajectoryStats {
+  turnCount: number;
+  completedTurns: number;
+  failedTurns: number;
+  totalIterations: number;
+  totalToolCalls: number;
+  totalToolErrors: number;
+  totalDurationMs: number;
+}
+
+// --- Event types that change the trajectory structure ---
+// Only recompute the flow graph when one of these arrives.
+// Delta events (output.message.delta, reason.thinking.delta) are excluded.
+export const STRUCTURAL_EVENT_TYPES = new Set([
+  "turn.started",
+  "turn.completed",
+  "turn.failed",
+  "turn.cancelled",
+  "input.message",
+  "output.message.completed",
+  "reason.completed",
+  "act.started",
+  "act.completed",
+  "tool.completed",
+]);
+
 // --- Layout constants ---
 // Different spacing per node type to prevent overlap
 const SPACING_MARKER = 50; // turn start/end pills
@@ -105,7 +138,6 @@ interface TurnAccumulator {
   turnId: string;
   startTs: string;
   inputMessageId?: string;
-  // Collected within this turn
   userMessage?: { eventId: string; text: string; ts: string };
   iterations: IterationAccumulator[];
   agentMessage?: { eventId: string; text: string; ts: string; hasToolCalls: boolean };
@@ -142,17 +174,15 @@ interface IterationAccumulator {
 
 /**
  * Build structured turns from raw events.
- * Events arrive chronologically; we group them into turns and iterations.
+ * Single O(n) pass. Only processes structural event types.
  */
 function buildTurns(events: Event[]): TurnAccumulator[] {
   const turns: TurnAccumulator[] = [];
   let currentTurn: TurnAccumulator | null = null;
   let currentIteration: IterationAccumulator | null = null;
 
-  // Map of tool_call_id -> tool completed data (for matching)
+  // Collect tool results first (needed for matching with act.started)
   const toolResults = new Map<string, ToolCompletedData>();
-
-  // First pass: collect tool results
   for (const event of events) {
     if (event.type === "tool.completed") {
       const data = event.data as ToolCompletedData;
@@ -161,6 +191,8 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
   }
 
   for (const event of events) {
+    if (!STRUCTURAL_EVENT_TYPES.has(event.type)) continue;
+
     switch (event.type) {
       case "turn.started": {
         const data = event.data as TurnStartedData;
@@ -183,7 +215,6 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
         if (currentTurn) {
           currentTurn.userMessage = { eventId: event.id, text, ts: event.ts };
         } else {
-          // Message outside a turn (shouldn't happen normally, but handle gracefully)
           const orphanTurn: TurnAccumulator = {
             turnId: `orphan-${event.id}`,
             startTs: event.ts,
@@ -287,10 +318,52 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
 }
 
 /**
- * Convert structured turns into React Flow nodes and edges.
+ * Compute aggregate stats from turns.
  */
-export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[] } {
+function computeStats(turns: TurnAccumulator[]): TrajectoryStats {
+  let completedTurns = 0;
+  let failedTurns = 0;
+  let totalIterations = 0;
+  let totalToolCalls = 0;
+  let totalToolErrors = 0;
+  let totalDurationMs = 0;
+
+  for (const turn of turns) {
+    if (turn.completed) completedTurns++;
+    if (turn.failed) failedTurns++;
+    totalIterations += turn.iterationCount ?? turn.iterations.length;
+    if (turn.durationMs) totalDurationMs += turn.durationMs;
+
+    for (const iter of turn.iterations) {
+      if (iter.toolGroup) {
+        totalToolCalls += iter.toolGroup.tools.length;
+        totalToolErrors += iter.toolGroup.errorCount;
+      }
+    }
+  }
+
+  return {
+    turnCount: turns.length,
+    completedTurns,
+    failedTurns,
+    totalIterations,
+    totalToolCalls,
+    totalToolErrors,
+    totalDurationMs,
+  };
+}
+
+/**
+ * Convert structured turns into React Flow nodes and edges.
+ * Returns stats alongside the graph for the header bar.
+ */
+export function buildTrajectory(events: Event[]): {
+  nodes: Node[];
+  edges: Edge[];
+  stats: TrajectoryStats;
+} {
   const turns = buildTurns(events);
+  const stats = computeStats(turns);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   let y = 0;
@@ -427,5 +500,19 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, stats };
+}
+
+/**
+ * Count structural events in an event list.
+ * Use as a stable memoization key — only changes when the trajectory
+ * structure changes, not on every SSE delta.
+ */
+export function countStructuralEvents(events: Event[] | undefined): number {
+  if (!events) return 0;
+  let count = 0;
+  for (const e of events) {
+    if (STRUCTURAL_EVENT_TYPES.has(e.type)) count++;
+  }
+  return count;
 }

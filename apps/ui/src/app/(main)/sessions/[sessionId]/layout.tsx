@@ -202,19 +202,6 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             Workspace
           </Link>
           <Link
-            href={`${basePath}/trajectory`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "trajectory" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
-          >
-            <GitBranch className="h-4 w-4" />
-            Trajectory
-          </Link>
-          <Link
             href={`${basePath}/storage`}
             className={cn(
               buttonVariants({
@@ -239,6 +226,19 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
           >
             <Activity className="h-4 w-4" />
             Events
+          </Link>
+          <Link
+            href={`${basePath}/trajectory`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "trajectory" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2",
+            )}
+          >
+            <GitBranch className="h-4 w-4" />
+            Trajectory
           </Link>
         </div>
       </div>

@@ -1,6 +1,11 @@
 // Main trajectory visualization component.
 // Uses React Flow with MiniMap for navigating large agent trajectories.
-// Supports thousands of nodes via viewport culling.
+//
+// Performance for 1000+ turns:
+// - Memoization gated on structural event count (skips SSE deltas)
+// - React Flow viewport culling (only visible nodes in DOM)
+// - Nodes are not draggable/connectable/selectable (reduces event overhead)
+// - MiniMap for efficient navigation of large flows
 
 "use client";
 
@@ -14,9 +19,10 @@ import {
   type ColorMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Repeat, Wrench, XCircle, Clock } from "lucide-react";
 
 import type { Event } from "@/lib/api/types";
-import { buildTrajectory } from "./trajectory-utils";
+import { buildTrajectory, countStructuralEvents, type TrajectoryStats } from "./trajectory-utils";
 import { trajectoryNodeTypes } from "./trajectory-nodes";
 
 interface TrajectoryViewProps {
@@ -43,9 +49,65 @@ function miniMapNodeColor(node: { type?: string }): string {
   }
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60_000);
+  const secs = ((ms % 60_000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
+}
+
+function StatsBar({ stats }: { stats: TrajectoryStats }) {
+  return (
+    <div className="flex items-center gap-4 px-4 py-2 border-b text-xs text-muted-foreground bg-muted/30">
+      <span className="flex items-center gap-1">
+        <Repeat className="w-3 h-3" />
+        {stats.turnCount} turn{stats.turnCount !== 1 ? "s" : ""}
+        {stats.totalIterations > 0 && (
+          <span className="text-muted-foreground/60">
+            ({stats.totalIterations} iter{stats.totalIterations !== 1 ? "s" : ""})
+          </span>
+        )}
+      </span>
+      {stats.totalToolCalls > 0 && (
+        <span className="flex items-center gap-1">
+          <Wrench className="w-3 h-3" />
+          {stats.totalToolCalls} tool call{stats.totalToolCalls !== 1 ? "s" : ""}
+        </span>
+      )}
+      {stats.totalToolErrors > 0 && (
+        <span className="flex items-center gap-1 text-red-500">
+          <XCircle className="w-3 h-3" />
+          {stats.totalToolErrors} error{stats.totalToolErrors !== 1 ? "s" : ""}
+        </span>
+      )}
+      {stats.failedTurns > 0 && (
+        <span className="flex items-center gap-1 text-red-500">
+          {stats.failedTurns} failed turn{stats.failedTurns !== 1 ? "s" : ""}
+        </span>
+      )}
+      {stats.totalDurationMs > 0 && (
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {formatDuration(stats.totalDurationMs)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
-  // Build nodes/edges from events - recomputed when events change (SSE updates)
-  const { nodes, edges } = useMemo(() => buildTrajectory(events), [events]);
+  // Count structural events as a stable primitive memoization key.
+  // This number only changes when a turn/reason/act/tool/message event arrives,
+  // NOT on every output.message.delta or reason.thinking.delta (which fire 10-30x/sec).
+  const structuralCount = useMemo(() => countStructuralEvents(events), [events]);
+
+  // Build nodes/edges/stats only when structural events change
+  const { nodes, edges, stats } = useMemo(
+    () => buildTrajectory(events),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: gate on structuralCount, not events ref
+    [structuralCount],
+  );
 
   // Fit view on mount
   const onInit = useCallback((instance: { fitView: (opts?: { padding?: number }) => void }) => {
@@ -66,38 +128,41 @@ export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
   }
 
   return (
-    <div className="w-full h-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={trajectoryNodeTypes}
-        onInit={onInit}
-        colorMode={colorMode ?? "system"}
-        fitView
-        minZoom={0.01}
-        maxZoom={2}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnScroll
-        zoomOnScroll
-        defaultEdgeOptions={{
-          type: "smoothstep",
-          animated: false,
-          style: { strokeWidth: 1.5 },
-        }}
-      >
-        <Controls showInteractive={false} />
-        <MiniMap
-          nodeColor={miniMapNodeColor}
-          nodeStrokeWidth={0}
-          maskColor="rgba(0, 0, 0, 0.15)"
-          className="!bg-background !border-border"
-          pannable
-          zoomable
-        />
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-      </ReactFlow>
+    <div className="w-full h-full flex flex-col">
+      <StatsBar stats={stats} />
+      <div className="flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={trajectoryNodeTypes}
+          onInit={onInit}
+          colorMode={colorMode ?? "system"}
+          fitView
+          minZoom={0.01}
+          maxZoom={2}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          panOnScroll
+          zoomOnScroll
+          defaultEdgeOptions={{
+            type: "smoothstep",
+            animated: false,
+            style: { strokeWidth: 1.5 },
+          }}
+        >
+          <Controls showInteractive={false} />
+          <MiniMap
+            nodeColor={miniMapNodeColor}
+            nodeStrokeWidth={0}
+            maskColor="rgba(0, 0, 0, 0.15)"
+            className="!bg-background !border-border"
+            pannable
+            zoomable
+          />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        </ReactFlow>
+      </div>
     </div>
   );
 }
