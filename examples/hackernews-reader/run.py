@@ -27,9 +27,7 @@ import asyncio
 import os
 import sys
 
-import yaml
 from everruns_sdk import Everruns
-from everruns_sdk.models import Agent
 
 AGENT_FILE = os.path.join(os.path.dirname(__file__), "hackernews-reader.md")
 
@@ -44,42 +42,16 @@ DEFAULT_API_KEY = "dev"
 DEFAULT_BASE_URL = "http://localhost:9000"
 
 
-def parse_agent_markdown(path: str) -> dict:
-    """Parse agent markdown file with YAML frontmatter."""
-    with open(path) as f:
-        content = f.read()
-
-    if not content.startswith("---"):
-        raise ValueError("Agent file must start with YAML frontmatter (---)")
-
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        raise ValueError("Invalid frontmatter format")
-
-    meta = yaml.safe_load(parts[1])
-    system_prompt = parts[2].strip()
-    return {**meta, "system_prompt": system_prompt}
-
-
 async def main():
     prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PROMPT
-    spec = parse_agent_markdown(AGENT_FILE)
 
     api_key = os.environ.get("EVERRUNS_API_KEY", DEFAULT_API_KEY)
     base_url = os.environ.get("EVERRUNS_API_URL", DEFAULT_BASE_URL)
     client = Everruns(api_key=api_key, base_url=base_url)
 
-    # SDK's agents.create() doesn't support capabilities yet,
-    # so we POST the full request body directly.
-    capabilities = [{"ref": c} for c in spec.get("capabilities", [])]
-    agent_resp = await client._post("/agents", {
-        "name": spec["name"],
-        "system_prompt": spec["system_prompt"],
-        "description": spec.get("description", ""),
-        "tags": spec.get("tags", []),
-        "capabilities": capabilities,
-    })
-    agent = Agent(**agent_resp)
+    # Import agent directly from markdown (name, capabilities, etc. parsed server-side)
+    with open(AGENT_FILE) as f:
+        agent = await client.agents.import_agent(f.read())
     print(f"Agent created: {agent.id} ({agent.name})")
 
     # Create session

@@ -22,7 +22,7 @@ The agent definition is a single markdown file: [`hackernews-reader.md`](hackern
 just start-dev
 
 # 2. Install deps
-pip install everruns-sdk pyyaml
+pip install everruns-sdk
 
 # 3. Run
 python examples/hackernews-reader/run.py
