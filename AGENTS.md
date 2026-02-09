@@ -47,6 +47,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/test-cases.md` - Manual test case format
 - `specs/session-sqldb.md` - Session-scoped SQL databases (SQLite over PostgreSQL VFS)
+- `specs/threat-model.md` - Security threat model with stable IDs and mitigations
 
 ### Skills
 
