@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### Database Tables
 
-The durable engine uses these tables (created by migration 008):
+The durable engine uses these tables (created by migration 002_durable_execution):
 
 - `durable_workflow_instances` - Workflow state and metadata
 - `durable_workflow_events` - Event sourcing log
