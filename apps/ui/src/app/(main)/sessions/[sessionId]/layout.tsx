@@ -16,6 +16,7 @@ import {
   Zap,
   Database,
   Bot,
+  GitBranch,
 } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -60,6 +61,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   // Determine active tab from pathname
   const getActiveTab = () => {
     if (pathname.endsWith("/files")) return "files";
+    if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/storage")) return "storage";
     return "chat"; // Default to chat (includes /chat and base path)
@@ -198,6 +200,19 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
           >
             <Folder className="h-4 w-4" />
             Workspace
+          </Link>
+          <Link
+            href={`${basePath}/trajectory`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "trajectory" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2",
+            )}
+          >
+            <GitBranch className="h-4 w-4" />
+            Trajectory
           </Link>
           <Link
             href={`${basePath}/storage`}
