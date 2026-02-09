@@ -11,8 +11,6 @@ import {
   Controls,
   Background,
   BackgroundVariant,
-  useNodesState,
-  useEdgesState,
   type ColorMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -46,24 +44,17 @@ function miniMapNodeColor(node: { type?: string }): string {
 }
 
 export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
-  // Build nodes/edges from events - memoized to avoid re-computation
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const { nodes, edges } = buildTrajectory(events);
-    return { initialNodes: nodes, initialEdges: edges };
-  }, [events]);
-
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  // Build nodes/edges from events - recomputed when events change (SSE updates)
+  const { nodes, edges } = useMemo(() => buildTrajectory(events), [events]);
 
   // Fit view on mount
   const onInit = useCallback((instance: { fitView: (opts?: { padding?: number }) => void }) => {
-    // Small delay to ensure nodes are measured before fitting
     requestAnimationFrame(() => {
       instance.fitView({ padding: 0.2 });
     });
   }, []);
 
-  if (initialNodes.length === 0) {
+  if (nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <div className="text-center">
@@ -79,8 +70,6 @@ export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
         nodeTypes={trajectoryNodeTypes}
         onInit={onInit}
         colorMode={colorMode ?? "system"}

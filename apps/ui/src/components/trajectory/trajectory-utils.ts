@@ -87,7 +87,10 @@ export type TrajectoryNodeType =
   | "turnEnd";
 
 // --- Layout constants ---
-const NODE_SPACING_Y = 60;
+// Different spacing per node type to prevent overlap
+const SPACING_MARKER = 50; // turn start/end pills
+const SPACING_COMPACT = 55; // reasoning (single-line)
+const SPACING_CONTENT = 100; // user message, agent message, tool group (multi-line)
 const MAIN_X = 0;
 
 // Truncate text for preview
@@ -340,7 +343,7 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
       timestamp: turn.startTs,
     } as TurnNodeData);
     connectToPrev(turnStartId);
-    y += NODE_SPACING_Y;
+    y += SPACING_MARKER;
 
     // User message
     if (turn.userMessage) {
@@ -352,7 +355,7 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
         timestamp: turn.userMessage.ts,
       } as UserMessageNodeData);
       connectToPrev(umId);
-      y += NODE_SPACING_Y;
+      y += SPACING_CONTENT;
     }
 
     // Iterations (reasoning + tool calls)
@@ -372,7 +375,7 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
           timestamp: iter.reasoning.ts,
         } as ReasoningNodeData);
         connectToPrev(rId);
-        y += NODE_SPACING_Y;
+        y += SPACING_COMPACT;
       }
 
       // Tool group node
@@ -388,7 +391,8 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
           timestamp: iter.toolGroup.ts,
         } as ToolGroupNodeData);
         connectToPrev(tgId);
-        y += NODE_SPACING_Y;
+        // More tools = taller node
+        y += SPACING_CONTENT + Math.max(0, (iter.toolGroup.tools.length - 3) * 20);
       }
     }
 
@@ -403,7 +407,7 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
         hasToolCalls: turn.agentMessage.hasToolCalls,
       } as AgentMessageNodeData);
       connectToPrev(amId);
-      y += NODE_SPACING_Y;
+      y += SPACING_CONTENT;
     }
 
     // Turn end marker
@@ -419,7 +423,7 @@ export function buildTrajectory(events: Event[]): { nodes: Node[]; edges: Edge[]
         timestamp: turn.startTs,
       } as TurnNodeData);
       connectToPrev(turnEndId);
-      y += NODE_SPACING_Y * 0.5;
+      y += SPACING_MARKER;
     }
   }
 
