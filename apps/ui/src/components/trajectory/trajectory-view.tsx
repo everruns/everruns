@@ -41,8 +41,7 @@ function miniMapNodeColor(node: { type?: string }): string {
       return "#f59e0b"; // amber
     case "toolGroup":
       return "#10b981"; // emerald
-    case "turnStart":
-    case "turnEnd":
+    case "turnGroup":
       return "#94a3b8"; // slate
     default:
       return "#6b7280";
@@ -146,7 +145,7 @@ export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
           panOnScroll
           zoomOnScroll
           defaultEdgeOptions={{
-            type: "smoothstep",
+            type: "bezier",
             animated: false,
             style: { strokeWidth: 1.5 },
           }}

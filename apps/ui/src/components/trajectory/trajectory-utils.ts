@@ -1,5 +1,8 @@
 // Transforms session events into React Flow nodes and edges for trajectory visualization.
 //
+// Layout: each turn is a group node (box) containing child nodes.
+// Children use parentId + relative positioning. Edges use bezier curves.
+//
 // Performance design for large trajectories (1000+ turns):
 // - buildTurns() is O(n) single-pass over events
 // - buildTrajectory() is O(n) over turns
@@ -64,9 +67,10 @@ export interface ToolGroupNodeData {
   timestamp: string;
 }
 
-export interface TurnNodeData {
+export interface TurnGroupNodeData {
   label: string;
   turnId: string;
+  turnNumber: number;
   iterations: number;
   durationMs?: number;
   failed: boolean;
@@ -80,7 +84,7 @@ export type TrajectoryNodeData =
   | AgentMessageNodeData
   | ReasoningNodeData
   | ToolGroupNodeData
-  | TurnNodeData;
+  | TurnGroupNodeData;
 
 // Node type identifiers
 export type TrajectoryNodeType =
@@ -88,8 +92,7 @@ export type TrajectoryNodeType =
   | "agentMessage"
   | "reasoning"
   | "toolGroup"
-  | "turnStart"
-  | "turnEnd";
+  | "turnGroup";
 
 // --- Trajectory stats ---
 
@@ -104,8 +107,6 @@ export interface TrajectoryStats {
 }
 
 // --- Event types that change the trajectory structure ---
-// Only recompute the flow graph when one of these arrives.
-// Delta events (output.message.delta, reason.thinking.delta) are excluded.
 export const STRUCTURAL_EVENT_TYPES = new Set([
   "turn.started",
   "turn.completed",
@@ -120,13 +121,15 @@ export const STRUCTURAL_EVENT_TYPES = new Set([
 ]);
 
 // --- Layout constants ---
-// Different spacing per node type to prevent overlap
-const SPACING_MARKER = 50; // turn start/end pills
-const SPACING_COMPACT = 55; // reasoning (single-line)
-const SPACING_CONTENT = 100; // user message, agent message, tool group (multi-line)
-const MAIN_X = 0;
+const GROUP_PAD_X = 16;
+const GROUP_PAD_TOP = 44; // space for turn header inside group
+const GROUP_PAD_BOTTOM = 16;
+const GROUP_WIDTH = 340;
+const CHILD_X = GROUP_PAD_X; // child x offset inside group
+const CHILD_SPACING_COMPACT = 44; // reasoning
+const CHILD_SPACING_CONTENT = 80; // user msg, agent msg, tools
+const GROUP_GAP = 40; // vertical gap between turn groups
 
-// Truncate text for preview
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen) + "…";
@@ -172,16 +175,11 @@ interface IterationAccumulator {
   };
 }
 
-/**
- * Build structured turns from raw events.
- * Single O(n) pass. Only processes structural event types.
- */
 function buildTurns(events: Event[]): TurnAccumulator[] {
   const turns: TurnAccumulator[] = [];
   let currentTurn: TurnAccumulator | null = null;
   let currentIteration: IterationAccumulator | null = null;
 
-  // Collect tool results first (needed for matching with act.started)
   const toolResults = new Map<string, ToolCompletedData>();
   for (const event of events) {
     if (event.type === "tool.completed") {
@@ -317,9 +315,6 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
   return turns;
 }
 
-/**
- * Compute aggregate stats from turns.
- */
 function computeStats(turns: TurnAccumulator[]): TrajectoryStats {
   let completedTurns = 0;
   let failedTurns = 0;
@@ -355,7 +350,10 @@ function computeStats(turns: TurnAccumulator[]): TrajectoryStats {
 
 /**
  * Convert structured turns into React Flow nodes and edges.
- * Returns stats alongside the graph for the header bar.
+ *
+ * Each turn is a group node containing child nodes via parentId.
+ * Edges connect children sequentially within a turn,
+ * and from the last child of one turn to the first child of the next.
  */
 export function buildTrajectory(events: Event[]): {
   nodes: Node[];
@@ -366,79 +364,57 @@ export function buildTrajectory(events: Event[]): {
   const stats = computeStats(turns);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  let y = 0;
-  let prevNodeId: string | null = null;
+  let groupY = 0; // absolute Y for group placement
+  let prevChildId: string | null = null; // last child of previous turn
 
-  function addNode(
-    id: string,
-    type: TrajectoryNodeType,
-    data: TrajectoryNodeData,
-    x: number = MAIN_X,
-  ) {
-    nodes.push({
-      id,
-      type,
-      position: { x, y },
-      data: data as unknown as Record<string, unknown>,
-    });
-  }
-
-  function addEdge(source: string, target: string, animated = false) {
+  function addEdge(source: string, target: string) {
     edges.push({
       id: `e-${source}-${target}`,
       source,
       target,
-      animated,
-      style: { strokeWidth: 1.5 },
     });
-  }
-
-  function connectToPrev(nodeId: string, animated = false) {
-    if (prevNodeId) {
-      addEdge(prevNodeId, nodeId, animated);
-    }
-    prevNodeId = nodeId;
   }
 
   for (let turnIdx = 0; turnIdx < turns.length; turnIdx++) {
     const turn = turns[turnIdx];
-    const turnPrefix = `turn-${turnIdx}`;
+    const groupId = `turn-${turnIdx}-group`;
+    let childY = GROUP_PAD_TOP; // relative Y within group
+    let firstChildId: string | null = null;
+    let lastChildId: string | null = null;
 
-    // Turn start marker
-    const turnStartId = `${turnPrefix}-start`;
-    addNode(turnStartId, "turnStart", {
-      label: `Turn ${turnIdx + 1}`,
-      turnId: turn.turnId,
-      iterations: turn.iterationCount ?? turn.iterations.length,
-      durationMs: turn.durationMs,
-      failed: turn.failed,
-      errorMessage: turn.errorMessage,
-      timestamp: turn.startTs,
-    } as TurnNodeData);
-    connectToPrev(turnStartId);
-    y += SPACING_MARKER;
+    function addChild(id: string, type: TrajectoryNodeType, data: TrajectoryNodeData) {
+      nodes.push({
+        id,
+        type,
+        position: { x: CHILD_X, y: childY },
+        parentId: groupId,
+        extent: "parent" as const,
+        data: data as unknown as Record<string, unknown>,
+      });
+      if (!firstChildId) firstChildId = id;
+      if (lastChildId) addEdge(lastChildId, id);
+      lastChildId = id;
+    }
 
     // User message
     if (turn.userMessage) {
-      const umId = `${turnPrefix}-user`;
-      addNode(umId, "userMessage", {
+      const umId = `turn-${turnIdx}-user`;
+      addChild(umId, "userMessage", {
         label: "User",
-        preview: truncate(turn.userMessage.text, 120),
+        preview: truncate(turn.userMessage.text, 100),
         eventId: turn.userMessage.eventId,
         timestamp: turn.userMessage.ts,
       } as UserMessageNodeData);
-      connectToPrev(umId);
-      y += SPACING_CONTENT;
+      childY += CHILD_SPACING_CONTENT;
     }
 
-    // Iterations (reasoning + tool calls)
+    // Iterations
     for (let iterIdx = 0; iterIdx < turn.iterations.length; iterIdx++) {
       const iter = turn.iterations[iterIdx];
 
-      // Reasoning node
       if (iter.reasoning) {
-        const rId = `${turnPrefix}-reason-${iterIdx}`;
-        addNode(rId, "reasoning", {
+        const rId = `turn-${turnIdx}-reason-${iterIdx}`;
+        addChild(rId, "reasoning", {
           label: `Reasoning ${iterIdx + 1}`,
           iteration: iterIdx + 1,
           hasToolCalls: iter.reasoning.hasToolCalls,
@@ -447,14 +423,12 @@ export function buildTrajectory(events: Event[]): {
           eventId: iter.reasoning.eventId,
           timestamp: iter.reasoning.ts,
         } as ReasoningNodeData);
-        connectToPrev(rId);
-        y += SPACING_COMPACT;
+        childY += CHILD_SPACING_COMPACT;
       }
 
-      // Tool group node
       if (iter.toolGroup && iter.toolGroup.tools.length > 0) {
-        const tgId = `${turnPrefix}-tools-${iterIdx}`;
-        addNode(tgId, "toolGroup", {
+        const tgId = `turn-${turnIdx}-tools-${iterIdx}`;
+        addChild(tgId, "toolGroup", {
           label: `Tools (${iter.toolGroup.tools.length})`,
           tools: iter.toolGroup.tools,
           successCount: iter.toolGroup.successCount,
@@ -463,51 +437,59 @@ export function buildTrajectory(events: Event[]): {
           eventId: iter.toolGroup.eventId,
           timestamp: iter.toolGroup.ts,
         } as ToolGroupNodeData);
-        connectToPrev(tgId);
-        // More tools = taller node
-        y += SPACING_CONTENT + Math.max(0, (iter.toolGroup.tools.length - 3) * 20);
+        childY += CHILD_SPACING_CONTENT + Math.max(0, (iter.toolGroup.tools.length - 3) * 20);
       }
     }
 
     // Agent message
     if (turn.agentMessage) {
-      const amId = `${turnPrefix}-agent`;
-      addNode(amId, "agentMessage", {
+      const amId = `turn-${turnIdx}-agent`;
+      addChild(amId, "agentMessage", {
         label: "Agent",
-        preview: truncate(turn.agentMessage.text, 120),
+        preview: truncate(turn.agentMessage.text, 100),
         eventId: turn.agentMessage.eventId,
         timestamp: turn.agentMessage.ts,
         hasToolCalls: turn.agentMessage.hasToolCalls,
       } as AgentMessageNodeData);
-      connectToPrev(amId);
-      y += SPACING_CONTENT;
+      childY += CHILD_SPACING_CONTENT;
     }
 
-    // Turn end marker
-    if (turn.completed) {
-      const turnEndId = `${turnPrefix}-end`;
-      addNode(turnEndId, "turnEnd", {
-        label: turn.failed ? "Turn Failed" : "Turn Done",
+    // Calculate group height from accumulated child positions
+    const groupHeight = childY - CHILD_SPACING_CONTENT + CHILD_SPACING_COMPACT + GROUP_PAD_BOTTOM;
+
+    // Create turn group node
+    nodes.push({
+      id: groupId,
+      type: "turnGroup",
+      position: { x: 0, y: groupY },
+      data: {
+        label: `Turn ${turnIdx + 1}`,
         turnId: turn.turnId,
+        turnNumber: turnIdx + 1,
         iterations: turn.iterationCount ?? turn.iterations.length,
         durationMs: turn.durationMs,
         failed: turn.failed,
         errorMessage: turn.errorMessage,
         timestamp: turn.startTs,
-      } as TurnNodeData);
-      connectToPrev(turnEndId);
-      y += SPACING_MARKER;
+      } as unknown as Record<string, unknown>,
+      style: {
+        width: GROUP_WIDTH,
+        height: Math.max(groupHeight, GROUP_PAD_TOP + 40),
+      },
+    });
+
+    // Edge from previous turn's last child to this turn's first child
+    if (prevChildId && firstChildId) {
+      addEdge(prevChildId, firstChildId);
     }
+    prevChildId = lastChildId;
+
+    groupY += Math.max(groupHeight, GROUP_PAD_TOP + 40) + GROUP_GAP;
   }
 
   return { nodes, edges, stats };
 }
 
-/**
- * Count structural events in an event list.
- * Use as a stable memoization key — only changes when the trajectory
- * structure changes, not on every SSE delta.
- */
 export function countStructuralEvents(events: Event[] | undefined): number {
   if (!events) return 0;
   let count = 0;
