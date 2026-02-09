@@ -562,11 +562,17 @@ fn proto_model_with_provider_to_model(
         }
     };
 
+    let provider_settings = proto
+        .settings_json
+        .filter(|s| !s.is_empty())
+        .and_then(|s| serde_json::from_str(&s).ok());
+
     Ok(ModelWithProvider {
         model: proto.model,
         provider_type,
         api_key: proto.api_key.filter(|s| !s.is_empty()),
         base_url: proto.base_url.filter(|s| !s.is_empty()),
+        provider_settings,
     })
 }
 

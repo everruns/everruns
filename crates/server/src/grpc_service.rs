@@ -156,6 +156,9 @@ impl WorkerServiceImpl {
             provider_type: resolved.provider_type,
             api_key: resolved.api_key,
             base_url: resolved.base_url,
+            settings_json: resolved
+                .settings
+                .map(|s| serde_json::to_string(&s).unwrap_or_default()),
         }
     }
 

@@ -57,6 +57,8 @@ pub struct ResolvedModel {
     pub api_key: Option<String>,
     /// Provider base URL override (if set)
     pub base_url: Option<String>,
+    /// Provider-specific settings (from database JSONB column)
+    pub settings: Option<serde_json::Value>,
 }
 
 pub struct LlmResolverService {
@@ -93,11 +95,18 @@ impl LlmResolverService {
         // Try to decrypt API key if encryption is available and provider has encrypted key
         let api_key = self.resolve_api_key(&provider_row)?;
 
+        let settings = if provider_row.settings.is_null() {
+            None
+        } else {
+            Some(provider_row.settings.clone())
+        };
+
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
             provider_type: provider_row.provider_type.clone(),
             api_key,
             base_url: provider_row.base_url.clone(),
+            settings,
         }))
     }
 
@@ -126,11 +135,18 @@ impl LlmResolverService {
         // Try to decrypt API key if encryption is available and provider has encrypted key
         let api_key = self.resolve_api_key(&provider_row)?;
 
+        let settings = if provider_row.settings.is_null() {
+            None
+        } else {
+            Some(provider_row.settings.clone())
+        };
+
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
             provider_type: provider_row.provider_type.clone(),
             api_key,
             base_url: provider_row.base_url.clone(),
+            settings,
         }))
     }
 

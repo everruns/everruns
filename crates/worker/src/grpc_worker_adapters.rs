@@ -130,6 +130,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             provider_type: m.provider_type,
             api_key: m.api_key,
             base_url: m.base_url,
+            provider_settings: m.provider_settings.clone(),
         }))
     }
 
@@ -141,6 +142,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             provider_type: m.provider_type,
             api_key: m.api_key,
             base_url: m.base_url,
+            provider_settings: m.provider_settings.clone(),
         }))
     }
 
@@ -287,6 +289,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
                 provider_type: m.provider_type,
                 api_key: m.api_key,
                 base_url: m.base_url,
+                provider_settings: m.provider_settings.clone(),
             }),
             mcp_tool_definitions: ctx.mcp_tool_definitions,
         })

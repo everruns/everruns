@@ -70,6 +70,9 @@ pub struct ModelWithProvider {
     pub api_key: Option<String>,
     /// Optional base URL override
     pub base_url: Option<String>,
+    /// Provider-specific settings (from database JSONB column).
+    /// Used by providers like OpenRouter for custom headers (HTTP-Referer, X-Title).
+    pub provider_settings: Option<serde_json::Value>,
 }
 
 /// Trait for retrieving LLM provider and model configurations

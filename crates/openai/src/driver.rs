@@ -327,7 +327,7 @@ async fn list_openai_models(
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Register OpenAI with Open Responses API (recommended)
-    registry.register(ProviderType::OpenAI, |api_key, base_url| {
+    registry.register(ProviderType::OpenAI, |api_key, base_url, _settings| {
         let driver = match base_url {
             Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
             None => OpenAILlmDriver::new(api_key),
@@ -336,11 +336,14 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     });
 
     // Register OpenAI Completions with Chat Completions API
-    registry.register(ProviderType::OpenAICompletions, |api_key, base_url| {
-        let driver = match base_url {
-            Some(url) => OpenAICompletionsLlmDriver::with_base_url(api_key, url),
-            None => OpenAICompletionsLlmDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedLlmDriver
-    });
+    registry.register(
+        ProviderType::OpenAICompletions,
+        |api_key, base_url, _settings| {
+            let driver = match base_url {
+                Some(url) => OpenAICompletionsLlmDriver::with_base_url(api_key, url),
+                None => OpenAICompletionsLlmDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedLlmDriver
+        },
+    );
 }

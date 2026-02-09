@@ -565,9 +565,11 @@ where
         // Add metadata for API tracking and debugging
         // These IDs help correlate API requests with Everruns entities
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
+        // agent_name is used by OpenRouter driver for X-Title header (app attribution)
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", session_id.to_string())
             .with_metadata("agent_id", agent_id.to_string())
+            .with_metadata("agent_name", agent.name.clone())
             .with_metadata("turn_id", context.turn_id.to_string())
             .with_metadata("exec_id", context.exec_id.to_string())
             .with_metadata("org_id", format!("org_{:032x}", org_id));
@@ -1201,6 +1203,9 @@ where
         }
         if let Some(ref base_url) = model.base_url {
             config = config.with_base_url(base_url);
+        }
+        if let Some(ref settings) = model.provider_settings {
+            config = config.with_settings(settings.clone());
         }
 
         self.driver_registry.create_driver(&config)

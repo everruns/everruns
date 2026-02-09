@@ -492,7 +492,7 @@ impl std::fmt::Debug for LlmSimDriver {
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::LlmSim, |_api_key, _base_url| {
+    registry.register(ProviderType::LlmSim, |_api_key, _base_url, _settings| {
         // Default driver - tests can create custom drivers directly
         Box::new(LlmSimDriver::default_driver()) as BoxedLlmDriver
     });
@@ -555,6 +555,7 @@ mod tests {
             tools: vec![],
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
+            extra_headers: std::collections::HashMap::new(),
         }
     }
 

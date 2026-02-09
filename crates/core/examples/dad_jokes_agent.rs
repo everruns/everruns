@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
         provider_type: LlmProviderType::Anthropic,
         api_key: Some(api_key),
         base_url: None,
+        provider_settings: None,
     };
 
     // Build the agent with current_time capability

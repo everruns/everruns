@@ -312,6 +312,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
             base_url: r.base_url,
+            provider_settings: r.settings,
         }))
     }
 
@@ -330,6 +331,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
             base_url: r.base_url,
+            provider_settings: r.settings,
         }))
     }
 

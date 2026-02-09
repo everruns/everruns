@@ -73,11 +73,18 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type);
 
+        let settings = if provider_with_key.settings.is_null() {
+            None
+        } else {
+            Some(provider_with_key.settings)
+        };
+
         Ok(Some(ModelWithProvider {
             model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,
+            provider_settings: settings,
         }))
     }
 
@@ -116,11 +123,18 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type);
 
+        let settings = if provider_with_key.settings.is_null() {
+            None
+        } else {
+            Some(provider_with_key.settings)
+        };
+
         Ok(Some(ModelWithProvider {
             model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,
+            provider_settings: settings,
         }))
     }
 }

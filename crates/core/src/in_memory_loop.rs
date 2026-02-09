@@ -378,6 +378,7 @@ impl InMemoryAgenticLoopBuilder {
                     provider_type: LlmProviderType::LlmSim,
                     api_key: Some("fake-key".to_string()),
                     base_url: None,
+                    provider_settings: None,
                 };
                 provider_store.set_default_model(model).await;
 
@@ -386,9 +387,10 @@ impl InMemoryAgenticLoopBuilder {
                 // because the Arc counters are shared.
                 let driver = LlmSimDriver::new(config);
                 let mut registry = DriverRegistry::new();
-                registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
-                    Box::new(driver.clone())
-                });
+                registry.register(
+                    ProviderType::LlmSim,
+                    move |_api_key, _base_url, _settings| Box::new(driver.clone()),
+                );
                 registry
             };
 

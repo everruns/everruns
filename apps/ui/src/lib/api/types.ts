@@ -654,6 +654,16 @@ export type LlmProviderType = "openai" | "openai_completions" | "anthropic" | "g
 export type LlmProviderStatus = "active" | "disabled";
 export type LlmModelStatus = "active" | "disabled";
 
+/** Provider-specific settings (stored as JSON in database) */
+export interface OpenRouterSettings {
+  /** HTTP-Referer header for app attribution. Default: "https://everruns.com" */
+  http_referer?: string;
+  /** X-Title header for app attribution. Default: agent name. */
+  x_title?: string;
+}
+
+export type ProviderSettings = OpenRouterSettings;
+
 export interface LlmProvider {
   id: string;
   name: string;
@@ -661,6 +671,8 @@ export interface LlmProvider {
   base_url?: string;
   api_key_set: boolean;
   status: LlmProviderStatus;
+  /** Provider-specific settings (e.g., OpenRouter HTTP-Referer and X-Title overrides) */
+  settings?: ProviderSettings;
   created_at: string;
   updated_at: string;
 }
@@ -780,6 +792,7 @@ export interface CreateLlmProviderRequest {
   provider_type: LlmProviderType;
   base_url?: string;
   api_key?: string;
+  settings?: ProviderSettings;
 }
 
 export interface UpdateLlmProviderRequest {
@@ -788,6 +801,7 @@ export interface UpdateLlmProviderRequest {
   base_url?: string;
   api_key?: string;
   status?: LlmProviderStatus;
+  settings?: ProviderSettings;
 }
 
 export interface CreateLlmModelRequest {

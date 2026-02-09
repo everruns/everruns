@@ -130,6 +130,10 @@ pub struct LlmProvider {
     /// Whether an API key is configured (key is never returned)
     pub api_key_set: bool,
     pub status: LlmProviderStatus,
+    /// Provider-specific settings (e.g., OpenRouter HTTP-Referer and X-Title overrides).
+    /// Stored as JSON in the database settings column.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
     /// When models were last synced from provider API
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced_at: Option<DateTime<Utc>>,
