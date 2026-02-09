@@ -57,6 +57,7 @@ graph TD
    - `OpenAI` - OpenAI API using Open Responses API (recommended)
    - `OpenAICompletions` - OpenAI API using Chat Completions API (legacy)
    - `Anthropic` - Anthropic Claude API
+   - `Gemini` - Google Gemini API
    - `LlmSim` - Testing simulator (llmsim crate)
 
 ### Error Types (Contract)
@@ -93,6 +94,15 @@ Detect `RequestTooLarge` for:
 - HTTP 400 with "request size exceeded" in message
 - HTTP 400 with "too many tokens" in message
 - Any response with "maximum context" or "exceeds the maximum"
+
+#### Gemini Driver
+
+Detect `RequestTooLarge` for:
+- HTTP 413 (Payload Too Large)
+- HTTP 400 with "request payload size exceeds" in message
+- HTTP 400 with "exceeds the maximum" and "token" in message
+- HTTP 400 with "content too large" in message
+- Any response with "input is too long", "maximum context", or "token limit exceeded"
 
 ### Driver Registry
 
@@ -211,6 +221,7 @@ sequenceDiagram
 | Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
 | Chat Completions protocol | `crates/core/src/openai_protocol.rs` |
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
+| Gemini driver | `crates/gemini/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -393,6 +404,7 @@ if driver.supports_compact() {
 | OpenAI (Responses API) | Yes |
 | OpenAI (Completions API) | No |
 | Anthropic | No |
+| Gemini | No |
 | LlmSim | No |
 
 ## Testing

@@ -1268,6 +1268,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-gemini"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "futures",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "everruns-internal-protocol"
 version = "0.6.0"
 dependencies = [
@@ -1401,6 +1419,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-core",
  "everruns-durable",
+ "everruns-gemini",
  "everruns-internal-protocol",
  "everruns-openai",
  "futures",
