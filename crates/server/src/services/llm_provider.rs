@@ -39,7 +39,7 @@ impl LlmProviderService {
             provider_type: req.provider_type.to_string(),
             base_url: req.base_url,
             api_key_encrypted,
-            settings: None,
+            settings: req.settings,
         };
 
         let row = self.db.create_llm_provider(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
@@ -81,7 +81,7 @@ impl LlmProviderService {
                 LlmProviderStatus::Active => "active".to_string(),
                 LlmProviderStatus::Disabled => "disabled".to_string(),
             }),
-            settings: None,
+            settings: req.settings,
         };
 
         let row = self.db.update_llm_provider(id, input).await?;
@@ -99,6 +99,12 @@ impl LlmProviderService {
         // 2. A DEFAULT_ environment variable is available for this provider type
         let api_key_set = row.api_key_set || has_default_api_key_from_env(&row.provider_type);
 
+        let settings = if row.settings.is_null() {
+            None
+        } else {
+            Some(row.settings.clone())
+        };
+
         LlmProvider {
             id: row.id,
             name: row.name.clone(),
@@ -109,6 +115,7 @@ impl LlmProviderService {
                 "active" => LlmProviderStatus::Active,
                 _ => LlmProviderStatus::Disabled,
             },
+            settings,
             last_synced_at: row.last_synced_at,
             created_at: row.created_at,
             updated_at: row.updated_at,

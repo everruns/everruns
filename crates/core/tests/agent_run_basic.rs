@@ -28,6 +28,7 @@ fn anthropic_model(model_name: &str) -> Option<ModelWithProvider> {
         provider_type: LlmProviderType::Anthropic,
         api_key: Some(api_key),
         base_url: None,
+        provider_settings: None,
     })
 }
 
@@ -38,6 +39,7 @@ fn openai_model(model_name: &str) -> Option<ModelWithProvider> {
         provider_type: LlmProviderType::Openai,
         api_key: Some(api_key),
         base_url: None,
+        provider_settings: None,
     })
 }
 

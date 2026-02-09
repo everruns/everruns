@@ -125,6 +125,20 @@ function ProviderCard({
               API Key: {provider.api_key_set ? "Configured" : "Not set"}
             </span>
           </div>
+          {provider.provider_type === "openrouter" && provider.settings && (
+            <>
+              {provider.settings.http_referer && (
+                <p className="text-muted-foreground truncate">
+                  Referer: {provider.settings.http_referer}
+                </p>
+              )}
+              {provider.settings.x_title && (
+                <p className="text-muted-foreground truncate">
+                  Title: {provider.settings.x_title}
+                </p>
+              )}
+            </>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
           {canSync && (
@@ -141,7 +155,11 @@ function ProviderCard({
           )}
           <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
             <Key className="h-4 w-4 mr-1" />
-            {provider.api_key_set ? "Update Key" : "Set Key"}
+            {provider.provider_type === "openrouter"
+              ? "Settings"
+              : provider.api_key_set
+                ? "Update Key"
+                : "Set Key"}
           </Button>
           <Button
             variant="ghost"
@@ -377,16 +395,27 @@ function AddProviderDialog({
   const [providerType, setProviderType] = useState<LlmProviderType>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  // OpenRouter-specific settings
+  const [httpReferer, setHttpReferer] = useState("");
+  const [xTitle, setXTitle] = useState("");
 
   const createProvider = useCreateLlmProvider();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const settings =
+      providerType === "openrouter" && (httpReferer || xTitle)
+        ? {
+            http_referer: httpReferer || undefined,
+            x_title: xTitle || undefined,
+          }
+        : undefined;
     const data: CreateLlmProviderRequest = {
       name,
       provider_type: providerType,
       base_url: baseUrl || undefined,
       api_key: apiKey || undefined,
+      settings,
     };
     await createProvider.mutateAsync(data);
     onOpenChange(false);
@@ -394,6 +423,8 @@ function AddProviderDialog({
     setProviderType("openai");
     setBaseUrl("");
     setApiKey("");
+    setHttpReferer("");
+    setXTitle("");
   };
 
   return (
@@ -459,6 +490,36 @@ function AddProviderDialog({
               placeholder={getApiKeyPlaceholder(providerType)}
             />
           </div>
+          {providerType === "openrouter" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="http-referer">HTTP-Referer (optional)</Label>
+                <Input
+                  id="http-referer"
+                  value={httpReferer}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setHttpReferer(e.target.value)
+                  }
+                  placeholder="https://everruns.com"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your app URL for OpenRouter rankings. Default: https://everruns.com
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="x-title">X-Title (optional)</Label>
+                <Input
+                  id="x-title"
+                  value={xTitle}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setXTitle(e.target.value)}
+                  placeholder="Agent name (default)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Display name for OpenRouter rankings. Default: agent name.
+                </p>
+              </div>
+            </>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
@@ -483,45 +544,110 @@ function SetApiKeyDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [apiKey, setApiKey] = useState("");
+  // OpenRouter-specific settings
+  const [httpReferer, setHttpReferer] = useState("");
+  const [xTitle, setXTitle] = useState("");
   const updateProvider = useUpdateLlmProvider(provider?.id || "");
+
+  const isOpenRouter = provider?.provider_type === "openrouter";
+
+  // Initialize OpenRouter settings from provider when dialog opens
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen && provider && isOpenRouter) {
+      setHttpReferer(provider.settings?.http_referer || "");
+      setXTitle(provider.settings?.x_title || "");
+    }
+    if (!newOpen) {
+      setApiKey("");
+      setHttpReferer("");
+      setXTitle("");
+    }
+    onOpenChange(newOpen);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!provider) return;
-    await updateProvider.mutateAsync({ api_key: apiKey });
-    onOpenChange(false);
-    setApiKey("");
+    const update: Record<string, unknown> = {};
+    if (apiKey) {
+      update.api_key = apiKey;
+    }
+    if (isOpenRouter) {
+      update.settings = {
+        http_referer: httpReferer || undefined,
+        x_title: xTitle || undefined,
+      };
+    }
+    await updateProvider.mutateAsync(update);
+    handleOpenChange(false);
   };
 
+  const canSubmit = apiKey || isOpenRouter;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
+          <DialogTitle>
+            {isOpenRouter ? "Update Provider Settings" : provider?.api_key_set ? "Update" : "Set"}{" "}
+            {!isOpenRouter && "API Key"}
+          </DialogTitle>
           <DialogDescription>
-            {provider?.api_key_set
-              ? "Enter a new API key to replace the existing one."
-              : "Enter the API key for this provider."}
+            {isOpenRouter
+              ? "Update API key and app attribution settings."
+              : provider?.api_key_set
+                ? "Enter a new API key to replace the existing one."
+                : "Enter the API key for this provider."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="new-api-key">API Key</Label>
+            <Label htmlFor="new-api-key">API Key{isOpenRouter ? " (leave empty to keep current)" : ""}</Label>
             <Input
               id="new-api-key"
               type="password"
               value={apiKey}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
               placeholder={provider ? getApiKeyPlaceholder(provider.provider_type) : "your-api-key"}
-              required
+              required={!isOpenRouter}
             />
           </div>
+          {isOpenRouter && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="edit-http-referer">HTTP-Referer</Label>
+                <Input
+                  id="edit-http-referer"
+                  value={httpReferer}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setHttpReferer(e.target.value)
+                  }
+                  placeholder="https://everruns.com"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your app URL for OpenRouter rankings. Default: https://everruns.com
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-x-title">X-Title</Label>
+                <Input
+                  id="edit-x-title"
+                  value={xTitle}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setXTitle(e.target.value)}
+                  placeholder="Agent name (default)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Display name for OpenRouter rankings. Default: agent name.
+                </p>
+              </div>
+            </>
+          )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={updateProvider.isPending || !apiKey}>
-              {updateProvider.isPending ? "Saving..." : "Save API Key"}
+            <Button type="submit" disabled={updateProvider.isPending || !canSubmit}>
+              {updateProvider.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </form>

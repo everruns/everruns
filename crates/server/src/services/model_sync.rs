@@ -97,6 +97,7 @@ impl ModelSyncService {
             provider_type: driver_type,
             api_key: Some(api_key),
             base_url: None, // We already checked for custom URLs above
+            settings: None,
         };
 
         let driver = self

@@ -337,6 +337,7 @@ message ModelWithProvider {
     string provider_type = 2;
     optional string api_key = 3;  // Decrypted by control plane
     optional string base_url = 4;
+    optional string settings_json = 5;  // Provider settings as JSON string
 }
 
 message GetModelWithProviderRequest {

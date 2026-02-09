@@ -275,6 +275,7 @@ impl InMemoryLlmProviderStore {
                 provider_type: LlmProviderType::Openai,
                 api_key: Some(api_key),
                 base_url: std::env::var("OPENAI_BASE_URL").ok(),
+                provider_settings: None,
             };
             store.set_default_model(model).await;
         } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
@@ -283,6 +284,7 @@ impl InMemoryLlmProviderStore {
                 provider_type: LlmProviderType::Anthropic,
                 api_key: Some(api_key),
                 base_url: std::env::var("ANTHROPIC_BASE_URL").ok(),
+                provider_settings: None,
             };
             store.set_default_model(model).await;
         }

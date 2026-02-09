@@ -83,6 +83,7 @@ async fn setup_test_environment() -> (
         provider_type: LlmProviderType::LlmSim,
         api_key: Some("fake-api-key".to_string()), // Required by registry but unused by LlmSim
         base_url: None,
+        provider_settings: None,
     };
     provider_store.set_default_model(model).await;
 
@@ -99,9 +100,10 @@ async fn setup_test_environment() -> (
 /// Create a custom driver registry with a specific LlmSim configuration
 fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
-        Box::new(LlmSimDriver::new(config.clone()))
-    });
+    registry.register(
+        ProviderType::LlmSim,
+        move |_api_key, _base_url, _settings| Box::new(LlmSimDriver::new(config.clone())),
+    );
     registry
 }
 
@@ -764,6 +766,7 @@ async fn test_driver_registry_integration() {
         tools: vec![],
         reasoning_effort: None,
         metadata: std::collections::HashMap::new(),
+        extra_headers: std::collections::HashMap::new(),
     };
 
     let response = driver

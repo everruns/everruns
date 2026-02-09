@@ -241,11 +241,18 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = self
+            let mut req_builder = self
                 .client
                 .post(&self.api_url)
                 .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/json");
+
+            // Add extra HTTP headers (provider-specific, e.g., OpenRouter attribution)
+            for (key, value) in &config.extra_headers {
+                req_builder = req_builder.header(key.as_str(), value.as_str());
+            }
+
+            let response = req_builder
                 .json(&request)
                 .send()
                 .await

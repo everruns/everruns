@@ -184,6 +184,7 @@ pub struct ModelWithProvider {
     pub provider_type: LlmProviderType,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    pub provider_settings: Option<serde_json::Value>,
 }
 
 /// Turn context loaded in one batched call
@@ -292,6 +293,7 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
             provider_type: m.provider_type,
             api_key: m.api_key,
             base_url: m.base_url,
+            provider_settings: m.provider_settings.clone(),
         }))
     }
 
@@ -302,6 +304,7 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
             provider_type: m.provider_type,
             api_key: m.api_key,
             base_url: m.base_url,
+            provider_settings: m.provider_settings.clone(),
         }))
     }
 }

@@ -65,6 +65,9 @@ pub struct CreateLlmProviderRequest {
     /// Will be encrypted at rest if encryption is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Provider-specific settings (e.g., OpenRouter HTTP-Referer and X-Title overrides).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
 }
 
 /// Response from syncing models from a provider
@@ -105,6 +108,9 @@ pub struct UpdateLlmProviderRequest {
     /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmProviderStatus>,
+    /// Provider-specific settings (e.g., OpenRouter HTTP-Referer and X-Title overrides).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
 }
 
 /// Create a new LLM provider

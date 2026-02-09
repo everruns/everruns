@@ -382,6 +382,10 @@ pub struct LlmCallConfig {
     /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
     /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
     pub metadata: HashMap<String, String>,
+    /// Extra HTTP headers to send with the LLM API request.
+    /// Provider-specific headers (e.g., OpenRouter's HTTP-Referer and X-Title).
+    /// These are injected by the driver based on provider settings and call context.
+    pub extra_headers: HashMap<String, String>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -393,6 +397,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by ReasonAtom from user message controls
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
+            extra_headers: HashMap::new(), // Set by provider-specific drivers
         }
     }
 }
@@ -734,6 +739,9 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     /// Base URL override (optional)
     pub base_url: Option<String>,
+    /// Provider-specific settings (from database JSONB column).
+    /// Used by providers like OpenRouter for custom headers (HTTP-Referer, X-Title).
+    pub settings: Option<serde_json::Value>,
 }
 
 impl ProviderConfig {
@@ -743,6 +751,7 @@ impl ProviderConfig {
             provider_type,
             api_key: None,
             base_url: None,
+            settings: None,
         }
     }
 
@@ -757,6 +766,12 @@ impl ProviderConfig {
         self.base_url = Some(base_url.into());
         self
     }
+
+    /// Set provider-specific settings
+    pub fn with_settings(mut self, settings: serde_json::Value) -> Self {
+        self.settings = Some(settings);
+        self
+    }
 }
 
 /// Boxed LLM driver for dynamic dispatch
@@ -768,8 +783,11 @@ pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 
 /// Factory function type for creating LLM drivers
 ///
-/// Takes api_key and optional base_url, returns a boxed driver
-pub type DriverFactory = Arc<dyn Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync>;
+/// Takes api_key, optional base_url, and optional provider settings JSON, returns a boxed driver.
+/// The settings parameter carries provider-specific configuration from the database
+/// (e.g., OpenRouter's HTTP-Referer and X-Title header overrides).
+pub type DriverFactory =
+    Arc<dyn Fn(&str, Option<&str>, Option<&serde_json::Value>) -> BoxedLlmDriver + Send + Sync>;
 
 /// Registry for LLM drivers
 ///
@@ -806,7 +824,10 @@ impl DriverRegistry {
     /// Register a driver factory for a provider type
     pub fn register<F>(&mut self, provider_type: ProviderType, factory: F)
     where
-        F: Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync + 'static,
+        F: Fn(&str, Option<&str>, Option<&serde_json::Value>) -> BoxedLlmDriver
+            + Send
+            + Sync
+            + 'static,
     {
         self.factories.insert(provider_type, Arc::new(factory));
     }
@@ -837,7 +858,11 @@ impl DriverRegistry {
         })?;
 
         // Create the driver using the factory
-        Ok(factory(api_key, config.base_url.as_deref()))
+        Ok(factory(
+            api_key,
+            config.base_url.as_deref(),
+            config.settings.as_ref(),
+        ))
     }
 
     /// Check if a driver is registered for a provider type
@@ -981,7 +1006,7 @@ mod tests {
     fn test_driver_registry_requires_api_key() {
         // Register a mock factory
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::OpenAI, |_api_key, _base_url| {
+        registry.register(ProviderType::OpenAI, |_api_key, _base_url, _settings| {
             // Return a mock driver - just need something that compiles
             struct MockDriver;
             #[async_trait]
@@ -1030,7 +1055,7 @@ mod tests {
         assert!(!registry.has_driver(&ProviderType::OpenAI));
         assert!(!registry.has_driver(&ProviderType::Anthropic));
 
-        registry.register(ProviderType::OpenAI, |_, _| {
+        registry.register(ProviderType::OpenAI, |_, _, _| {
             struct MockDriver;
             #[async_trait]
             impl LlmDriver for MockDriver {
