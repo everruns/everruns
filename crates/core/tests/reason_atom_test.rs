@@ -114,6 +114,8 @@ fn create_context(session_id: Uuid) -> AtomContext {
 
 #[tokio::test]
 async fn test_reason_atom_with_fixed_response() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
     let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
@@ -129,6 +131,8 @@ async fn test_reason_atom_with_fixed_response() {
     let driver_registry =
         create_custom_driver_registry(LlmSimConfig::fixed("The capital of France is Paris."));
 
+    let event_emitter = InMemoryEventEmitter::new();
+
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
@@ -136,7 +140,7 @@ async fn test_reason_atom_with_fixed_response() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        event_emitter.clone(),
     );
 
     let context = create_context(session_id);
@@ -157,10 +161,23 @@ async fn test_reason_atom_with_fixed_response() {
     assert!(!result.has_tool_calls);
     assert!(result.tool_calls.is_empty());
 
-    // Verify the assistant message was stored
-    let messages = message_retriever.load(session_id.into()).await.unwrap();
-    assert_eq!(messages.len(), 2); // user + assistant
-    assert_eq!(messages[1].text(), Some("The capital of France is Paris."));
+    // Verify the assistant message was emitted as an output.message.completed event
+    // (ReasonAtom stores messages via EventEmitter, not MessageRetriever)
+    let events = event_emitter.events().await;
+    let output_completed = events
+        .iter()
+        .find(|e| e.event_type == "output.message.completed");
+    assert!(
+        output_completed.is_some(),
+        "Should emit output.message.completed event"
+    );
+    if let Some(event) = output_completed {
+        if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
+            assert_eq!(data.message.text(), Some("The capital of France is Paris."));
+        } else {
+            panic!("Expected OutputMessageCompleted data");
+        }
+    }
 }
 
 #[tokio::test]
@@ -355,6 +372,8 @@ async fn test_reason_atom_with_different_configs() {
 
 #[tokio::test]
 async fn test_reason_atom_with_multi_turn_conversation() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
     let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
@@ -374,6 +393,8 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let driver_registry =
         create_custom_driver_registry(LlmSimConfig::fixed("Your name is Bob, as you mentioned."));
 
+    let event_emitter = InMemoryEventEmitter::new();
+
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
@@ -381,7 +402,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        event_emitter.clone(),
     );
 
     let context = create_context(session_id);
@@ -400,9 +421,26 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     assert!(result.success);
     assert!(result.text.contains("Bob"));
 
-    // Verify all messages are preserved
+    // Verify original messages still in retriever (untouched)
     let messages = message_retriever.load(session_id.into()).await.unwrap();
-    assert_eq!(messages.len(), 4); // 3 original + 1 new assistant response
+    assert_eq!(messages.len(), 3); // 3 original messages
+
+    // Verify assistant response was emitted as output.message.completed event
+    let events = event_emitter.events().await;
+    let output_completed = events
+        .iter()
+        .find(|e| e.event_type == "output.message.completed");
+    assert!(
+        output_completed.is_some(),
+        "Should emit output.message.completed for assistant response"
+    );
+    if let Some(event) = output_completed {
+        if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
+            assert!(data.message.text().unwrap().contains("Bob"));
+        } else {
+            panic!("Expected OutputMessageCompleted data");
+        }
+    }
 }
 
 #[tokio::test]
@@ -573,15 +611,6 @@ async fn test_reason_atom_handles_llm_error() {
     // Verify no tool calls
     assert!(!result.has_tool_calls);
     assert!(result.tool_calls.is_empty());
-
-    // Verify an error message was stored for the user
-    let messages = message_retriever.load(session_id.into()).await.unwrap();
-    assert_eq!(messages.len(), 2, "Should have user + error message");
-    assert_eq!(messages[1].role, everruns_core::MessageRole::Agent);
-    assert!(
-        messages[1].text().unwrap().contains("error"),
-        "Stored message should be an error message"
-    );
 
     // Verify events were emitted
     let events = event_emitter.events().await;
