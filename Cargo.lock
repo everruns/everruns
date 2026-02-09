@@ -432,8 +432,8 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.1.2"
-source = "git+https://github.com/everruns/bashkit?tag=v0.1.2#a29d674eb2cdc90213c74a8bc6b0ba0879deeb49"
+version = "0.1.4"
+source = "git+https://github.com/everruns/bashkit?tag=v0.1.4#89127509c946b1eaf5950d6e9e2b57dfca683cb1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1356,12 +1356,13 @@ dependencies = [
 
 [[package]]
 name = "everruns-sdk"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5963af992b77866fc0df3f9d60b2033abf1c0632acc380777aa2912c6852d0b0"
+checksum = "d88d1f1e929b0282bc0a125b778aa397aa3863cf1c06574afd9de392103ad784"
 dependencies = [
  "async-stream",
  "futures",
+ "getrandom 0.2.17",
  "reqwest 0.12.28",
  "reqwest-eventsource",
  "secrecy",
