@@ -48,7 +48,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
               <CardTitle className="text-base font-mono">{tool.name}</CardTitle>
             </div>
           </div>
-          {tool.policy && (
+          {"policy" in tool && tool.policy && (
             <Badge variant={tool.policy === "auto" ? "default" : "secondary"} className="text-xs">
               {tool.policy === "auto" ? "Auto" : "Requires Approval"}
             </Badge>

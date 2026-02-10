@@ -269,8 +269,9 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Use local status if available, otherwise fall back to session status
   const effectiveStatus = localStatus ?? session?.status;
 
-  // Determine if session is actively processing (only "active" means processing)
-  const isActive = effectiveStatus === "active";
+  // Determine if session is actively processing
+  // "active" = turn running, "waiting_for_tool_results" = paused for client-side tool
+  const isActive = effectiveStatus === "active" || effectiveStatus === "waiting_for_tool_results";
 
   // shouldPoll is no longer needed - we use SSE events for real-time status
   const shouldPoll = false;
@@ -310,7 +311,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
-            e.type === "tool.completed",
+            e.type === "tool.completed" ||
+            e.type === "tool.call_requested",
         )
       : [];
 

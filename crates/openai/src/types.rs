@@ -173,6 +173,9 @@ impl LlmConfig {
                     ToolDefinition::Builtin(builtin) => {
                         (&builtin.name, &builtin.description, &builtin.parameters)
                     }
+                    ToolDefinition::ClientSide(client) => {
+                        (&client.name, &client.description, &client.parameters)
+                    }
                 };
 
                 OpenAiTool {

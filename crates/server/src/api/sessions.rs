@@ -45,6 +45,10 @@ pub struct CreateSessionRequest {
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Client-side tools for this session (additive to agent tools).
+    /// These tools are sent to the LLM but executed by the client.
+    #[serde(default)]
+    pub tools: Vec<everruns_core::ToolDefinition>,
 }
 
 /// Response from cancel turn endpoint

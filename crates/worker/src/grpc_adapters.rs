@@ -385,6 +385,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        tools: vec![],
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
@@ -472,6 +473,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         tags: vec![],
         model_id: model_id.map(|u| u.into()),
         capabilities,
+        tools: vec![],
         status,
         created_at,
         updated_at,

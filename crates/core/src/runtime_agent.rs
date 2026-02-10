@@ -112,8 +112,16 @@ impl RuntimeAgentBuilder {
             .map(|cap| cap.capability_id().to_string())
             .collect();
 
-        self.system_prompt(&agent.system_prompt)
-            .with_capabilities(&capability_ids, registry)
+        let mut builder = self
+            .system_prompt(&agent.system_prompt)
+            .with_capabilities(&capability_ids, registry);
+
+        // Add agent-level client-side tools
+        if !agent.tools.is_empty() {
+            builder = builder.tools(agent.tools.clone());
+        }
+
+        builder
     }
 
     /// Apply capabilities to this builder.
@@ -325,6 +333,7 @@ mod tests {
             ToolDefinition::Builtin(tool) => {
                 assert_eq!(tool.name, "get_current_time");
             }
+            _ => panic!("expected Builtin variant"),
         }
     }
 
@@ -355,6 +364,7 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            tools: vec![],
             status: AgentStatus::Active,
             default_model_id: None,
             tags: vec![],
@@ -374,6 +384,7 @@ mod tests {
             ToolDefinition::Builtin(tool) => {
                 assert_eq!(tool.name, "get_current_time");
             }
+            _ => panic!("expected Builtin variant"),
         }
     }
 
@@ -435,12 +446,112 @@ mod tests {
             ToolDefinition::Builtin(tool) => {
                 assert_eq!(tool.name, "get_current_time");
             }
+            _ => panic!("expected Builtin variant"),
         }
     }
 
     #[test]
+    fn test_builder_with_agent_client_side_tools() {
+        use crate::tool_types::{ClientSideTool, ToolDefinition};
+        use uuid::{NoContext, Timestamp, Uuid};
+
+        let registry = CapabilityRegistry::with_builtins();
+        let ts = Timestamp::now(NoContext);
+        let uuid = Uuid::new_v7(ts);
+
+        let client_tool = ToolDefinition::ClientSide(ClientSideTool {
+            name: "browser_click".to_string(),
+            description: "Click an element in the browser".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string"}
+                }
+            }),
+        });
+
+        let agent = Agent {
+            public_id: AgentId::from_uuid(uuid),
+            internal_id: uuid,
+            name: "Client Tool Agent".to_string(),
+            description: None,
+            system_prompt: "Agent with client tools.".to_string(),
+            capabilities: vec![],
+            tools: vec![client_tool],
+            status: AgentStatus::Active,
+            default_model_id: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            usage: None,
+        };
+
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .with_agent(&agent, &registry)
+            .model("gpt-5.2")
+            .build();
+
+        assert_eq!(runtime_agent.tools.len(), 1);
+        assert_eq!(runtime_agent.tools[0].name(), "browser_click");
+        assert_eq!(
+            runtime_agent.tools[0].policy(),
+            &crate::tool_types::ToolPolicy::ClientSide
+        );
+    }
+
+    #[test]
+    fn test_builder_with_agent_client_side_and_capabilities() {
+        use crate::tool_types::{ClientSideTool, ToolDefinition};
+        use uuid::{NoContext, Timestamp, Uuid};
+
+        let registry = CapabilityRegistry::with_builtins();
+        let ts = Timestamp::now(NoContext);
+        let uuid = Uuid::new_v7(ts);
+
+        let client_tool = ToolDefinition::ClientSide(ClientSideTool {
+            name: "deploy_staging".to_string(),
+            description: "Deploy to staging".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+        });
+
+        let agent = Agent {
+            public_id: AgentId::from_uuid(uuid),
+            internal_id: uuid,
+            name: "Mixed Tool Agent".to_string(),
+            description: None,
+            system_prompt: "Agent with mixed tools.".to_string(),
+            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            tools: vec![client_tool],
+            status: AgentStatus::Active,
+            default_model_id: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            usage: None,
+        };
+
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .with_agent(&agent, &registry)
+            .model("gpt-5.2")
+            .build();
+
+        // Should have capability tool + client-side tool
+        assert_eq!(runtime_agent.tools.len(), 2);
+        let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&"get_current_time"));
+        assert!(tool_names.contains(&"deploy_staging"));
+
+        // Verify the client tool is ClientSide variant
+        let deploy_tool = runtime_agent
+            .tools
+            .iter()
+            .find(|t| t.name() == "deploy_staging")
+            .unwrap();
+        assert!(matches!(deploy_tool, ToolDefinition::ClientSide(_)));
+    }
+
+    #[test]
     fn test_builder_with_agent_and_additive_capabilities() {
-        use crate::tool_types::ToolDefinition;
         use uuid::{NoContext, Timestamp, Uuid};
 
         let registry = CapabilityRegistry::with_builtins();
@@ -455,6 +566,7 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            tools: vec![],
             status: AgentStatus::Active,
             default_model_id: None,
             tags: vec![],
@@ -474,13 +586,7 @@ mod tests {
 
         // Should have tools from both agent and session capabilities
         assert!(runtime_agent.tools.len() >= 2);
-        let tool_names: Vec<&str> = runtime_agent
-            .tools
-            .iter()
-            .map(|t| match t {
-                ToolDefinition::Builtin(b) => b.name.as_str(),
-            })
-            .collect();
+        let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"get_current_time"));
         assert!(tool_names.contains(&"add"));
 

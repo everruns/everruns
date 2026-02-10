@@ -239,6 +239,27 @@ pub async fn create_message(
             )
         })?;
 
+    // If session is waiting for tool results, cancel the wait gracefully.
+    // The new user message supersedes any pending client-side tool calls.
+    if session.status == everruns_core::SessionStatus::WaitingForToolResults {
+        tracing::info!(
+            session_id = %session_id,
+            "User message received while waiting for tool results - cancelling tool wait"
+        );
+        if let Err(e) = state
+            .session_service
+            .update_status(
+                org.org_id,
+                &org.public_id,
+                session_id.uuid(),
+                "active".to_string(),
+            )
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to reset session status from waiting_for_tool_results");
+        }
+    }
+
     let message = state
         .message_service
         .create(org.org_id, session.agent_id.uuid(), session_id.uuid(), req)

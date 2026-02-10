@@ -151,7 +151,9 @@ pub use atoms::{
 };
 
 // Tool types (runtime types defined in this crate)
-pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
+pub use tool_types::{
+    BuiltinTool, ClientSideTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
@@ -168,10 +170,10 @@ pub use events::{
     REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
     ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
-    SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_COMPLETED, TOOL_STARTED,
-    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallSummary,
-    ToolCompletedData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnStartedData,
+    SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
+    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
+    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData,
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{

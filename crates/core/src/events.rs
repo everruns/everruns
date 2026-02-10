@@ -52,6 +52,7 @@ pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
 pub const TOOL_STARTED: &str = "tool.started";
 pub const TOOL_COMPLETED: &str = "tool.completed";
+pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -299,6 +300,7 @@ impl Event {
                 | ACT_COMPLETED
                 | TOOL_STARTED
                 | TOOL_COMPLETED
+                | TOOL_CALL_REQUESTED
         )
     }
 
@@ -722,6 +724,17 @@ impl ToolCompletedData {
             duration_ms,
         }
     }
+}
+
+/// Data for tool.call_requested event
+///
+/// Emitted when the agent needs client-side tool calls executed.
+/// The workflow pauses until the client submits results via the API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolCallRequestedData {
+    /// Tool calls that need to be executed by the client
+    pub tool_calls: Vec<ToolCall>,
 }
 
 // ============================================================================
@@ -1230,6 +1243,7 @@ pub struct SessionIdledData {
 /// - `act.completed` → ActCompletedData
 /// - `tool.started` → ToolStartedData
 /// - `tool.completed` → ToolCompletedData
+/// - `tool.call_requested` → ToolCallRequestedData
 /// - `llm.generation` → LlmGenerationData
 /// - `reason.thinking.started` → ReasonThinkingStartedData
 /// - `reason.thinking.delta` → ReasonThinkingDeltaData
@@ -1270,6 +1284,7 @@ pub enum EventData {
     ActCompleted(ActCompletedData),
     ToolStarted(ToolStartedData),
     ToolCompleted(ToolCompletedData),
+    ToolCallRequested(ToolCallRequestedData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -1324,6 +1339,7 @@ impl EventData {
             EventData::ActCompleted(_) => ACT_COMPLETED,
             EventData::ToolStarted(_) => TOOL_STARTED,
             EventData::ToolCompleted(_) => TOOL_COMPLETED,
+            EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
@@ -1404,6 +1420,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             }
             TOOL_COMPLETED => serde_json::from_value::<ToolCompletedData>(data.clone())
                 .map(EventData::ToolCompleted),
+            TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
+                .map(EventData::ToolCallRequested),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
                 .map(EventData::LlmGeneration),
             REASON_THINKING_STARTED => {
@@ -1475,6 +1493,7 @@ impl_from_event_data! {
     ActCompletedData => ActCompleted,
     ToolStartedData => ToolStarted,
     ToolCompletedData => ToolCompleted,
+    ToolCallRequestedData => ToolCallRequested,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

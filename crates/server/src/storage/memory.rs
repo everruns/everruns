@@ -333,6 +333,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            tools: input.tools,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -366,6 +367,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            tools: input.tools,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -488,6 +490,7 @@ impl InMemoryDatabase {
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
             agent.tags = input.tags;
+            agent.tools = input.tools;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -503,6 +506,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 tags: input.tags,
+                tools: input.tools,
                 status: "active".to_string(),
                 created_at: now,
                 updated_at: now,
@@ -541,6 +545,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             model_id: input.model_id,
             capabilities: input.capabilities,
+            tools: input.tools,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,
             updated_at: now,
@@ -2340,6 +2345,7 @@ mod tests {
                     system_prompt: "You are helpful".to_string(),
                     default_model_id: None,
                     tags: vec!["test".to_string()],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2366,6 +2372,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2379,6 +2386,7 @@ mod tests {
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2407,6 +2415,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2421,6 +2430,7 @@ mod tests {
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2465,6 +2475,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2478,6 +2489,7 @@ mod tests {
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2518,6 +2530,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2532,6 +2545,7 @@ mod tests {
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
             })
             .await
             .unwrap();
@@ -2597,6 +2611,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    tools: serde_json::json!([]),
                 },
             )
             .await
@@ -2611,6 +2626,7 @@ mod tests {
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
             })
             .await
             .unwrap();

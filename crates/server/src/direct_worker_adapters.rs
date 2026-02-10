@@ -174,6 +174,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .into_iter()
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
+            tools: vec![],
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
                 "archived" => AgentStatus::Archived,
@@ -213,6 +214,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tags: r.tags,
                 model_id: r.model_id,
                 capabilities,
+                tools: vec![],
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,

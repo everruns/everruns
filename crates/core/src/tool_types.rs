@@ -12,6 +12,7 @@ use utoipa::ToSchema;
 
 /// Tool policy determines how tool calls are handled
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ToolPolicy {
     /// Execute immediately without user approval
@@ -19,14 +20,19 @@ pub enum ToolPolicy {
     Auto,
     /// Require user approval before execution (HITL)
     RequiresApproval,
+    /// Client-side tool: pause workflow, send to client for execution
+    ClientSide,
 }
 
 /// Tool definition in agent configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolDefinition {
     /// Built-in tool - executed by the worker via ToolRegistry
     Builtin(BuiltinTool),
+    /// Client-side tool - executed by the client, not the server
+    ClientSide(ClientSideTool),
 }
 
 /// Built-in tool configuration
@@ -35,6 +41,7 @@ pub enum ToolDefinition {
 /// solely by their `name` field, and execution happens via the ToolRegistry
 /// which looks up tools by name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct BuiltinTool {
     /// Tool name (used by LLM and for registry lookup)
     pub name: String,
@@ -47,11 +54,25 @@ pub struct BuiltinTool {
     pub policy: ToolPolicy,
 }
 
+/// Client-side tool - executed by the client, not the server
+/// The server pauses execution and waits for the client to submit results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ClientSideTool {
+    /// Tool name (used by LLM and for correlation)
+    pub name: String,
+    /// Tool description for LLM
+    pub description: String,
+    /// JSON schema for tool parameters
+    pub parameters: serde_json::Value,
+}
+
 impl ToolDefinition {
     /// Get the tool name regardless of variant
     pub fn name(&self) -> &str {
         match self {
             ToolDefinition::Builtin(b) => &b.name,
+            ToolDefinition::ClientSide(c) => &c.name,
         }
     }
 
@@ -59,6 +80,7 @@ impl ToolDefinition {
     pub fn description(&self) -> &str {
         match self {
             ToolDefinition::Builtin(b) => &b.description,
+            ToolDefinition::ClientSide(c) => &c.description,
         }
     }
 
@@ -66,6 +88,7 @@ impl ToolDefinition {
     pub fn parameters(&self) -> &serde_json::Value {
         match self {
             ToolDefinition::Builtin(b) => &b.parameters,
+            ToolDefinition::ClientSide(c) => &c.parameters,
         }
     }
 
@@ -73,6 +96,7 @@ impl ToolDefinition {
     pub fn policy(&self) -> &ToolPolicy {
         match self {
             ToolDefinition::Builtin(b) => &b.policy,
+            ToolDefinition::ClientSide(_) => &ToolPolicy::ClientSide,
         }
     }
 }
@@ -140,6 +164,7 @@ mod tests {
                 assert_eq!(builtin.name, "fetch_data");
                 assert_eq!(builtin.policy, ToolPolicy::Auto);
             }
+            _ => panic!("expected Builtin variant"),
         }
     }
 
@@ -158,6 +183,7 @@ mod tests {
             ToolDefinition::Builtin(builtin) => {
                 assert_eq!(builtin.policy, ToolPolicy::RequiresApproval);
             }
+            _ => panic!("expected Builtin variant"),
         }
     }
 
@@ -241,5 +267,116 @@ mod tests {
         assert_eq!(converted["id"], "call_456");
         assert_eq!(converted["function"]["name"], "list_files");
         assert_eq!(converted["function"]["arguments"], "{}");
+    }
+
+    #[test]
+    fn test_client_side_tool_serialization() {
+        let json = r#"{
+            "type": "client_side",
+            "name": "browser_click",
+            "description": "Click an element in the browser",
+            "parameters": {"type": "object", "properties": {"selector": {"type": "string"}}}
+        }"#;
+
+        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
+        match &tool {
+            ToolDefinition::ClientSide(client) => {
+                assert_eq!(client.name, "browser_click");
+                assert_eq!(client.description, "Click an element in the browser");
+            }
+            _ => panic!("expected ClientSide variant"),
+        }
+
+        assert_eq!(tool.name(), "browser_click");
+        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
+    }
+
+    #[test]
+    fn test_client_side_tool_roundtrip() {
+        let tool = ToolDefinition::ClientSide(ClientSideTool {
+            name: "run_test".to_string(),
+            description: "Run a test suite".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+        });
+
+        let json = serde_json::to_string(&tool).unwrap();
+        let parsed: ToolDefinition = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.name(), "run_test");
+        assert_eq!(parsed.description(), "Run a test suite");
+        assert_eq!(parsed.policy(), &ToolPolicy::ClientSide);
+    }
+
+    #[test]
+    fn test_client_side_tool_accessor_methods() {
+        let tool = ToolDefinition::ClientSide(ClientSideTool {
+            name: "deploy_app".to_string(),
+            description: "Deploy application to staging".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "env": {"type": "string"}
+                },
+                "required": ["env"]
+            }),
+        });
+
+        assert_eq!(tool.name(), "deploy_app");
+        assert_eq!(tool.description(), "Deploy application to staging");
+        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
+        assert!(tool.parameters().get("properties").is_some());
+    }
+
+    #[test]
+    fn test_client_side_tool_policy_always_client_side() {
+        // ClientSide variant always returns ClientSide policy regardless of content
+        let tool = ToolDefinition::ClientSide(ClientSideTool {
+            name: "any_tool".to_string(),
+            description: "".to_string(),
+            parameters: serde_json::json!({}),
+        });
+        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
+    }
+
+    #[test]
+    fn test_tool_policy_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ToolPolicy::ClientSide).unwrap(),
+            r#""client_side""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ToolPolicy::Auto).unwrap(),
+            r#""auto""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ToolPolicy::RequiresApproval).unwrap(),
+            r#""requires_approval""#
+        );
+    }
+
+    #[test]
+    fn test_mixed_tool_definitions_in_vec() {
+        let tools = vec![
+            ToolDefinition::Builtin(BuiltinTool {
+                name: "server_tool".to_string(),
+                description: "A server tool".to_string(),
+                parameters: serde_json::json!({"type": "object"}),
+                policy: ToolPolicy::Auto,
+            }),
+            ToolDefinition::ClientSide(ClientSideTool {
+                name: "client_tool".to_string(),
+                description: "A client tool".to_string(),
+                parameters: serde_json::json!({"type": "object"}),
+            }),
+        ];
+
+        let json = serde_json::to_string(&tools).unwrap();
+        let parsed: Vec<ToolDefinition> = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.len(), 2);
+        assert!(matches!(&parsed[0], ToolDefinition::Builtin(_)));
+        assert!(matches!(&parsed[1], ToolDefinition::ClientSide(_)));
+        assert_eq!(parsed[0].policy(), &ToolPolicy::Auto);
+        assert_eq!(parsed[1].policy(), &ToolPolicy::ClientSide);
     }
 }

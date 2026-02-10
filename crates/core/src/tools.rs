@@ -829,7 +829,9 @@ mod tests {
         let tool = GetCurrentTimeTool;
         let def = tool.to_definition();
 
-        let ToolDefinition::Builtin(builtin) = def;
+        let ToolDefinition::Builtin(builtin) = def else {
+            panic!("expected Builtin variant");
+        };
         assert_eq!(builtin.name, "get_current_time");
         assert_eq!(builtin.policy, ToolPolicy::Auto);
     }
