@@ -4,27 +4,23 @@ Everruns is a durable agentic harness engine. This document describes the core e
 
 ## High Level
 
-Harness and Agent are **configuration containers** — they hold capabilities and tools. Session is the **runtime consumer** that assembles configuration from its harness, optional agent, and own overrides.
+Harness and Agent are **configuration containers** — they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
 ```mermaid
 graph LR
-    subgraph Configuration
-        subgraph Harness
-            HC[Capability] --> HT[Tool]
-        end
-        subgraph Agent
-            AC[Capability] --> AT[Tool]
-        end
-    end
+    Harness -->|has| Agent
+    Harness -->|has| Capability
+    Agent -->|has| Capability
 
-    subgraph Runtime
-        Session
-    end
+    Harness -.->|assembles| RuntimeAgent
+    Agent -.->|assembles| RuntimeAgent
+    Capability -.->|assembles| RuntimeAgent
 
-    Harness -- "configures" --> Session
-    Agent -. "optionally assigned" .-> Session
-    Session -- "own capabilities (additive)" --> SC[Capability] --> ST[Tool]
+    RuntimeAgent -.->|executes in| Session
 ```
+
+- **Solid arrows** (left): configuration ownership — Harness has Agents and Capabilities, Agent has Capabilities
+- **Dashed arrows** (right): runtime assembly — Harness, Agent, and Capability config merge into RuntimeAgent, which executes in a Session
 
 ### Harness
 
