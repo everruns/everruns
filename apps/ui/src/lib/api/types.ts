@@ -27,6 +27,8 @@ export interface Agent {
   tags: string[];
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
+  /** Tool definitions (including client-side tools), defaults to [] */
+  tools?: ToolDefinition[];
   status: AgentStatus;
   created_at: string;
   updated_at: string;
@@ -42,6 +44,8 @@ export interface CreateAgentRequest {
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
+  /** Tool definitions (including client-side tools) */
+  tools?: ToolDefinition[];
 }
 
 export interface UpdateAgentRequest {
@@ -79,7 +83,8 @@ export interface AgentPreviewResponse {
 // - "started": Session just created, no turn executed yet
 // - "active": A turn is currently running
 // - "idle": Turn completed, session waiting for next input
-export type SessionStatus = "started" | "active" | "idle";
+// - "waiting_for_tool_results": Session paused, waiting for client-side tool results
+export type SessionStatus = "started" | "active" | "idle" | "waiting_for_tool_results";
 
 export interface Session {
   id: string;
@@ -93,6 +98,8 @@ export interface Session {
   output_preview?: string | null;
   tags: string[];
   model_id: string | null;
+  /** Tool definitions (including client-side tools), defaults to [] */
+  tools?: ToolDefinition[];
   status: SessionStatus;
   created_at: string;
   updated_at: string;
@@ -397,6 +404,11 @@ export interface ToolStartedData {
   tool_call: ToolCall;
 }
 
+/** Data for tool.call_requested event (client-side tool calls awaiting results) */
+export interface ToolCallRequestedData {
+  tool_calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+}
+
 /** Data for tool.completed event */
 export interface ToolCompletedData {
   tool_call_id: string;
@@ -488,6 +500,7 @@ export type EventData =
   | ActStartedData
   | ActCompletedData
   | ToolStartedData
+  | ToolCallRequestedData
   | ToolCompletedData
   | LlmGenerationData
   | SessionStartedData
@@ -542,8 +555,19 @@ export interface BuiltinTool {
   policy?: ToolPolicy;
 }
 
-/** Tool definition - currently only supports builtin tools */
-export type ToolDefinition = BuiltinTool;
+/** Tool definition - client-side tool executed by the caller */
+export interface ClientSideTool {
+  type: "client_side";
+  /** Tool name (used by LLM and for registry lookup) */
+  name: string;
+  /** Tool description for LLM */
+  description: string;
+  /** JSON schema for tool parameters */
+  parameters: Record<string, unknown>;
+}
+
+/** Tool definition - builtin or client-side */
+export type ToolDefinition = BuiltinTool | ClientSideTool;
 
 // ============================================
 // Health check

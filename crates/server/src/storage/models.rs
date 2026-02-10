@@ -170,6 +170,9 @@ pub struct AgentRow {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Client-side tools (JSONB in DB)
+    #[sqlx(default)]
+    pub tools: serde_json::Value,
     /// Cumulative input tokens across all sessions
     #[sqlx(default)]
     pub total_input_tokens: i64,
@@ -192,6 +195,8 @@ pub struct CreateAgentRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    /// Client-side tools (JSONB in DB)
+    pub tools: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -202,6 +207,7 @@ pub struct UpdateAgent {
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
+    pub tools: Option<serde_json::Value>,
 }
 
 // ============================================
@@ -219,6 +225,9 @@ pub struct SessionRow {
     /// Session-level capabilities (JSONB in DB)
     #[sqlx(default)]
     pub capabilities: serde_json::Value,
+    /// Client-side tools (JSONB in DB)
+    #[sqlx(default)]
+    pub tools: serde_json::Value,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -247,6 +256,8 @@ pub struct CreateSessionRow {
     pub model_id: Option<ModelId>,
     /// Session-level capabilities (additive to agent capabilities)
     pub capabilities: serde_json::Value,
+    /// Client-side tools (additive to agent tools, JSONB in DB)
+    pub tools: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default)]

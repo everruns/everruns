@@ -113,6 +113,8 @@ use utoipa::OpenApi;
         // Session Storage
         api::session_storage::list_keys,
         api::session_storage::list_secrets,
+        // Client-side tool results
+        api::tool_results::submit_tool_results,
     ),
     components(
         schemas(
@@ -158,6 +160,12 @@ use utoipa::OpenApi;
             ListResponse<GrepResult>,
             // Tool types
             ToolCall,
+            everruns_core::ToolDefinition, everruns_core::BuiltinTool, everruns_core::ClientSideTool,
+            everruns_core::ToolPolicy,
+            everruns_core::ToolCallRequestedData,
+            api::tool_results::SubmitToolResultsRequest,
+            api::tool_results::ClientToolResult,
+            api::tool_results::SubmitToolResultsResponse,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             api::mcp_servers::CreateMcpServerRequest,

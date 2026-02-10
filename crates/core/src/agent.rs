@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, ModelId};
 
 #[cfg(feature = "openapi")]
@@ -82,6 +83,10 @@ pub struct Agent {
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Client-side tools registered for this agent.
+    /// These tools are executed by the client, not the server.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolDefinition>,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
     /// Timestamp when the agent was created.
@@ -150,6 +155,7 @@ mod tests {
             default_model_id: None,
             tags: vec![],
             capabilities: vec![],
+            tools: vec![],
             status: AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -1,63 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, Loader2, ChevronDown, ChevronRight, MonitorSmartphone } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
-import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
-import { ClientToolCallCard } from "./client-tool-call-card";
 
-interface ToolCallCardFromEventProps {
+interface ClientToolCallCardProps {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
-  /** When true, renders as a client-side tool call with distinct styling */
-  isClientSide?: boolean;
 }
 
 /**
- * Render a tool call card from event data
- * Uses event-based data format (ToolCompletedData) instead of Message format.
- * Supports both server-side and client-side tool calls.
+ * Render a client-side tool call card.
+ * Distinct from server-side tool calls: uses a device icon and amber color
+ * to indicate the tool runs on the client, not the server.
  */
-export function ToolCallCardFromEvent({
-  toolCall,
-  toolResult,
-  isClientSide,
-}: ToolCallCardFromEventProps) {
+export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-
-  // Delegate to ClientToolCallCard for client-side tool calls
-  if (isClientSide) {
-    return <ClientToolCallCard toolCall={toolCall} toolResult={toolResult} />;
-  }
 
   const isComplete = !!toolResult;
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
 
   const argsPreview = formatArguments(toolCall.arguments);
 
-  // Special rendering for write_todos tool
-  if (isWriteTodosTool(toolCall.name)) {
-    return (
-      <div className="w-full">
-        <TodoListRenderer
-          arguments={toolCall.arguments}
-          result={toolResult?.result}
-          isExecuting={!isComplete}
-          error={toolResult?.error}
-        />
-      </div>
-    );
-  }
-
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-red-600 text-xs">✗</span>
+      <span className="text-red-600 text-xs">&#x2717;</span>
     ) : (
       <Check className="h-3 w-3 text-green-600/80" />
     )
   ) : (
-    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+    <Loader2 className="h-3 w-3 animate-spin text-amber-500/70" />
   );
 
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
@@ -65,10 +38,14 @@ export function ToolCallCardFromEvent({
 
   return (
     <div className="text-xs text-muted-foreground/70">
-      {/* Tool name with status icon */}
+      {/* Tool name with client-side indicator */}
       <div className="flex items-center gap-1">
         {statusIcon}
-        <span className="font-mono">{toolCall.name}</span>
+        <MonitorSmartphone className="h-3 w-3 text-amber-500/70" />
+        <span className="font-mono text-amber-700 dark:text-amber-400">{toolCall.name}</span>
+        {!isComplete && (
+          <span className="text-amber-500/70 italic text-[10px] ml-1">Waiting for client...</span>
+        )}
         {argsPreview && <span className="opacity-60">{argsPreview}</span>}
       </div>
 

@@ -42,6 +42,7 @@ impl AgentService {
                 system_prompt: req.system_prompt.clone(),
                 default_model_id: req.default_model_id,
                 tags: req.tags.clone(),
+                tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             };
             let row = self.db.create_agent(org_id, input).await?;
             let uuid = row.id.uuid();
@@ -56,6 +57,7 @@ impl AgentService {
                 system_prompt: req.system_prompt.clone(),
                 default_model_id: req.default_model_id,
                 tags: req.tags.clone(),
+                tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             };
             let row = self
                 .db
@@ -145,6 +147,9 @@ impl AgentService {
             default_model_id: req.default_model_id,
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
+            tools: req
+                .tools
+                .map(|t| serde_json::to_value(&t).unwrap_or_default()),
         };
         let row = self.db.update_agent(org_id, internal_id, input).await?;
 
@@ -200,6 +205,7 @@ impl AgentService {
             system_prompt: req.system_prompt,
             default_model_id: req.default_model_id,
             tags: req.tags,
+            tools: serde_json::to_value(&req.tools).unwrap_or_default(),
         };
         let (row, was_created) = self.db.upsert_agent(org_id, input).await?;
         let agent_id_uuid = row.id.uuid();
@@ -276,6 +282,7 @@ impl AgentService {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

@@ -227,9 +227,7 @@ where
         let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
             .iter()
             .map(|def| {
-                let name = match def {
-                    ToolDefinition::Builtin(b) => b.name.as_str(),
-                };
+                let name = def.name();
                 (name, def)
             })
             .collect();

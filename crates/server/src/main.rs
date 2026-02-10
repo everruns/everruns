@@ -201,6 +201,8 @@ async fn main() -> Result<()> {
         api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
     let messages_state =
         api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+    let tool_results_state =
+        api::tool_results::AppState::new(db.clone(), runner.clone(), auth_state.clone());
 
     // Create event listeners for observability and tracking
     // OtelEventListener generates gen-ai semantic convention spans from events
@@ -307,6 +309,7 @@ async fn main() -> Result<()> {
         .merge(api::agents::routes(agents_state))
         .merge(api::sessions::routes(sessions_state))
         .merge(api::messages::routes(messages_state))
+        .merge(api::tool_results::routes(tool_results_state))
         .merge(api::events::routes(events_state))
         .merge(api::llm_models::routes(llm_models_state))
         .merge(api::llm_providers::routes(llm_providers_state))

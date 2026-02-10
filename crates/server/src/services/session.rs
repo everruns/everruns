@@ -76,6 +76,7 @@ impl SessionService {
             tags: req.tags,
             model_id,
             capabilities: capabilities_json,
+            tools: serde_json::to_value(&req.tools).unwrap_or_default(),
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id);
@@ -319,6 +320,7 @@ impl SessionService {
             tags: row.tags,
             model_id: row.model_id,
             capabilities,
+            tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

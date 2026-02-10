@@ -216,7 +216,9 @@ mod tests {
         let defs = capability.tool_definitions();
         assert_eq!(defs.len(), 1);
 
-        let ToolDefinition::Builtin(builtin) = &defs[0];
+        let ToolDefinition::Builtin(builtin) = &defs[0] else {
+            panic!("expected Builtin variant");
+        };
         assert_eq!(builtin.name, "mcp_microsoft_learn__search");
         assert_eq!(builtin.description, "Search documentation");
     }

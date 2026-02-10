@@ -139,7 +139,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
           <h4 className="font-semibold text-sm font-mono">{tool.name}</h4>
           <p className="text-sm text-muted-foreground">{tool.description}</p>
         </div>
-        {tool.policy === "requires_approval" && (
+        {"policy" in tool && tool.policy === "requires_approval" && (
           <Badge variant="outline" className="text-xs">
             Requires approval
           </Badge>

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, ModelId, SessionId};
 
 #[cfg(feature = "openapi")]
@@ -27,6 +28,8 @@ pub enum SessionStatus {
     Active,
     /// Turn completed, session waiting for next input (idle).
     Idle,
+    /// Waiting for client to submit tool results.
+    WaitingForToolResults,
 }
 
 impl std::fmt::Display for SessionStatus {
@@ -35,6 +38,7 @@ impl std::fmt::Display for SessionStatus {
             SessionStatus::Started => write!(f, "started"),
             SessionStatus::Active => write!(f, "active"),
             SessionStatus::Idle => write!(f, "idle"),
+            SessionStatus::WaitingForToolResults => write!(f, "waiting_for_tool_results"),
         }
     }
 }
@@ -44,6 +48,7 @@ impl From<&str> for SessionStatus {
         match s {
             "active" => SessionStatus::Active,
             "idle" => SessionStatus::Idle,
+            "waiting_for_tool_results" => SessionStatus::WaitingForToolResults,
             // Handle legacy values during migration
             "running" => SessionStatus::Active,
             "pending" | "completed" | "failed" => SessionStatus::Idle,
@@ -87,6 +92,9 @@ pub struct Session {
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Client-side tools for this session (additive to agent tools).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolDefinition>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.

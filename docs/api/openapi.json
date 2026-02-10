@@ -3451,6 +3451,61 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/tool-results": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/tool-results - Submit client-side tool results",
+        "description": "Accepts tool results executed by the client and resumes the agent workflow.\nSession must be in `waiting_for_tool_results` status.",
+        "operationId": "submit_tool_results",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitToolResultsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Tool results accepted and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitToolResultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or request"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "409": {
+            "description": "Session not in waiting_for_tool_results state"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -3649,6 +3704,13 @@
             },
             "description": "Tags for organizing and filtering agents."
           },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Client-side tools registered for this agent.\nThese tools are executed by the client, not the server."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -3711,6 +3773,32 @@
           "active",
           "archived"
         ]
+      },
+      "BuiltinTool": {
+        "type": "object",
+        "description": "Built-in tool configuration\n\nNote: The `kind` field has been removed. Tools are now identified\nsolely by their `name` field, and execution happens via the ToolRegistry\nwhich looks up tools by name.",
+        "required": [
+          "name",
+          "description",
+          "parameters"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Tool description for LLM"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name (used by LLM and for registry lookup)"
+          },
+          "parameters": {
+            "description": "JSON schema for tool parameters"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ToolPolicy",
+            "description": "Tool policy (auto or requires_approval)"
+          }
+        }
       },
       "CancelStatus": {
         "type": "string",
@@ -3803,6 +3891,51 @@
               "type": "object"
             },
             "description": "Tool definitions provided by this capability"
+          }
+        }
+      },
+      "ClientSideTool": {
+        "type": "object",
+        "description": "Client-side tool - executed by the client, not the server\nThe server pauses execution and waits for the client to submit results.",
+        "required": [
+          "name",
+          "description",
+          "parameters"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Tool description for LLM"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name (used by LLM and for correlation)"
+          },
+          "parameters": {
+            "description": "JSON schema for tool parameters"
+          }
+        }
+      },
+      "ClientToolResult": {
+        "type": "object",
+        "description": "A single tool result from the client",
+        "required": [
+          "tool_call_id"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if the tool failed"
+          },
+          "result": {
+            "description": "Result value (JSON). Null if the tool failed."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Tool call ID (correlates with the tool call from tool.call_requested event)"
           }
         }
       },
@@ -4038,6 +4171,13 @@
               "support",
               "customer-facing"
             ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server."
           }
         }
       },
@@ -4383,6 +4523,13 @@
             ],
             "description": "Human-readable title for the session.",
             "example": "Debug login issue"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client."
           }
         }
       },
@@ -4604,6 +4751,9 @@
           },
           {
             "$ref": "#/components/schemas/ToolCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallRequestedData"
           },
           {
             "$ref": "#/components/schemas/LlmGenerationData"
@@ -5154,6 +5304,13 @@
                     "type": "string"
                   },
                   "description": "Tags for organizing and filtering agents."
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ToolDefinition"
+                  },
+                  "description": "Client-side tools registered for this agent.\nThese tools are executed by the client, not the server."
                 },
                 "updated_at": {
                   "type": "string",
@@ -7153,6 +7310,13 @@
                   ],
                   "description": "Human-readable title for the session."
                 },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ToolDefinition"
+                  },
+                  "description": "Client-side tools for this session (additive to agent tools)."
+                },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
@@ -7851,6 +8015,13 @@
             ],
             "description": "Human-readable title for the session."
           },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Client-side tools for this session (additive to agent tools)."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -8011,7 +8182,8 @@
         "enum": [
           "started",
           "active",
-          "idle"
+          "idle",
+          "waitingfortoolresults"
         ]
       },
       "StatRequest": {
@@ -8024,6 +8196,41 @@
           "path": {
             "type": "string",
             "description": "Path to the file or directory"
+          }
+        }
+      },
+      "SubmitToolResultsRequest": {
+        "type": "object",
+        "description": "Request to submit client-side tool results",
+        "required": [
+          "tool_results"
+        ],
+        "properties": {
+          "tool_results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientToolResult"
+            },
+            "description": "Tool results from the client"
+          }
+        }
+      },
+      "SubmitToolResultsResponse": {
+        "type": "object",
+        "description": "Response from submitting tool results",
+        "required": [
+          "accepted",
+          "status"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "description": "Number of tool results accepted",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status after submission"
           }
         }
       },
@@ -8205,6 +8412,22 @@
           }
         }
       },
+      "ToolCallRequestedData": {
+        "type": "object",
+        "description": "Data for tool.call_requested event\n\nEmitted when the agent needs client-side tool calls executed.\nThe workflow pauses until the client submits results via the API.",
+        "required": [
+          "tool_calls"
+        ],
+        "properties": {
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "description": "Tool calls that need to be executed by the client"
+          }
+        }
+      },
       "ToolCallSummary": {
         "type": "object",
         "description": "Summary of a tool call (compact form without arguments)",
@@ -8275,6 +8498,57 @@
           }
         }
       },
+      "ToolDefinition": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinTool",
+                "description": "Built-in tool - executed by the worker via ToolRegistry"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "builtin"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Built-in tool - executed by the worker via ToolRegistry"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClientSideTool",
+                "description": "Client-side tool - executed by the client, not the server"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "client_side"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Client-side tool - executed by the client, not the server"
+          }
+        ],
+        "description": "Tool definition in agent configuration"
+      },
       "ToolDefinitionSummary": {
         "type": "object",
         "description": "Summary of a tool definition (compact form for events)",
@@ -8292,6 +8566,15 @@
             "description": "Tool name"
           }
         }
+      },
+      "ToolPolicy": {
+        "type": "string",
+        "description": "Tool policy determines how tool calls are handled",
+        "enum": [
+          "auto",
+          "requires_approval",
+          "client_side"
+        ]
       },
       "ToolResultContentPart": {
         "type": "object",
@@ -8557,6 +8840,16 @@
             "example": [
               "updated-tag"
             ]
+          },
+          "tools": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Client-side tools for this agent.\nReplaces existing tools if provided."
           }
         }
       },

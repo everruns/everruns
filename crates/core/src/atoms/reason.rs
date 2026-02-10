@@ -498,12 +498,18 @@ where
             .iter()
             .map(|cap| cap.capability_id().to_string())
             .collect();
-        let runtime_agent = RuntimeAgentBuilder::new()
+        let mut builder = RuntimeAgentBuilder::new()
             .with_agent(&agent, &self.capability_registry)
             .with_capabilities(&session_capability_ids, &self.capability_registry)
             .tools(mcp_tool_definitions.iter().cloned())
-            .model(&model_with_provider.model)
-            .build();
+            .model(&model_with_provider.model);
+
+        // Add session-level client-side tools (additive to agent tools)
+        if !session.tools.is_empty() {
+            builder = builder.tools(session.tools.clone());
+        }
+
+        let runtime_agent = builder.build();
 
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;

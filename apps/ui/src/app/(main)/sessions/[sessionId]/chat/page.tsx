@@ -16,6 +16,7 @@ import type {
   Controls,
   InputMessageData,
   OutputMessageCompletedData,
+  ToolCallRequestedData,
   ContentPart,
 } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
@@ -246,6 +247,27 @@ export default function ChatPage() {
             // Skip tool.completed - rendered inline with agent messages
             if (event.type === "tool.completed") {
               return null;
+            }
+
+            // Render tool.call_requested as client-side tool call cards
+            if (event.type === "tool.call_requested") {
+              const reqData = event.data as ToolCallRequestedData;
+              if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
+              return (
+                <div key={event.id} className="ml-6 space-y-1">
+                  {reqData.tool_calls.map((tc) => {
+                    const toolResult = toolResultsMap.get(tc.id);
+                    return (
+                      <ToolCallCardFromEvent
+                        key={tc.id}
+                        toolCall={tc}
+                        toolResult={toolResult}
+                        isClientSide
+                      />
+                    );
+                  })}
+                </div>
+              );
             }
 
             const isUser = event.type === "input.message";
