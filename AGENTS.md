@@ -20,6 +20,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `specs/` contains feature specifications. New code should comply with these or propose changes.
 
+- `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
