@@ -209,6 +209,19 @@ impl GeminiLlmDriver {
         (system_instruction, contents)
     }
 
+    /// Strip fields that Gemini doesn't accept in JSON Schema (e.g. `additionalProperties`).
+    fn clean_schema(mut value: Value) -> Value {
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("additionalProperties");
+            if let Some(props_obj) = obj.get_mut("properties").and_then(|p| p.as_object_mut()) {
+                for v in props_obj.values_mut() {
+                    *v = Self::clean_schema(v.clone());
+                }
+            }
+        }
+        value
+    }
+
     fn convert_tools(tools: &[ToolDefinition]) -> Option<Vec<GeminiTool>> {
         if tools.is_empty() {
             return None;
@@ -219,7 +232,7 @@ impl GeminiLlmDriver {
             .map(|tool| GeminiFunctionDeclaration {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                parameters: tool.parameters().clone(),
+                parameters: Self::clean_schema(tool.parameters().clone()),
             })
             .collect();
 
@@ -1047,6 +1060,33 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].function_declarations.len(), 1);
         assert_eq!(tools[0].function_declarations[0].name, "get_weather");
+    }
+
+    #[test]
+    fn test_convert_tools_strips_additional_properties() {
+        use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
+        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
+            name: "search".to_string(),
+            description: "Search".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "additionalProperties": false}
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+            policy: ToolPolicy::Auto,
+        })];
+
+        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let params = &gemini_tools[0].function_declarations[0].parameters;
+        assert!(params.get("additionalProperties").is_none());
+        assert!(
+            params["properties"]["query"]
+                .get("additionalProperties")
+                .is_none()
+        );
     }
 
     #[test]

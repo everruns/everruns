@@ -37,9 +37,9 @@ impl ProviderModelConfig {
     }
 
     /// Build a `ModelWithProvider` from env, returning `None` if the key is
-    /// missing (test should skip).
+    /// missing or empty (test should skip).
     pub fn model(&self) -> Option<ModelWithProvider> {
-        let api_key = std::env::var(self.env_var).ok()?;
+        let api_key = std::env::var(self.env_var).ok().filter(|k| !k.is_empty())?;
         Some(ModelWithProvider {
             model: self.model_name.to_string(),
             provider_type: self.provider_type.clone(),
