@@ -17,6 +17,14 @@ graph LR
     Capability -.->|assembles| RuntimeAgent
 
     RuntimeAgent -.->|executes in| Session
+
+    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+    classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
+
+    class Harness,Agent,Capability config
+    class RuntimeAgent assembly
+    class Session runtime
 ```
 
 - **Solid arrows** (left): configuration ownership — Harness has Agents and Capabilities, Agent has Capabilities
