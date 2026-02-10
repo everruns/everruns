@@ -120,13 +120,13 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 
 ## LLM Provider API Keys
 
-LLM provider API keys (OpenAI, Anthropic) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
+LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
 
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
 | **Configuration** | Settings > Providers UI or `/v1/llm-providers` API |
-| **Supported Providers** | OpenAI, Anthropic |
+| **Supported Providers** | OpenAI, Anthropic, Google Gemini |
 
 **Required for encryption:**
 
@@ -148,6 +148,7 @@ For development, you can set default API keys via environment variables on the *
 |----------|-------------|
 | `DEFAULT_OPENAI_API_KEY` | Fallback API key for OpenAI providers |
 | `DEFAULT_ANTHROPIC_API_KEY` | Fallback API key for Anthropic providers |
+| `DEFAULT_GEMINI_API_KEY` | Fallback API key for Google Gemini providers |
 
 **Example:**
 
@@ -155,6 +156,7 @@ For development, you can set default API keys via environment variables on the *
 # Set in .env or environment (control-plane only)
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
+DEFAULT_GEMINI_API_KEY=AIza...
 ```
 
 **Notes:**
@@ -162,7 +164,7 @@ DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 - Workers receive API keys via gRPC from the control-plane
 - Database-stored keys always take priority over environment variables
 - These are intended for development convenience, not production use
-- The `just start-all` command automatically sets these from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` if present
+- The `just start-all` command automatically sets these from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` if present
 - If no API key is configured for a provider, LLM calls will fail and users will see an error message in the chat: "I encountered an error while processing your request. Please try again later."
 
 ## UI API Proxy Architecture
@@ -345,7 +347,7 @@ All spans include OpenTelemetry attributes following the Gen-AI semantic convent
 | Attribute | Span Types | Description |
 |-----------|-----------|-------------|
 | `gen_ai.operation.name` | All | Operation type (`invoke_agent`, `chat`, `execute_tool`, `reason`, `act`, `thinking`) |
-| `gen_ai.system` | chat | Provider (`openai`, `anthropic`) |
+| `gen_ai.system` | chat | Provider (`openai`, `anthropic`, `gemini`) |
 | `gen_ai.request.model` | chat, thinking | Requested model name |
 | `gen_ai.response.model` | chat | Model actually used |
 | `gen_ai.response.id` | chat | Response identifier |

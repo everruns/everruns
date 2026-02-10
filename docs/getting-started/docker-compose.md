@@ -40,6 +40,7 @@ SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 # Optional: Add API keys here to skip UI configuration
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
+DEFAULT_GEMINI_API_KEY=AIza...
 ```
 
 ### 4. Start Services
@@ -70,7 +71,7 @@ This starts:
 
 ### Configure LLM Provider
 
-If you didn't set `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY` in your `.env` file, configure via UI:
+If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, or `DEFAULT_GEMINI_API_KEY`) in your `.env` file, configure via UI:
 
 1. Open http://localhost:8080
 2. Navigate to **Settings** > **Providers**

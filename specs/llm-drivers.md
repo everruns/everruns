@@ -17,6 +17,7 @@ graph TD
     subgraph Providers
         OpenAI[everruns-openai]
         Anthropic[everruns-anthropic]
+        Gemini[everruns-gemini]
     end
 
     subgraph Consumer
@@ -25,8 +26,10 @@ graph TD
 
     OpenAI -->|implements| LlmDriver
     Anthropic -->|implements| LlmDriver
+    Gemini -->|implements| LlmDriver
     OpenAI -->|registers| Registry
     Anthropic -->|registers| Registry
+    Gemini -->|registers| Registry
     ReasonAtom -->|uses| Registry
     ReasonAtom -->|handles| Errors
 ```
@@ -412,3 +415,9 @@ if driver.supports_compact() {
 1. **Unit Tests**: Each driver MUST have tests for error detection functions
 2. **LlmSim**: Use `ProviderType::LlmSim` for integration tests without real API keys
 3. **Error Detection Tests**: Cover all documented error patterns for each provider
+4. **Parametrized Integration Tests**: Use `rstest` matrix in `crates/core/tests/`:
+   - `llm_test_matrix/mod.rs` — shared `ProviderModelConfig` structs and `all_providers_registry()`
+   - `agent_run_basic.rs` — basic completion + tool call, parameterized over all providers
+   - `agent_run_with_thinking.rs` — extended thinking, parameterized over thinking-capable providers
+   - Add new providers: one `const` in `llm_test_matrix` + one `#[case]` per test function
+   - Tests skip gracefully when provider API key env var is not set
