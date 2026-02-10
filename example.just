@@ -28,6 +28,10 @@ start tag="latest":
         echo "✅ ANTHROPIC_API_KEY found, setting DEFAULT_ANTHROPIC_API_KEY"
         export DEFAULT_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
     fi
+    if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+        echo "✅ GEMINI_API_KEY found, setting DEFAULT_GEMINI_API_KEY"
+        export DEFAULT_GEMINI_API_KEY="$GEMINI_API_KEY"
+    fi
 
     echo "✅ Local docker compose not running, starting example full stack..."
     cd examples

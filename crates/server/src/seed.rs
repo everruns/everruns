@@ -32,6 +32,7 @@ mod seed_ids {
     pub const OPENAI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000001);
     pub const ANTHROPIC_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000002);
     pub const LLMSIM_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000003);
+    pub const GEMINI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000004);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -88,6 +89,11 @@ mod seed_ids {
 
     // LlmSim Models (0x400-0x4FF)
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
+
+    // Gemini Models (0x600-0x6FF)
+    pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
+    pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
+    pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 }
 
 // ============================================
@@ -515,6 +521,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         provider_type: "anthropic",
     },
     SeedProvider {
+        id: seed_ids::GEMINI_PROVIDER,
+        name: "Google Gemini",
+        provider_type: "gemini",
+    },
+    SeedProvider {
         id: seed_ids::LLMSIM_PROVIDER,
         name: "LlmSim",
         provider_type: "llmsim",
@@ -879,6 +890,31 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-3-5-haiku-20241022",
         display_name: "Claude 3.5 Haiku",
+        is_default: false,
+        is_favorite: false,
+    },
+    // Google Gemini
+    SeedModel {
+        id: seed_ids::GEMINI_25_PRO,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-2.5-pro",
+        display_name: "Gemini 2.5 Pro",
+        is_default: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_25_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-2.5-flash",
+        display_name: "Gemini 2.5 Flash",
+        is_default: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_20_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-2.0-flash",
+        display_name: "Gemini 2.0 Flash",
         is_default: false,
         is_favorite: false,
     },

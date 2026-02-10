@@ -139,6 +139,7 @@ pub fn get_model_profile(
             get_openai_profile(model_id)
         }
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
+        LlmProviderType::Gemini => get_gemini_profile(model_id),
         LlmProviderType::LlmSim => get_llmsim_profile(model_id),
     }
 }
@@ -1408,6 +1409,203 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
+/// Normalize Gemini model ID by extracting the base model name
+/// e.g., "gemini-2.5-pro-preview-05-06" -> "gemini-2.5-pro"
+fn normalize_gemini_model_id(model_id: &str) -> &str {
+    let patterns = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ];
+
+    for pattern in patterns {
+        if model_id == pattern
+            || model_id.starts_with(&format!("{}-", pattern))
+            || model_id == format!("{}-latest", pattern)
+        {
+            return pattern;
+        }
+    }
+
+    model_id
+}
+
+/// Get Gemini model profile
+fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
+    let base_id = normalize_gemini_model_id(model_id);
+
+    match base_id {
+        "gemini-2.5-pro" => Some(LlmModelProfile {
+            name: "Gemini 2.5 Pro".into(),
+            family: "gemini-2.5-pro".into(),
+            release_date: Some("2025-03-25".into()),
+            last_updated: Some("2025-06-05".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2025-03-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.25,
+                output: 10.00,
+                cache_read: Some(0.31),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_048_576,
+                output: 65_536,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+        }),
+
+        "gemini-2.5-flash" => Some(LlmModelProfile {
+            name: "Gemini 2.5 Flash".into(),
+            family: "gemini-2.5-flash".into(),
+            release_date: Some("2025-04-17".into()),
+            last_updated: Some("2025-06-12".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2025-03-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.15,
+                output: 0.60,
+                cache_read: Some(0.0375),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_048_576,
+                output: 65_536,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+        }),
+
+        "gemini-2.0-flash" => Some(LlmModelProfile {
+            name: "Gemini 2.0 Flash".into(),
+            family: "gemini-2.0-flash".into(),
+            release_date: Some("2025-02-05".into()),
+            last_updated: Some("2025-02-05".into()),
+            attachment: true,
+            reasoning: false,
+            temperature: true,
+            knowledge: Some("2024-08-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.10,
+                output: 0.40,
+                cache_read: Some(0.025),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_048_576,
+                output: 8_192,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                ],
+                output: vec![Modality::Text, Modality::Image],
+            }),
+            reasoning_effort: None,
+        }),
+
+        "gemini-1.5-pro" => Some(LlmModelProfile {
+            name: "Gemini 1.5 Pro".into(),
+            family: "gemini-1.5-pro".into(),
+            release_date: Some("2024-02-15".into()),
+            last_updated: Some("2024-09-24".into()),
+            attachment: true,
+            reasoning: false,
+            temperature: true,
+            knowledge: Some("2024-04-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.25,
+                output: 5.00,
+                cache_read: Some(0.31),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 2_097_152,
+                output: 8_192,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+        }),
+
+        "gemini-1.5-flash" => Some(LlmModelProfile {
+            name: "Gemini 1.5 Flash".into(),
+            family: "gemini-1.5-flash".into(),
+            release_date: Some("2024-05-24".into()),
+            last_updated: Some("2024-09-24".into()),
+            attachment: true,
+            reasoning: false,
+            temperature: true,
+            knowledge: Some("2024-04-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.075,
+                output: 0.30,
+                cache_read: Some(0.01875),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_048_576,
+                output: 8_192,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+        }),
+
+        _ => None,
+    }
+}
+
 /// Get LlmSim model profile (simulated LLM for testing)
 /// Profile is modeled close to GPT-5.2 for realistic testing
 fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
@@ -2038,5 +2236,61 @@ mod tests {
             normalize_anthropic_model_id("claude-3-7-sonnet-20250219"),
             "claude-3-7-sonnet"
         );
+    }
+
+    // Gemini model tests
+
+    #[test]
+    fn test_gemini_25_pro_profile() {
+        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.5-pro").unwrap();
+        assert_eq!(profile.name, "Gemini 2.5 Pro");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.structured_output);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 1_048_576);
+    }
+
+    #[test]
+    fn test_gemini_25_flash_profile() {
+        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.5-flash").unwrap();
+        assert_eq!(profile.name, "Gemini 2.5 Flash");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+    }
+
+    #[test]
+    fn test_gemini_20_flash_profile() {
+        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.0-flash").unwrap();
+        assert_eq!(profile.name, "Gemini 2.0 Flash");
+        assert!(!profile.reasoning);
+        assert!(profile.tool_call);
+    }
+
+    #[test]
+    fn test_normalize_gemini_model_ids() {
+        assert_eq!(
+            normalize_gemini_model_id("gemini-2.5-pro"),
+            "gemini-2.5-pro"
+        );
+        assert_eq!(
+            normalize_gemini_model_id("gemini-2.5-pro-preview-05-06"),
+            "gemini-2.5-pro"
+        );
+        assert_eq!(
+            normalize_gemini_model_id("gemini-2.5-flash-preview-04-17"),
+            "gemini-2.5-flash"
+        );
+        assert_eq!(
+            normalize_gemini_model_id("gemini-2.0-flash"),
+            "gemini-2.0-flash"
+        );
+    }
+
+    #[test]
+    fn test_gemini_unknown_model() {
+        let profile = get_model_profile(&LlmProviderType::Gemini, "unknown-model");
+        assert!(profile.is_none());
     }
 }

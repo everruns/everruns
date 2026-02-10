@@ -57,6 +57,7 @@ const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI (Responses API)" },
   { value: "openai_completions", label: "OpenAI (Completions API)" },
   { value: "anthropic", label: "Anthropic" },
+  { value: "gemini", label: "Google Gemini" },
 ];
 
 // Get API key placeholder based on provider type

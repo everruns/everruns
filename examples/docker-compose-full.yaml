@@ -16,6 +16,7 @@
 #      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
+#      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
 #
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
@@ -59,6 +60,7 @@ services:
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
+      DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info

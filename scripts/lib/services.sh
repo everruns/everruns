@@ -132,6 +132,12 @@ case "$cmd" in
     else
       echo "   ⚠️  ANTHROPIC_API_KEY not set (Anthropic models may not work)"
     fi
+    if [ -n "${GEMINI_API_KEY:-}" ]; then
+      export DEFAULT_GEMINI_API_KEY="$GEMINI_API_KEY"
+      echo "   ✅ Gemini API key configured"
+    else
+      echo "   ⚠️  GEMINI_API_KEY not set (Gemini models may not work)"
+    fi
 
     # Disable OpenTelemetry in dev mode
     if [ -z "${OTEL_SDK_DISABLED:-}" ]; then
@@ -351,6 +357,12 @@ case "$cmd" in
       echo "   ✅ Anthropic API key configured"
     else
       echo "   ⚠️  ANTHROPIC_API_KEY not set"
+    fi
+    if [ -n "${GEMINI_API_KEY:-}" ]; then
+      export DEFAULT_GEMINI_API_KEY="$GEMINI_API_KEY"
+      echo "   ✅ Gemini API key configured"
+    else
+      echo "   ⚠️  GEMINI_API_KEY not set"
     fi
 
     # Start API

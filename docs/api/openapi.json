@@ -6692,6 +6692,7 @@
           "openai",
           "openai_completions",
           "anthropic",
+          "gemini",
           "llmsim"
         ]
       },

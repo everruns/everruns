@@ -87,6 +87,7 @@ jobs:
         run: |
           cargo test -p everruns-anthropic --lib --all-features
           cargo test -p everruns-openai --lib --all-features
+          cargo test -p everruns-gemini --lib --all-features
           cargo test -p everruns-internal-protocol --lib --all-features
           cargo test -p everruns-core --lib --all-features
 
@@ -114,6 +115,7 @@ jobs:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
 
     steps:
@@ -159,6 +161,12 @@ jobs:
 
       - name: Run durable repository tests
         run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
+
+      - name: Run LLM integration tests (skips providers without API keys)
+        timeout-minutes: 10
+        run: |
+          cargo test -p everruns-core --test agent_run_basic --all-features
+          cargo test -p everruns-core --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs
   build-binaries:
@@ -226,6 +234,7 @@ jobs:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       API_BASE_URL: http://localhost:9000
 
@@ -334,6 +343,7 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DEFAULT_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       EVERRUNS_API_KEY: "cli-e2e-test-key"
 
     steps:

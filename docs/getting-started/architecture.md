@@ -17,7 +17,7 @@ Everruns is a **headless durable agentic harness engine** built for reliability 
 | **Agentic Loop** | Core pattern: Reason → Act, repeated until task complete. |
 | **Durable Execution** | Agent state survives restarts. Never lose progress. |
 | **Horizontal Scaling** | Add workers to increase throughput. |
-| **Provider Agnostic** | OpenAI, Anthropic, or custom LLM providers. |
+| **Provider Agnostic** | OpenAI, Anthropic, Gemini, or custom LLM providers. |
 
 ## Components
 
