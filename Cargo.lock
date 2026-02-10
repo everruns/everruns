@@ -1210,6 +1210,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-gemini",
  "everruns-openai",
+ "everruns-openrouter",
  "fetchkit",
  "futures",
  "insta",
@@ -1325,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",

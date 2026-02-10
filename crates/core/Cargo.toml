@@ -87,6 +87,7 @@ rstest.workspace = true
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
+everruns-openrouter = { path = "../openrouter" }
 # Snapshot testing for contract tests
 insta = { version = "1.40", features = ["json", "redactions"] }
 

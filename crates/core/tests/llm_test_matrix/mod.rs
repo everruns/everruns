@@ -45,6 +45,7 @@ impl ProviderModelConfig {
             provider_type: self.provider_type.clone(),
             api_key: Some(api_key),
             base_url: None,
+            provider_settings: None,
         })
     }
 
@@ -85,6 +86,12 @@ pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
     "GEMINI_API_KEY",
 );
 
+pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
+    LlmProviderType::OpenRouter,
+    "openai/gpt-4o-mini",
+    "OPENROUTER_API_KEY",
+);
+
 // ============================================================================
 // Unified driver registry
 // ============================================================================
@@ -95,5 +102,6 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_anthropic::register_driver(&mut registry);
     everruns_openai::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
+    everruns_openrouter::register_driver(&mut registry);
     registry
 }

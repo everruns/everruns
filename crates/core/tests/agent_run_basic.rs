@@ -11,7 +11,7 @@
 //   cargo test -p everruns-core --test agent_run_basic -- anthropic
 //
 // Required env vars (tests skip gracefully if missing):
-//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -30,6 +30,7 @@ use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
 #[case::gemini_flash(GEMINI_FLASH)]
+#[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {
@@ -62,6 +63,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
 #[case::gemini_flash(GEMINI_FLASH)]
+#[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {
