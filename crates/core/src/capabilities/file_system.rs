@@ -12,10 +12,28 @@
 //! - `stat_file`: Get file metadata
 
 use super::{Capability, CapabilityStatus};
-use crate::tools::{Tool, ToolExecutionResult};
+use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
+
+/// Image MIME types recognized by LLM vision APIs (OpenAI, Anthropic)
+const IMAGE_EXTENSIONS: &[(&str, &str)] = &[
+    (".png", "image/png"),
+    (".jpg", "image/jpeg"),
+    (".jpeg", "image/jpeg"),
+    (".gif", "image/gif"),
+    (".webp", "image/webp"),
+];
+
+/// Get the image MIME type if the path has a known image extension
+fn image_media_type(path: &str) -> Option<&'static str> {
+    let lower = path.to_lowercase();
+    IMAGE_EXTENSIONS
+        .iter()
+        .find(|(ext, _)| lower.ends_with(ext))
+        .map(|(_, mime)| *mime)
+}
 
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
@@ -140,7 +158,7 @@ impl Tool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read the content of a file. Returns the file content as text or base64-encoded binary."
+        "Read the content of a file. Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -192,18 +210,39 @@ impl Tool for ReadFileTool {
         {
             Ok(Some(file)) => {
                 if file.is_directory {
-                    ToolExecutionResult::tool_error(format!(
+                    return ToolExecutionResult::tool_error(format!(
                         "Path '{}' is a directory, not a file. Use list_directory instead.",
                         display_path
-                    ))
-                } else {
-                    ToolExecutionResult::success(json!({
-                        "path": display_path,
-                        "content": file.content,
-                        "encoding": file.encoding,
-                        "size_bytes": file.size_bytes
-                    }))
+                    ));
                 }
+
+                // Check if this is an image file that should be returned as native image content
+                if let Some(media_type) = image_media_type(&normalized_path) {
+                    // For base64-encoded files, return as image
+                    if file.encoding == "base64"
+                        && let Some(ref content) = file.content
+                    {
+                        return ToolExecutionResult::success_with_images(
+                            json!({
+                                "path": display_path,
+                                "media_type": media_type,
+                                "size_bytes": file.size_bytes
+                            }),
+                            vec![ToolResultImage {
+                                base64: content.clone(),
+                                media_type: media_type.to_string(),
+                            }],
+                        );
+                    }
+                    // Text-encoded image paths still get returned as text (unusual case)
+                }
+
+                ToolExecutionResult::success(json!({
+                    "path": display_path,
+                    "content": file.content,
+                    "encoding": file.encoding,
+                    "size_bytes": file.size_bytes
+                }))
             }
             Ok(None) => {
                 ToolExecutionResult::tool_error(format!("File not found: {}", display_path))
@@ -867,5 +906,46 @@ mod tests {
         } else {
             panic!("Expected tool error for missing file store");
         }
+    }
+
+    // Image detection tests
+    #[test]
+    fn test_image_media_type_png() {
+        assert_eq!(
+            image_media_type("/workspace/screenshot.png"),
+            Some("image/png")
+        );
+    }
+
+    #[test]
+    fn test_image_media_type_jpeg() {
+        assert_eq!(image_media_type("/workspace/photo.jpg"), Some("image/jpeg"));
+        assert_eq!(
+            image_media_type("/workspace/photo.jpeg"),
+            Some("image/jpeg")
+        );
+    }
+
+    #[test]
+    fn test_image_media_type_gif() {
+        assert_eq!(image_media_type("/data/anim.gif"), Some("image/gif"));
+    }
+
+    #[test]
+    fn test_image_media_type_webp() {
+        assert_eq!(image_media_type("/images/art.webp"), Some("image/webp"));
+    }
+
+    #[test]
+    fn test_image_media_type_case_insensitive() {
+        assert_eq!(image_media_type("/workspace/PHOTO.PNG"), Some("image/png"));
+        assert_eq!(image_media_type("/workspace/image.JPG"), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn test_image_media_type_not_image() {
+        assert_eq!(image_media_type("/workspace/readme.txt"), None);
+        assert_eq!(image_media_type("/workspace/data.json"), None);
+        assert_eq!(image_media_type("/workspace/script.py"), None);
     }
 }

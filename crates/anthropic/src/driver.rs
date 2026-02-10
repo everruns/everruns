@@ -184,13 +184,64 @@ impl AnthropicLlmDriver {
                     system_prompt = Some(msg.content.to_text());
                 }
                 LlmMessageRole::Tool => {
-                    // Tool results in Anthropic are user messages with tool_result content blocks
+                    // Tool results in Anthropic are user messages with tool_result content blocks.
+                    // When the message contains images, we use the array form with content blocks.
                     if let Some(tool_call_id) = &msg.tool_call_id {
+                        let has_images = match &msg.content {
+                            LlmMessageContent::Parts(parts) => parts
+                                .iter()
+                                .any(|p| matches!(p, LlmContentPart::Image { .. })),
+                            _ => false,
+                        };
+
+                        let content = if has_images {
+                            // Build array of text + image content blocks
+                            let blocks = match &msg.content {
+                                LlmMessageContent::Parts(parts) => parts
+                                    .iter()
+                                    .filter_map(|p| match p {
+                                        LlmContentPart::Text { text } => {
+                                            Some(AnthropicToolResultBlock::Text {
+                                                text: text.clone(),
+                                            })
+                                        }
+                                        LlmContentPart::Image { url } => {
+                                            let source = if url.starts_with("data:") {
+                                                let parts: Vec<&str> = url.splitn(2, ',').collect();
+                                                if parts.len() == 2 {
+                                                    let media_type = parts[0]
+                                                        .trim_start_matches("data:")
+                                                        .trim_end_matches(";base64")
+                                                        .to_string();
+                                                    AnthropicImageSource::Base64 {
+                                                        media_type,
+                                                        data: parts[1].to_string(),
+                                                    }
+                                                } else {
+                                                    AnthropicImageSource::Url { url: url.clone() }
+                                                }
+                                            } else {
+                                                AnthropicImageSource::Url { url: url.clone() }
+                                            };
+                                            Some(AnthropicToolResultBlock::Image { source })
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect(),
+                                LlmMessageContent::Text(text) => {
+                                    vec![AnthropicToolResultBlock::Text { text: text.clone() }]
+                                }
+                            };
+                            AnthropicToolResultContent::Blocks(blocks)
+                        } else {
+                            AnthropicToolResultContent::Text(msg.content.to_text())
+                        };
+
                         converted.push(AnthropicMessage {
                             role: "user".to_string(),
                             content: vec![AnthropicContentBlock::ToolResult {
                                 tool_use_id: tool_call_id.clone(),
-                                content: msg.content.to_text(),
+                                content,
                                 is_error: None,
                             }],
                         });
@@ -877,10 +928,31 @@ enum AnthropicContentBlock {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
-        content: String,
+        content: AnthropicToolResultContent,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
+}
+
+/// Content of a tool_result block - either a simple string or array of content blocks.
+/// Anthropic API accepts both forms; we use the array form when images are present.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum AnthropicToolResultContent {
+    /// Simple text content
+    Text(String),
+    /// Array of content blocks (text + images)
+    Blocks(Vec<AnthropicToolResultBlock>),
+}
+
+/// A content block inside a tool_result (text or image)
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum AnthropicToolResultBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image { source: AnthropicImageSource },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1250,8 +1322,97 @@ mod tests {
                 ..
             } => {
                 assert_eq!(tool_use_id, "call_123");
-                assert_eq!(content, "{\"temp\": 20}");
+                match content {
+                    AnthropicToolResultContent::Text(text) => {
+                        assert_eq!(text, "{\"temp\": 20}");
+                    }
+                    _ => panic!("Expected text content in tool result"),
+                }
             }
+            _ => panic!("Expected ToolResult block"),
+        }
+    }
+
+    #[test]
+    fn test_tool_result_with_images_conversion() {
+        // Tool result with text + image content
+        let msg = LlmMessage {
+            role: LlmMessageRole::Tool,
+            content: LlmMessageContent::Parts(vec![
+                LlmContentPart::Text {
+                    text: "{\"status\": \"ok\"}".to_string(),
+                },
+                LlmContentPart::Image {
+                    url: "data:image/png;base64,AAAA".to_string(),
+                },
+            ]),
+            tool_calls: None,
+            tool_call_id: Some("call_img".to_string()),
+            thinking: None,
+            thinking_signature: None,
+        };
+
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg]);
+
+        assert_eq!(converted.len(), 1);
+        assert_eq!(converted[0].role, "user");
+        assert_eq!(converted[0].content.len(), 1);
+
+        match &converted[0].content[0] {
+            AnthropicContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                ..
+            } => {
+                assert_eq!(tool_use_id, "call_img");
+                match content {
+                    AnthropicToolResultContent::Blocks(blocks) => {
+                        assert_eq!(blocks.len(), 2);
+                        match &blocks[0] {
+                            AnthropicToolResultBlock::Text { text } => {
+                                assert_eq!(text, "{\"status\": \"ok\"}");
+                            }
+                            _ => panic!("Expected text block"),
+                        }
+                        match &blocks[1] {
+                            AnthropicToolResultBlock::Image { source } => match source {
+                                AnthropicImageSource::Base64 { media_type, data } => {
+                                    assert_eq!(media_type, "image/png");
+                                    assert_eq!(data, "AAAA");
+                                }
+                                _ => panic!("Expected base64 image source"),
+                            },
+                            _ => panic!("Expected image block"),
+                        }
+                    }
+                    _ => panic!("Expected Blocks content for multimodal tool result"),
+                }
+            }
+            _ => panic!("Expected ToolResult block"),
+        }
+    }
+
+    #[test]
+    fn test_tool_result_text_only_stays_simple() {
+        // Tool result with text-only content should use simple Text form
+        let msg = LlmMessage {
+            role: LlmMessageRole::Tool,
+            content: LlmMessageContent::Text("result text".to_string()),
+            tool_calls: None,
+            tool_call_id: Some("call_txt".to_string()),
+            thinking: None,
+            thinking_signature: None,
+        };
+
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg]);
+
+        match &converted[0].content[0] {
+            AnthropicContentBlock::ToolResult { content, .. } => match content {
+                AnthropicToolResultContent::Text(text) => {
+                    assert_eq!(text, "result text");
+                }
+                _ => panic!("Expected simple Text content for text-only tool result"),
+            },
             _ => panic!("Expected ToolResult block"),
         }
     }

@@ -577,6 +577,40 @@ impl Message {
         }
     }
 
+    /// Create a tool result message with images.
+    ///
+    /// Images are included as `ContentPart::Image` alongside the `ToolResult` part.
+    /// When converted to `LlmMessage`, images become native image content blocks
+    /// that the LLM can see visually (not just stringified base64).
+    pub fn tool_result_with_images(
+        tool_call_id: impl Into<String>,
+        result: Option<serde_json::Value>,
+        images: Vec<crate::tools::ToolResultImage>,
+    ) -> Self {
+        let tool_call_id = tool_call_id.into();
+        let mut content = vec![ContentPart::ToolResult(ToolResultContentPart::new(
+            tool_call_id,
+            result,
+            None,
+        ))];
+        for img in images {
+            content.push(ContentPart::Image(ImageContentPart::from_base64(
+                img.base64,
+                img.media_type,
+            )));
+        }
+        Self {
+            id: MessageId::new(),
+            role: MessageRole::ToolResult,
+            content,
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        }
+    }
+
     /// Get the tool_call_id from a tool result message
     ///
     /// Returns the tool_call_id from the first ToolResult content part, if any.

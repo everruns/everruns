@@ -223,18 +223,43 @@ fn event_to_message(
 
 /// Convert ToolCompletedData to a ToolResult message
 fn tool_completed_to_message(data: ToolCompletedData) -> Message {
-    // Extract result as JSON value
+    // Separate text and image parts from the result content
+    let mut images: Vec<everruns_core::tools::ToolResultImage> = Vec::new();
     let result: Option<serde_json::Value> = data.result.map(|parts| {
+        // Collect image parts
+        for part in &parts {
+            if let ContentPart::Image(img) = part
+                && let (Some(b64), Some(mt)) = (&img.base64, &img.media_type)
+            {
+                images.push(everruns_core::tools::ToolResultImage {
+                    base64: b64.clone(),
+                    media_type: mt.clone(),
+                });
+            }
+        }
         // For simple text results, extract just the text
-        if parts.len() == 1
-            && let ContentPart::Text(t) = &parts[0]
+        let text_parts: Vec<&ContentPart> = parts
+            .iter()
+            .filter(|p| matches!(p, ContentPart::Text(_)))
+            .collect();
+        if text_parts.len() == 1
+            && let ContentPart::Text(t) = text_parts[0]
         {
             return serde_json::Value::String(t.text.clone());
         }
-        serde_json::to_value(&parts).unwrap_or_default()
+        // Fall back to serializing text parts only (images handled separately)
+        if !text_parts.is_empty() {
+            serde_json::to_value(&text_parts).unwrap_or_default()
+        } else {
+            serde_json::Value::Null
+        }
     });
 
-    Message::tool_result(&data.tool_call_id, result, data.error)
+    if images.is_empty() {
+        Message::tool_result(&data.tool_call_id, result, data.error)
+    } else {
+        Message::tool_result_with_images(&data.tool_call_id, result, images)
+    }
 }
 
 // ============================================================================

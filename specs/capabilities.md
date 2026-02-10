@@ -355,10 +355,10 @@ pub fn resolve_dependencies(
 - **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations. Explains the `/workspace` mount point.
 - **Workspace Mount**: All paths are relative to `/workspace` (e.g., `/workspace/src/main.rs`). Paths are normalized internally to enable seamless integration with virtual_bash.
 - **Tools**:
-  - `read_file` - Read file content by path
+  - `read_file` - Read file content by path. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image content block so the LLM can see it visually.
     - Parameters:
       - `path`: string (required) - Absolute path to the file (e.g., '/workspace/docs/readme.txt')
-    - Returns: Object containing path, content, encoding, size_bytes
+    - Returns: Object containing path, content, encoding, size_bytes. For base64-encoded image files, returns `SuccessWithImages` with the image as a native `ToolResultImage`.
     - Policy: Auto
   - `write_file` - Create or update a file
     - Parameters:

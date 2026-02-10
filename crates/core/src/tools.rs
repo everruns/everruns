@@ -11,6 +11,7 @@
 // - Internal errors are logged but not exposed to the LLM (security)
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,10 +27,23 @@ use crate::traits::ToolExecutor;
 // Tool Execution Result - Error Handling Contract
 // ============================================================================
 
+/// Image data returned by a tool alongside text results.
+///
+/// This allows tools (built-in or MCP) to return images that are sent
+/// to the LLM as native image content blocks, not stringified JSON.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResultImage {
+    /// Base64-encoded image data
+    pub base64: String,
+    /// MIME type (e.g., "image/png", "image/jpeg")
+    pub media_type: String,
+}
+
 /// Result of a tool execution.
 ///
 /// This enum distinguishes between different outcomes:
 /// - `Success`: Tool executed successfully, result is returned to LLM
+/// - `SuccessWithImages`: Successful execution with JSON result plus images
 /// - `ToolError`: Tool-level error that should be shown to the LLM
 ///   (e.g., "City not found", "Invalid date format")
 /// - `InternalError`: System-level error that should NOT be exposed to the LLM
@@ -44,6 +58,14 @@ use crate::traits::ToolExecutor;
 pub enum ToolExecutionResult {
     /// Successful execution with a JSON result
     Success(Value),
+
+    /// Successful execution with a JSON result and images.
+    /// Images are sent to the LLM as native image content blocks
+    /// (not stringified JSON), enabling visual understanding.
+    SuccessWithImages {
+        result: Value,
+        images: Vec<ToolResultImage>,
+    },
 
     /// Tool-level error that is safe to show to the LLM
     ///
@@ -65,6 +87,14 @@ impl ToolExecutionResult {
         ToolExecutionResult::Success(value.into())
     }
 
+    /// Create a successful result with images
+    pub fn success_with_images(value: impl Into<Value>, images: Vec<ToolResultImage>) -> Self {
+        ToolExecutionResult::SuccessWithImages {
+            result: value.into(),
+            images,
+        }
+    }
+
     /// Create a tool-level error (safe to show to LLM)
     pub fn tool_error(message: impl Into<String>) -> Self {
         ToolExecutionResult::ToolError(message.into())
@@ -82,7 +112,10 @@ impl ToolExecutionResult {
 
     /// Check if this is a successful result
     pub fn is_success(&self) -> bool {
-        matches!(self, ToolExecutionResult::Success(_))
+        matches!(
+            self,
+            ToolExecutionResult::Success(_) | ToolExecutionResult::SuccessWithImages { .. }
+        )
     }
 
     /// Check if this is an error (either tool error or internal error)
@@ -102,11 +135,23 @@ impl ToolExecutionResult {
             ToolExecutionResult::Success(value) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(value),
+                images: None,
+                error: None,
+            },
+            ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
+                tool_call_id: tool_call_id.to_string(),
+                result: Some(result),
+                images: if images.is_empty() {
+                    None
+                } else {
+                    Some(images)
+                },
                 error: None,
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(serde_json::json!({ "error": message })),
+                images: None,
                 error: None,
             },
             ToolExecutionResult::InternalError(err) => {
@@ -124,6 +169,7 @@ impl ToolExecutionResult {
                     result: Some(serde_json::json!({
                         "error": "An internal error occurred while executing the tool"
                     })),
+                    images: None,
                     error: None,
                 }
             }

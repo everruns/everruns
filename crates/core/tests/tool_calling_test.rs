@@ -4,7 +4,7 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
-use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
+use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResultImage};
 use everruns_core::{
     GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
     memory::InMemoryMessageRetriever,
@@ -452,4 +452,261 @@ async fn test_message_retriever_parallel_tool_calls() {
     for (i, expected_city) in ["Tokyo", "London", "New York"].iter().enumerate() {
         assert_eq!(loaded_calls[i].arguments["city"], *expected_city);
     }
+}
+
+// =============================================================================
+// Image Tool Result Tests
+// =============================================================================
+
+/// Tool that returns an image alongside JSON
+struct ImageTool;
+
+#[async_trait]
+impl Tool for ImageTool {
+    fn name(&self) -> &str {
+        "screenshot"
+    }
+
+    fn description(&self) -> &str {
+        "Take a screenshot and return it as an image"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "region": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+        let region = arguments
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("full");
+
+        // Tiny 1x1 red PNG (base64)
+        let tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+        ToolExecutionResult::success_with_images(
+            json!({ "region": region, "width": 1, "height": 1 }),
+            vec![ToolResultImage {
+                base64: tiny_png.to_string(),
+                media_type: "image/png".to_string(),
+            }],
+        )
+    }
+}
+
+#[tokio::test]
+async fn test_image_tool_execution_result() {
+    let tool = ImageTool;
+    let result = tool.execute(json!({"region": "header"})).await;
+
+    match result {
+        ToolExecutionResult::SuccessWithImages { result, images } => {
+            assert_eq!(result["region"], "header");
+            assert_eq!(images.len(), 1);
+            assert_eq!(images[0].media_type, "image/png");
+            assert!(!images[0].base64.is_empty());
+        }
+        _ => panic!("Expected SuccessWithImages"),
+    }
+}
+
+#[tokio::test]
+async fn test_image_tool_into_tool_result() {
+    let result = ToolExecutionResult::success_with_images(
+        json!({"status": "ok"}),
+        vec![ToolResultImage {
+            base64: "AAAA".to_string(),
+            media_type: "image/jpeg".to_string(),
+        }],
+    );
+
+    let tool_result = result.into_tool_result("call_img", "screenshot");
+
+    assert!(tool_result.error.is_none());
+    assert_eq!(tool_result.result.unwrap()["status"], "ok");
+    let images = tool_result.images.unwrap();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].media_type, "image/jpeg");
+    assert_eq!(images[0].base64, "AAAA");
+}
+
+#[tokio::test]
+async fn test_image_tool_empty_images_gives_none() {
+    let result = ToolExecutionResult::success_with_images(json!({"ok": true}), vec![]);
+
+    let tool_result = result.into_tool_result("call_1", "tool");
+
+    assert!(tool_result.images.is_none(), "empty images should be None");
+}
+
+#[tokio::test]
+async fn test_image_tool_via_registry() {
+    let registry = ToolRegistry::builder().tool(ImageTool).build();
+
+    let tool_call = ToolCall {
+        id: "call_img".to_string(),
+        name: "screenshot".to_string(),
+        arguments: json!({"region": "viewport"}),
+    };
+
+    let tool_def = registry.get("screenshot").unwrap().to_definition();
+    let result = registry.execute(&tool_call, &tool_def).await.unwrap();
+
+    assert!(result.error.is_none());
+    assert_eq!(result.result.unwrap()["region"], "viewport");
+    let images = result.images.unwrap();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].media_type, "image/png");
+}
+
+#[tokio::test]
+async fn test_tool_result_with_images_message() {
+    let images = vec![ToolResultImage {
+        base64: "AAAA".to_string(),
+        media_type: "image/png".to_string(),
+    }];
+
+    let msg = Message::tool_result_with_images("call_123", Some(json!({"ok": true})), images);
+
+    assert_eq!(msg.role, MessageRole::ToolResult);
+    assert_eq!(msg.tool_call_id(), Some("call_123"));
+
+    // Should have ToolResult + Image content parts
+    assert_eq!(msg.content.len(), 2);
+    assert!(matches!(
+        msg.content[0],
+        everruns_core::ContentPart::ToolResult(_)
+    ));
+    assert!(matches!(
+        msg.content[1],
+        everruns_core::ContentPart::Image(_)
+    ));
+}
+
+#[tokio::test]
+async fn test_tool_result_with_images_llm_conversion() {
+    use everruns_core::llm_driver_registry::LlmMessage;
+    use std::collections::HashMap;
+
+    let images = vec![
+        ToolResultImage {
+            base64: "AAAA".to_string(),
+            media_type: "image/png".to_string(),
+        },
+        ToolResultImage {
+            base64: "BBBB".to_string(),
+            media_type: "image/jpeg".to_string(),
+        },
+    ];
+
+    let msg = Message::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
+
+    let resolved = HashMap::new();
+    let llm_msg = LlmMessage::from_message_with_images(&msg, &resolved);
+
+    // Should be Tool role with tool_call_id
+    assert_eq!(
+        llm_msg.role,
+        everruns_core::llm_driver_registry::LlmMessageRole::Tool
+    );
+    assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
+
+    // Content should have text (JSON result) + 2 images
+    match &llm_msg.content {
+        everruns_core::llm_driver_registry::LlmMessageContent::Parts(parts) => {
+            assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
+            assert!(matches!(
+                &parts[0],
+                everruns_core::llm_driver_registry::LlmContentPart::Text { .. }
+            ));
+            match &parts[1] {
+                everruns_core::llm_driver_registry::LlmContentPart::Image { url } => {
+                    assert!(url.starts_with("data:image/png;base64,"));
+                    assert!(url.contains("AAAA"));
+                }
+                _ => panic!("Expected Image part"),
+            }
+            match &parts[2] {
+                everruns_core::llm_driver_registry::LlmContentPart::Image { url } => {
+                    assert!(url.starts_with("data:image/jpeg;base64,"));
+                    assert!(url.contains("BBBB"));
+                }
+                _ => panic!("Expected Image part"),
+            }
+        }
+        _ => panic!("Expected Parts content"),
+    }
+}
+
+#[tokio::test]
+async fn test_tool_result_with_images_store_roundtrip() {
+    let store = InMemoryMessageRetriever::new();
+    let session_id: SessionId = Uuid::now_v7().into();
+
+    let images = vec![ToolResultImage {
+        base64: "AAAA".to_string(),
+        media_type: "image/png".to_string(),
+    }];
+
+    let msg = Message::tool_result_with_images("call_rt", Some(json!({"ok": true})), images);
+
+    store.store(session_id, msg).await.unwrap();
+
+    let loaded = store.load(session_id).await.unwrap();
+    assert_eq!(loaded.len(), 1);
+
+    let loaded_msg = &loaded[0];
+    assert_eq!(loaded_msg.role, MessageRole::ToolResult);
+    assert_eq!(loaded_msg.tool_call_id(), Some("call_rt"));
+    // Should preserve both ToolResult and Image content parts
+    assert_eq!(loaded_msg.content.len(), 2);
+}
+
+#[test]
+fn test_tool_result_image_serialization() {
+    let img = ToolResultImage {
+        base64: "AAAA".to_string(),
+        media_type: "image/png".to_string(),
+    };
+
+    let json = serde_json::to_string(&img).unwrap();
+    let parsed: ToolResultImage = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed.base64, "AAAA");
+    assert_eq!(parsed.media_type, "image/png");
+}
+
+#[test]
+fn test_tool_result_with_images_serialization() {
+    let result = everruns_core::ToolResult {
+        tool_call_id: "call_1".to_string(),
+        result: Some(json!({"ok": true})),
+        images: Some(vec![ToolResultImage {
+            base64: "AAAA".to_string(),
+            media_type: "image/png".to_string(),
+        }]),
+        error: None,
+    };
+
+    let json_str = serde_json::to_string(&result).unwrap();
+    let parsed: everruns_core::ToolResult = serde_json::from_str(&json_str).unwrap();
+
+    assert_eq!(parsed.images.as_ref().unwrap().len(), 1);
+    assert_eq!(parsed.images.unwrap()[0].media_type, "image/png");
+}
+
+#[test]
+fn test_tool_result_without_images_backward_compat() {
+    // Ensure old JSON without `images` field still deserializes
+    let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
+    let parsed: everruns_core::ToolResult = serde_json::from_str(json_str).unwrap();
+
+    assert!(parsed.images.is_none());
+    assert_eq!(parsed.tool_call_id, "call_1");
 }

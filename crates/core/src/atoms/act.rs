@@ -395,6 +395,7 @@ where
                 result: ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: None,
+                    images: None,
                     error: Some(error_msg),
                 },
                 success: false,
@@ -427,12 +428,23 @@ where
 
                 // Emit tool.completed event
                 let completed_data = if success {
-                    // Convert result to ContentPart (text representation of JSON)
-                    let result_content = tool_result
+                    // Convert result to ContentPart (text + optional images)
+                    let mut result_content = tool_result
                         .result
                         .as_ref()
                         .map(|r| vec![ContentPart::text(r.to_string())])
                         .unwrap_or_default();
+                    // Append images as native Image content parts
+                    if let Some(ref images) = tool_result.images {
+                        for img in images {
+                            result_content.push(ContentPart::Image(
+                                crate::message::ImageContentPart::from_base64(
+                                    &img.base64,
+                                    &img.media_type,
+                                ),
+                            ));
+                        }
+                    }
                     ToolCompletedData::success(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
@@ -522,6 +534,7 @@ where
                     result: ToolResult {
                         tool_call_id: tool_call.id.clone(),
                         result: None,
+                        images: None,
                         error: Some(error_msg),
                     },
                     success: false,
