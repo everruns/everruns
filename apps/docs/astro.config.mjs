@@ -50,6 +50,7 @@ export default defineConfig({
           label: "Getting Started",
           items: [
             { label: "Introduction", slug: "getting-started/introduction" },
+            { label: "Concepts", slug: "getting-started/concepts" },
             { label: "Docker Compose Quickstart", slug: "getting-started/docker-compose" },
             { label: "Architecture", slug: "getting-started/architecture" },
           ],

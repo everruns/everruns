@@ -1,6 +1,9 @@
-# Concepts
+---
+title: Concepts
+description: Core entities and relationships in Everruns
+---
 
-Everruns is a durable agentic harness engine. This document describes the core entities and how they relate to each other, split into three layers: high-level execution model, session internals, and settings.
+This page describes the core entities in Everruns and how they relate to each other, organized into three layers: the high-level execution model, session internals, and settings.
 
 ## High Level
 
@@ -32,36 +35,36 @@ graph LR
 
 ### Harness
 
-Top-level entity that represents a setup for agent execution. Defines infrastructure, defaults, and constraints under which sessions run. Configures how agents are invoked, which capabilities are available by default, and the execution environment.
+A Harness is the top-level entity that represents a setup for agent execution. It defines the infrastructure, defaults, and constraints under which sessions run — configuring how agents are invoked, which capabilities are available by default, and what execution environment is provided.
 
-- Many harnesses in the system
+- There can be many harnesses in the system
 - Each session has exactly one assigned harness
-- A harness can have capabilities attached
+- A harness can have capabilities attached to it
 
 ### Agent
 
-Domain-specific or task-specific configuration for the agentic loop. Defines system prompt, default LLM model, and enabled capabilities.
+An Agent is a domain-specific or task-specific configuration for the agentic loop. It defines the system prompt, the default LLM model, and which capabilities are enabled.
 
-- Many agents in the system
+- There can be many agents in the system
 - A session may or may not have an agent assigned
-- Agents can be assigned or changed during a session's lifetime
-- Agent has capabilities with position ordering
-- Agent references a default LLM model
+- Agents can be assigned or changed during the lifetime of a session
+- Each agent has capabilities with position ordering
+- Each agent references a default LLM model
 
 ### Session
 
-Working instance of an agentic loop. Configured by its harness and situationally by an agent. Primary execution context where conversations happen.
+A Session is a working instance of an agentic loop. It is configured by its harness and, optionally, by an agent. Sessions are the primary execution context where conversations happen.
 
-- Many sessions in the system
+- There can be many sessions in the system
 - Each session has an assigned harness
-- Agent is optional and can change over the session's lifetime
-- Sessions can have own capabilities, additive to agent capabilities
+- The agent is optional and can change over the session's lifetime
+- Sessions can have their own capabilities, which are additive to the agent's capabilities
 - Sessions can override the LLM model
-- Status: `started` → `active` → `idle` (sessions work indefinitely)
+- Status flow: `started` → `active` → `idle` (sessions work indefinitely)
 
 ### Capability
 
-Modular, reusable configuration unit that extends harness, agent, or session behavior. Contributes:
+A Capability is a modular, reusable configuration unit that extends the behavior of a harness, agent, or session. Each capability can contribute:
 
 1. **System prompt additions** — text prepended to the agent's prompt
 2. **Tools** — functions the agent can invoke
@@ -73,9 +76,11 @@ Modular, reusable configuration unit that extends harness, agent, or session beh
 - MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs
 - Capabilities can depend on other capabilities, resolved in topological order
 
+See [Capabilities](/features/capabilities) for a full list and configuration details.
+
 ### Tool
 
-A function the agent can invoke during execution. Tools are provided by capabilities.
+A Tool is a function the agent can invoke during execution. Tools are provided by capabilities.
 
 - Built-in tools have no name prefix
 - MCP tools are prefixed: `mcp_{server_name}__{tool_name}`
@@ -103,15 +108,15 @@ erDiagram
 
 ### Turn
 
-One iteration of the agent loop: reason (call the LLM) then act (execute tools).
+A Turn is one iteration of the agent loop: reason (call the LLM) then act (execute tools).
 
 - Each turn belongs to a session
-- Produces messages and emits events
+- A turn produces messages and emits events
 - Lifecycle: `turn.started` → reason → act → `turn.completed` (or `turn.failed`)
 
 ### Message
 
-A conversation entry reconstructed from the event log. Messages are not stored in a separate table.
+A Message is a conversation entry reconstructed from the event log. Messages are not stored in a separate table.
 
 - Roles: `user`, `agent`, `tool_result`
 - Content is an array of parts: text, image, tool_call, tool_result
@@ -120,16 +125,18 @@ A conversation entry reconstructed from the event log. Messages are not stored i
 
 ### Event
 
-An immutable, append-only record. The primary data store for conversations and SSE notifications.
+An Event is an immutable, append-only record. Events are the primary data store for conversations and SSE notifications.
 
 - Atomic per-session sequence numbering
 - Types: input, output, turn, atom, tool, LLM, session lifecycle
 - Cannot be updated or deleted
 - Carries correlation context: turn ID, input message ID, execution ID
 
+See [Events](/features/events) for the full event reference.
+
 ### File System
 
-A per-session isolated virtual filesystem stored in PostgreSQL.
+Each session has an isolated virtual filesystem stored in PostgreSQL.
 
 - Paths are relative to `/workspace`
 - Capabilities can mount initial files and directories
@@ -138,7 +145,7 @@ A per-session isolated virtual filesystem stored in PostgreSQL.
 
 ### Key-Value Store
 
-Per-session scoped storage with two tiers:
+Each session has scoped storage with two tiers:
 
 - **Key/Value** — plain text storage for general data such as state, preferences, or intermediate results
 - **Secrets** — AES-256-GCM encrypted at rest for API keys, tokens, and credentials
@@ -163,15 +170,15 @@ erDiagram
 
 ### LLM Provider
 
-A configured API provider such as OpenAI or Anthropic. Stores encrypted API keys.
+An LLM Provider is a configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models.
 
 - Provider types: `openai`, `openai_completions`, `anthropic`
 - Each provider contains many models
-- Default providers are seeded on startup
+- Default providers (OpenAI, Anthropic) are seeded on startup
 
 ### LLM Model
 
-A specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
+An LLM Model is a specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
 
 - Each model belongs to one provider
 - Sources: predefined, discovered from the provider API, or manually added
@@ -179,9 +186,9 @@ A specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
 
 ### MCP Server
 
-A remote server that exposes tools via the Model Context Protocol. Integrated as a virtual capability.
+An MCP Server is a remote server that exposes tools via the Model Context Protocol. MCP servers are integrated as virtual capabilities.
 
-- Becomes a capability with ID `mcp:{server_uuid}`
+- Each server becomes a capability with ID `mcp:{server_uuid}`
 - Tools are discovered at runtime and cached with a 24-hour TTL
 - Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
 - Execution happens via HTTP JSON-RPC
