@@ -87,6 +87,7 @@ jobs:
         run: |
           cargo test -p everruns-anthropic --lib --all-features
           cargo test -p everruns-openai --lib --all-features
+          cargo test -p everruns-gemini --lib --all-features
           cargo test -p everruns-internal-protocol --lib --all-features
           cargo test -p everruns-core --lib --all-features
 
@@ -160,6 +161,11 @@ jobs:
 
       - name: Run durable repository tests
         run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
+
+      - name: Run LLM integration tests (skips providers without API keys)
+        run: |
+          cargo test -p everruns-core --test agent_run_basic --all-features
+          cargo test -p everruns-core --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs
   build-binaries:
