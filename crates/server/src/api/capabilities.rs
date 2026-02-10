@@ -45,7 +45,7 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/capabilities", get(list_capabilities))
-        .route("/v1/capabilities/:capability_id", get(get_capability))
+        .route("/v1/capabilities/{capability_id}", get(get_capability))
         .with_state(state)
 }
 

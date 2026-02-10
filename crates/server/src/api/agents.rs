@@ -197,13 +197,13 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/import", post(import_agent))
         .route("/v1/agents/preview", post(preview_agent))
         .route(
-            "/v1/agents/:agent_id",
+            "/v1/agents/{agent_id}",
             get(get_agent)
                 .put(upsert_agent)
                 .patch(update_agent)
                 .delete(delete_agent),
         )
-        .route("/v1/agents/:agent_id/export", get(export_agent))
+        .route("/v1/agents/{agent_id}/export", get(export_agent))
         .with_state(state)
 }
 

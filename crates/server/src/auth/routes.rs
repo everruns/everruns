@@ -149,15 +149,15 @@ pub fn routes(state: AuthState) -> Router {
         .route("/v1/auth/refresh", post(refresh_token))
         .route("/v1/auth/logout", post(logout))
         // OAuth routes
-        .route("/v1/auth/oauth/:provider", get(oauth_redirect))
-        .route("/v1/auth/callback/:provider", get(oauth_callback))
+        .route("/v1/auth/oauth/{provider}", get(oauth_redirect))
+        .route("/v1/auth/callback/{provider}", get(oauth_callback))
         // Protected routes
         .route("/v1/auth/me", get(get_current_user))
         .route(
             "/v1/auth/api-keys",
             get(list_api_keys).post(create_api_key_route),
         )
-        .route("/v1/auth/api-keys/:key_id", delete(delete_api_key_route))
+        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route))
         .with_state(state)
 }
 

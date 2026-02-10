@@ -78,15 +78,15 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/:session_id/databases",
+            "/v1/sessions/{session_id}/databases",
             get(list_databases).post(create_database),
         )
         .route(
-            "/v1/sessions/:session_id/databases/:name",
+            "/v1/sessions/{session_id}/databases/{name}",
             get(get_database).delete(delete_database),
         )
         .route(
-            "/v1/sessions/:session_id/databases/:name/schema",
+            "/v1/sessions/{session_id}/databases/{name}/schema",
             get(get_schema),
         )
         .with_state(state)

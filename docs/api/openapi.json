@@ -141,6 +141,48 @@
         }
       }
     },
+    "/v1/agents/preview": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/preview - Preview the final agent shape with capabilities applied",
+        "description": "Returns the merged system prompt and all tools that would be available to the agent.\nThis is useful for previewing what the agent will look like before saving.",
+        "operationId": "preview_agent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent preview generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPreviewResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}": {
       "get": {
         "tags": [
@@ -178,6 +220,77 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "PUT /v1/agents/{agent_id} - Create or update agent (upsert)",
+        "description": "If agent with this ID exists, update it. If not, create it.\nReturns 201 on create, 200 on update.",
+        "operationId": "upsert_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (format: agent_{32-hex})",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Agent created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid agent ID or input exceeds allowed limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -1026,6 +1139,209 @@
         }
       }
     },
+    "/v1/images": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "GET /v1/images - List images",
+        "operationId": "list_images",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max items to return (default 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of images",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImageInfo"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "POST /v1/images - Upload an image",
+        "operationId": "upload_image",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Optional: session ID stored as metadata for tracking (not required for upload)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Multipart form data with 'file' field",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Image uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (bad format, size exceeded, etc.)"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/images/{image_id}": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "GET /v1/images/{image_id} - Get image (returns binary data)",
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "description": "Image ID (prefixed, e.g., img_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image binary data",
+            "content": {
+              "image/*": {}
+            }
+          },
+          "400": {
+            "description": "Invalid image ID"
+          },
+          "404": {
+            "description": "Image not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "images"
+        ],
+        "summary": "DELETE /v1/images/{image_id} - Delete an image",
+        "operationId": "delete_image",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "description": "Image ID (prefixed, e.g., img_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Image deleted"
+          },
+          "400": {
+            "description": "Invalid image ID"
+          },
+          "404": {
+            "description": "Image not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/images/{image_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "GET /v1/images/{image_id}/thumbnail - Get image thumbnail",
+        "operationId": "get_thumbnail",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "description": "Image ID (prefixed, e.g., img_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thumbnail binary data",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "400": {
+            "description": "Invalid image ID"
+          },
+          "404": {
+            "description": "Image not found or no thumbnail"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/llm-models": {
       "get": {
         "tags": [
@@ -1365,6 +1681,48 @@
         }
       }
     },
+    "/v1/llm-providers/{id}/sync-models": {
+      "post": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "Sync models from an LLM provider",
+        "description": "Fetches the list of available models from the provider's API and updates\nthe database. Only works for providers with standard base URLs (not custom).",
+        "operationId": "sync_models",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Models synced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncModelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          },
+          "500": {
+            "description": "Sync failed"
+          }
+        }
+      }
+    },
     "/v1/llm-providers/{provider_id}/models": {
       "get": {
         "tags": [
@@ -1662,6 +2020,190 @@
         }
       }
     },
+    "/v1/orgs": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs - List organizations the current user belongs to",
+        "operationId": "list_organizations",
+        "responses": {
+          "200": {
+            "description": "List of organizations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_OrganizationResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "POST /v1/orgs - Create a new organization",
+        "operationId": "create_organization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Organization created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/{org}": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs/:org - Get organization details",
+        "operationId": "get_organization",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "PATCH /v1/orgs/:org - Update organization",
+        "operationId": "update_organization",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Organization updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/sessions": {
       "get": {
         "tags": [
@@ -1927,6 +2469,210 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/databases": {
+      "get": {
+        "tags": [
+          "session-databases"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/databases",
+        "operationId": "list_databases",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of databases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_DatabaseInfoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "session-databases"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/databases",
+        "operationId": "create_database",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatabaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Database created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseInfoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name or session ID"
+          },
+          "409": {
+            "description": "Database already exists"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/databases/{name}": {
+      "get": {
+        "tags": [
+          "session-databases"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/databases/{name}",
+        "operationId": "get_database",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Database name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Database info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseInfoResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Database not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "session-databases"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/databases/{name}",
+        "operationId": "delete_database",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Database name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Database deleted"
+          },
+          "404": {
+            "description": "Database not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/databases/{name}/schema": {
+      "get": {
+        "tags": [
+          "session-databases"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/databases/{name}/schema",
+        "operationId": "get_schema",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Database name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Database schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Database not found"
           }
         }
       }
@@ -2629,6 +3375,82 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/storage/keys": {
+      "get": {
+        "tags": [
+          "session-storage"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs",
+        "operationId": "list_keys",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of key-value pairs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_KeyValueInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/storage/secrets": {
+      "get": {
+        "tags": [
+          "session-storage"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/storage/secrets - List all secrets (names only)",
+        "operationId": "list_secrets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of secrets (names only, no values)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_SecretInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -2664,6 +3486,47 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/users/me/switch-org": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /v1/users/me/switch-org - Switch current organization",
+        "description": "Sets a cookie with the selected organization. This org will be used for all\nsubsequent requests (including SSE connections via EventSource).\nThe user must be a member of the requested organization.",
+        "operationId": "switch_org",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchOrgRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Organization switched successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchOrgResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid organization ID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Organization not found or user is not a member"
           }
         }
       }
@@ -2817,6 +3680,27 @@
           "ref": {
             "type": "string",
             "description": "Reference to the capability ID"
+          }
+        }
+      },
+      "AgentPreviewResponse": {
+        "type": "object",
+        "description": "Response showing the final agent shape after applying capabilities",
+        "required": [
+          "system_prompt",
+          "tools"
+        ],
+        "properties": {
+          "system_prompt": {
+            "type": "string",
+            "description": "The full system prompt with capability additions prepended"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "All tool definitions from capabilities"
           }
         }
       },
@@ -3157,6 +4041,19 @@
           }
         }
       },
+      "CreateDatabaseRequest": {
+        "type": "object",
+        "description": "Request body for creating a database.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Database name (alphanumeric + underscores, max 64 chars)"
+          }
+        }
+      },
       "CreateFileRequest": {
         "type": "object",
         "description": "Request to create a file",
@@ -3364,6 +4261,20 @@
           }
         }
       },
+      "CreateOrganizationRequest": {
+        "type": "object",
+        "description": "Request to create a new organization",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The display name of the organization.",
+            "example": "Acme Corp"
+          }
+        }
+      },
       "CreateScheduleRequest": {
         "type": "object",
         "description": "Create schedule request",
@@ -3472,6 +4383,36 @@
             ],
             "description": "Human-readable title for the session.",
             "example": "Debug login issue"
+          }
+        }
+      },
+      "DatabaseInfoResponse": {
+        "type": "object",
+        "description": "Database info response.",
+        "required": [
+          "name",
+          "size_bytes",
+          "page_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "page_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string"
           }
         }
       },
@@ -3913,6 +4854,70 @@
           }
         }
       },
+      "ImageInfo": {
+        "type": "object",
+        "description": "Image metadata (without binary data)",
+        "required": [
+          "id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "metadata",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "metadata": {},
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ImageUploadResponse": {
+        "type": "object",
+        "description": "Image upload response",
+        "required": [
+          "id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "InputContentPart": {
         "oneOf": [
           {
@@ -4017,6 +5022,34 @@
           "message": {
             "$ref": "#/components/schemas/Message",
             "description": "The user message"
+          }
+        }
+      },
+      "KeyValueInfo": {
+        "type": "object",
+        "description": "Key-value entry info (key and timestamps, no value)",
+        "required": [
+          "key",
+          "value",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "When the key was created"
+          },
+          "key": {
+            "type": "string",
+            "description": "The key name"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "When the key was last updated"
+          },
+          "value": {
+            "type": "string",
+            "description": "The stored value"
           }
         }
       },
@@ -4224,6 +5257,49 @@
           }
         }
       },
+      "ListResponse_DatabaseInfoResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Database info response.",
+              "required": [
+                "name",
+                "size_bytes",
+                "page_count",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "page_count": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "updated_at": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_Event": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -4386,6 +5462,47 @@
                 },
                 "path": {
                   "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_KeyValueInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Key-value entry info (key and timestamps, no value)",
+              "required": [
+                "key",
+                "value",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "description": "When the key was created"
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The key name"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "When the key was last updated"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The stored value"
                 }
               }
             },
@@ -4779,6 +5896,85 @@
                   "type": "string",
                   "description": "Session ID this message belongs to (format: session_{32-hex})",
                   "example": "session_01933b5a00007000800000000000001"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_OrganizationResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Response for organization operations",
+              "required": [
+                "id",
+                "name",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the organization was created"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (org_<32-hex-chars>)"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the organization was last updated"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_SecretInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Secret entry info (name and timestamps only, no value)",
+              "required": [
+                "name",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "description": "When the secret was created"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The secret name"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "When the secret was last updated"
                 }
               }
             },
@@ -5739,6 +6935,36 @@
           }
         }
       },
+      "OrganizationResponse": {
+        "type": "object",
+        "description": "Response for organization operations",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the organization was created"
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (org_<32-hex-chars>)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the organization was last updated"
+          }
+        }
+      },
       "OutputMessageCompletedData": {
         "type": "object",
         "description": "Data for output.message.completed event",
@@ -5963,6 +7189,37 @@
             "format": "int32",
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
+          }
+        }
+      },
+      "PreviewAgentRequest": {
+        "type": "object",
+        "description": "Request to preview the final agent shape with capabilities applied",
+        "required": [
+          "system_prompt"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            },
+            "description": "Capabilities to apply with per-agent configuration.",
+            "example": [
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "test_math"
+              }
+            ]
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "The base system prompt (before capability additions)",
+            "example": "You are a helpful customer support agent."
           }
         }
       },
@@ -6458,6 +7715,46 @@
           }
         }
       },
+      "SchemaResponse": {
+        "type": "object",
+        "description": "Schema response for a database.",
+        "required": [
+          "database",
+          "tables"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "SecretInfo": {
+        "type": "object",
+        "description": "Secret entry info (name and timestamps only, no value)",
+        "required": [
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "When the secret was created"
+          },
+          "name": {
+            "type": "string",
+            "description": "The secret name"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "When the secret was last updated"
+          }
+        }
+      },
       "Session": {
         "type": "object",
         "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
@@ -6728,6 +8025,91 @@
             "description": "Path to the file or directory"
           }
         }
+      },
+      "SwitchOrgRequest": {
+        "type": "object",
+        "description": "Request to switch organization",
+        "required": [
+          "org_id"
+        ],
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "description": "Organization public ID to switch to",
+            "example": "org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0"
+          }
+        }
+      },
+      "SwitchOrgResponse": {
+        "type": "object",
+        "description": "Response from switch org endpoint",
+        "required": [
+          "success",
+          "org_id"
+        ],
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "description": "The organization ID that was switched to"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the switch was successful"
+          }
+        }
+      },
+      "SyncModelsResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Sync completed successfully",
+            "required": [
+              "created",
+              "updated",
+              "stale",
+              "status"
+            ],
+            "properties": {
+              "created": {
+                "type": "integer",
+                "description": "Number of new models discovered",
+                "minimum": 0
+              },
+              "stale": {
+                "type": "integer",
+                "description": "Number of models marked as stale (not seen in this sync)",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "success"
+                ]
+              },
+              "updated": {
+                "type": "integer",
+                "description": "Number of existing models updated",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Provider doesn't support model discovery",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "not_supported"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Response from syncing models from a provider"
       },
       "TextContentPart": {
         "type": "object",
@@ -7390,6 +8772,20 @@
           }
         }
       },
+      "UpdateOrganizationRequest": {
+        "type": "object",
+        "description": "Request to update an organization",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name of the organization.",
+            "example": "Acme Corporation"
+          }
+        }
+      },
       "UpdateScheduleRequest": {
         "type": "object",
         "description": "Update schedule request",
@@ -7580,6 +8976,22 @@
     {
       "name": "durable-schedules",
       "description": "Durable scheduled tasks management endpoints"
+    },
+    {
+      "name": "organizations",
+      "description": "Organization management endpoints"
+    },
+    {
+      "name": "images",
+      "description": "Image upload and management endpoints"
+    },
+    {
+      "name": "session-databases",
+      "description": "Session-scoped SQL database endpoints"
+    },
+    {
+      "name": "session-storage",
+      "description": "Session key-value storage endpoints"
     }
   ]
 }

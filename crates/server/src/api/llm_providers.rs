@@ -429,12 +429,12 @@ pub fn routes(state: AppState) -> Router {
             post(create_provider).get(list_providers),
         )
         .route(
-            "/v1/llm-providers/:id",
+            "/v1/llm-providers/{id}",
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),
         )
-        .route("/v1/llm-providers/:id/sync-models", post(sync_models))
+        .route("/v1/llm-providers/{id}/sync-models", post(sync_models))
         .with_state(state)
 }
 
