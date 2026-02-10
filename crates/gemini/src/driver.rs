@@ -513,8 +513,9 @@ impl LlmDriver for GeminiLlmDriver {
                                         if let Some(reason) = &candidate.finish_reason
                                             && (reason == "STOP" || reason == "MAX_TOKENS")
                                         {
-                                            let tool_calls =
-                                                accumulated_tool_calls.lock().unwrap().clone();
+                                            let tool_calls: Vec<ToolCall> = std::mem::take(
+                                                &mut *accumulated_tool_calls.lock().unwrap(),
+                                            );
                                             if !tool_calls.is_empty() {
                                                 let result =
                                                     Ok(LlmStreamEvent::ToolCalls(tool_calls));
@@ -615,7 +616,8 @@ impl LlmDriver for GeminiLlmDriver {
                         }
                         None => {
                             // Stream ended - emit Done if we haven't already
-                            let tool_calls = accumulated_tool_calls.lock().unwrap().clone();
+                            let tool_calls: Vec<ToolCall> =
+                                std::mem::take(&mut *accumulated_tool_calls.lock().unwrap());
                             if !tool_calls.is_empty() {
                                 let result = Ok(LlmStreamEvent::ToolCalls(tool_calls));
                                 return Some((
