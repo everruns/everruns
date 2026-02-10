@@ -147,7 +147,6 @@ impl AuthState {
 
 /// Extractor for authenticated user
 /// This is required - returns 401 if not authenticated
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
@@ -344,7 +343,6 @@ async fn fetch_user_organizations(
 #[allow(dead_code)]
 pub struct OptionalAuthUser(pub Option<AuthUser>);
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for OptionalAuthUser
 where
     S: Send + Sync,
@@ -373,7 +371,6 @@ where
 #[allow(dead_code)]
 pub struct AdminUser(pub AuthUser);
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for AdminUser
 where
     S: Send + Sync,
@@ -434,7 +431,6 @@ fn extract_org_from_uri(uri: &axum::http::Uri) -> Option<String> {
     }
 }
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for OrgContext
 where
     S: Send + Sync,
@@ -509,7 +505,6 @@ pub struct ResolvedOrg {
     pub name: String,
 }
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for ResolvedOrg
 where
     S: Send + Sync,

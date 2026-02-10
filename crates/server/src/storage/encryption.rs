@@ -135,11 +135,11 @@ impl EncryptionService {
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         // Generate random DEK
         let mut dek_bytes = [0u8; DEK_SIZE];
-        rand::thread_rng().fill_bytes(&mut dek_bytes);
+        rand::rng().fill_bytes(&mut dek_bytes);
 
         // Wrap DEK with primary KEK
         let mut dek_nonce_bytes = [0u8; NONCE_SIZE];
-        rand::thread_rng().fill_bytes(&mut dek_nonce_bytes);
+        rand::rng().fill_bytes(&mut dek_nonce_bytes);
         let dek_nonce = Nonce::from_slice(&dek_nonce_bytes);
 
         let wrapped_dek = self
@@ -153,7 +153,7 @@ impl EncryptionService {
             .map_err(|e| anyhow::anyhow!("Failed to create DEK cipher: {}", e))?;
 
         let mut data_nonce_bytes = [0u8; NONCE_SIZE];
-        rand::thread_rng().fill_bytes(&mut data_nonce_bytes);
+        rand::rng().fill_bytes(&mut data_nonce_bytes);
         let data_nonce = Nonce::from_slice(&data_nonce_bytes);
 
         let ciphertext = dek_cipher
@@ -300,7 +300,7 @@ impl EncryptionService {
 /// Returns format: "key_id:base64_key"
 pub fn generate_encryption_key(key_id: &str) -> String {
     let mut key = [0u8; KEY_SIZE];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     format!("{}:{}", key_id, BASE64.encode(key))
 }
 

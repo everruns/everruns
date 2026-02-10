@@ -68,51 +68,54 @@ pub fn routes(state: AppState) -> Router {
         // SSE streaming
         .route("/v1/durable/sse", get(stream_durable_sse))
         .route(
-            "/v1/durable/workflows/:workflow_id/sse",
+            "/v1/durable/workflows/{workflow_id}/sse",
             get(stream_workflow_sse),
         )
         // System health
         .route("/v1/durable/health", get(get_health))
         // Workers
         .route("/v1/durable/workers", get(list_workers))
-        .route("/v1/durable/workers/:worker_id/drain", post(drain_worker))
-        .route("/v1/durable/workers/:worker_id/resume", post(resume_worker))
+        .route("/v1/durable/workers/{worker_id}/drain", post(drain_worker))
+        .route(
+            "/v1/durable/workers/{worker_id}/resume",
+            post(resume_worker),
+        )
         // Workflows
         .route("/v1/durable/workflows", get(list_workflows))
-        .route("/v1/durable/workflows/:workflow_id", get(get_workflow))
+        .route("/v1/durable/workflows/{workflow_id}", get(get_workflow))
         .route(
-            "/v1/durable/workflows/:workflow_id/events",
+            "/v1/durable/workflows/{workflow_id}/events",
             get(get_workflow_events),
         )
         .route(
-            "/v1/durable/workflows/:workflow_id/cancel",
+            "/v1/durable/workflows/{workflow_id}/cancel",
             post(cancel_workflow),
         )
         .route(
-            "/v1/durable/workflows/:workflow_id/signal",
+            "/v1/durable/workflows/{workflow_id}/signal",
             post(send_signal),
         )
         // Tasks
         .route("/v1/durable/tasks", get(list_tasks))
         // DLQ
         .route("/v1/durable/dlq", get(list_dlq))
-        .route("/v1/durable/dlq/:dlq_id/retry", post(retry_dlq))
+        .route("/v1/durable/dlq/{dlq_id}/retry", post(retry_dlq))
         // Circuit breakers
         .route("/v1/durable/circuit-breakers", get(list_circuit_breakers))
         .route(
-            "/v1/durable/circuit-breakers/:key",
+            "/v1/durable/circuit-breakers/{key}",
             get(get_circuit_breaker),
         )
         .route(
-            "/v1/durable/circuit-breakers/:key/open",
+            "/v1/durable/circuit-breakers/{key}/open",
             post(force_open_circuit_breaker),
         )
         .route(
-            "/v1/durable/circuit-breakers/:key/close",
+            "/v1/durable/circuit-breakers/{key}/close",
             post(force_close_circuit_breaker),
         )
         .route(
-            "/v1/durable/circuit-breakers/:key",
+            "/v1/durable/circuit-breakers/{key}",
             axum::routing::delete(delete_circuit_breaker),
         )
         .with_state(state)

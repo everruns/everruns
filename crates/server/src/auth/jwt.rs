@@ -13,8 +13,8 @@ use super::config::JwtConfig;
 
 /// Generate a random identifier string (32 hex characters)
 fn generate_random_id() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.r#gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 16] = rng.random();
     hex::encode(bytes)
 }
 

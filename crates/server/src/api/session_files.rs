@@ -158,17 +158,17 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         // Actions (must be before wildcard to take precedence)
-        .route("/v1/sessions/:session_id/fs/_/move", post(move_file))
-        .route("/v1/sessions/:session_id/fs/_/copy", post(copy_file))
-        .route("/v1/sessions/:session_id/fs/_/grep", post(grep_files))
-        .route("/v1/sessions/:session_id/fs/_/stat", post(stat_file))
+        .route("/v1/sessions/{session_id}/fs/_/move", post(move_file))
+        .route("/v1/sessions/{session_id}/fs/_/copy", post(copy_file))
+        .route("/v1/sessions/{session_id}/fs/_/grep", post(grep_files))
+        .route("/v1/sessions/{session_id}/fs/_/stat", post(stat_file))
         // File operations with path
         .route(
-            "/v1/sessions/:session_id/fs",
+            "/v1/sessions/{session_id}/fs",
             get(get_root).post(create_root).delete(delete_root),
         )
         .route(
-            "/v1/sessions/:session_id/fs/*path",
+            "/v1/sessions/{session_id}/fs/{*path}",
             get(get_path)
                 .post(create_path)
                 .put(update_path)

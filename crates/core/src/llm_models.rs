@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {
-    /// OpenAI using Open Responses API (https://www.openresponses.org/)
+    /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     Openai,
     /// OpenAI using Chat Completions API (for backward compatibility)
     #[serde(rename = "openai_completions")]
@@ -256,7 +256,7 @@ pub struct ReasoningEffortConfig {
 }
 
 /// LLM Model Profile describing model capabilities
-/// Based on models.dev structure (https://models.dev/api.json)
+/// Based on models.dev structure (<https://models.dev/api.json>)
 ///
 /// NOTE: Currently only includes profiles for:
 /// - OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini

@@ -31,7 +31,7 @@ const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
 /// OpenAI LLM Driver using Open Responses API
 ///
 /// Production driver for OpenAI using the Open Responses specification
-/// (https://www.openresponses.org/). This is the recommended driver for
+/// (<https://www.openresponses.org/>). This is the recommended driver for
 /// new projects, offering:
 /// - Better performance with reasoning models (o1, o3, GPT-5)
 /// - Provider-agnostic streaming events
@@ -172,7 +172,7 @@ impl std::fmt::Debug for OpenAILlmDriver {
 /// existing integrations or when Open Responses API is not suitable.
 ///
 /// For new projects, prefer `OpenAILlmDriver` which uses the Open Responses
-/// specification (https://www.openresponses.org/).
+/// specification (<https://www.openresponses.org/>).
 ///
 /// # Example
 ///

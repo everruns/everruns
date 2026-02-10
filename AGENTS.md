@@ -48,6 +48,9 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/test-cases.md` - Manual test case format
 - `specs/session-sqldb.md` - Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
+- `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
+- `specs/events-contract.md` - SSE event format contract
+- `specs/maintenance.md` - Pre-release maintenance checklist
 
 ### Skills
 

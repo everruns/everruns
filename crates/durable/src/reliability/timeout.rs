@@ -315,7 +315,7 @@ mod duration_millis {
     }
 }
 
-/// Serde support for Option<Duration> as milliseconds
+/// Serde support for `Option<Duration>` as milliseconds
 mod option_duration_millis {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;

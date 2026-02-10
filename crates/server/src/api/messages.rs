@@ -175,7 +175,7 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/:session_id/messages",
+            "/v1/sessions/{session_id}/messages",
             post(create_message).get(list_messages),
         )
         .with_state(state)

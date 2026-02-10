@@ -121,7 +121,7 @@ pub fn routes(state: AppState) -> Router {
             post(create_mcp_server).get(list_mcp_servers),
         )
         .route(
-            "/v1/mcp-servers/:server_id",
+            "/v1/mcp-servers/{server_id}",
             get(get_mcp_server)
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),

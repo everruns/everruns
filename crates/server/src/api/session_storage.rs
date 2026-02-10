@@ -64,9 +64,9 @@ impl FromRef<AppState> for AuthState {
 /// Create session storage routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/:session_id/storage/keys", get(list_keys))
+        .route("/v1/sessions/{session_id}/storage/keys", get(list_keys))
         .route(
-            "/v1/sessions/:session_id/storage/secrets",
+            "/v1/sessions/{session_id}/storage/secrets",
             get(list_secrets),
         )
         .with_state(state)

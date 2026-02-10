@@ -131,7 +131,7 @@ Display:   evr_<first-8-chars>...   (prefix for identification)
 | TM-CRYPTO-003 | Ciphertext tampering | High | GCM authentication tag detects modification | MITIGATED |
 | TM-CRYPTO-004 | Known-plaintext attack | Medium | Unique DEK per encryption; same plaintext produces different ciphertext | MITIGATED |
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
-| TM-CRYPTO-006 | Re-encryption job missing | Low | Background re-encryption not yet implemented; old keys decrypt via key_id lookup | **OPEN** |
+| TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | Only LLM API keys encrypted; other sensitive fields (system prompts, session data) stored plaintext | **OPEN** |
 
 ### Mitigation Details
@@ -151,10 +151,13 @@ Store JSON: {version, alg, key_id, dek_wrapped, nonce, ciphertext}
 
 Key rotation: Deploy new KEK as `SECRETS_ENCRYPTION_KEY`, move old to `SECRETS_ENCRYPTION_KEY_PREVIOUS`. Both active for decryption; only new key used for encryption.
 
-**TM-CRYPTO-006 — Re-encryption (OPEN):**
-Re-encryption CLI tool is documented but not implemented. After key rotation, old ciphertexts remain readable via previous key but are not automatically migrated.
-- **Recommendation:** Implement background re-encryption job.
-- **Priority:** Medium
+**TM-CRYPTO-006 — Re-encryption (MITIGATED):**
+Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.rs`. Features:
+- Batch processing with configurable batch size
+- Dry-run mode for safety
+- Per-table filtering
+- Key rotation detection via `is_current_key()`
+- Full UPDATE statements to write re-encrypted data back
 
 ## 3. Tenant Isolation (TM-TENANT)
 
@@ -467,7 +470,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-005 | Capability escalation via agent creation | High | Agent creator chooses capabilities; no approval workflow for dangerous capabilities (virtual_bash, docker) | **OPEN** |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
-| TM-AGENT-008 | Context window poisoning | Medium | Full message history sent to LLM; no truncation; adversarial early messages persist | **OPEN** |
+| TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
 | TM-AGENT-009 | Agent self-modification | Low | No tools for agent/session CRUD; system prompt immutable within a session | MITIGATED |
 | TM-AGENT-010 | Agent spawning agent chains | Low | No agent-creation tools; agents cannot spawn child agents or sessions | MITIGATED |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts stored plaintext in DB; not encrypted at rest | **OPEN** (see TM-CRYPTO-007) |
@@ -515,10 +518,8 @@ if self.current_iteration >= self.max_iterations {
 ```
 Default: 100 iterations. Each Reason→Act cycle counts as one iteration. Configurable per agent.
 
-**TM-AGENT-008 — Context Window Poisoning (OPEN):**
-Full conversation history is sent to the LLM on every turn. An adversarial user message early in the session persists across all future turns. No message compaction or truncation is implemented.
-- **Recommendation:** Implement sliding window or summarization for long sessions. Consider allowing agents to "forget" old messages.
-- **Priority:** Low (defense-in-depth, not primary attack vector)
+**TM-AGENT-008 — Context Window Poisoning (MITIGATED):**
+When the message history exceeds the LLM's context window, the `ReasonAtom` catches `RequestTooLarge` errors and calls `llm_driver.compact()` to compress older messages. This prevents unbounded context growth. Adversarial early messages are still present but may be summarized during compaction.
 
 **TM-AGENT-013 — Exfiltration via web_fetch (ACCEPTED):**
 An agent with `web_fetch` capability can:
@@ -629,9 +630,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DURABLE-002 | gRPC unauthenticated | High | mTLS or bearer token auth for workers |
 | TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
-| TM-AGENT-008 | Context window poisoning | Medium | Sliding window or message compaction |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
-| TM-CRYPTO-006 | Re-encryption job missing | Medium | Implement background re-encryption CLI |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
 | TM-WEB-004 | Missing clickjacking protection | Medium | Add X-Frame-Options: DENY |
 | TM-WEB-005 | Missing security headers | Low | Add CSP, X-Content-Type-Options, Referrer-Policy |

@@ -134,13 +134,13 @@ pub fn routes(state: AppState) -> Router {
         // Session CRUD
         .route("/v1/sessions", post(create_session).get(list_sessions))
         .route(
-            "/v1/sessions/:session_id",
+            "/v1/sessions/{session_id}",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
         // Cancel turn endpoint
-        .route("/v1/sessions/:session_id/cancel", post(cancel_turn))
+        .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
         .with_state(state)
 }
 

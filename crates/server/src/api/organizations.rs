@@ -87,7 +87,7 @@ pub fn routes(state: AppState) -> Router {
             get(list_organizations).post(create_organization),
         )
         .route(
-            "/v1/orgs/:org",
+            "/v1/orgs/{org}",
             get(get_organization).patch(update_organization),
         )
         .with_state(state)

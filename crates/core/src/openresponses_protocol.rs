@@ -44,7 +44,7 @@ const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
 /// Open Responses Protocol Driver (OpenAI implementation)
 ///
 /// Implements `LlmDriver` using the Open Responses specification
-/// (https://www.openresponses.org/). This driver targets OpenAI's API
+/// (<https://www.openresponses.org/>). This driver targets OpenAI's API
 /// but follows the vendor-neutral Open Responses standard.
 ///
 /// Rate limit handling: On 429 errors, automatically retries with exponential

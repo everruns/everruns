@@ -198,7 +198,7 @@ pub trait LlmDriver: Send + Sync {
     }
 }
 
-/// Implement LlmDriver for Box<dyn LlmDriver> to allow dynamic dispatch
+/// Implement LlmDriver for `Box<dyn LlmDriver>` to allow dynamic dispatch
 #[async_trait]
 impl LlmDriver for Box<dyn LlmDriver> {
     async fn chat_completion_stream(
@@ -684,7 +684,7 @@ impl LlmMessage {
 /// Provider type enumeration matching the database/contracts
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderType {
-    /// OpenAI using Open Responses API (https://www.openresponses.org/)
+    /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     /// This is the recommended API for new projects.
     OpenAI,
     /// OpenAI using Chat Completions API (for backward compatibility)

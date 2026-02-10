@@ -49,7 +49,7 @@ pub struct BraintrustConfig {
     pub api_key: String,
     /// Project ID (resolved from name if needed)
     pub project_id: String,
-    /// API base URL (default: https://api.braintrust.dev)
+    /// API base URL (default: <https://api.braintrust.dev>)
     pub api_url: String,
 }
 

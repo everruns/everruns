@@ -58,34 +58,37 @@ pub fn routes(state: ScheduleAppState) -> Router {
         // CRUD
         .route("/v1/durable/schedules", post(create_schedule))
         .route("/v1/durable/schedules", get(list_schedules))
-        .route("/v1/durable/schedules/:schedule_id", get(get_schedule))
-        .route("/v1/durable/schedules/:schedule_id", patch(update_schedule))
+        .route("/v1/durable/schedules/{schedule_id}", get(get_schedule))
         .route(
-            "/v1/durable/schedules/:schedule_id",
+            "/v1/durable/schedules/{schedule_id}",
+            patch(update_schedule),
+        )
+        .route(
+            "/v1/durable/schedules/{schedule_id}",
             delete(delete_schedule),
         )
         // Actions
         .route(
-            "/v1/durable/schedules/:schedule_id/pause",
+            "/v1/durable/schedules/{schedule_id}/pause",
             post(pause_schedule),
         )
         .route(
-            "/v1/durable/schedules/:schedule_id/resume",
+            "/v1/durable/schedules/{schedule_id}/resume",
             post(resume_schedule),
         )
         .route(
-            "/v1/durable/schedules/:schedule_id/trigger",
+            "/v1/durable/schedules/{schedule_id}/trigger",
             post(trigger_schedule),
         )
         // Executions
         .route(
-            "/v1/durable/schedules/:schedule_id/executions",
+            "/v1/durable/schedules/{schedule_id}/executions",
             get(list_schedule_executions),
         )
-        .route("/v1/durable/executions/:execution_id", get(get_execution))
+        .route("/v1/durable/executions/{execution_id}", get(get_execution))
         // Stats
         .route(
-            "/v1/durable/schedules/:schedule_id/stats",
+            "/v1/durable/schedules/{schedule_id}/stats",
             get(get_schedule_stats),
         )
         .with_state(state)

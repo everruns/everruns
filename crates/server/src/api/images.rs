@@ -117,8 +117,8 @@ pub fn routes(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024))
                 .get(list_images),
         )
-        .route("/v1/images/:image_id", get(get_image).delete(delete_image))
-        .route("/v1/images/:image_id/thumbnail", get(get_thumbnail))
+        .route("/v1/images/{image_id}", get(get_image).delete(delete_image))
+        .route("/v1/images/{image_id}/thumbnail", get(get_thumbnail))
         .with_state(state)
 }
 

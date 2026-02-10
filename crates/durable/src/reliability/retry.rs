@@ -151,9 +151,9 @@ impl RetryPolicy {
 
         // Apply jitter
         let jittered = if self.jitter > 0.0 {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let jitter_range = capped * self.jitter;
-            let jitter_offset = rng.gen_range(-jitter_range..jitter_range);
+            let jitter_offset = rng.random_range(-jitter_range..jitter_range);
             (capped + jitter_offset).max(0.0)
         } else {
             capped
