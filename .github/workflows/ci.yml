@@ -163,6 +163,7 @@ jobs:
         run: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
 
       - name: Run LLM integration tests (skips providers without API keys)
+        timeout-minutes: 10
         run: |
           cargo test -p everruns-core --test agent_run_basic --all-features
           cargo test -p everruns-core --test agent_run_with_thinking --all-features
