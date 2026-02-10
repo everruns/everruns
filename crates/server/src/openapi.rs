@@ -86,6 +86,33 @@ use utoipa::OpenApi;
         api::schedules::list_schedule_executions,
         api::schedules::get_execution,
         api::schedules::get_schedule_stats,
+        // Agents - additional
+        api::agents::preview_agent,
+        api::agents::upsert_agent,
+        // LLM Providers - additional
+        api::llm_providers::sync_models,
+        // Users - additional
+        api::users::switch_org,
+        // Organizations
+        api::organizations::create_organization,
+        api::organizations::list_organizations,
+        api::organizations::get_organization,
+        api::organizations::update_organization,
+        // Images
+        api::images::upload_image,
+        api::images::list_images,
+        api::images::get_image,
+        api::images::delete_image,
+        api::images::get_thumbnail,
+        // Session Databases
+        api::session_databases::create_database,
+        api::session_databases::list_databases,
+        api::session_databases::get_database,
+        api::session_databases::delete_database,
+        api::session_databases::get_schema,
+        // Session Storage
+        api::session_storage::list_keys,
+        api::session_storage::list_secrets,
     ),
     components(
         schemas(
@@ -162,7 +189,11 @@ use utoipa::OpenApi;
         (name = "users", description = "User management endpoints"),
         (name = "filesystem", description = "Session virtual filesystem endpoints"),
         (name = "mcp-servers", description = "MCP Server management endpoints"),
-        (name = "durable-schedules", description = "Durable scheduled tasks management endpoints")
+        (name = "durable-schedules", description = "Durable scheduled tasks management endpoints"),
+        (name = "organizations", description = "Organization management endpoints"),
+        (name = "images", description = "Image upload and management endpoints"),
+        (name = "session-databases", description = "Session-scoped SQL database endpoints"),
+        (name = "session-storage", description = "Session key-value storage endpoints"),
     ),
     info(
         title = "Everruns API",

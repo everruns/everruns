@@ -18,12 +18,12 @@
 //! - Uses dedicated `todos` state channel (not message history)
 //! - Thread-scoped lifecycle with subagent isolation
 //! - Known issue: context tokens grow quickly (proposed `auto_clean_context` flag)
-//! - Reference: https://deepwiki.com/langchain-ai/deepagents/2.4-state-management
+//! - Reference: <https://deepwiki.com/langchain-ai/deepagents/2.4-state-management>
 //!
 //! **OpenAI Codex CLI update_plan**:
 //! - Maintains plan history across resumed runs
 //! - Supports "compacting conversation state" for longer sessions
-//! - Reference: https://github.com/openai/codex
+//! - Reference: <https://github.com/openai/codex>
 //!
 //! ## Trade-offs
 //!

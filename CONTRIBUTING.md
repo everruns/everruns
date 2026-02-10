@@ -54,7 +54,7 @@ just stop-all
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): description`
 
-**Types:** feat, fix, docs, style, refactor, perf, test, chore, ci
+**Types:** feat, fix, docs, refactor, test, chore
 
 **Examples:**
 ```

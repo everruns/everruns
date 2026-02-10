@@ -237,7 +237,7 @@ message SetSessionStatusResponse {
 message Message {
     Uuid id = 1;
     string role = 2;
-    google.protobuf.ListValue content = 3;  // Vec<ContentPart>
+    google.protobuf.ListValue content = 3;  // `Vec<ContentPart>`
     optional google.protobuf.Struct controls = 4;  // Controls object
     optional google.protobuf.Struct metadata = 5;  // metadata object
     Timestamp created_at = 6;

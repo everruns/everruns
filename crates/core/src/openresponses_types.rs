@@ -539,7 +539,7 @@ pub struct TextConfig {
 // ============================================================================
 
 /// Request body for creating a response.
-/// See: https://www.openresponses.org/specification
+/// See: <https://www.openresponses.org/specification>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateResponseBody {
     /// Model to use (e.g., "gpt-5.2", "o3").

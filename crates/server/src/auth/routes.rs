@@ -32,8 +32,8 @@ use crate::storage::{
 
 /// Generate a random state string for OAuth (32 hex characters)
 fn generate_oauth_state() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.r#gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 16] = rng.random();
     hex::encode(bytes)
 }
 

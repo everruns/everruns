@@ -26,8 +26,8 @@ tokio-stream = "0.1"
 futures = "0.3"
 
 # HTTP framework
-axum = { version = "0.7", features = ["macros"] }
-axum-extra = { version = "0.9", features = ["cookie", "multipart"] }
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.12", features = ["cookie", "multipart"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
@@ -57,23 +57,23 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # OpenTelemetry
-opentelemetry = "0.28"
-opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28", features = ["http-proto", "reqwest-client"] }
-tracing-opentelemetry = "0.29"
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.32"
 
 # OpenAPI documentation
-utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 
 # Encryption
 aes-gcm = "0.10"
-rand = "0.8"
+rand = "0.9"
 base64 = "0.22"
 
 # Authentication
 argon2 = "0.5"
-jsonwebtoken = "9.3"
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 sha2 = "0.10"
 hex = "0.4"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "form"] }

@@ -351,8 +351,10 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
 fn build_otlp_tracer(
     endpoint: &str,
     resource: Resource,
-) -> Result<(SdkTracerProvider, opentelemetry_sdk::trace::Tracer), opentelemetry::trace::TraceError>
-{
+) -> Result<
+    (SdkTracerProvider, opentelemetry_sdk::trace::Tracer),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     // Use HTTP OTLP instead of gRPC - more reliable with Docker DNS
     let exporter = SpanExporter::builder()
         .with_http()

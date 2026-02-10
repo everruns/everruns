@@ -14,7 +14,7 @@ const API_KEY_LENGTH: usize = 32; // 32 random bytes = 64 hex chars
 /// Generated API key (full key shown only at creation)
 #[derive(Debug)]
 pub struct GeneratedApiKey {
-    /// Full API key (evr_<random>)
+    /// Full API key (`evr_<random>`)
     pub key: String,
     /// SHA-256 hash for database storage
     pub key_hash: String,
@@ -25,8 +25,8 @@ pub struct GeneratedApiKey {
 /// Generate a new API key
 pub fn generate_api_key() -> GeneratedApiKey {
     // Generate random bytes
-    let mut rng = rand::thread_rng();
-    let random_bytes: Vec<u8> = (0..API_KEY_LENGTH).map(|_| rng.r#gen()).collect();
+    let mut rng = rand::rng();
+    let random_bytes: Vec<u8> = (0..API_KEY_LENGTH).map(|_| rng.random()).collect();
     let random_hex = hex::encode(&random_bytes);
 
     // Full key with prefix

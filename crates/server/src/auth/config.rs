@@ -135,7 +135,7 @@ impl AuthConfig {
             if mode == AuthMode::None {
                 // Generate a random secret for dev mode
                 use rand::Rng;
-                let bytes: [u8; 32] = rand::thread_rng().r#gen();
+                let bytes: [u8; 32] = rand::rng().random();
                 hex::encode(bytes)
             } else {
                 tracing::warn!("AUTH_JWT_SECRET not set, using insecure default");

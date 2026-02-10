@@ -68,14 +68,14 @@ pub fn uuid_to_proto_uuid(value: uuid::Uuid) -> proto::Uuid {
     }
 }
 
-/// Convert from proto Timestamp to chrono DateTime<Utc>
+/// Convert from proto Timestamp to chrono `DateTime<Utc>`
 pub fn proto_timestamp_to_datetime(value: &proto::Timestamp) -> DateTime<Utc> {
     Utc.timestamp_opt(value.seconds, value.nanos as u32)
         .single()
         .unwrap_or_else(Utc::now)
 }
 
-/// Convert from chrono DateTime<Utc> to proto Timestamp
+/// Convert from chrono `DateTime<Utc>` to proto Timestamp
 pub fn datetime_to_proto_timestamp(value: DateTime<Utc>) -> proto::Timestamp {
     proto::Timestamp {
         seconds: value.timestamp(),
