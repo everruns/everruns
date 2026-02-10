@@ -249,7 +249,9 @@ MCP tool results can contain various content types:
 
 The executor converts MCP content to the internal format:
 - Single text content → simplified `{ "result": "text" }`
-- Multiple content blocks → `{ "content": [...] }`
+- Multiple text/resource blocks → `{ "content": [...] }`
+- **Image content → extracted as `ToolResultImage`** and sent to the LLM as native image content blocks (not embedded in JSON). This enables the LLM to visually analyze images returned by MCP tools.
+- Image-only responses → `{ "result": "[N image(s)]" }` with images as separate `ToolResult.images`
 - Errors → `{ "error": "message" }`
 
 ### LLM Provider Compatibility

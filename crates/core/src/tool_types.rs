@@ -114,6 +114,9 @@ pub struct ToolResult {
     pub tool_call_id: String,
     /// Result data (success)
     pub result: Option<serde_json::Value>,
+    /// Images returned by the tool (sent as native image content to LLM)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<crate::tools::ToolResultImage>>,
     /// Error message (failure)
     pub error: Option<String>,
 }
@@ -178,6 +181,7 @@ mod tests {
         let result = ToolResult {
             tool_call_id: "call_123".to_string(),
             result: Some(serde_json::json!({"temperature": 72})),
+            images: None,
             error: None,
         };
 

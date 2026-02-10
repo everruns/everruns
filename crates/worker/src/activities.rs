@@ -453,6 +453,7 @@ mod tests {
                 result: everruns_core::ToolResult {
                     tool_call_id: "call_1".to_string(),
                     result: Some(json!({"temp": 72})),
+                    images: None,
                     error: None,
                 },
                 success: true,

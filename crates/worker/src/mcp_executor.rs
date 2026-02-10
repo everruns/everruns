@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use everruns_core::traits::{ToolContext, ToolExecutor};
 use everruns_core::{
     McpContent, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition, ToolResult,
-    is_mcp_tool, parse_mcp_tool_name,
+    ToolResultImage, is_mcp_tool, parse_mcp_tool_name,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ impl McpToolExecutor {
         let server_info = self.get_server_info(&server_prefix).await?;
 
         // Call the MCP server
-        let result = call_mcp_tool(
+        let (result, images) = call_mcp_tool(
             &server_info,
             &original_tool_name,
             tool_call.arguments.clone(),
@@ -67,6 +67,11 @@ impl McpToolExecutor {
         Ok(ToolResult {
             tool_call_id: tool_call.id.clone(),
             result: Some(result),
+            images: if images.is_empty() {
+                None
+            } else {
+                Some(images)
+            },
             error: None,
         })
     }
@@ -102,12 +107,13 @@ impl McpToolExecutor {
     }
 }
 
-/// Call an MCP server's tools/call endpoint
+/// Call an MCP server's tools/call endpoint.
+/// Returns (json_result, images) where images are extracted from MCP image content.
 async fn call_mcp_tool(
     server_info: &McpServerInfo,
     tool_name: &str,
     arguments: serde_json::Value,
-) -> Result<serde_json::Value> {
+) -> Result<(serde_json::Value, Vec<ToolResultImage>)> {
     let client = reqwest::Client::builder()
         .timeout(MCP_TOOL_TIMEOUT)
         .build()?;
@@ -210,40 +216,62 @@ async fn call_mcp_tool(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        return Ok(json!({ "error": error_text }));
+        return Ok((json!({ "error": error_text }), vec![]));
     }
 
-    // Convert MCP content to JSON
-    let content_json: Vec<serde_json::Value> = result
-        .content
-        .iter()
-        .map(|c| match c {
-            McpContent::Text { text } => json!({ "type": "text", "text": text }),
-            McpContent::Image { data, mime_type } => json!({
-                "type": "image",
-                "data": data,
-                "mime_type": mime_type
-            }),
+    // Separate images from other content types.
+    // Images are returned as ToolResultImage for native LLM image support.
+    let mut images = Vec::new();
+    let mut text_parts = Vec::new();
+    let mut resource_parts = Vec::new();
+
+    for c in &result.content {
+        match c {
+            McpContent::Text { text } => {
+                text_parts.push(text.clone());
+            }
+            McpContent::Image { data, mime_type } => {
+                images.push(ToolResultImage {
+                    base64: data.clone(),
+                    media_type: mime_type.clone(),
+                });
+            }
             McpContent::Resource {
                 uri,
                 mime_type,
                 text,
-            } => json!({
-                "type": "resource",
-                "uri": uri,
-                "mime_type": mime_type,
-                "text": text
-            }),
-        })
-        .collect();
-
-    // Return simplified result for single text content
-    if content_json.len() == 1 && content_json[0].get("text").is_some() {
-        let text = &content_json[0]["text"];
-        return Ok(json!({ "result": text }));
+            } => {
+                resource_parts.push(json!({
+                    "type": "resource",
+                    "uri": uri,
+                    "mime_type": mime_type,
+                    "text": text
+                }));
+            }
+        }
     }
 
-    Ok(json!({ "content": content_json }))
+    // Build JSON result from text and resource content (images are separate)
+    let json_result = if resource_parts.is_empty() {
+        if text_parts.len() == 1 {
+            json!({ "result": text_parts[0] })
+        } else if text_parts.is_empty() && !images.is_empty() {
+            // Image-only response
+            json!({ "result": format!("[{} image(s)]", images.len()) })
+        } else {
+            json!({ "result": text_parts.join("\n") })
+        }
+    } else {
+        // Mix of text and resources
+        let mut content = Vec::new();
+        for t in &text_parts {
+            content.push(json!({ "type": "text", "text": t }));
+        }
+        content.extend(resource_parts);
+        json!({ "content": content })
+    };
+
+    Ok((json_result, images))
 }
 
 /// Composite Tool Executor that handles both built-in tools and MCP tools
@@ -369,5 +397,93 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
         let response = "some text\ndata: {\"key\": \"value\"}";
         let result = extract_json_from_response(response);
         assert_eq!(result, Some("{\"key\": \"value\"}"));
+    }
+
+    // MCP image content extraction tests
+
+    #[test]
+    fn test_mcp_text_only_result() {
+        let content = vec![McpContent::Text {
+            text: "Hello world".to_string(),
+        }];
+        let result = everruns_core::McpToolCallResult {
+            content,
+            is_error: false,
+        };
+
+        // Simulate what call_mcp_tool does after getting the result
+        let mut images = Vec::new();
+        let mut text_parts = Vec::new();
+        for c in &result.content {
+            match c {
+                McpContent::Text { text } => text_parts.push(text.clone()),
+                McpContent::Image { data, mime_type } => images.push(ToolResultImage {
+                    base64: data.clone(),
+                    media_type: mime_type.clone(),
+                }),
+                _ => {}
+            }
+        }
+        assert!(images.is_empty());
+        assert_eq!(text_parts, vec!["Hello world"]);
+    }
+
+    #[test]
+    fn test_mcp_image_extraction() {
+        let content = vec![
+            McpContent::Text {
+                text: "Here's the chart".to_string(),
+            },
+            McpContent::Image {
+                data: "iVBORw0KGgo=".to_string(),
+                mime_type: "image/png".to_string(),
+            },
+        ];
+
+        let mut images = Vec::new();
+        let mut text_parts = Vec::new();
+        for c in &content {
+            match c {
+                McpContent::Text { text } => text_parts.push(text.clone()),
+                McpContent::Image { data, mime_type } => images.push(ToolResultImage {
+                    base64: data.clone(),
+                    media_type: mime_type.clone(),
+                }),
+                _ => {}
+            }
+        }
+
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].media_type, "image/png");
+        assert_eq!(images[0].base64, "iVBORw0KGgo=");
+        assert_eq!(text_parts, vec!["Here's the chart"]);
+    }
+
+    #[test]
+    fn test_mcp_multiple_images() {
+        let content = vec![
+            McpContent::Image {
+                data: "AAA=".to_string(),
+                mime_type: "image/png".to_string(),
+            },
+            McpContent::Image {
+                data: "BBB=".to_string(),
+                mime_type: "image/jpeg".to_string(),
+            },
+        ];
+
+        let mut images = Vec::new();
+        for c in &content {
+            if let McpContent::Image { data, mime_type } = c {
+                images.push(ToolResultImage {
+                    base64: data.clone(),
+                    media_type: mime_type.clone(),
+                });
+            }
+        }
+
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].base64, "AAA=");
+        assert_eq!(images[1].media_type, "image/jpeg");
     }
 }

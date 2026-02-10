@@ -25,10 +25,24 @@ pub trait Tool: Send + Sync {
 
 **Error Handling Contract:**
 - `ToolExecutionResult::Success(Value)` - Successful result returned to LLM as `result` field
+- `ToolExecutionResult::SuccessWithImages { result, images }` - Successful result with images. Images are sent as native image content blocks to the LLM, enabling visual understanding (not stringified JSON).
 - `ToolExecutionResult::ToolError(String)` - User-visible error packaged as `{"error": "..."}` in `result` field (e.g., `{"error": "City not found"}`)
 - `ToolExecutionResult::InternalError` - System error logged, generic message packaged as `{"error": "..."}` in `result` field (security)
 
 All error types continue the agent loop the same way as success - they are all packaged in the `result` field with no `error` field set. The LLM can interpret the `{"error": "..."}` payload and decide how to proceed.
+
+**Image Support in Tool Results:**
+
+Tools can return images alongside JSON results via `ToolExecutionResult::success_with_images()`. Images are represented as `ToolResultImage { base64, media_type }` and flow through the system as native image content:
+
+1. `ToolExecutionResult::SuccessWithImages` → `ToolResult` with `images: Option<Vec<ToolResultImage>>`
+2. `ToolResult.images` → `ContentPart::Image` in tool result messages
+3. `ContentPart::Image` → `LlmContentPart::Image` in LLM messages
+4. Provider-specific formatting: Anthropic uses array content blocks in `tool_result`, OpenAI uses `image_url` content parts
+
+Supported image formats: PNG, JPEG, GIF, WebP (matching LLM vision API support).
+
+Note: OpenAI Responses API (`function_call_output`) does not support images in tool results - images are dropped with a warning in that path.
 
 **Provided Tools:**
 - `GetCurrentTime` - Returns current timestamp in various formats (iso8601, unix, human)

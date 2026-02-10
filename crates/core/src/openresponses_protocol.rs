@@ -138,20 +138,34 @@ impl OpenResponsesProtocolLlmDriver {
 
     fn convert_message(msg: &LlmMessage) -> ResponsesInputItem {
         // Handle tool result messages differently
+        // Note: OpenAI Responses API function_call_output only supports text output.
+        // Images in tool results are dropped with a warning.
         if msg.role == LlmMessageRole::Tool
             && let Some(tool_call_id) = &msg.tool_call_id
         {
+            let mut has_images = false;
             let output = match &msg.content {
                 LlmMessageContent::Text(text) => text.clone(),
-                LlmMessageContent::Parts(parts) => parts
-                    .iter()
-                    .filter_map(|p| match p {
-                        LlmContentPart::Text { text } => Some(text.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join(""),
+                LlmMessageContent::Parts(parts) => {
+                    has_images = parts
+                        .iter()
+                        .any(|p| matches!(p, LlmContentPart::Image { .. }));
+                    parts
+                        .iter()
+                        .filter_map(|p| match p {
+                            LlmContentPart::Text { text } => Some(text.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("")
+                }
             };
+            if has_images {
+                tracing::warn!(
+                    tool_call_id = %tool_call_id,
+                    "OpenResponses API does not support images in tool results; images dropped"
+                );
+            }
             return ResponsesInputItem::FunctionCallOutput {
                 r#type: "function_call_output".to_string(),
                 call_id: tool_call_id.clone(),

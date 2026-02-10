@@ -388,6 +388,7 @@ impl ToolExecutor for MockToolExecutor {
         Ok(ToolResult {
             tool_call_id: tool_call.id.clone(),
             result: Some(result),
+            images: None,
             error: None,
         })
     }
@@ -422,6 +423,7 @@ impl ToolExecutor for EchoToolExecutor {
                 "echoed_tool": tool_call.name,
                 "echoed_arguments": tool_call.arguments
             })),
+            images: None,
             error: None,
         })
     }
@@ -463,6 +465,7 @@ impl ToolExecutor for FailingToolExecutor {
         Ok(ToolResult {
             tool_call_id: tool_call.id.clone(),
             result: None,
+            images: None,
             error: Some(self.error_message.clone()),
         })
     }

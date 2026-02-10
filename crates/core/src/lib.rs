@@ -125,7 +125,7 @@ pub use openresponses_protocol::{
 // Tool abstraction re-exports
 pub use tools::{
     EchoTool, FailingTool, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry,
-    ToolRegistryBuilder,
+    ToolRegistryBuilder, ToolResultImage,
 };
 
 // Capability re-exports

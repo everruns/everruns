@@ -133,6 +133,11 @@ Detect `RequestTooLarge` for:
    - `tool_calls`: Optional tool calls (assistant messages)
    - `tool_call_id`: Optional tool call reference (tool messages)
 
+   **Image Content in Tool Results**: When a tool returns images (via `ToolResultImage`), they become `LlmContentPart::Image` entries in the Tool message's content. Provider-specific handling:
+   - **Anthropic**: Tool results with images use array `content` in `tool_result` block (text + image blocks)
+   - **OpenAI Chat Completions**: Tool messages include `image_url` content parts alongside text
+   - **OpenAI Responses API**: Images not supported in `function_call_output` (text only, images dropped with warning)
+
 2. **LlmCallConfig**: Configuration for LLM calls
    - `model`: Model identifier
    - `temperature`: Optional sampling temperature
