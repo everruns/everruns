@@ -11,6 +11,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.6.0] - 2026-02-10
+
+### Highlights
+
+- **Session-Scoped SQL Databases** — Agents can create and query SQLite databases scoped to their session ([#425](https://github.com/everruns/everruns/pull/425))
+- **OpenTelemetry Observability** — Full-featured OTel with 13 event types, span hierarchy, and content recording ([#427](https://github.com/everruns/everruns/pull/427))
+- **Virtual Bash Capability** — Sandboxed bash execution for agents using bashkit ([#399](https://github.com/everruns/everruns/pull/399))
+- **Scheduled Tasks** — Cron-based scheduled task execution for durable workflows ([#405](https://github.com/everruns/everruns/pull/405))
+- **Agent Trajectory Visualization** — New UI for visualizing agent execution paths in sessions ([#436](https://github.com/everruns/everruns/pull/436))
+
+### What's Changed
+
+- chore(deps): pre-release maintenance — update deps, specs, and docs ([#439](https://github.com/everruns/everruns/pull/439))
+- feat(examples): add HackerNews reader agent example ([#438](https://github.com/everruns/everruns/pull/438))
+- feat(ui): agent trajectory visualization in session UI ([#436](https://github.com/everruns/everruns/pull/436))
+- chore: add Doppler CLI for secrets management ([#435](https://github.com/everruns/everruns/pull/435))
+- chore(deps): update everruns-sdk 0.1→0.1.1 and bashkit v0.1.2→v0.1.4 ([#433](https://github.com/everruns/everruns/pull/433))
+- refactor(migrations): squash 6 migrations into 2 logical groups ([#432](https://github.com/everruns/everruns/pull/432))
+- chore(specs): add comprehensive threat model with stable IDs ([#431](https://github.com/everruns/everruns/pull/431))
+- fix(deps): upgrade llmsim from 0.2.0 to 0.2.1 ([#429](https://github.com/everruns/everruns/pull/429))
+- fix(ui): fix workspace file browser display issues ([#428](https://github.com/everruns/everruns/pull/428))
+- feat(otel): full-featured OTel with 13 event types, span hierarchy, content recording ([#427](https://github.com/everruns/everruns/pull/427))
+- feat(agents): dual-ID pattern with public_id and upsert semantics ([#426](https://github.com/everruns/everruns/pull/426))
+- feat(session-sqldb): session-scoped SQL databases ([#425](https://github.com/everruns/everruns/pull/425))
+- fix(core): update bashkit to v0.1.2, fix file size in virtual bash ([#424](https://github.com/everruns/everruns/pull/424))
+- feat(core): update model profiles for Claude 4.6 and GPT 5.2/5.3 ([#423](https://github.com/everruns/everruns/pull/423))
+- feat(ui): replace FileBrowser with AI Elements FileTree ([#422](https://github.com/everruns/everruns/pull/422))
+- fix(ci): suppress 'no jobs were run' notifications in release workflow ([#421](https://github.com/everruns/everruns/pull/421))
+- fix(ui): remove duplicate Workspace label and fix breadcrumbs ([#419](https://github.com/everruns/everruns/pull/419))
+- docs(features): add SDK documentation page ([#417](https://github.com/everruns/everruns/pull/417))
+- feat(ui): improve Workspace breadcrumbs visibility ([#415](https://github.com/everruns/everruns/pull/415))
+- refactor(test): restructure integration tests with in-process testing and CI optimization ([#395](https://github.com/everruns/everruns/pull/395))
+- feat(ci): add UI Jest tests to CI pipeline ([#413](https://github.com/everruns/everruns/pull/413))
+- feat(ui): add file previews for Workspace ([#410](https://github.com/everruns/everruns/pull/410))
+- feat(durable): add scheduled tasks with cron-based execution ([#405](https://github.com/everruns/everruns/pull/405))
+- feat(ui): implement Streamdown for streaming markdown in messages ([#408](https://github.com/everruns/everruns/pull/408))
+- fix(api): handle /workspace prefix in filesystem API ([#407](https://github.com/everruns/everruns/pull/407))
+- fix(api): accept prefixed EventId for since_id query parameter ([#406](https://github.com/everruns/everruns/pull/406))
+- fix(durable): enforce max_attempts when claiming tasks ([#403](https://github.com/everruns/everruns/pull/403))
+- test(capabilities): add security limit tests for virtual bash ([#401](https://github.com/everruns/everruns/pull/401))
+- feat(capabilities): add virtual bash capability using bashkit ([#399](https://github.com/everruns/everruns/pull/399))
+- feat(api): add session-level capabilities configuration ([#396](https://github.com/everruns/everruns/pull/396))
+- feat(ci): add CLI e2e tests ([#394](https://github.com/everruns/everruns/pull/394))
+- refactor(cli): migrate to everruns-sdk for API client ([#393](https://github.com/everruns/everruns/pull/393))
+- fix(example): distinguish local vs example compose containers ([#392](https://github.com/everruns/everruns/pull/392))
+- fix(durable): prevent draining workers from claiming new tasks ([#391](https://github.com/everruns/everruns/pull/391))
+- fix(ui): remove redundant refresh button from Worker Pool page ([#388](https://github.com/everruns/everruns/pull/388))
+- fix(ci): fix release workflow syntax and add manual trigger ([#390](https://github.com/everruns/everruns/pull/390))
+
+### Migration Notes
+
+**0.5.0 → 0.6.0:** This release includes database schema changes (session-scoped SQL databases, migration squash, dual-ID pattern). A fresh database is required — no automatic migration is supported.
+
 ## [0.5.0] - 2026-01-30
 
 ### Highlights
