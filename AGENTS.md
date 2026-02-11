@@ -89,17 +89,6 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`.
 
-### Cloud Agent (legacy details)
-
-```bash
-./scripts/init-cloud-env.sh       # Install just + gh + doppler
-just start-dev --no-watch         # DEV MODE (no Docker)
-```
-
-Pre-configured cloud secrets are provided via Doppler: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`.
-
-Use `doppler run -- <command>` to inject them.
-
 ### Local Dev
 
 ```bash
