@@ -816,6 +816,40 @@ impl StorageBackend {
     }
 
     // ============================================
+    // External Identity (for SaaS auth providers)
+    // ============================================
+
+    pub async fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>> {
+        dispatch!(self, get_user_by_external_id, external_id)
+    }
+
+    pub async fn get_organization_by_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, get_organization_by_external_id, external_id)
+    }
+
+    pub async fn upsert_org_by_external_id(
+        &self,
+        external_id: &str,
+        public_id: &str,
+        name: &str,
+    ) -> Result<OrganizationRow> {
+        dispatch!(
+            self,
+            upsert_org_by_external_id,
+            external_id,
+            public_id,
+            name
+        )
+    }
+
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
+        dispatch!(self, ensure_membership, user_id, org_id)
+    }
+
+    // ============================================
     // Session Storage (Key-Value & Secrets)
     // ============================================
 

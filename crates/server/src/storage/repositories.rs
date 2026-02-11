@@ -39,9 +39,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            INSERT INTO users (email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            INSERT INTO users (email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             "#,
         )
         .bind(&input.email)
@@ -52,6 +52,7 @@ impl Database {
         .bind(input.email_verified)
         .bind(&input.auth_provider)
         .bind(&input.auth_provider_id)
+        .bind(&input.external_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -61,7 +62,7 @@ impl Database {
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             FROM users
             WHERE email = $1
             "#,
@@ -76,7 +77,7 @@ impl Database {
     pub async fn get_user(&self, id: Uuid) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             FROM users
             WHERE id = $1
             "#,
@@ -95,7 +96,7 @@ impl Database {
     ) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             FROM users
             WHERE auth_provider = $1 AND auth_provider_id = $2
             "#,
@@ -122,7 +123,7 @@ impl Database {
                 email_verified = COALESCE($6, email_verified),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             "#,
         )
         .bind(id)
@@ -145,7 +146,7 @@ impl Database {
                 let search_pattern = format!("%{}%", query.trim().to_lowercase());
                 sqlx::query_as::<_, UserRow>(
                     r#"
-                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
                     FROM users
                     WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1
                     ORDER BY created_at DESC
@@ -158,7 +159,7 @@ impl Database {
             _ => {
                 sqlx::query_as::<_, UserRow>(
                     r#"
-                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
                     FROM users
                     ORDER BY created_at DESC
                     "#,
@@ -2377,7 +2378,7 @@ impl Database {
             r#"
             INSERT INTO organizations (public_id, name)
             VALUES ($1, $2)
-            RETURNING org_id, public_id, name, created_at, updated_at
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id
             "#,
         )
         .bind(&input.public_id)
@@ -2400,7 +2401,7 @@ impl Database {
             INSERT INTO organizations (org_id, public_id, name)
             VALUES ($1, $2, $3)
             ON CONFLICT (org_id) DO NOTHING
-            RETURNING org_id, public_id, name, created_at, updated_at
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id
             "#,
         )
         .bind(org_id)
@@ -2415,7 +2416,7 @@ impl Database {
     pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at
+            SELECT org_id, public_id, name, created_at, updated_at, external_id
             FROM organizations
             WHERE org_id = $1
             "#,
@@ -2433,7 +2434,7 @@ impl Database {
     ) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at
+            SELECT org_id, public_id, name, created_at, updated_at, external_id
             FROM organizations
             WHERE public_id = $1
             "#,
@@ -2448,7 +2449,7 @@ impl Database {
     pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
         let rows = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at
+            SELECT org_id, public_id, name, created_at, updated_at, external_id
             FROM organizations
             ORDER BY created_at DESC
             "#,
@@ -2471,7 +2472,7 @@ impl Database {
                 name = COALESCE($2, name),
                 updated_at = NOW()
             WHERE org_id = $1
-            RETURNING org_id, public_id, name, created_at, updated_at
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id
             "#,
         )
         .bind(org_id)
@@ -2549,7 +2550,7 @@ impl Database {
     pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
         let rows = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT o.org_id, o.public_id, o.name, o.created_at, o.updated_at
+            SELECT o.org_id, o.public_id, o.name, o.created_at, o.updated_at, o.external_id
             FROM organizations o
             JOIN organization_members om ON o.org_id = om.org_id
             WHERE om.user_id = $1
@@ -2577,6 +2578,78 @@ impl Database {
         .await?;
 
         Ok(row.is_some())
+    }
+
+    /// Get user by external identity provider ID
+    pub async fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            FROM users
+            WHERE external_id = $1
+            "#,
+        )
+        .bind(external_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Get organization by external identity provider ID
+    pub async fn get_organization_by_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            SELECT org_id, public_id, name, created_at, updated_at, external_id
+            FROM organizations
+            WHERE external_id = $1
+            "#,
+        )
+        .bind(external_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Upsert organization by external ID (for external auth provider sync)
+    pub async fn upsert_org_by_external_id(
+        &self,
+        external_id: &str,
+        public_id: &str,
+        name: &str,
+    ) -> Result<OrganizationRow> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            INSERT INTO organizations (public_id, name, external_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (external_id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id
+            "#,
+        )
+        .bind(public_id)
+        .bind(name)
+        .bind(external_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Ensure user is a member of organization (idempotent)
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO organization_members (org_id, user_id) VALUES ($1, $2) ON CONFLICT (org_id, user_id) DO NOTHING"
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     // ============================================

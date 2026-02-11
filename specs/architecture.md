@@ -57,6 +57,7 @@ graph TB
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
+   - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
    - See [specs/documentation.md](documentation.md) for detailed specification
 
@@ -101,6 +102,34 @@ graph TD
     protocol --> server
     core --> server
     worker -.->|gRPC| server
+```
+
+### Server Entrypoint
+
+The server binary (`main.rs`) is a thin wrapper that calls `server::run()` from the library crate. This enables SaaS wrappers to build their own binary with a custom auth backend.
+
+**`server::run()` signature:**
+```rust
+pub async fn run(
+    config: ServerConfig,
+    auth_factory: impl FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend>,
+    extra_routes: Option<Router>,
+) -> anyhow::Result<()>
+```
+
+- `auth_factory` — Receives the initialized `StorageBackend` and returns an auth backend. OSS passes `|db| Arc::new(BuiltinAuthBackend::new(config, db))`.
+- `extra_routes` — Optional additional routes merged into the router. SaaS wrappers use this for billing, admin, etc.
+- `ServerConfig` — Contains CLI args, API prefix, and other server configuration.
+
+**Key modules in lib crate:**
+- `server::run()` — Full server bootstrap (storage, auth, routes, CORS, gRPC, dev worker, HTTP server)
+- `seed` — Database seeding (moved from binary to lib for reuse)
+- `grpc_service` — gRPC WorkerService (moved from binary to lib for reuse)
+
+**Public exports from `everruns-server` lib:**
+```rust
+pub use auth::{AuthBackend, BuiltinAuthBackend};
+pub use server::{ServerConfig, run};
 ```
 
 ### Data Layer

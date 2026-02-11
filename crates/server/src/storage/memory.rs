@@ -59,6 +59,7 @@ impl Default for InMemoryDatabase {
                 name: "Default Organization".to_string(),
                 created_at: now,
                 updated_at: now,
+                external_id: None,
             },
         );
 
@@ -110,6 +111,7 @@ impl InMemoryDatabase {
             email_verified: input.email_verified,
             auth_provider: input.auth_provider,
             auth_provider_id: input.auth_provider_id,
+            external_id: input.external_id,
             created_at: now,
             updated_at: now,
         };
@@ -2135,6 +2137,7 @@ impl InMemoryDatabase {
             name: input.name,
             created_at: now,
             updated_at: now,
+            external_id: None,
         };
         orgs.insert(org_id, row.clone());
         Ok(row)
@@ -2158,6 +2161,7 @@ impl InMemoryDatabase {
             name: input.name,
             created_at: now,
             updated_at: now,
+            external_id: None,
         };
         orgs.insert(org_id, row.clone());
         Ok(Some(row))
@@ -2271,6 +2275,75 @@ impl InMemoryDatabase {
             .organization_members
             .read()
             .contains_key(&(org_id, user_id)))
+    }
+
+    /// Get user by external identity provider ID
+    pub async fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>> {
+        Ok(self
+            .users
+            .read()
+            .values()
+            .find(|u| u.external_id.as_deref() == Some(external_id))
+            .cloned())
+    }
+
+    /// Get organization by external identity provider ID
+    pub async fn get_organization_by_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        Ok(self
+            .organizations
+            .read()
+            .values()
+            .find(|o| o.external_id.as_deref() == Some(external_id))
+            .cloned())
+    }
+
+    /// Upsert organization by external ID (for external auth provider sync)
+    pub async fn upsert_org_by_external_id(
+        &self,
+        external_id: &str,
+        public_id: &str,
+        name: &str,
+    ) -> Result<OrganizationRow> {
+        let mut orgs = self.organizations.write();
+
+        // Check if org with this external_id already exists
+        if let Some(existing) = orgs
+            .values_mut()
+            .find(|o| o.external_id.as_deref() == Some(external_id))
+        {
+            existing.name = name.to_string();
+            existing.updated_at = Self::now();
+            return Ok(existing.clone());
+        }
+
+        // Create new org
+        let org_id = orgs.keys().max().unwrap_or(&0) + 1;
+        let now = Self::now();
+        let row = OrganizationRow {
+            org_id,
+            public_id: public_id.to_string(),
+            name: name.to_string(),
+            created_at: now,
+            updated_at: now,
+            external_id: Some(external_id.to_string()),
+        };
+        orgs.insert(org_id, row.clone());
+        Ok(row)
+    }
+
+    /// Ensure user is a member of organization (idempotent)
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
+        let key = (org_id, user_id);
+        let mut members = self.organization_members.write();
+        members.entry(key).or_insert_with(|| OrganizationMemberRow {
+            org_id,
+            user_id,
+            created_at: Self::now(),
+        });
+        Ok(())
     }
 
     // ============================================

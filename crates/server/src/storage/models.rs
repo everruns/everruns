@@ -17,6 +17,9 @@ pub struct OrganizationRow {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// External identity provider ID (e.g., PropelAuth org ID). NULL for OSS.
+    #[sqlx(default)]
+    pub external_id: Option<String>,
 }
 
 /// Organization member row from database
@@ -65,6 +68,9 @@ pub struct UserRow {
     pub auth_provider_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// External identity provider ID (e.g., PropelAuth user ID). NULL for OSS.
+    #[sqlx(default)]
+    pub external_id: Option<String>,
 }
 
 /// Auth session row (legacy, kept for backwards compatibility)
@@ -113,6 +119,8 @@ pub struct CreateUserRow {
     pub email_verified: bool,
     pub auth_provider: Option<String>,
     pub auth_provider_id: Option<String>,
+    /// External identity provider ID (e.g., PropelAuth user ID). NULL for OSS.
+    pub external_id: Option<String>,
 }
 
 /// Input for updating a user

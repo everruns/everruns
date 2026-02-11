@@ -81,6 +81,7 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 | `org_id` | BIGINT | Internal primary key (auto-increment) |
 | `public_id` | TEXT | External identifier: `org_<uuid-hex-32>` |
 | `name` | TEXT | Display name |
+| `external_id` | TEXT? | External provider org ID (NULL for OSS, populated by SaaS auth backend sync) |
 | `created_at` | TIMESTAMPTZ | Creation time |
 | `updated_at` | TIMESTAMPTZ | Last modification time |
 
@@ -375,6 +376,26 @@ impl InMemoryStorage {
     }
 }
 ```
+
+### External Identity Storage Methods
+
+For SaaS auth backends that map external provider IDs to internal entities:
+
+```rust
+// Look up user by external provider ID (PropelAuth, Auth0, etc.)
+fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>>;
+
+// Look up org by external provider ID
+fn get_organization_by_external_id(&self, external_id: &str) -> Result<Option<OrganizationRow>>;
+
+// Create or update org by external ID (upsert on external_id conflict)
+fn upsert_org_by_external_id(&self, external_id: &str, name: &str) -> Result<OrganizationRow>;
+
+// Idempotent membership creation (no-op if already exists)
+fn ensure_membership(&self, org_id: i64, user_id: Uuid) -> Result<()>;
+```
+
+These are unused in OSS (external_id is always NULL) but available for SaaS auth backend implementations.
 
 ### Worker Integration
 

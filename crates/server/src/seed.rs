@@ -5,14 +5,14 @@
 // Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
 // Decision: Modular design allows easy addition of new seeders
 
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
-use everruns_server::storage::{
+use crate::storage::{
     StorageBackend,
     models::{
         CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
         CreateOrganizationRow,
     },
 };
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
