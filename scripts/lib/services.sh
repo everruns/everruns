@@ -119,6 +119,8 @@ case "$cmd" in
       echo "   ✅ Using default encryption key"
     fi
 
+    print_doppler_secret_hint
+
     # Configure LLM API keys
     if [ -n "${OPENAI_API_KEY:-}" ]; then
       export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
@@ -343,6 +345,8 @@ case "$cmd" in
       echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
       export OTEL_SDK_DISABLED=true
     fi
+
+    print_doppler_secret_hint
 
     # Configure LLM API keys
     echo "2️⃣  Configuring LLM API keys from environment..."
