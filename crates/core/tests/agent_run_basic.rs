@@ -13,7 +13,7 @@
 // Required env vars (tests skip gracefully if missing):
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 //
-// Skip specific providers: SKIP_LLM_PROVIDERS=gemini,openai
+// Skip specific providers: SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini,openai
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
