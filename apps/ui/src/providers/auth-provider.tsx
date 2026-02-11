@@ -8,7 +8,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useAuthConfig, useCurrentUser } from "@/hooks/use-auth";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
-interface AuthContextValue {
+export interface AuthContextValue {
   // Auth configuration from server
   config: AuthConfigResponse | undefined;
   configLoading: boolean;
@@ -25,7 +25,7 @@ interface AuthContextValue {
   isLoading: boolean;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;

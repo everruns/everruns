@@ -15,9 +15,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    api_key::{API_KEY_PREFIX, ValidatedApiKey, hash_api_key, is_valid_api_key_format},
+    api_key::API_KEY_PREFIX,
+    backend::AuthBackend,
     config::{AuthConfig, AuthMode},
-    jwt::JwtService,
 };
 use crate::storage::StorageBackend;
 
@@ -130,18 +130,18 @@ pub enum AuthMethod {
 #[derive(Clone)]
 pub struct AuthState {
     pub config: AuthConfig,
-    pub jwt_service: Arc<JwtService>,
-    pub db: Arc<StorageBackend>,
+    pub backend: Arc<dyn AuthBackend>,
 }
 
 impl AuthState {
-    pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
-        let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
-        Self {
-            config,
-            jwt_service,
-            db,
-        }
+    pub fn new(config: AuthConfig, backend: Arc<dyn AuthBackend>) -> Self {
+        Self { config, backend }
+    }
+
+    /// Convenience: create with built-in backend (OSS default)
+    pub fn builtin(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
+        let backend = Arc::new(super::builtin::BuiltinAuthBackend::new(config.clone(), db));
+        Self { config, backend }
     }
 }
 
@@ -178,163 +178,24 @@ async fn extract_auth_user(
 
         // Check for Bearer token (JWT)
         if let Some(token) = auth_str.strip_prefix("Bearer ") {
-            return validate_jwt_token(token, auth_state).await;
+            return auth_state.backend.validate_token(token).await;
         }
 
         // Check for API key
         if auth_str.starts_with(API_KEY_PREFIX) || auth_str.starts_with("ApiKey ") {
             let api_key = auth_str.strip_prefix("ApiKey ").unwrap_or(auth_str);
-            return validate_api_key(api_key, auth_state).await;
+            return auth_state.backend.validate_api_key(api_key).await;
         }
     }
 
     // Try to extract from cookie (for UI)
     let jar = CookieJar::from_headers(&parts.headers);
     if let Some(cookie) = jar.get("access_token") {
-        return validate_jwt_token(cookie.value(), auth_state).await;
+        return auth_state.backend.validate_token(cookie.value()).await;
     }
 
     // No valid credentials found
     Err(AuthError::unauthorized("Authentication required"))
-}
-
-/// Validate JWT token and return user
-async fn validate_jwt_token(token: &str, auth_state: &AuthState) -> Result<AuthUser, AuthError> {
-    let claims = auth_state
-        .jwt_service
-        .validate_access_token(token)
-        .map_err(|e| {
-            tracing::debug!("JWT validation failed: {}", e);
-            AuthError::unauthorized("Invalid or expired token")
-        })?;
-
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
-
-    // Fetch organization memberships for the user
-    let organizations = fetch_user_organizations(&auth_state.db, user_id).await?;
-
-    // If user has no organizations (e.g., add_organization_member failed silently during
-    // registration), fall back to default organization to ensure UI can function
-    let organizations = if organizations.is_empty() {
-        tracing::warn!(
-            user_id = %user_id,
-            "User has no organizations, falling back to default org"
-        );
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
-
-    Ok(AuthUser {
-        id: user_id,
-        email: claims.email,
-        name: claims.name,
-        roles: claims.roles,
-        auth_method: AuthMethod::Jwt,
-        organizations,
-    })
-}
-
-/// Validate API key and return user
-async fn validate_api_key(key: &str, auth_state: &AuthState) -> Result<AuthUser, AuthError> {
-    if !is_valid_api_key_format(key) {
-        return Err(AuthError::unauthorized("Invalid API key format"));
-    }
-
-    let key_hash = hash_api_key(key);
-
-    let api_key_row = auth_state
-        .db
-        .get_api_key_by_hash(&key_hash)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch API key: {}", e);
-            AuthError::unauthorized("Failed to validate API key")
-        })?
-        .ok_or_else(|| AuthError::unauthorized("Invalid API key"))?;
-
-    // Check if expired
-    let validated_key = ValidatedApiKey {
-        key_id: api_key_row.id,
-        user_id: api_key_row.user_id,
-        org_id: api_key_row.org_id,
-        name: api_key_row.name.clone(),
-        scopes: serde_json::from_value(api_key_row.scopes.clone()).unwrap_or_default(),
-        expires_at: api_key_row.expires_at,
-    };
-
-    if validated_key.is_expired() {
-        return Err(AuthError::unauthorized("API key expired"));
-    }
-
-    // Update last used timestamp (fire and forget)
-    let db = auth_state.db.clone();
-    let key_id = api_key_row.id;
-    tokio::spawn(async move {
-        let _ = db.update_api_key_last_used(key_id).await;
-    });
-
-    // Fetch user info
-    let user = auth_state
-        .db
-        .get_user(api_key_row.user_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch user for API key: {}", e);
-            AuthError::unauthorized("Failed to validate API key")
-        })?
-        .ok_or_else(|| AuthError::unauthorized("User not found for API key"))?;
-
-    let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-
-    // Fetch org for the API key (API key is scoped to single org)
-    let org = auth_state
-        .db
-        .get_organization(api_key_row.org_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch org for API key: {}", e);
-            AuthError::unauthorized("Failed to validate API key")
-        })?
-        .ok_or_else(|| AuthError::unauthorized("Organization not found for API key"))?;
-
-    Ok(AuthUser {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        roles,
-        auth_method: AuthMethod::ApiKey,
-        organizations: vec![OrgMembership {
-            org_id: org.org_id,
-            public_id: org.public_id,
-            name: org.name,
-        }],
-    })
-}
-
-/// Fetch organization memberships for a user
-async fn fetch_user_organizations(
-    db: &StorageBackend,
-    user_id: Uuid,
-) -> Result<Vec<OrgMembership>, AuthError> {
-    let org_rows = db.list_user_organizations(user_id).await.map_err(|e| {
-        tracing::error!("Failed to fetch user organizations: {}", e);
-        AuthError::unauthorized("Failed to fetch organizations")
-    })?;
-
-    Ok(org_rows
-        .into_iter()
-        .map(|row| OrgMembership {
-            org_id: row.org_id,
-            public_id: row.public_id,
-            name: row.name,
-        })
-        .collect())
 }
 
 /// Optional auth extractor - returns None if not authenticated (in auth mode)

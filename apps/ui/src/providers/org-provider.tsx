@@ -23,7 +23,7 @@ import type { OrganizationMembership } from "@/lib/api/types";
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 const STORAGE_KEY = "everruns_current_org";
 
-interface OrgContextValue {
+export interface OrgContextValue {
   /** Currently selected organization */
   currentOrg: OrganizationMembership | null;
   /** All organizations the user belongs to */
@@ -34,7 +34,7 @@ interface OrgContextValue {
   isLoading: boolean;
 }
 
-const OrgContext = createContext<OrgContextValue | undefined>(undefined);
+export const OrgContext = createContext<OrgContextValue | undefined>(undefined);
 
 interface OrgProviderProps {
   children: ReactNode;

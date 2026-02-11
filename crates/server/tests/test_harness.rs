@@ -102,9 +102,10 @@ impl TestServer {
                 .expect("Invalid test encryption key"),
         ));
 
-        // Create auth config (no auth for tests)
+        // Create auth config and backend (no auth for tests)
         let auth_config = auth::AuthConfig::default(); // mode: None is the default
-        let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
+        let auth_backend = auth::BuiltinAuthBackend::new(auth_config.clone(), db.clone());
+        let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
 
         // Create runner with PostgreSQL backend
         let runner = match mode {
@@ -188,7 +189,7 @@ impl TestServer {
             .merge(api::durable::routes(durable_state))
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
-            .merge(auth::routes(auth_state));
+            .merge(auth::routes(auth_backend));
 
         // Build main router with health endpoint
         let router = Router::new()

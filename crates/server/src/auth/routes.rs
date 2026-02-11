@@ -4,7 +4,7 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{FromRef, Path, Query, State},
     http::StatusCode,
     response::Redirect,
     routing::{delete, get, post},
@@ -19,11 +19,20 @@ use uuid::Uuid;
 
 use super::{
     api_key::generate_api_key,
+    builtin::BuiltinAuthBackend,
     config::AuthMode,
     jwt::hash_token,
     middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME, ResolvedOrg},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
+/// Enable AuthUser extractor when BuiltinAuthBackend is the route state.
+/// AuthUser needs AuthState via FromRef — this converts BuiltinAuthBackend to AuthState.
+impl FromRef<BuiltinAuthBackend> for AuthState {
+    fn from_ref(backend: &BuiltinAuthBackend) -> Self {
+        AuthState::new(backend.config.clone(), std::sync::Arc::new(backend.clone()))
+    }
+}
+
 use crate::api::common::ListResponse;
 use crate::storage::{
     models::{CreateApiKeyRow, CreateRefreshTokenRow, CreateUserRow},
@@ -140,7 +149,7 @@ pub struct AuthConfigResponse {
 }
 
 /// Create auth routes
-pub fn routes(state: AuthState) -> Router {
+pub fn routes(state: BuiltinAuthBackend) -> Router {
     Router::new()
         // Public routes
         .route("/v1/auth/config", get(get_auth_config))
@@ -162,7 +171,7 @@ pub fn routes(state: AuthState) -> Router {
 }
 
 /// GET /v1/auth/config - Get authentication configuration
-pub async fn get_auth_config(State(state): State<AuthState>) -> Json<AuthConfigResponse> {
+pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<AuthConfigResponse> {
     let mut oauth_providers = Vec::new();
 
     if state.config.google.is_some() {
@@ -187,7 +196,7 @@ pub async fn get_auth_config(State(state): State<AuthState>) -> Json<AuthConfigR
 
 /// POST /v1/auth/login - Login with email and password
 pub async fn login(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
@@ -270,7 +279,7 @@ pub async fn login(
 
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<TokenResponse>), AuthError> {
@@ -312,6 +321,7 @@ pub async fn register(
             email_verified: false,
             auth_provider: Some("local".to_string()),
             auth_provider_id: None,
+            external_id: None,
         })
         .await
         .map_err(|e| {
@@ -360,7 +370,7 @@ pub async fn register(
 
 /// POST /v1/auth/refresh - Refresh access token
 pub async fn refresh_token(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     jar: CookieJar,
     Json(req): Json<RefreshTokenRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
@@ -489,7 +499,7 @@ pub async fn get_current_user(
 
 /// GET /v1/auth/oauth/:provider - Redirect to OAuth provider
 pub async fn oauth_redirect(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     Path(provider): Path<String>,
 ) -> Result<Redirect, AuthError> {
     let provider_enum = OAuthProvider::parse(&provider)
@@ -529,7 +539,7 @@ pub async fn oauth_redirect(
 
 /// GET /v1/auth/callback/:provider - OAuth callback
 pub async fn oauth_callback(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
@@ -611,6 +621,7 @@ pub async fn oauth_callback(
                 email_verified: user_info.email_verified,
                 auth_provider: Some(provider_str.to_string()),
                 auth_provider_id: Some(user_info.provider_id.clone()),
+                external_id: None,
             })
             .await
             .map_err(|e| {
@@ -667,7 +678,7 @@ pub async fn oauth_callback(
 
 /// GET /v1/auth/api-keys - List API keys for current user
 pub async fn list_api_keys(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     user: AuthUser,
 ) -> Result<Json<ListResponse<ApiKeyListItem>>, AuthError> {
     let keys = state
@@ -703,7 +714,7 @@ pub async fn list_api_keys(
 /// Organization is derived from the everruns_org cookie (set via /v1/users/me/switch-org).
 /// Cannot be called with API key authentication (must use session auth).
 pub async fn create_api_key_route(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     user: AuthUser,
     org: ResolvedOrg,
     Json(req): Json<CreateApiKeyRequest>,
@@ -760,7 +771,7 @@ pub async fn create_api_key_route(
 
 /// DELETE /v1/auth/api-keys/:key_id - Delete an API key
 pub async fn delete_api_key_route(
-    State(state): State<AuthState>,
+    State(state): State<BuiltinAuthBackend>,
     user: AuthUser,
     Path(key_id): Path<Uuid>,
 ) -> Result<StatusCode, AuthError> {
@@ -782,7 +793,7 @@ pub async fn delete_api_key_route(
 
 /// Helper: Generate token response with cookies
 async fn generate_token_response(
-    state: &AuthState,
+    state: &BuiltinAuthBackend,
     jar: CookieJar,
     user: &AuthUser,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
@@ -858,7 +869,7 @@ async fn generate_token_response(
 
 /// Helper: Get or create admin user
 async fn get_or_create_admin_user(
-    state: &AuthState,
+    state: &BuiltinAuthBackend,
     admin: &super::config::AdminConfig,
 ) -> Result<AuthUser, AuthError> {
     let existing_user = state
@@ -890,6 +901,7 @@ async fn get_or_create_admin_user(
                 email_verified: true,
                 auth_provider: Some("local".to_string()),
                 auth_provider_id: None,
+                external_id: None,
             })
             .await
             .map_err(|e| {

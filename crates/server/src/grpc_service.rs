@@ -5,6 +5,13 @@
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 // Decision: No direct database access - all operations go through services layer
 
+use crate::services::{
+    AgentService, EventService, LlmResolverService, McpServerService, SessionFileService,
+    SessionService,
+    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
+};
+use crate::storage::{EncryptionService, StorageBackend};
+use crate::task_notifications::TaskNotificationBroadcaster;
 use base64::Engine;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
@@ -45,13 +52,6 @@ use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
     schema_event_to_proto,
 };
-use everruns_server::services::{
-    AgentService, EventService, LlmResolverService, McpServerService, SessionFileService,
-    SessionService,
-    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
-};
-use everruns_server::storage::{EncryptionService, StorageBackend};
-use everruns_server::task_notifications::TaskNotificationBroadcaster;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
