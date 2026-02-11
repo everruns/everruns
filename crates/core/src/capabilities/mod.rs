@@ -172,6 +172,15 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns a preview of the system prompt addition for UI display.
+    ///
+    /// For most capabilities this is identical to `system_prompt_addition()`.
+    /// Capabilities with dynamic content (e.g. `agent_instructions` which reads
+    /// AGENTS.md at runtime) override this to return a representative preview.
+    fn system_prompt_preview(&self) -> Option<String> {
+        self.system_prompt_addition().map(|s| s.to_string())
+    }
+
     /// Returns tool implementations provided by this capability
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![]
@@ -952,6 +961,34 @@ mod tests {
         let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
         assert_eq!(current_time.category(), Some("Utilities"));
+    }
+
+    #[test]
+    fn test_system_prompt_preview_default_delegates_to_addition() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // test_math has a static system_prompt_addition — preview should match
+        let test_math = registry.get("test_math").unwrap();
+        assert_eq!(
+            test_math.system_prompt_preview().as_deref(),
+            test_math.system_prompt_addition()
+        );
+
+        // current_time has no system_prompt_addition — preview should be None
+        let current_time = registry.get("current_time").unwrap();
+        assert!(current_time.system_prompt_preview().is_none());
+        assert!(current_time.system_prompt_addition().is_none());
+    }
+
+    #[test]
+    fn test_system_prompt_preview_dynamic_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get("agent_instructions").unwrap();
+
+        // No static addition, but preview exists
+        assert!(cap.system_prompt_addition().is_none());
+        assert!(cap.system_prompt_preview().is_some());
+        assert!(cap.system_prompt_preview().unwrap().contains("AGENTS.md"));
     }
 
     // =========================================================================

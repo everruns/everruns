@@ -51,6 +51,15 @@ impl Capability for AgentInstructionsCapability {
     }
 
     // No system_prompt_addition — content is dynamic (read at runtime by ReasonAtom)
+
+    fn system_prompt_preview(&self) -> Option<String> {
+        Some(
+            "# Instructions (AGENTS.md)\n\n\
+             <contents of /workspace/AGENTS.md, re-read every turn>"
+                .to_string(),
+        )
+    }
+
     // No tools
     // No dependencies
     // No mounts
@@ -104,6 +113,14 @@ mod tests {
     fn test_no_static_system_prompt() {
         let cap = AgentInstructionsCapability;
         assert!(cap.system_prompt_addition().is_none());
+    }
+
+    #[test]
+    fn test_system_prompt_preview() {
+        let cap = AgentInstructionsCapability;
+        let preview = cap.system_prompt_preview().unwrap();
+        assert!(preview.contains("AGENTS.md"));
+        assert!(preview.contains("re-read every turn"));
     }
 
     #[test]
