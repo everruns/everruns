@@ -66,21 +66,22 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
         return None;
     }
 
-    let truncated = if content.len() > MAX_AGENTS_MD_SIZE {
+    let (body, was_truncated) = if content.len() > MAX_AGENTS_MD_SIZE {
         tracing::warn!(
             content_size = content.len(),
             max_size = MAX_AGENTS_MD_SIZE,
             "AGENTS.md exceeds size limit, truncating"
         );
-        &content[..MAX_AGENTS_MD_SIZE]
+        (&content[..MAX_AGENTS_MD_SIZE], true)
     } else {
-        content
+        (content, false)
     };
 
-    Some(format!(
-        "# Project Instructions (AGENTS.md)\n\n{}",
-        truncated
-    ))
+    let mut result = format!("# Instructions (AGENTS.md)\n\n{}", body);
+    if was_truncated {
+        result.push_str("\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]");
+    }
+    Some(result)
 }
 
 #[cfg(test)]
@@ -128,7 +129,7 @@ mod tests {
         let content = "## Style\nUse snake_case for variables.";
         let result = format_agents_md_content(content).unwrap();
 
-        assert!(result.starts_with("# Project Instructions (AGENTS.md)"));
+        assert!(result.starts_with("# Instructions (AGENTS.md)"));
         assert!(result.contains("Use snake_case"));
     }
 
@@ -144,9 +145,11 @@ mod tests {
         let content = "x".repeat(MAX_AGENTS_MD_SIZE + 1000);
         let result = format_agents_md_content(&content).unwrap();
 
-        // Header + \n\n + truncated content
-        let expected_len = "# Project Instructions (AGENTS.md)\n\n".len() + MAX_AGENTS_MD_SIZE;
+        let header = "# Instructions (AGENTS.md)\n\n";
+        let suffix = "\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]";
+        let expected_len = header.len() + MAX_AGENTS_MD_SIZE + suffix.len();
         assert_eq!(result.len(), expected_len);
+        assert!(result.ends_with(suffix));
     }
 
     #[test]
