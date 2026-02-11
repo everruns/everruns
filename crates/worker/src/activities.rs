@@ -170,6 +170,9 @@ pub async fn reason_activity(
     // Create image resolver for multimodal image support
     let image_resolver = Arc::new(GrpcImageResolver::new(grpc_client.clone()));
 
+    // Create file store for AGENTS.md reading (agent_instructions capability)
+    let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
+
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
@@ -179,7 +182,8 @@ pub async fn reason_activity(
         driver_registry,
         event_emitter,
     )
-    .with_image_resolver(image_resolver);
+    .with_image_resolver(image_resolver)
+    .with_file_store(file_store);
 
     let result = atom
         .execute(input)

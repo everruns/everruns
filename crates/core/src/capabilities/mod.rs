@@ -32,6 +32,7 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
+mod agent_instructions;
 mod current_time;
 mod docker_container;
 mod fake_aws;
@@ -53,6 +54,10 @@ mod virtual_bash;
 mod web_fetch;
 
 // Re-export capabilities
+pub use agent_instructions::{
+    AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
+    MAX_AGENTS_MD_SIZE, format_agents_md_content,
+};
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use docker_container::{
     DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
@@ -272,6 +277,7 @@ impl CapabilityRegistry {
         let mut registry = Self::new();
 
         // Core capabilities (all environments)
+        registry.register(AgentInstructionsCapability);
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(ResearchCapability);
@@ -851,6 +857,7 @@ mod tests {
         // Dev mode includes all capabilities including experimental
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
+        assert!(registry.has("agent_instructions"));
         assert!(registry.has("noop"));
         assert!(registry.has("current_time"));
         assert!(registry.has("research"));
@@ -870,7 +877,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 18);
+        assert_eq!(registry.len(), 19);
     }
 
     #[test]
@@ -878,6 +885,7 @@ mod tests {
         // Prod mode excludes experimental capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
 
+        assert!(registry.has("agent_instructions"));
         assert!(registry.has("noop"));
         assert!(registry.has("current_time"));
         assert!(registry.has("research"));
@@ -897,7 +905,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 17);
+        assert_eq!(registry.len(), 18);
     }
 
     #[test]

@@ -29,6 +29,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
+- `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
 - `specs/mcp-servers.md` - MCP server registration
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
