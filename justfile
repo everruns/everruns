@@ -76,6 +76,7 @@ test-workflow:
     cargo test -p everruns-server --test workflow_test -- --test-threads=1
 
 # Run LLM tests against real APIs (requires ANTHROPIC_API_KEY, OPENAI_API_KEY)
+# Skip providers: SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini just test-llm
 test-llm:
     cargo test -p everruns-core --test agent_run_basic
     cargo test -p everruns-core --test agent_run_with_thinking
