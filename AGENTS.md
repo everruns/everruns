@@ -1,5 +1,29 @@
 ## Coding-agent guidance
 
+### Cloud Agent (start here)
+
+Use Doppler for all secret-backed commands in cloud agents.
+
+```bash
+./scripts/init-cloud-env.sh
+doppler run -- just start-dev --no-watch
+```
+
+All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`).
+
+For GitHub CLI, map token explicitly:
+
+```bash
+doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'
+```
+
+Quickcheck:
+
+```bash
+doppler run -- env | rg 'OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN'
+doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'
+```
+
 ### Style
 
 Telegraph. Drop filler/grammar. Min tokens.
@@ -65,16 +89,16 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`.
 
-### Cloud Agent Start
+### Cloud Agent (legacy details)
 
 ```bash
 ./scripts/init-cloud-env.sh       # Install just + gh + doppler
 just start-dev --no-watch         # DEV MODE (no Docker)
 ```
 
-Pre-configured: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`
+Pre-configured cloud secrets are provided via Doppler: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`.
 
-Doppler CLI is available in cloud environments for secrets management. Use `doppler run -- <command>` to inject secrets.
+Use `doppler run -- <command>` to inject them.
 
 ### Local Dev
 

@@ -115,6 +115,26 @@ check_postgres_ready() {
   return 0
 }
 
+
+print_doppler_secret_hint() {
+  local missing=()
+
+  [ -n "${OPENAI_API_KEY:-}" ] || missing+=("OPENAI_API_KEY")
+  [ -n "${ANTHROPIC_API_KEY:-}" ] || missing+=("ANTHROPIC_API_KEY")
+  [ -n "${GITHUB_TOKEN:-}" ] || missing+=("GITHUB_TOKEN")
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  if command -v doppler &> /dev/null; then
+    echo "   ⚠️  Missing env: ${missing[*]}"
+    echo "   ℹ️  Cloud agents use Doppler for secrets."
+    echo "   ℹ️  Re-run with: doppler run -- <command>"
+    echo "   ℹ️  Quickcheck: doppler run -- env | rg 'OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN'"
+  fi
+}
+
 # Backward-compatible wrappers
 check_ui_deps() {
   check_npm_deps "UI" "cd apps/ui && npm install"
