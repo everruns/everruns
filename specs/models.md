@@ -443,7 +443,7 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `name` | string | Display name |
-| `provider_type` | enum | `openai`, `openai_completions`, `anthropic` |
+| `provider_type` | string | `openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim` |
 | `base_url` | string? | Custom API endpoint (for proxies) |
 | `api_key_encrypted` | bytes? | AES-256-GCM encrypted API key |
 | `api_key_set` | boolean | Whether API key is configured (database or DEFAULT_ env var) |
@@ -458,21 +458,29 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 - `openai` - OpenAI API using Open Responses API (recommended)
 - `openai_completions` - OpenAI API using Chat Completions API (legacy)
 - `anthropic` - Anthropic API (Claude models)
+- `gemini` - Google Gemini API
+- `llmsim` - Built-in simulator provider for development/testing
 
-**Note:** Ollama and Custom provider types are no longer supported. LLM provider API keys are primarily configured in the database (via Settings > Providers UI), but environment variables can be used as fallbacks for development convenience.
+**Note:** Ollama and Custom provider types are no longer supported.
+
+**Validation Note:** `provider_type` is intentionally stored as a plain string without a database CHECK constraint. Provider validation and graceful unknown-provider handling are implemented in the application layer for forward compatibility. LLM provider API keys are primarily configured in the database (via Settings > Providers UI), but environment variables can be used as fallbacks for development convenience.
 
 **Default Providers:**
 
-Default providers (OpenAI, Anthropic) and their models are seeded on startup via the service seeding system (`server/src/seed.rs`). Seeding is idempotent (uses `ON CONFLICT DO NOTHING`) and runs in a background task. These providers have well-known UUIDs:
+Default providers (OpenAI, Anthropic, Gemini, LlmSim) and their models are seeded on startup via the service seeding system (`server/src/seed.rs`). Seeding is idempotent (uses `ON CONFLICT DO NOTHING`) and runs in a background task. These providers have well-known UUIDs:
 
 - OpenAI: `01933b5a-0000-7000-8000-000000000001`
 - Anthropic: `01933b5a-0000-7000-8000-000000000002`
+- LlmSim: `01933b5a-0000-7000-8000-000000000003`
+- Gemini: `01933b5a-0000-7000-8000-000000000004`
 
 Model UUIDs follow a range allocation scheme:
 - `0x001-0x0FF`: LLM Providers
 - `0x100-0x1FF`: Agents (seed agents like Dad Jokes Agent, Research Agent)
 - `0x200-0x2FF`: OpenAI Models
 - `0x300-0x3FF`: Anthropic Models
+- `0x400-0x4FF`: LlmSim Models
+- `0x600-0x6FF`: Gemini Models
 
 **API Key Resolution Order:**
 1. **Database** (priority): Encrypted API key stored in `llm_providers.api_key_encrypted`
