@@ -59,6 +59,55 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
+// ============================================
+// Harness types
+// ============================================
+
+export type HarnessStatus = "active" | "archived";
+
+export interface Harness {
+  id: string;
+  name: string;
+  description: string | null;
+  system_prompt: string;
+  default_model_id: string | null;
+  tags: string[];
+  /** Capabilities with per-harness configuration */
+  capabilities: AgentCapabilityConfig[];
+  status: HarnessStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateHarnessRequest {
+  name: string;
+  description?: string;
+  system_prompt: string;
+  default_model_id?: string;
+  tags?: string[];
+  /** Capabilities with per-harness configuration */
+  capabilities?: AgentCapabilityConfig[];
+}
+
+export interface UpdateHarnessRequest {
+  name?: string;
+  description?: string;
+  system_prompt?: string;
+  default_model_id?: string;
+  tags?: string[];
+  /** Capabilities with per-harness configuration */
+  capabilities?: AgentCapabilityConfig[];
+  status?: HarnessStatus;
+}
+
+/** Request to preview the final harness shape with capabilities applied */
+export interface PreviewHarnessRequest {
+  /** The base system prompt (before capability additions) */
+  system_prompt: string;
+  /** Capability IDs to apply */
+  capabilities?: AgentCapabilityConfig[];
+}
+
 /** Request to preview the final agent shape with capabilities applied */
 export interface PreviewAgentRequest {
   /** The base system prompt (before capability additions) */
@@ -90,7 +139,8 @@ export interface Session {
   id: string;
   /** Organization this session belongs to */
   organization_id: string;
-  agent_id: string;
+  harness_id: string;
+  agent_id: string | null;
   title: string | null;
   /** Preview text from the first user message (truncated) */
   preview?: string | null;
@@ -110,8 +160,10 @@ export interface Session {
 }
 
 export interface CreateSessionRequest {
-  /** Agent ID to work in this session (required) */
-  agent_id: string;
+  /** Harness ID for this session (required) */
+  harness_id: string;
+  /** Agent ID to work in this session (optional) */
+  agent_id?: string;
   title?: string;
   tags?: string[];
   model_id?: string;
@@ -149,23 +201,39 @@ export type ContentPart =
   | { type: "text"; text: string }
   | { type: "image"; url?: string; base64?: string; media_type?: string }
   | { type: "image_file"; image_id: string; filename?: string }
-  | { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> }
-  | { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string };
+  | {
+      type: "tool_call";
+      id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    }
+  | {
+      type: "tool_result";
+      tool_call_id: string;
+      result?: unknown;
+      error?: string;
+    };
 
 // Helper type guards for ContentPart
 export function isTextPart(part: ContentPart): part is { type: "text"; text: string } {
   return part.type === "text";
 }
 
-export function isToolCallPart(
-  part: ContentPart,
-): part is { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> } {
+export function isToolCallPart(part: ContentPart): part is {
+  type: "tool_call";
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+} {
   return part.type === "tool_call";
 }
 
-export function isToolResultPart(
-  part: ContentPart,
-): part is { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string } {
+export function isToolResultPart(part: ContentPart): part is {
+  type: "tool_result";
+  tool_call_id: string;
+  result?: unknown;
+  error?: string;
+} {
   return part.type === "tool_result";
 }
 
@@ -250,9 +318,11 @@ export function getTextFromContent(content: ContentPart[]): string {
 export function getToolCallsFromContent(
   content: ContentPart[],
 ): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
-  return content
-    .filter(isToolCallPart)
-    .map((part) => ({ id: part.id, name: part.name, arguments: part.arguments }));
+  return content.filter(isToolCallPart).map((part) => ({
+    id: part.id,
+    name: part.name,
+    arguments: part.arguments,
+  }));
 }
 
 // ============================================
@@ -406,7 +476,11 @@ export interface ToolStartedData {
 
 /** Data for tool.call_requested event (client-side tool calls awaiting results) */
 export interface ToolCallRequestedData {
-  tool_calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  tool_calls: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
 }
 
 /** Data for tool.completed event */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useAgents, useSessions, useCreateSession, useLlmModels } from "@/hooks";
+import { useAgents, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { SessionCard } from "@/components/session/session-card";
 import { AgentSelect } from "@/components/agent/agent-select";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
+import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 
@@ -27,10 +29,12 @@ export default function SessionsPage() {
   const [page, setPage] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
+  const [newSessionHarnessId, setNewSessionHarnessId] = useState<string>("");
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
   const { data: agents, isLoading: agentsLoading } = useAgents();
+  const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
     selectedAgentId || undefined, // Pass undefined to get all sessions
     { offset, limit: PAGE_SIZE },
@@ -55,19 +59,24 @@ export default function SessionsPage() {
   }, [agents]);
 
   const handleOpenNewSessionDialog = () => {
-    // Pre-select the filtered agent if one is selected, otherwise first agent
-    setNewSessionAgentId(selectedAgentId || agents?.[0]?.id || "");
+    // Pre-select the first harness
+    setNewSessionHarnessId(harnesses?.[0]?.id || "");
+    // Pre-select the filtered agent if one is selected, otherwise leave empty (optional)
+    setNewSessionAgentId(selectedAgentId || "");
     setNewSessionDialogOpen(true);
   };
 
   const handleCreateSession = async () => {
-    if (!newSessionAgentId) {
-      console.error("No agent selected");
+    if (!newSessionHarnessId) {
+      console.error("No harness selected");
       return;
     }
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: newSessionAgentId },
+        request: {
+          harness_id: newSessionHarnessId,
+          agent_id: newSessionAgentId || undefined,
+        },
       });
       setNewSessionDialogOpen(false);
       // Use org-level session URL
@@ -94,7 +103,7 @@ export default function SessionsPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Sessions</h1>
-        <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!agents?.length}>
+        <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!harnesses?.length}>
           <Plus className="w-4 h-4 mr-2" />
           New Session
         </Button>
@@ -126,7 +135,7 @@ export default function SessionsPage() {
           ) : (
             <div className="space-y-2">
               {sessions.map((session) => {
-                const agent = agentMap.get(session.agent_id);
+                const agent = session.agent_id ? agentMap.get(session.agent_id) : undefined;
                 return (
                   <SessionCard
                     key={session.id}
@@ -179,14 +188,29 @@ export default function SessionsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
-            <DialogDescription>Select an agent to start a new conversation.</DialogDescription>
+            <DialogDescription>
+              Select a harness and optionally an agent to start a new conversation.
+            </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <AgentSelect
-              value={newSessionAgentId}
-              onValueChange={setNewSessionAgentId}
-              placeholder="Select an agent"
-            />
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Harness (required)</Label>
+              <HarnessSelect
+                value={newSessionHarnessId}
+                onValueChange={setNewSessionHarnessId}
+                placeholder="Select a harness"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Agent (optional)</Label>
+              <AgentSelect
+                value={newSessionAgentId}
+                onValueChange={setNewSessionAgentId}
+                placeholder="Select an agent"
+                includeAll
+                allLabel="No agent"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewSessionDialogOpen(false)}>
@@ -194,7 +218,7 @@ export default function SessionsPage() {
             </Button>
             <Button
               onClick={handleCreateSession}
-              disabled={!newSessionAgentId || createSession.isPending}
+              disabled={!newSessionHarnessId || createSession.isPending}
             >
               {createSession.isPending ? "Creating..." : "Create Session"}
             </Button>

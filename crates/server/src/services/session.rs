@@ -14,8 +14,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, CapabilityRegistry, ModelId, Session, SessionId, SessionStatus,
-    TokenUsage, capabilities::collect_capabilities,
+    AgentCapabilityConfig, AgentId, CapabilityRegistry, HarnessId, ModelId, Session, SessionId,
+    SessionStatus, TokenUsage, capabilities::collect_capabilities,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -50,19 +50,33 @@ impl SessionService {
         &self,
         org_id: i64,
         org_public_id: &str,
-        agent_internal_id: Uuid,
-        agent_public_id: AgentId,
+        harness_id: Uuid,
+        agent_internal_id: Option<Uuid>,
+        agent_public_id: Option<AgentId>,
         req: CreateSessionRequest,
     ) -> Result<Session> {
-        let agent_id = AgentId::from_uuid(agent_internal_id);
+        let harness_id = HarnessId::from_uuid(harness_id);
+        let agent_id = agent_internal_id.map(AgentId::from_uuid);
 
-        // If model_id not provided, use the agent's default_model_id
+        // Resolve model_id: session > agent > harness
         let model_id: Option<ModelId> = match req.model_id {
             Some(id) => Some(id),
             None => {
-                // Look up the agent to get its default_model_id
-                let agent = self.db.get_agent(org_id, agent_id).await?;
-                agent.and_then(|a| a.default_model_id)
+                // Try agent's default_model_id first
+                let agent_model = if let Some(aid) = agent_id {
+                    let agent = self.db.get_agent(org_id, aid).await?;
+                    agent.and_then(|a| a.default_model_id)
+                } else {
+                    None
+                };
+                // Fall back to harness's default_model_id
+                match agent_model {
+                    Some(id) => Some(id),
+                    None => {
+                        let harness = self.db.get_harness(org_id, harness_id).await?;
+                        harness.and_then(|h| h.default_model_id)
+                    }
+                }
             }
         };
 
@@ -71,6 +85,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            harness_id: Some(harness_id),
             agent_id,
             title: req.title,
             tags: req.tags,
@@ -83,34 +98,46 @@ impl SessionService {
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
-        // Apply capability mounts to the session filesystem (agent + session capabilities)
-        self.apply_capability_mounts(agent_internal_id, &req.capabilities, session.id.uuid())
-            .await?;
+        // Apply capability mounts (harness + agent + session capabilities)
+        self.apply_capability_mounts(
+            harness_id.uuid(),
+            agent_id.map(|a| a.uuid()),
+            &req.capabilities,
+            session.id.uuid(),
+        )
+        .await?;
 
         Ok(session)
     }
 
     /// Apply capability mounts to a session's filesystem.
     ///
-    /// This method:
-    /// 1. Gets the agent's enabled capabilities
-    /// 2. Collects mount points from those capabilities
-    /// 3. Adds session-level capabilities (additive)
-    /// 4. Creates the mounted files/directories in the session filesystem
+    /// Collects mounts from harness + agent + session capabilities.
     async fn apply_capability_mounts(
         &self,
-        agent_id: Uuid,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
         session_id: impl Into<uuid::Uuid> + Copy,
     ) -> Result<()> {
         let session_id = session_id.into();
 
-        // Get agent's capability IDs
-        let capability_rows = self.db.get_agent_capabilities(agent_id).await?;
-        let mut capability_ids: Vec<String> = capability_rows
+        // Collect capability IDs: harness caps first, then agent, then session
+        let harness_cap_rows = self.db.get_harness_capabilities(harness_id).await?;
+        let mut capability_ids: Vec<String> = harness_cap_rows
             .iter()
             .map(|r| r.capability_id.clone())
             .collect();
+
+        // Add agent's capability IDs
+        if let Some(agent_id) = agent_id {
+            let agent_cap_rows = self.db.get_agent_capabilities(agent_id).await?;
+            for r in &agent_cap_rows {
+                if !capability_ids.contains(&r.capability_id) {
+                    capability_ids.push(r.capability_id.clone());
+                }
+            }
+        }
 
         // Add session-level capabilities (additive)
         for cap in session_capabilities {
@@ -140,14 +167,14 @@ impl SessionService {
         if !result.is_success() {
             tracing::warn!(
                 session_id = %session_id,
-                agent_id = %agent_id,
+                agent_id = ?agent_id,
                 errors = ?result.errors,
                 "Some capability mounts failed to apply"
             );
         } else {
             tracing::debug!(
                 session_id = %session_id,
-                agent_id = %agent_id,
+                agent_id = ?agent_id,
                 files_created = result.files_created,
                 directories_created = result.directories_created,
                 mount_points = result.mount_points_applied,
@@ -274,13 +301,11 @@ impl SessionService {
     /// Resolve a session's agent_id from internal UUID to the agent's public_id.
     /// The DB stores the internal UUID as FK; the API should return the public_id.
     async fn resolve_session_agent_id(&self, org_id: i64, session: &mut Session) -> Result<()> {
-        if let Some(public_id) = self
-            .db
-            .get_agent_public_id(org_id, session.agent_id)
-            .await?
+        if let Some(aid) = session.agent_id
+            && let Some(public_id) = self.db.get_agent_public_id(org_id, aid).await?
             && let Ok(agent_id) = public_id.parse::<AgentId>()
         {
-            session.agent_id = agent_id;
+            session.agent_id = Some(agent_id);
         }
         Ok(())
     }
@@ -313,6 +338,7 @@ impl SessionService {
         Session {
             id: row.id,
             organization_id: org_public_id.to_string(),
+            harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
             agent_id: row.agent_id,
             title: row.title,
             preview: None,        // Populated separately in list()

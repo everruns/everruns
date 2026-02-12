@@ -24,7 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    AgentId, InputMessage, MessageRetriever,
+    Harness, HarnessStatus, InputMessage, MessageRetriever,
     agent::{Agent, AgentStatus},
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -32,12 +32,12 @@ use everruns_core::{
     capabilities::CapabilityRegistry,
     llm_driver_registry::DriverRegistry,
     memory::{
-        InMemoryAgentStore, InMemoryEventEmitter, InMemoryLlmProviderStore,
+        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
         InMemoryMessageRetriever, InMemorySessionStore,
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
-    typed_id::TurnId,
+    typed_id::{AgentId, HarnessId, TurnId},
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -101,16 +101,33 @@ async fn main() -> anyhow::Result<()> {
     println!("=== Turn-Based Execution with New Atoms ===\n");
 
     // Create shared dependencies
+    let harness_store = InMemoryHarnessStore::new();
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
     let provider_store = InMemoryLlmProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
-    // Create an agent in the store
+    // Create a harness in the store
+    let harness_id = HarnessId::new();
     let agent_id = Uuid::now_v7();
     let session_id = Uuid::now_v7();
     let now = Utc::now();
+    let harness = Harness {
+        id: harness_id,
+        name: "Default Harness".to_string(),
+        description: None,
+        system_prompt: "You are a helpful assistant.".to_string(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        status: HarnessStatus::Active,
+        created_at: now,
+        updated_at: now,
+    };
+    harness_store.add_harness(harness).await;
+
+    // Create an agent in the store
     let agent = Agent {
         public_id: AgentId::from_uuid(agent_id),
         internal_id: agent_id,
@@ -132,7 +149,8 @@ async fn main() -> anyhow::Result<()> {
     let session = Session {
         id: session_id.into(),
         organization_id: "default".to_string(),
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(AgentId::from_uuid(agent_id)),
         title: Some("Weather Query".to_string()),
         preview: None,
         output_preview: None,
@@ -187,6 +205,7 @@ async fn main() -> anyhow::Result<()> {
 
     let input_atom = InputAtom::new(message_retriever.clone());
     let reason_atom = ReasonAtom::new(
+        harness_store,
         agent_store.clone(),
         session_store,
         message_retriever.clone(),
@@ -234,7 +253,8 @@ async fn main() -> anyhow::Result<()> {
         let reason_result = reason_atom
             .execute(ReasonInput {
                 context: reason_context,
-                agent_id: agent_id.into(),
+                harness_id,
+                agent_id: Some(AgentId::from_uuid(agent_id)),
                 org_id: 0,
                 mcp_tool_definitions: vec![],
             })
@@ -275,7 +295,8 @@ async fn main() -> anyhow::Result<()> {
         let act_result = act_atom
             .execute(ActInput {
                 context: act_context,
-                agent_id: agent_id.into(),
+                harness_id,
+                agent_id: Some(AgentId::from_uuid(agent_id)),
                 tool_calls: reason_result.tool_calls.clone(),
                 tool_definitions: reason_result.tool_definitions.clone(),
             })

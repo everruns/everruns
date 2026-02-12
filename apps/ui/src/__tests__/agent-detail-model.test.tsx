@@ -70,34 +70,43 @@ const mockAgent: Agent = {
 const mockSessions: Session[] = [
   {
     id: "session-1",
+    organization_id: "org-1",
+    harness_id: "harness-1",
     agent_id: "agent-1",
     title: "Session with GPT-4o",
     tags: [],
     model_id: "model-1",
     status: "idle",
     created_at: "2025-01-01T00:00:00Z",
+    updated_at: "2025-01-01T00:00:00Z",
     started_at: "2025-01-01T00:00:01Z",
     finished_at: null,
   },
   {
     id: "session-2",
+    organization_id: "org-1",
+    harness_id: "harness-1",
     agent_id: "agent-1",
     title: "Session with Claude",
     tags: [],
     model_id: "model-2",
     status: "idle",
     created_at: "2025-01-01T01:00:00Z",
+    updated_at: "2025-01-01T01:00:00Z",
     started_at: null,
     finished_at: null,
   },
   {
     id: "session-3",
+    organization_id: "org-1",
+    harness_id: "harness-1",
     agent_id: "agent-1",
     title: "Session without model",
     tags: [],
     model_id: null,
     status: "started",
     created_at: "2025-01-01T02:00:00Z",
+    updated_at: "2025-01-01T02:00:00Z",
     started_at: null,
     finished_at: null,
   },
@@ -139,6 +148,7 @@ const mockUseCreateSession = jest.fn();
 const mockUseCapabilities = jest.fn();
 const mockUseLlmModels = jest.fn();
 const mockUseExportAgent = jest.fn();
+const mockUseHarnesses = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -147,6 +157,7 @@ jest.mock("@/hooks", () => ({
   useCapabilities: () => mockUseCapabilities(),
   useLlmModels: () => mockUseLlmModels(),
   useExportAgent: () => mockUseExportAgent(),
+  useHarnesses: () => mockUseHarnesses(),
 }));
 
 // Helper to render with Suspense for React.use()
@@ -175,6 +186,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseHarnesses.mockReturnValue({ data: [] });
   });
 
   it("renders agent page structure", async () => {
@@ -268,6 +280,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseHarnesses.mockReturnValue({ data: [] });
   });
 
   it("displays default model with provider icon when agent has default_model_id", async () => {

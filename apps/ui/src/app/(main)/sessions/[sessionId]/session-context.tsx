@@ -96,8 +96,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Fetch session first to get agent_id
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
 
-  // Derive agentId from session
-  const agentId = session?.agent_id;
+  // Derive agentId from session (convert null to undefined)
+  const agentId = session?.agent_id ?? undefined;
 
   // Fetch agent using derived agentId
   const { data: agent } = useAgent(agentId ?? "");
@@ -415,12 +415,18 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Get tool calls from message event data
   const getToolCalls = (
     data: OutputMessageCompletedData,
-  ): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
+  ): Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }> => {
     const content = data.message?.content;
     if (!content) return [];
-    return content
-      .filter(isToolCallPart)
-      .map((part) => ({ id: part.id, name: part.name, arguments: part.arguments }));
+    return content.filter(isToolCallPart).map((part) => ({
+      id: part.id,
+      name: part.name,
+      arguments: part.arguments,
+    }));
   };
 
   const value: SessionContextValue = {

@@ -180,7 +180,8 @@ async fn test_session_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: Some("Test Session".to_string()),
             tags: vec![],
             model_id: None,
@@ -190,7 +191,7 @@ async fn test_session_crud() {
         .await
         .expect("Failed to create session");
 
-    assert_eq!(session.agent_id, agent.id);
+    assert_eq!(session.agent_id, Some(agent.id));
 
     // Get session
     let fetched = backend
@@ -269,7 +270,8 @@ async fn test_event_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: None,
             tags: vec![],
             model_id: None,
@@ -340,7 +342,8 @@ async fn test_event_exclude_types() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: None,
             tags: vec![],
             model_id: None,
@@ -575,7 +578,8 @@ async fn test_session_file_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: None,
             tags: vec![],
             model_id: None,
@@ -946,7 +950,8 @@ async fn test_session_usage_tracking() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: None,
             tags: vec![],
             model_id: None,
@@ -1023,7 +1028,8 @@ async fn test_session_previews() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
-            agent_id: agent.id,
+            harness_id: None,
+            agent_id: Some(agent.id),
             title: None,
             tags: vec![],
             model_id: None,

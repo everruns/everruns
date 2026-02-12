@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useMemo } from "react";
-import { useAgent, useSessions, useCreateSession, useLlmModels } from "@/hooks";
+import { useAgent, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   });
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const { data: harnesses } = useHarnesses();
 
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
@@ -38,9 +39,11 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   }, [llmModels]);
 
   const handleNewSession = async () => {
+    const harnessId = harnesses?.[0]?.id;
+    if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: agentId },
+        request: { harness_id: harnessId, agent_id: agentId },
       });
       router.push(`/sessions/${session.id}`);
     } catch (error) {

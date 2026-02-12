@@ -19,6 +19,9 @@ use test_harness::TestServer;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
 
+/// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
+const SEED_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
+
 // ============================================
 // Health Endpoint Tests
 // ============================================
@@ -211,6 +214,7 @@ async fn test_create_session() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Test Session"
             }),
@@ -219,7 +223,7 @@ async fn test_create_session() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(session.agent_id, agent.public_id);
+    assert_eq!(session.agent_id, Some(agent.public_id));
     assert_eq!(session.title.as_deref(), Some("Test Session"));
 }
 
@@ -244,6 +248,7 @@ async fn test_get_session() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Get Test Session"
             }),
@@ -285,6 +290,7 @@ async fn test_sessions_pagination() {
             .post(
                 "/v1/sessions",
                 json!({
+                    "harness_id": SEED_HARNESS_ID,
                     "agent_id": agent.public_id,
                     "title": format!("Session {}", i)
                 }),
@@ -352,6 +358,7 @@ async fn test_create_user_message() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -398,6 +405,7 @@ async fn test_list_messages() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -456,6 +464,7 @@ async fn test_list_events() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -633,6 +642,7 @@ async fn test_session_inherits_agent_default_model() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Inheritance Test"
             }),
@@ -684,6 +694,7 @@ async fn test_session_filesystem() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -834,6 +845,7 @@ async fn test_session_databases_crud() {
         .post(
             "/v1/sessions",
             json!({
+                "harness_id": SEED_HARNESS_ID,
                 "agent_id": agent.public_id.to_string()
             }),
         )
@@ -936,7 +948,7 @@ async fn test_session_databases_schema() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"agent_id": agent.public_id.to_string()}),
+            json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -990,7 +1002,7 @@ async fn test_session_databases_invalid_name() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"agent_id": agent.public_id.to_string()}),
+            json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
         )
         .await
         .assert_status(StatusCode::CREATED)

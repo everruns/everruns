@@ -733,7 +733,7 @@ impl BraintrustListener {
     ) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
             "session_id": event.session_id.to_string(),
-            "agent_id": data.agent_id.to_string(),
+            "agent_id": data.agent_id.map(|id| id.to_string()),
         });
 
         if let Some(model_meta) = &data.metadata {
@@ -1199,7 +1199,7 @@ impl EventListener for BraintrustListener {
 
             // Atom lifecycle events (reason/act phases)
             EventData::ReasonStarted(data) => {
-                debug!(agent_id = %data.agent_id, "Processing reason.started for Braintrust");
+                debug!(agent_id = ?data.agent_id, "Processing reason.started for Braintrust");
                 self.convert_reason_started(event, data)
             }
             EventData::ReasonCompleted(data) => {
@@ -1318,7 +1318,7 @@ mod tests {
         ReasonCompletedData, TokenUsage, ToolCompletedData, TurnCompletedData, TurnStartedData,
     };
     use crate::message::Message;
-    use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
+    use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use uuid::Uuid;
 
     fn test_config() -> BraintrustConfig {
@@ -1572,7 +1572,8 @@ mod tests {
         context.parent_span_id = Some(turn_id.to_string());
 
         let data = ReasonStartedData {
-            agent_id: AgentId::new(),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
             metadata: None,
         };
         let event = Event::new(
@@ -1779,7 +1780,8 @@ mod tests {
 
         // reason.started
         let started_data = ReasonStartedData {
-            agent_id: AgentId::new(),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
             metadata: None,
         };
         let started_event = Event::new(
@@ -1857,7 +1859,8 @@ mod tests {
         reason_ctx.span_id = Some(reason_span_id.clone());
         reason_ctx.parent_span_id = Some(turn_id.to_string());
         let reason_data = ReasonStartedData {
-            agent_id: AgentId::new(),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
             metadata: None,
         };
         let reason_event = Event::new(
@@ -2055,7 +2058,8 @@ mod tests {
 
         // reason.started - should NOT have _is_merge
         let started_data = ReasonStartedData {
-            agent_id: AgentId::new(),
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
             metadata: None,
         };
         let started_event = Event::new(

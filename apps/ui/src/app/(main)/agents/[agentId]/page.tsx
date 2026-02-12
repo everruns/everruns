@@ -3,6 +3,7 @@
 import { use, useMemo, useCallback, useState } from "react";
 import {
   useAgent,
+  useHarnesses,
   useSessions,
   useCreateSession,
   useCapabilities,
@@ -58,6 +59,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
   const exportAgent = useExportAgent();
+  const { data: harnesses } = useHarnesses();
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
@@ -69,9 +71,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
 
   const handleNewSession = async () => {
+    const harnessId = harnesses?.[0]?.id;
+    if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: agentId },
+        request: { harness_id: harnessId, agent_id: agentId },
       });
       router.push(`/sessions/${session.id}`);
     } catch (error) {

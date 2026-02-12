@@ -10,32 +10,54 @@ use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageRetriever, InMemorySessionStore,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore, InMemoryMessageRetriever,
+    InMemorySessionStore,
 };
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
-use everruns_core::typed_id::{MessageId, SessionId, TurnId};
+use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
 use serde_json::json;
 use uuid::Uuid;
 
 /// Create a basic test setup with in-memory stores
 async fn setup_test_environment() -> (
+    InMemoryHarnessStore,
     InMemoryAgentStore,
     InMemorySessionStore,
     InMemoryMessageRetriever,
     InMemoryLlmProviderStore,
-    Uuid, // agent_id
-    Uuid, // session_id
+    HarnessId, // harness_id
+    Uuid,      // agent_id
+    Uuid,      // session_id
 ) {
+    let harness_store = InMemoryHarnessStore::new();
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
     let provider_store = InMemoryLlmProviderStore::new();
+
+    // Create a test harness
+    let harness_id = HarnessId::from_seed(1);
+    let now = chrono::Utc::now();
+    let harness = Harness {
+        id: harness_id,
+        name: "Test Harness".to_string(),
+        description: None,
+        system_prompt: "You are a helpful assistant.".to_string(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        status: HarnessStatus::Active,
+        created_at: now,
+        updated_at: now,
+    };
+    harness_store.add_harness(harness).await;
 
     // Create a test agent
     let agent_id = Uuid::now_v7();
@@ -50,19 +72,19 @@ async fn setup_test_environment() -> (
         default_model_id: None,
         tags: vec![],
         status: AgentStatus::Active,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        created_at: now,
+        updated_at: now,
         usage: None,
     };
     agent_store.add_agent(agent).await;
 
     // Create a test session
     let session_id = Uuid::now_v7();
-    let now = chrono::Utc::now();
     let session = Session {
         id: session_id.into(),
         organization_id: "default".to_string(),
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         title: Some("Test Session".to_string()),
         preview: None,
         output_preview: None,
@@ -89,10 +111,12 @@ async fn setup_test_environment() -> (
     provider_store.set_default_model(model).await;
 
     (
+        harness_store,
         agent_store,
         session_store,
         message_retriever,
         provider_store,
+        harness_id,
         agent_id,
         session_id,
     )
@@ -118,8 +142,16 @@ fn create_context(session_id: Uuid) -> AtomContext {
 async fn test_reason_atom_with_fixed_response() {
     use everruns_core::memory::InMemoryEventEmitter;
 
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Add a user message
     message_retriever
@@ -136,6 +168,7 @@ async fn test_reason_atom_with_fixed_response() {
     let event_emitter = InMemoryEventEmitter::new();
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -148,7 +181,8 @@ async fn test_reason_atom_with_fixed_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -184,8 +218,16 @@ async fn test_reason_atom_with_fixed_response() {
 
 #[tokio::test]
 async fn test_reason_atom_with_tool_calls() {
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Add a user message
     message_retriever
@@ -208,6 +250,7 @@ async fn test_reason_atom_with_tool_calls() {
     );
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -220,7 +263,8 @@ async fn test_reason_atom_with_tool_calls() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -240,8 +284,16 @@ async fn test_reason_atom_with_tool_calls() {
 
 #[tokio::test]
 async fn test_reason_atom_with_echo_response() {
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Add a user message
     message_retriever
@@ -255,6 +307,7 @@ async fn test_reason_atom_with_echo_response() {
     let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -267,7 +320,8 @@ async fn test_reason_atom_with_echo_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -288,8 +342,16 @@ async fn test_reason_atom_with_different_configs() {
     // registry.create_driver() call creates a fresh driver. For registry-based
     // usage, use fixed responses or test sequences at the driver level.
 
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // First test with one configuration
     message_retriever
@@ -299,6 +361,7 @@ async fn test_reason_atom_with_different_configs() {
     let driver_registry1 = create_custom_driver_registry(LlmSimConfig::fixed("Response A"));
 
     let atom1 = ReasonAtom::new(
+        harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
         message_retriever.clone(),
@@ -312,7 +375,8 @@ async fn test_reason_atom_with_different_configs() {
     let result1 = atom1
         .execute(ReasonInput {
             context: context1,
-            agent_id: agent_id.into(),
+            harness_id,
+            agent_id: Some(agent_id.into()),
             org_id: 0,
             mcp_tool_definitions: vec![],
         })
@@ -327,7 +391,8 @@ async fn test_reason_atom_with_different_configs() {
     let session2 = Session {
         id: session_id2.into(),
         organization_id: "default".to_string(),
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         title: Some("Test Session 2".to_string()),
         preview: None,
         output_preview: None,
@@ -350,6 +415,7 @@ async fn test_reason_atom_with_different_configs() {
     let driver_registry2 = create_custom_driver_registry(LlmSimConfig::fixed("Response B"));
 
     let atom2 = ReasonAtom::new(
+        harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
         message_retriever.clone(),
@@ -363,7 +429,8 @@ async fn test_reason_atom_with_different_configs() {
     let result2 = atom2
         .execute(ReasonInput {
             context: context2,
-            agent_id: agent_id.into(),
+            harness_id,
+            agent_id: Some(agent_id.into()),
             org_id: 0,
             mcp_tool_definitions: vec![],
         })
@@ -377,8 +444,16 @@ async fn test_reason_atom_with_different_configs() {
 async fn test_reason_atom_with_multi_turn_conversation() {
     use everruns_core::memory::InMemoryEventEmitter;
 
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Seed a multi-turn conversation
     message_retriever
@@ -399,6 +474,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let event_emitter = InMemoryEventEmitter::new();
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -411,7 +487,8 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -448,8 +525,16 @@ async fn test_reason_atom_with_multi_turn_conversation() {
 
 #[tokio::test]
 async fn test_reason_atom_with_tool_result_continuation() {
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Simulate a conversation where tool was called and result is available
     let tool_call = ToolCall {
@@ -475,9 +560,10 @@ async fn test_reason_atom_with_tool_result_continuation() {
 
     // LlmSim should now provide a response based on the tool result
     let driver_registry =
-        create_custom_driver_registry(LlmSimConfig::fixed("It's 22°C and sunny in Tokyo!"));
+        create_custom_driver_registry(LlmSimConfig::fixed("It's 22\u{00b0}C and sunny in Tokyo!"));
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -490,7 +576,8 @@ async fn test_reason_atom_with_tool_result_continuation() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -507,8 +594,16 @@ async fn test_reason_atom_with_tool_result_continuation() {
 
 #[tokio::test]
 async fn test_reason_atom_with_lorem_response() {
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     message_retriever
         .seed(
@@ -521,6 +616,7 @@ async fn test_reason_atom_with_lorem_response() {
     let driver_registry = create_custom_driver_registry(LlmSimConfig::lorem(100));
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -533,7 +629,8 @@ async fn test_reason_atom_with_lorem_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -553,8 +650,16 @@ async fn test_reason_atom_with_lorem_response() {
 async fn test_reason_atom_handles_llm_error() {
     use everruns_core::memory::InMemoryEventEmitter;
 
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Add a user message
     message_retriever
@@ -568,6 +673,7 @@ async fn test_reason_atom_handles_llm_error() {
     let event_emitter = InMemoryEventEmitter::new();
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -580,7 +686,8 @@ async fn test_reason_atom_handles_llm_error() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -640,8 +747,16 @@ async fn test_reason_atom_handles_llm_error() {
 async fn test_reason_atom_emits_output_message_completed_on_success() {
     use everruns_core::memory::InMemoryEventEmitter;
 
-    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
-        setup_test_environment().await;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
 
     // Add a user message
     message_retriever
@@ -659,6 +774,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     let event_emitter = InMemoryEventEmitter::new();
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever.clone(),
@@ -671,7 +787,8 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id: agent_id.into(),
+        harness_id,
+        agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };

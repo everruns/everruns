@@ -14,7 +14,7 @@ use everruns_core::Event;
 use everruns_core::events::{
     EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
 };
-use everruns_core::typed_id::{AgentId, MessageId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -43,13 +43,15 @@ impl MessageService {
     pub async fn create(
         &self,
         org_id: i64,
-        agent_id: Uuid,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
         session_id: Uuid,
         req: CreateMessageRequest,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %session_id,
-            agent_id = %agent_id,
+            harness_id = %harness_id,
+            agent_id = ?agent_id,
             "Creating user message"
         );
 
@@ -79,7 +81,8 @@ impl MessageService {
 
         // Convert to typed IDs for emit/runner
         let session_id_typed = SessionId::from_uuid(session_id);
-        let agent_id_typed = AgentId::from_uuid(agent_id);
+        let harness_id_typed = HarnessId::from_uuid(harness_id);
+        let agent_id_typed = agent_id.map(AgentId::from_uuid);
         let message_id_typed = MessageId::from_uuid(message_id);
 
         // Emit as typed event using EventService
@@ -109,7 +112,13 @@ impl MessageService {
         let runner = self.runner.clone();
         tokio::spawn(async move {
             if let Err(e) = runner
-                .start_run(org_id, session_id_typed, agent_id_typed, message_id_typed)
+                .start_run(
+                    org_id,
+                    session_id_typed,
+                    harness_id_typed,
+                    agent_id_typed,
+                    message_id_typed,
+                )
                 .await
             {
                 tracing::error!(

@@ -26,6 +26,9 @@ service WorkerService {
     // Agent operations
     rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
 
+    // Harness operations
+    rpc GetHarness(GetHarnessRequest) returns (GetHarnessResponse);
+
     // Session operations
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
     rpc SetSessionStatus(SetSessionStatusRequest) returns (SetSessionStatusResponse);
@@ -153,6 +156,8 @@ message GetTurnContextResponse {
     // MCP tool definitions from agent's MCP capabilities
     // These are pre-resolved to avoid MCP capability lookup in worker
     repeated McpToolDef mcp_tool_definitions = 5;
+    // Harness for this session (always present)
+    optional Harness harness = 6;
 }
 
 // MCP tool definition for passing to worker
@@ -192,12 +197,37 @@ message GetAgentResponse {
 }
 
 // ============================================================================
+// Harness types
+// ============================================================================
+
+message Harness {
+    Uuid id = 1;
+    string name = 2;
+    string description = 3;
+    string system_prompt = 4;
+    optional Uuid default_model_id = 5;
+    string status = 6;
+    Timestamp created_at = 7;
+    Timestamp updated_at = 8;
+    repeated string capability_ids = 9;
+}
+
+message GetHarnessRequest {
+    Uuid harness_id = 1;
+    int64 org_id = 2;
+}
+
+message GetHarnessResponse {
+    optional Harness harness = 1;
+}
+
+// ============================================================================
 // Session types
 // ============================================================================
 
 message Session {
     Uuid id = 1;
-    Uuid agent_id = 2;
+    optional Uuid agent_id = 2;
     string title = 3;
     string status = 4;
     Timestamp created_at = 5;
@@ -207,6 +237,8 @@ message Session {
     string organization_id = 8;
     // Session-level capabilities (JSON-encoded AgentCapabilityConfig)
     repeated string capabilities = 9;
+    // Harness ID (required for sessions)
+    optional Uuid harness_id = 10;
 }
 
 message GetSessionRequest {

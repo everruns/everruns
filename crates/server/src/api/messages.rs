@@ -262,7 +262,13 @@ pub async fn create_message(
 
     let message = state
         .message_service
-        .create(org.org_id, session.agent_id.uuid(), session_id.uuid(), req)
+        .create(
+            org.org_id,
+            session.harness_id.uuid(),
+            session.agent_id.map(|a| a.uuid()),
+            session_id.uuid(),
+            req,
+        )
         .await
         .map_err(|e| {
             tracing::error!("Failed to create message: {}", e);

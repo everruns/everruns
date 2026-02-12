@@ -127,12 +127,31 @@ else
 fi
 
 # ========================================
+# Test: Harness (get seed harness for session creation)
+# ========================================
+
+log_test "get seed harness"
+HARNESSES_OUTPUT=$(curl -s "$API_URL/v1/harnesses" -H "Authorization: ${EVERRUNS_API_KEY:-test}") || {
+  log_fail "list harnesses failed"
+  exit 1
+}
+HARNESS_ID=$(echo "$HARNESSES_OUTPUT" | jq -r '.data[0].id')
+if [ -n "$HARNESS_ID" ] && [ "$HARNESS_ID" != "null" ]; then
+  log_pass "found seed harness: $HARNESS_ID"
+else
+  log_fail "no harness found (required for session creation)"
+  echo "$HARNESSES_OUTPUT"
+  exit 1
+fi
+
+# ========================================
 # Test: Sessions CRUD
 # ========================================
 
-# Create session (uses prefixed agent ID)
+# Create session (uses prefixed harness + agent IDs)
 log_test "sessions create"
 SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions create \
+  --harness "$HARNESS_ID" \
   --agent "$AGENT_ID" \
   --title "CLI E2E Test Session" \
   --output json 2>&1) || {

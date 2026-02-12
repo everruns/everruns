@@ -4482,12 +4482,15 @@
         "type": "object",
         "description": "Request to create a session",
         "required": [
-          "agent_id"
+          "harness_id"
         ],
         "properties": {
           "agent_id": {
-            "type": "string",
-            "description": "ID of the agent to work in this session (format: agent_{32-hex}).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "capabilities": {
@@ -4496,6 +4499,11 @@
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
             "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+          },
+          "harness_id": {
+            "type": "string",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
@@ -7221,15 +7229,18 @@
               "required": [
                 "id",
                 "organization_id",
-                "agent_id",
+                "harness_id",
                 "status",
                 "created_at",
                 "updated_at"
               ],
               "properties": {
                 "agent_id": {
-                  "type": "string",
-                  "description": "ID of the agent working in this session (format: agent_{32-hex}).",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
                 "capabilities": {
@@ -7251,6 +7262,11 @@
                   ],
                   "format": "date-time",
                   "description": "Timestamp when the session finished (completed or failed)."
+                },
+                "harness_id": {
+                  "type": "string",
+                  "description": "ID of the harness for this session (format: harness_{32-hex}).",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
@@ -7451,12 +7467,23 @@
         "type": "object",
         "description": "Data for reason.started event",
         "required": [
-          "agent_id"
+          "harness_id"
         ],
         "properties": {
           "agent_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TypedId",
+                "description": "Agent ID being used (optional)"
+              }
+            ]
+          },
+          "harness_id": {
             "$ref": "#/components/schemas/TypedId",
-            "description": "Agent ID being used"
+            "description": "Harness ID being used"
           },
           "metadata": {
             "oneOf": [
@@ -7926,15 +7953,18 @@
         "required": [
           "id",
           "organization_id",
-          "agent_id",
+          "harness_id",
           "status",
           "created_at",
           "updated_at"
         ],
         "properties": {
           "agent_id": {
-            "type": "string",
-            "description": "ID of the agent working in this session (format: agent_{32-hex}).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "capabilities": {
@@ -7956,6 +7986,11 @@
             ],
             "format": "date-time",
             "description": "Timestamp when the session finished (completed or failed)."
+          },
+          "harness_id": {
+            "type": "string",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
@@ -8158,13 +8193,21 @@
         "type": "object",
         "description": "Data for session.started event",
         "required": [
-          "agent_id"
+          "harness_id"
         ],
         "properties": {
           "agent_id": {
-            "type": "string",
-            "description": "Agent ID",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent ID (optional)",
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          "harness_id": {
+            "type": "string",
+            "description": "Harness ID",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [

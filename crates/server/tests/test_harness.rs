@@ -33,7 +33,7 @@ use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
 use everruns_server::{
-    api, auth, services,
+    api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
 };
 use everruns_worker::{RunnerBackend, create_driver_registry, create_runner_with_backend};
@@ -96,6 +96,12 @@ impl TestServer {
             }
         };
 
+        // Seed default data synchronously (harnesses, agents, providers, etc.)
+        let grade = everruns_core::DeploymentGrade::from_env();
+        seed::seed_all(&db, grade)
+            .await
+            .expect("Failed to seed test data");
+
         // Initialize encryption service (use test key)
         let encryption = Some(Arc::new(
             EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
@@ -152,6 +158,11 @@ impl TestServer {
         ));
         let capabilities_state =
             api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
+        let harnesses_state = api::harnesses::AppState::new(
+            db.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+        );
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
@@ -175,6 +186,7 @@ impl TestServer {
         // Build API routes
         let api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::events::routes(events_state))

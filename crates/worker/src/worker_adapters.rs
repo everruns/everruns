@@ -11,9 +11,9 @@ use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{ImageResolver, ResolvedImage};
-use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    Agent, DriverRegistry, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
+    Agent, DriverRegistry, Harness, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -38,6 +38,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get agent by ID
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>>;
+
+    /// Get harness by ID
+    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>>;
 
     // =========================================================================
     // Session Operations
@@ -189,7 +192,7 @@ pub struct ModelWithProvider {
 /// Turn context loaded in one batched call
 #[derive(Debug, Clone)]
 pub struct TurnContext {
-    pub agent: Agent,
+    pub agent: Option<Agent>,
     pub session: Session,
     pub messages: Vec<Message>,
     pub model: Option<ModelWithProvider>,
@@ -217,6 +220,27 @@ impl<A: WorkerAdapters> AdapterAgentStore<A> {
 impl<A: WorkerAdapters> everruns_core::traits::AgentStore for AdapterAgentStore<A> {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         self.adapters.get_agent(self.org_id, agent_id.uuid()).await
+    }
+}
+
+/// Adapter-based HarnessStore implementation
+pub struct AdapterHarnessStore<A: WorkerAdapters> {
+    adapters: A,
+    org_id: i64,
+}
+
+impl<A: WorkerAdapters> AdapterHarnessStore<A> {
+    pub fn new(adapters: A, org_id: i64) -> Self {
+        Self { adapters, org_id }
+    }
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for AdapterHarnessStore<A> {
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
+        self.adapters
+            .get_harness(self.org_id, harness_id.uuid())
+            .await
     }
 }
 

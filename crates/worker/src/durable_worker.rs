@@ -687,7 +687,8 @@ impl DurableWorker {
                 let turn_input = DurableTurnInput {
                     org_id: act_task_input.org_id,
                     session_id: act_task_input.act_input.context.session_id,
-                    agent_id: act_task_input.act_input.agent_id, // Pass through agent_id for follow-up reason
+                    harness_id: act_task_input.act_input.harness_id,
+                    agent_id: act_task_input.act_input.agent_id,
                     input_message_id: act_task_input.act_input.context.input_message_id,
                     turn_id: Some(act_task_input.act_input.context.turn_id),
                 };
@@ -875,6 +876,7 @@ impl DurableWorker {
 
         let reason_input = ReasonInput {
             context,
+            harness_id: input.harness_id,
             agent_id: input.agent_id,
             org_id: input.org_id,
             mcp_tool_definitions: turn_context.mcp_tool_definitions,
@@ -989,6 +991,7 @@ impl DurableWorker {
                 let input_with_turn = DurableTurnInput {
                     org_id: input.org_id,
                     session_id: input.session_id,
+                    harness_id: input.harness_id,
                     agent_id: input.agent_id,
                     input_message_id: input.input_message_id,
                     turn_id,
@@ -1029,7 +1032,8 @@ impl DurableWorker {
                                 input_message_id: input.input_message_id,
                                 exec_id: ExecId::new(),
                             },
-                            agent_id: input.agent_id, // Pass through for follow-up reason activity
+                            harness_id: input.harness_id,
+                            agent_id: input.agent_id,
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
                         },

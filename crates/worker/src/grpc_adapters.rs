@@ -12,10 +12,11 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
+    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileStore,
+    SessionStore,
 };
 use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
-use everruns_core::{Agent, Message, Session};
+use everruns_core::{Agent, Harness, HarnessStatus, Message, Session};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
@@ -394,6 +395,79 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 }
 
 // ============================================================================
+// HarnessStore implementation
+// ============================================================================
+
+/// gRPC-backed harness store
+pub struct GrpcHarnessStore {
+    client: GrpcClient,
+    org_id: i64,
+}
+
+impl GrpcHarnessStore {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
+    }
+}
+
+#[async_trait]
+impl HarnessStore for GrpcHarnessStore {
+    async fn get_harness(&self, harness_id: everruns_core::HarnessId) -> Result<Option<Harness>> {
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::GetHarnessRequest {
+            harness_id: Some(uuid_to_proto(harness_id.uuid())),
+            org_id: self.org_id,
+        };
+
+        let response = client
+            .get_harness(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_harness failed: {}", e)))?;
+
+        match response.into_inner().harness {
+            Some(proto_harness) => {
+                let harness = proto_harness_to_harness(proto_harness)?;
+                Ok(Some(harness))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
+    let id = proto_uuid_to_uuid(proto_harness.id.as_ref())?;
+    let default_model_id = proto_harness
+        .default_model_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
+
+    let status = match proto_harness.status.to_lowercase().as_str() {
+        "active" => HarnessStatus::Active,
+        "archived" => HarnessStatus::Archived,
+        _ => HarnessStatus::Active,
+    };
+
+    Ok(Harness {
+        id: id.into(),
+        name: proto_harness.name,
+        description: non_empty_string(proto_harness.description),
+        system_prompt: proto_harness.system_prompt,
+        default_model_id: default_model_id.map(|u| u.into()),
+        tags: vec![],
+        capabilities: proto_harness
+            .capability_ids
+            .into_iter()
+            .map(everruns_core::AgentCapabilityConfig::new)
+            .collect(),
+        status,
+        created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(proto_harness.updated_at.as_ref()),
+    })
+}
+
+// ============================================================================
 // SessionStore implementation
 // ============================================================================
 
@@ -436,7 +510,17 @@ impl SessionStore for GrpcSessionStore {
 
 fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     let id = proto_uuid_to_uuid(proto_session.id.as_ref())?;
-    let agent_id = proto_uuid_to_uuid(proto_session.agent_id.as_ref())?;
+    let agent_id = proto_session
+        .agent_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
+    let harness_id = proto_session
+        .harness_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?
+        .unwrap_or(uuid::Uuid::nil());
     let model_id = proto_session
         .default_model_id
         .as_ref()
@@ -466,7 +550,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     Ok(Session {
         id: id.into(),
         organization_id: proto_session.organization_id,
-        agent_id: agent_id.into(),
+        agent_id: agent_id.map(|u| u.into()),
+        harness_id: harness_id.into(),
         title: non_empty_string(proto_session.title),
         preview: None,
         output_preview: None,
@@ -861,7 +946,7 @@ fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
 
 /// Turn context loaded in one batched gRPC call
 pub struct TurnContext {
-    pub agent: Agent,
+    pub agent: Option<Agent>,
     pub session: Session,
     pub messages: Vec<Message>,
     pub model: Option<ModelWithProvider>,
@@ -891,14 +976,11 @@ pub async fn load_turn_context(
 
     let inner = response.into_inner();
 
-    let proto_agent = inner
-        .agent
-        .ok_or_else(|| grpc_error("No agent in turn context"))?;
+    let agent = inner.agent.map(proto_agent_to_agent).transpose()?;
     let proto_session = inner
         .session
         .ok_or_else(|| grpc_error("No session in turn context"))?;
 
-    let agent = proto_agent_to_agent(proto_agent)?;
     let session = proto_session_to_session(proto_session)?;
 
     let messages: Vec<Message> = inner

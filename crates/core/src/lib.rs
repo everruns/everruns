@@ -40,6 +40,7 @@ pub mod typed_id;
 pub mod agent;
 pub mod capability_dto;
 pub mod events;
+pub mod harness;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
@@ -92,9 +93,9 @@ pub use message_filter::{
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider, NoopEventEmitter,
-    ResolvedImage, SecretInfo, SessionFileStore, SessionSqlDbStoreRef, SessionStorageStore,
-    SessionStore, ToolContext, ToolExecutor,
+    EventEmitter, HarnessStore, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider,
+    NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionSqlDbStoreRef,
+    SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
 };
 
 // Event listener re-exports
@@ -175,6 +176,7 @@ pub use events::{
     TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
     TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData,
 };
+pub use harness::{Harness, HarnessStatus};
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
     LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelSource,
@@ -198,8 +200,8 @@ pub use session_sqldb::{
     SqlQueryResult, TableSchema,
 };
 pub use typed_id::{
-    AgentId, EventId, ExecId, IdMarker, IdParseError, ImageId, McpServerId, MessageId, ModelId,
-    OrgId, ProviderId, SessionId, TurnId, TypedId,
+    AgentId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId, MessageId,
+    ModelId, OrgId, ProviderId, SessionId, TurnId, TypedId,
 };
 
 // Deployment configuration

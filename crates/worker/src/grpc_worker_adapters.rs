@@ -9,15 +9,15 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{AgentStore, ResolvedImage};
-use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
-use everruns_core::{Agent, DriverRegistry, Message, Session, ToolRegistry};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
+use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolRegistry};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcImageResolver, GrpcLlmProviderStore,
-    GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
+    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
@@ -59,6 +59,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
         let store = GrpcAgentStore::new(self.client.clone(), org_id);
         store.get_agent(AgentId::from_uuid(agent_id)).await
+    }
+
+    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+        let store = GrpcHarnessStore::new(self.client.clone(), org_id);
+        everruns_core::traits::HarnessStore::get_harness(&store, HarnessId::from_uuid(harness_id))
+            .await
     }
 
     // =========================================================================

@@ -1,7 +1,9 @@
 // Database models (internal, may differ from public DTOs)
 
 use chrono::{DateTime, Utc};
-use everruns_core::{AgentId, EventId, ImageId, McpServerId, ModelId, ProviderId, SessionId};
+use everruns_core::{
+    AgentId, EventId, HarnessId, ImageId, McpServerId, ModelId, ProviderId, SessionId,
+};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -219,6 +221,61 @@ pub struct UpdateAgent {
 }
 
 // ============================================
+// Harness models (base configuration for sessions)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct HarnessRow {
+    pub id: HarnessId,
+    pub org_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub system_prompt: String,
+    pub default_model_id: Option<ModelId>,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateHarnessRow {
+    pub name: String,
+    pub description: Option<String>,
+    pub system_prompt: String,
+    pub default_model_id: Option<ModelId>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateHarness {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub system_prompt: Option<String>,
+    pub default_model_id: Option<ModelId>,
+    pub tags: Option<Vec<String>>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct HarnessCapabilityRow {
+    pub id: Uuid,
+    pub harness_id: HarnessId,
+    pub capability_id: String,
+    pub position: i32,
+    pub config: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateHarnessCapabilityRow {
+    pub harness_id: HarnessId,
+    pub capability_id: String,
+    pub position: i32,
+    pub config: serde_json::Value,
+}
+
+// ============================================
 // Session models (instance of agentic loop)
 // ============================================
 
@@ -226,7 +283,9 @@ pub struct UpdateAgent {
 pub struct SessionRow {
     pub id: SessionId,
     pub org_id: i64,
-    pub agent_id: AgentId,
+    #[sqlx(default)]
+    pub harness_id: Option<HarnessId>,
+    pub agent_id: Option<AgentId>,
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
@@ -258,7 +317,8 @@ pub struct SessionRow {
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
     pub org_id: i64,
-    pub agent_id: AgentId,
+    pub harness_id: Option<HarnessId>,
+    pub agent_id: Option<AgentId>,
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,

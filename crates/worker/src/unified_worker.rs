@@ -30,8 +30,9 @@ use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
 use crate::worker_adapters::{
-    AdapterAgentStore, AdapterEventEmitter, AdapterImageResolver, AdapterLlmProviderStore,
-    AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore, WorkerAdapters,
+    AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
+    AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
+    WorkerAdapters,
 };
 
 // Re-export atom types
@@ -421,6 +422,7 @@ where
             let turn_input = DurableTurnInput {
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 session_id: act_input.context.session_id,
+                harness_id: act_input.harness_id,
                 agent_id: act_input.agent_id,
                 input_message_id: act_input.context.input_message_id,
                 turn_id: Some(act_input.context.turn_id),
@@ -607,6 +609,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         .await?;
 
     // Create atom dependencies
+    let harness_store = AdapterHarnessStore::new(adapters.clone(), input.org_id);
     let agent_store = AdapterAgentStore::new(adapters.clone(), input.org_id);
     let session_store = AdapterSessionStore::new(adapters.clone(), input.org_id);
     let message_retriever = AdapterMessageRetriever::new(adapters.clone());
@@ -617,6 +620,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let image_resolver = Arc::new(AdapterImageResolver::new(adapters.clone()));
 
     let atom = ReasonAtom::new(
+        harness_store,
         agent_store,
         session_store,
         message_retriever,
@@ -629,6 +633,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
 
     let reason_input = everruns_core::ReasonInput {
         context: context.clone(),
+        harness_id: input.harness_id,
         agent_id: input.agent_id,
         org_id: input.org_id,
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
@@ -755,7 +760,11 @@ async fn execute_act_activity<A: WorkerAdapters>(
     );
 
     // Build tool registry with defaults and capability tools
-    let tool_registry = adapters.build_tool_registry(input.agent_id.uuid()).await?;
+    let tool_registry = if let Some(agent_id) = input.agent_id {
+        adapters.build_tool_registry(agent_id.uuid()).await?
+    } else {
+        everruns_core::ToolRegistry::with_defaults()
+    };
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
@@ -796,6 +805,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             let input_with_turn = DurableTurnInput {
                 org_id: input.org_id,
                 session_id: input.session_id,
+                harness_id: input.harness_id,
                 agent_id: input.agent_id,
                 input_message_id: input.input_message_id,
                 turn_id,
@@ -859,6 +869,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                             input_message_id: input.input_message_id,
                             exec_id: ExecId::new(),
                         },
+                        harness_id: input.harness_id,
                         agent_id: input.agent_id,
                         tool_calls: server_tool_calls,
                         tool_definitions: reason_result.tool_definitions.clone(),

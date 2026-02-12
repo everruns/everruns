@@ -23,6 +23,9 @@ const API_BASE_URL: &str = "http://localhost:9000";
 // Note: With AUTH_MODE=none, org is derived from the anonymous user's default org.
 // No cookie or header needed for integration tests.
 
+/// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
+const SEED_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
+
 #[tokio::test]
 async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
@@ -109,6 +112,7 @@ async fn test_full_agent_session_workflow() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Test Session"
         }))
@@ -122,7 +126,7 @@ async fn test_full_agent_session_workflow() {
         .await
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
-    assert_eq!(session.agent_id, agent.public_id);
+    assert_eq!(session.agent_id, Some(agent.public_id));
 
     // Step 6: Add message (user message)
     println!("\nStep 6: Adding user message...");
@@ -502,6 +506,7 @@ async fn test_session_inherits_agent_default_model() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Test Session"
         }))
@@ -552,6 +557,7 @@ async fn test_session_inherits_agent_default_model() {
     let session2_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Test Session 2",
             "model_id": model2.id.to_string()
@@ -629,6 +635,7 @@ async fn test_session_filesystem() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Filesystem Test Session"
         }))
@@ -878,6 +885,7 @@ async fn test_session_filesystem_workspace_prefix() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Workspace Test Session"
         }))
@@ -1090,7 +1098,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "FS Bash Integration Test"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "FS Bash Integration Test"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1346,7 +1354,7 @@ async fn test_message_triggers_agent_workflow() {
     println!("\nStep 2: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Workflow Test Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Workflow Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1624,7 +1632,7 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 4: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1823,7 +1831,7 @@ async fn test_sessions_pagination() {
     for i in 1..=15 {
         let response = client
             .post(format!("{}/v1/sessions", API_BASE_URL))
-            .json(&json!({ "agent_id": agent.public_id, "title": format!("Session {}", i) }))
+            .json(&json!({ "harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": format!("Session {}", i) }))
             .send()
             .await
             .expect("Failed to create session");
@@ -2066,7 +2074,7 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 2: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Second Message Test Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Second Message Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -2350,6 +2358,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Mount Test Session"
         }))
@@ -2470,6 +2479,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let session2_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Second Mount Test Session"
         }))
@@ -2885,7 +2895,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Dad Jokes Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3176,7 +3186,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "OpenAI Dad Jokes Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "OpenAI Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3424,7 +3434,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Anthropic Dad Jokes Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Anthropic Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3650,7 +3660,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     println!("\nStep 3: Creating session and sending message...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3829,7 +3839,7 @@ async fn test_streaming_events_emitted() {
     println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Streaming Test Session"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Streaming Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -4154,6 +4164,7 @@ async fn test_cancel_turn_endpoint() {
     let session_response = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
         .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
             "agent_id": agent.public_id,
             "title": "Cancel Test Session"
         }))
@@ -4953,7 +4964,7 @@ async fn test_events_api_contract() {
 
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "Events Contract Test"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "Events Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")
@@ -5064,7 +5075,7 @@ async fn test_events_sse_contract() {
 
     let session: Session = client
         .post(format!("{}/v1/sessions", API_BASE_URL))
-        .json(&json!({"agent_id": agent.public_id, "title": "SSE Contract Test"}))
+        .json(&json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id, "title": "SSE Contract Test"}))
         .send()
         .await
         .expect("Failed to create session")

@@ -6,12 +6,15 @@ import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
 function createSession(overrides?: Partial<Session>): Session {
   return {
     id: "session-1",
+    organization_id: "default",
+    harness_id: "harness-1",
     agent_id: "agent-1",
     title: "Test Session",
     tags: [],
     model_id: null,
     status: "started",
     created_at: "2025-01-01T00:00:00Z",
+    updated_at: "2025-01-01T00:00:00Z",
     started_at: null,
     finished_at: null,
     ...overrides,
@@ -84,7 +87,10 @@ describe("RecentSessions", () => {
 
   describe("model display", () => {
     it("displays model name when session has a model_id and model data is provided", () => {
-      const model = createLlmModel({ id: "model-123", display_name: "Claude 3.5 Sonnet" });
+      const model = createLlmModel({
+        id: "model-123",
+        display_name: "Claude 3.5 Sonnet",
+      });
       const session = createSession({ model_id: "model-123" });
       const agent = createAgent();
 
@@ -114,11 +120,26 @@ describe("RecentSessions", () => {
 
     it("displays multiple sessions with different models", () => {
       const model1 = createLlmModel({ id: "model-1", display_name: "GPT-4o" });
-      const model2 = createLlmModel({ id: "model-2", display_name: "Claude 3.5 Sonnet" });
+      const model2 = createLlmModel({
+        id: "model-2",
+        display_name: "Claude 3.5 Sonnet",
+      });
 
-      const session1 = createSession({ id: "s1", model_id: "model-1", title: "Session 1" });
-      const session2 = createSession({ id: "s2", model_id: "model-2", title: "Session 2" });
-      const session3 = createSession({ id: "s3", model_id: null, title: "Session 3" });
+      const session1 = createSession({
+        id: "s1",
+        model_id: "model-1",
+        title: "Session 1",
+      });
+      const session2 = createSession({
+        id: "s2",
+        model_id: "model-2",
+        title: "Session 2",
+      });
+      const session3 = createSession({
+        id: "s3",
+        model_id: null,
+        title: "Session 3",
+      });
 
       const agent = createAgent();
 

@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -33,7 +33,8 @@ use everruns_durable::{
 pub struct DurableTurnInput {
     pub org_id: i64,
     pub session_id: SessionId,
-    pub agent_id: AgentId,
+    pub harness_id: HarnessId,
+    pub agent_id: Option<AgentId>,
     pub input_message_id: MessageId,
     /// Turn ID for trace correlation. Created by input activity, propagated to reason/act.
     /// Uses typed TurnId for type safety and consistent prefixed format.
@@ -466,13 +467,15 @@ impl AgentRunner for DurableRunner {
         &self,
         org_id: i64,
         session_id: SessionId,
-        agent_id: AgentId,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
         input_message_id: MessageId,
     ) -> Result<()> {
         info!(
             org_id = org_id,
             session_id = %session_id,
-            agent_id = %agent_id,
+            harness_id = %harness_id,
+            ?agent_id,
             input_message_id = %input_message_id,
             "Starting durable turn workflow for session"
         );
@@ -482,6 +485,7 @@ impl AgentRunner for DurableRunner {
         let input = DurableTurnInput {
             org_id,
             session_id,
+            harness_id,
             agent_id,
             input_message_id,
             turn_id: None,
@@ -640,7 +644,7 @@ impl AgentRunner for DurableRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::typed_id::{AgentId, MessageId, SessionId};
+    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 
     #[test]
     fn test_durable_turn_input_serialization() {
@@ -649,7 +653,8 @@ mod tests {
         let input = DurableTurnInput {
             org_id: DEFAULT_ORG_ID,
             session_id: SessionId::new(),
-            agent_id: AgentId::new(),
+            harness_id: HarnessId::new(),
+            agent_id: Some(AgentId::new()),
             input_message_id: MessageId::new(),
             turn_id: None,
         };
@@ -672,12 +677,19 @@ mod tests {
         let runner = DurableRunner::new_in_memory();
 
         let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let message_id = MessageId::new();
 
         // First call should create a new workflow
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id,
+            )
             .await
             .expect("First start_run should succeed");
 
@@ -693,13 +705,20 @@ mod tests {
         let runner = DurableRunner::new_in_memory();
 
         let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let message_id1 = MessageId::new();
         let message_id2 = MessageId::new();
 
         // First message
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id1,
+            )
             .await
             .expect("First start_run should succeed");
 
@@ -707,7 +726,13 @@ mod tests {
 
         // Second message while still running - should skip (not error)
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id2,
+            )
             .await
             .expect("Second start_run should skip gracefully");
 
@@ -727,13 +752,20 @@ mod tests {
         let runner = DurableRunner::new_in_memory();
 
         let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let message_id1 = MessageId::new();
         let message_id2 = MessageId::new();
 
         // First message - creates workflow
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id1,
+            )
             .await
             .expect("First start_run should succeed");
 
@@ -758,7 +790,13 @@ mod tests {
         // This is the bug fix - previously this would fail because it tried
         // to create a workflow with the same ID
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id2,
+            )
             .await
             .expect("Second start_run should succeed (reset workflow)");
 
@@ -777,13 +815,20 @@ mod tests {
         let runner = DurableRunner::new_in_memory();
 
         let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let message_id1 = MessageId::new();
         let message_id2 = MessageId::new();
 
         // First message
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id1,
+            )
             .await
             .expect("First start_run should succeed");
 
@@ -805,7 +850,13 @@ mod tests {
 
         // Second message - should reset failed workflow
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id2,
+            )
             .await
             .expect("Second start_run should reset failed workflow");
 

@@ -4,7 +4,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::typed_id::{AgentId, EventId, SessionId};
+use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -562,20 +562,158 @@ impl Database {
     }
 
     // ============================================
+    // Harnesses (base configuration for sessions)
+    // ============================================
+
+    pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
+        let row = sqlx::query_as::<_, HarnessRow>(
+            r#"
+            INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active')
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id.map(|m| m.uuid()))
+        .bind(&input.tags)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Create harness with a specific ID, idempotent (ON CONFLICT DO NOTHING)
+    /// Returns None if harness already exists with this ID
+    pub async fn create_harness_with_id(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: CreateHarnessRow,
+    ) -> Result<Option<HarnessRow>> {
+        let row = sqlx::query_as::<_, HarnessRow>(
+            r#"
+            INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            "#,
+        )
+        .bind(id.uuid())
+        .bind(org_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id.map(|m| m.uuid()))
+        .bind(&input.tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
+        let row = sqlx::query_as::<_, HarnessRow>(
+            r#"
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            FROM harnesses
+            WHERE org_id = $1 AND id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
+        let rows = sqlx::query_as::<_, HarnessRow>(
+            r#"
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            FROM harnesses
+            WHERE org_id = $1 AND status = 'active'
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_harness(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: UpdateHarness,
+    ) -> Result<Option<HarnessRow>> {
+        let row = sqlx::query_as::<_, HarnessRow>(
+            r#"
+            UPDATE harnesses
+            SET
+                name = COALESCE($3, name),
+                description = COALESCE($4, description),
+                system_prompt = COALESCE($5, system_prompt),
+                default_model_id = COALESCE($6, default_model_id),
+                tags = COALESCE($7, tags),
+                status = COALESCE($8, status),
+                updated_at = NOW()
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id.map(|m| m.uuid()))
+        .bind(&input.tags)
+        .bind(&input.status)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        // Archive instead of hard delete
+        let result = sqlx::query(
+            r#"
+            UPDATE harnesses
+            SET status = 'archived', updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
     // Sessions (instance of agentic loop)
     // ============================================
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, agent_id, title, tags, model_id, capabilities, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'started')
-            RETURNING id, org_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'started')
+            RETURNING id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(input.org_id)
-        .bind(input.agent_id)
+        .bind(input.harness_id.map(|h| h.uuid()))
+        .bind(input.agent_id.map(|a| a.uuid()))
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id)
@@ -591,7 +729,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -643,7 +781,7 @@ impl Database {
         let rows = if let Some(aid) = agent_id {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1 AND agent_id = $2
@@ -660,7 +798,7 @@ impl Database {
         } else {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, agent_id, title, tags, model_id, capabilities, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1
@@ -697,7 +835,7 @@ impl Database {
                 started_at = COALESCE($7, started_at),
                 finished_at = COALESCE($8, finished_at)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -1622,6 +1760,64 @@ impl Database {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
+    // Harness Capabilities
+    // ============================================
+
+    /// Get capabilities for a harness, ordered by position
+    pub async fn get_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let rows = sqlx::query_as::<_, HarnessCapabilityRow>(
+            r#"
+            SELECT id, harness_id, capability_id, position, config, created_at
+            FROM harness_capabilities
+            WHERE harness_id = $1
+            ORDER BY position ASC
+            "#,
+        )
+        .bind(harness_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Set capabilities for a harness (replaces existing capabilities)
+    /// capabilities: list of (capability_id, position, config) tuples
+    pub async fn set_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("DELETE FROM harness_capabilities WHERE harness_id = $1")
+            .bind(harness_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for (capability_id, position, config) in &capabilities {
+            sqlx::query(
+                r#"
+                INSERT INTO harness_capabilities (harness_id, capability_id, position, config)
+                VALUES ($1, $2, $3, $4)
+                "#,
+            )
+            .bind(harness_id)
+            .bind(capability_id)
+            .bind(position)
+            .bind(config)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        self.get_harness_capabilities(harness_id).await
     }
 
     // ============================================

@@ -6,8 +6,8 @@
 // Decision: No direct database access - all operations go through services layer
 
 use crate::services::{
-    AgentService, EventService, LlmResolverService, McpServerService, SessionFileService,
-    SessionService,
+    AgentService, EventService, HarnessService, LlmResolverService, McpServerService,
+    SessionFileService, SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use crate::storage::{EncryptionService, StorageBackend};
@@ -31,26 +31,26 @@ use everruns_internal_protocol::proto::{
     EnqueueDurableTaskRequest, EnqueueDurableTaskResponse, FailDurableTaskRequest,
     FailDurableTaskResponse, GetAgentRequest, GetAgentResponse, GetDefaultModelRequest,
     GetDefaultModelResponse, GetDurableWorkflowStatusRequest, GetDurableWorkflowStatusResponse,
-    GetMcpServerByPrefixRequest, GetMcpServerByPrefixResponse, GetModelWithProviderRequest,
-    GetModelWithProviderResponse, GetSessionRequest, GetSessionResponse, GetTurnContextRequest,
-    GetTurnContextResponse, HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse,
-    HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse, LoadMessagesRequest,
-    LoadMessagesResponse, McpServerInfo, McpToolDef, RecordCircuitBreakerFailureRequest,
-    RecordCircuitBreakerFailureResponse, RecordCircuitBreakerSuccessRequest,
-    RecordCircuitBreakerSuccessResponse, RegisterDurableWorkerRequest,
-    RegisterDurableWorkerResponse, ResolveImageRequest, ResolveImageResponse, ResolveImagesRequest,
-    ResolveImagesResponse, ResolvedImageData, SessionCreateDirectoryRequest,
-    SessionCreateDirectoryResponse, SessionDeleteFileRequest, SessionDeleteFileResponse,
-    SessionGrepFilesRequest, SessionGrepFilesResponse, SessionListDirectoryRequest,
-    SessionListDirectoryResponse, SessionReadFileRequest, SessionReadFileResponse,
-    SessionStatFileRequest, SessionStatFileResponse, SessionWriteFileRequest,
-    SessionWriteFileResponse, SetSessionStatusRequest, SetSessionStatusResponse,
-    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType,
-    UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
+    GetHarnessRequest, GetHarnessResponse, GetMcpServerByPrefixRequest,
+    GetMcpServerByPrefixResponse, GetModelWithProviderRequest, GetModelWithProviderResponse,
+    GetSessionRequest, GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse,
+    HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest,
+    HeartbeatDurableWorkerResponse, LoadMessagesRequest, LoadMessagesResponse, McpServerInfo,
+    McpToolDef, RecordCircuitBreakerFailureRequest, RecordCircuitBreakerFailureResponse,
+    RecordCircuitBreakerSuccessRequest, RecordCircuitBreakerSuccessResponse,
+    RegisterDurableWorkerRequest, RegisterDurableWorkerResponse, ResolveImageRequest,
+    ResolveImageResponse, ResolveImagesRequest, ResolveImagesResponse, ResolvedImageData,
+    SessionCreateDirectoryRequest, SessionCreateDirectoryResponse, SessionDeleteFileRequest,
+    SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
+    SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
+    SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
+    SessionWriteFileRequest, SessionWriteFileResponse, SetSessionStatusRequest,
+    SetSessionStatusResponse, SubscribeTaskNotificationsRequest, TaskNotification,
+    TaskNotificationType, UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
-    schema_event_to_proto,
+    schema_event_to_proto, schema_harness_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -64,6 +64,7 @@ use tonic::{Request, Response, Status, Streaming};
 pub struct WorkerServiceImpl {
     event_service: EventService,
     agent_service: AgentService,
+    harness_service: HarnessService,
     session_service: SessionService,
     session_file_service: SessionFileService,
     llm_resolver_service: LlmResolverService,
@@ -82,6 +83,7 @@ impl WorkerServiceImpl {
         encryption: Option<Arc<EncryptionService>>,
     ) -> Self {
         let agent_service = AgentService::new(db.clone());
+        let harness_service = HarnessService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let session_file_service = SessionFileService::new(db.clone());
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
@@ -96,6 +98,7 @@ impl WorkerServiceImpl {
         Self {
             event_service,
             agent_service,
+            harness_service,
             session_service,
             session_file_service,
             llm_resolver_service,
@@ -285,25 +288,39 @@ impl WorkerService for WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        // Get agent with capabilities via AgentService
-        let agent = self
-            .agent_service
-            .get(req.org_id, session.agent_id.uuid())
+        // Get agent with capabilities via AgentService (optional)
+        let agent = if let Some(agent_id) = session.agent_id {
+            self.agent_service
+                .get(req.org_id, agent_id.uuid())
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get agent: {}", e);
+                    Status::internal("Failed to get agent")
+                })?
+        } else {
+            None
+        };
+
+        // Load harness
+        let harness = self
+            .harness_service
+            .get(req.org_id, session.harness_id.uuid())
             .await
             .map_err(|e| {
-                tracing::error!("Failed to get agent: {}", e);
-                Status::internal("Failed to get agent")
-            })?
-            .ok_or_else(|| Status::not_found("Agent not found"))?;
+                tracing::error!("Failed to get harness: {}", e);
+                Status::internal("Failed to get harness")
+            })?;
 
         // Convert to proto types
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
-        let proto_agent = schema_agent_to_proto(&agent);
+        let proto_agent = agent.as_ref().map(schema_agent_to_proto);
+        let proto_harness = harness.as_ref().map(schema_harness_to_proto);
 
         let proto_session = proto::Session {
             id: Some(uuid_to_proto_uuid(session.id.uuid())),
-            agent_id: Some(uuid_to_proto_uuid(session.agent_id.uuid())),
+            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
@@ -372,8 +389,11 @@ impl WorkerService for WorkerServiceImpl {
         }
 
         // Get model with provider (decrypted API key) via LlmResolverService
-        // Priority: session model > agent model > default model
-        let model_id = session.model_id.or(agent.default_model_id);
+        // Priority: session model > agent model > harness model > default model
+        let model_id = session
+            .model_id
+            .or(agent.as_ref().and_then(|a| a.default_model_id))
+            .or(harness.as_ref().and_then(|h| h.default_model_id));
 
         let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
             self.llm_resolver_service
@@ -398,14 +418,19 @@ impl WorkerService for WorkerServiceImpl {
 
         // Build MCP tool definitions from agent's MCP capabilities
         // This resolves MCP tools so the worker doesn't need to look them up
-        let mcp_tool_definitions = self.build_mcp_tool_definitions(&agent).await;
+        let mcp_tool_definitions = if let Some(ref a) = agent {
+            self.build_mcp_tool_definitions(a).await
+        } else {
+            vec![]
+        };
 
         Ok(Response::new(GetTurnContextResponse {
-            agent: Some(proto_agent),
+            agent: proto_agent,
             session: Some(proto_session),
             messages: proto_messages,
             model,
             mcp_tool_definitions,
+            harness: proto_harness,
         }))
     }
 
@@ -474,6 +499,26 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(GetAgentResponse { agent: proto_agent }))
     }
 
+    async fn get_harness(
+        &self,
+        request: Request<GetHarnessRequest>,
+    ) -> Result<Response<GetHarnessResponse>, Status> {
+        let req = request.into_inner();
+        let harness_id = parse_uuid(req.harness_id.as_ref())?;
+
+        let harness = self
+            .harness_service
+            .get(req.org_id, harness_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
+
+        let proto_harness = harness.map(|h| schema_harness_to_proto(&h));
+
+        Ok(Response::new(GetHarnessResponse {
+            harness: proto_harness,
+        }))
+    }
+
     async fn get_session(
         &self,
         request: Request<GetSessionRequest>,
@@ -496,7 +541,8 @@ impl WorkerService for WorkerServiceImpl {
 
         let proto_session = session.map(|s| proto::Session {
             id: Some(uuid_to_proto_uuid(s.id.uuid())),
-            agent_id: Some(uuid_to_proto_uuid(s.agent_id.uuid())),
+            agent_id: s.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            harness_id: Some(uuid_to_proto_uuid(s.harness_id.uuid())),
             title: s.title.clone().unwrap_or_default(),
             status: s.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(s.created_at)),
@@ -546,7 +592,8 @@ impl WorkerService for WorkerServiceImpl {
 
         let proto_session = proto::Session {
             id: Some(uuid_to_proto_uuid(session.id.uuid())),
-            agent_id: Some(uuid_to_proto_uuid(session.agent_id.uuid())),
+            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),

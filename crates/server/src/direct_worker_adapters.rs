@@ -14,11 +14,11 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
-use everruns_core::typed_id::{AgentId, MessageId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData,
-    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
-    ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData, Harness,
+    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    ToolRegistry, ToolResultContentPart,
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -138,6 +138,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Agent Operations
     // =========================================================================
 
+    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+        // Delegate to the private helper method
+        Self::get_harness_impl(self, org_id, harness_id).await
+    }
+
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
         let agent_id_typed = AgentId::from_uuid(agent_id);
         let row = self
@@ -207,6 +212,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             Session {
                 id: r.id,
                 organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 title: r.title,
                 preview: None,
@@ -656,31 +662,58 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 
-        // Load agent
-        let agent = self
-            .get_agent(org_id, session.agent_id.uuid())
-            .await?
-            .ok_or_else(|| store_error("Agent not found"))?;
+        // Load agent (optional)
+        let agent = if let Some(agent_id) = session.agent_id {
+            self.get_agent(org_id, agent_id.uuid()).await?
+        } else {
+            None
+        };
+
+        // Load harness
+        let harness = self
+            .get_harness_impl(org_id, session.harness_id.uuid())
+            .await?;
 
         // Load messages
         let messages = self.load_messages(session_id).await?;
 
-        // Load model
+        // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
             self.get_model_with_provider(org_id, model_id.uuid())
                 .await?
-        } else if let Some(model_id) = agent.default_model_id {
-            self.get_model_with_provider(org_id, model_id.uuid())
-                .await?
+        } else if let Some(ref a) = agent {
+            if let Some(model_id) = a.default_model_id {
+                self.get_model_with_provider(org_id, model_id.uuid())
+                    .await?
+            } else if let Some(ref h) = harness {
+                if let Some(model_id) = h.default_model_id {
+                    self.get_model_with_provider(org_id, model_id.uuid())
+                        .await?
+                } else {
+                    self.get_default_model(org_id).await?
+                }
+            } else {
+                self.get_default_model(org_id).await?
+            }
+        } else if let Some(ref h) = harness {
+            if let Some(model_id) = h.default_model_id {
+                self.get_model_with_provider(org_id, model_id.uuid())
+                    .await?
+            } else {
+                self.get_default_model(org_id).await?
+            }
         } else {
             self.get_default_model(org_id).await?
         };
 
-        // Build MCP tool definitions
-        let mcp_tool_definitions = self
-            .build_mcp_tool_definitions(agent.internal_id)
-            .await
-            .unwrap_or_default();
+        // Build MCP tool definitions from agent capabilities (if agent present)
+        let mcp_tool_definitions = if let Some(ref a) = agent {
+            self.build_mcp_tool_definitions(a.internal_id)
+                .await
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
 
         Ok(TurnContext {
             agent,
@@ -742,6 +775,48 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
+    /// Get a harness by ID (direct DB access)
+    async fn get_harness_impl(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+        let harness_id_typed = HarnessId::from_uuid(harness_id);
+        let row = self
+            .db
+            .get_harness(org_id, harness_id_typed)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get harness: {}", e);
+                store_error("Failed to get harness")
+            })?;
+
+        let capabilities = if row.is_some() {
+            self.db
+                .get_harness_capabilities(harness_id)
+                .await
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        Ok(row.map(|r| Harness {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            system_prompt: r.system_prompt,
+            default_model_id: r.default_model_id,
+            tags: r.tags,
+            capabilities: capabilities
+                .into_iter()
+                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+                .collect(),
+            status: match r.status.as_str() {
+                "active" => HarnessStatus::Active,
+                "archived" => HarnessStatus::Archived,
+                _ => HarnessStatus::Active,
+            },
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }))
+    }
+
     /// Build MCP tool definitions from agent's MCP capabilities
     async fn build_mcp_tool_definitions(&self, agent_id: Uuid) -> Result<Vec<ToolDefinition>> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;

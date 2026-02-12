@@ -67,16 +67,20 @@ impl EventListener for UsageTrackingListener {
         };
 
         // Get org_id from agent (sessions don't have direct org_id)
-        let org_id = match self.db.get_agent(DEFAULT_ORG_ID, session.agent_id).await {
-            Ok(Some(agent)) => agent.org_id,
-            Ok(None) => {
-                error!("Agent not found for usage tracking: {}", session.agent_id);
-                DEFAULT_ORG_ID
+        let org_id = if let Some(agent_id) = session.agent_id {
+            match self.db.get_agent(DEFAULT_ORG_ID, agent_id).await {
+                Ok(Some(agent)) => agent.org_id,
+                Ok(None) => {
+                    error!("Agent not found for usage tracking: {}", agent_id);
+                    DEFAULT_ORG_ID
+                }
+                Err(e) => {
+                    error!("Failed to get agent for usage tracking: {}", e);
+                    DEFAULT_ORG_ID
+                }
             }
-            Err(e) => {
-                error!("Failed to get agent for usage tracking: {}", e);
-                DEFAULT_ORG_ID
-            }
+        } else {
+            DEFAULT_ORG_ID
         };
 
         // Insert into llm_generations with org_id
@@ -121,17 +125,18 @@ impl EventListener for UsageTrackingListener {
             error!("Failed to update session usage: {}", e);
         }
 
-        // Update agent totals
-        if let Err(e) = self
-            .db
-            .increment_agent_usage(
-                session.agent_id.uuid(),
-                input_tokens,
-                output_tokens,
-                cache_read_tokens,
-                cache_creation_tokens,
-            )
-            .await
+        // Update agent totals (skip if no agent)
+        if let Some(agent_id) = session.agent_id
+            && let Err(e) = self
+                .db
+                .increment_agent_usage(
+                    agent_id.uuid(),
+                    input_tokens,
+                    output_tokens,
+                    cache_read_tokens,
+                    cache_creation_tokens,
+                )
+                .await
         {
             error!("Failed to update agent usage: {}", e);
         }

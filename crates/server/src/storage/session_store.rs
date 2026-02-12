@@ -5,7 +5,8 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, Result, SessionId, TokenUsage,
+    AgentLoopError, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, HarnessId, Result, SessionId,
+    TokenUsage,
     session::{Session, SessionStatus},
     traits::SessionStore,
 };
@@ -69,6 +70,7 @@ impl SessionStore for DbSessionStore {
                 Ok(Some(Session {
                     id: row.id,
                     organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                    harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                     agent_id: row.agent_id,
                     title: row.title,
                     preview: None, // Preview populated separately when listing sessions

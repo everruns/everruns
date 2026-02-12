@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::typed_id::{AgentId, EventId, SessionId};
+use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -216,6 +216,44 @@ impl StorageBackend {
 
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
         dispatch!(self, get_agent_public_id, org_id, id)
+    }
+
+    // ============================================
+    // Harnesses
+    // ============================================
+
+    pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
+        dispatch!(self, create_harness, org_id, input)
+    }
+
+    pub async fn create_harness_with_id(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: CreateHarnessRow,
+    ) -> Result<Option<HarnessRow>> {
+        dispatch!(self, create_harness_with_id, org_id, id, input)
+    }
+
+    pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
+        dispatch!(self, get_harness, org_id, id)
+    }
+
+    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
+        dispatch!(self, list_harnesses, org_id)
+    }
+
+    pub async fn update_harness(
+        &self,
+        org_id: i64,
+        id: HarnessId,
+        input: UpdateHarness,
+    ) -> Result<Option<HarnessRow>> {
+        dispatch!(self, update_harness, org_id, id, input)
+    }
+
+    pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        dispatch!(self, delete_harness, org_id, id)
     }
 
     // ============================================
@@ -484,6 +522,25 @@ impl StorageBackend {
         capability_id: &str,
     ) -> Result<bool> {
         dispatch!(self, remove_agent_capability, agent_id, capability_id)
+    }
+
+    // ============================================
+    // Harness Capabilities
+    // ============================================
+
+    pub async fn get_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        dispatch!(self, get_harness_capabilities, harness_id)
+    }
+
+    pub async fn set_harness_capabilities(
+        &self,
+        harness_id: Uuid,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        dispatch!(self, set_harness_capabilities, harness_id, capabilities)
     }
 
     // ============================================

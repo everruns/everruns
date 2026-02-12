@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useAgents, useCapabilities, useSessions, useLlmModels, useCreateSession } from "@/hooks";
+import {
+  useAgents,
+  useHarnesses,
+  useCapabilities,
+  useSessions,
+  useLlmModels,
+  useCreateSession,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
@@ -31,6 +38,7 @@ export default function DashboardPage() {
   });
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const { data: harnesses } = useHarnesses();
 
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
@@ -41,10 +49,14 @@ export default function DashboardPage() {
   };
 
   const handleCreateSession = async () => {
-    if (!newSessionAgentId) return;
+    const harnessId = harnesses?.[0]?.id;
+    if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: newSessionAgentId },
+        request: {
+          harness_id: harnessId,
+          agent_id: newSessionAgentId || undefined,
+        },
       });
       setNewSessionDialogOpen(false);
       router.push(`/sessions/${session.id}`);
