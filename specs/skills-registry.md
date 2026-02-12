@@ -66,11 +66,26 @@ A registered skill in the Everruns registry.
 | `allowed_tools` | string? | Pre-approved tools list (from frontmatter, experimental) |
 | `instructions` | text | Full SKILL.md markdown body (after frontmatter) |
 | `source_type` | enum | `markdown` or `archive` |
-| `archive_data` | bytes? | ZIP archive contents (when source_type = archive) |
+| `archive_data` | bytes? | Original ZIP archive (kept for reference/re-download, when source_type = archive) |
 | `status` | enum | `active` or `disabled` |
 | `version` | string | Version from metadata or "1.0" default |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
+
+### SkillFile
+
+Extracted files from archive-based skills. Stored individually for fast reads and VFS mounting (no ZIP extraction at runtime).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Internal identifier |
+| `skill_id` | UUID | FK to parent skill |
+| `path` | string | Relative path within skill directory (e.g., `scripts/extract.py`) |
+| `content` | text | File content (text files) |
+| `content_binary` | bytes? | File content (binary files, base64 in VFS) |
+| `is_binary` | boolean | Whether this is a binary file |
+| `size_bytes` | i64 | Original file size |
+| `created_at` | timestamp | Creation time |
 
 **Input Validation Limits:**
 
@@ -139,13 +154,14 @@ Create a skill from a ZIP archive containing a skill directory.
 
 **Response:** `201 Created` with Skill object
 
-**Validation:**
-- Extracts ZIP archive
+**Processing:**
+- Extracts ZIP archive in memory
 - Locates SKILL.md in archive root (or single top-level directory)
 - Parses and validates SKILL.md frontmatter
 - Validates archive structure (no path traversal, size limits)
 - Validates `name` matches directory name (if present)
-- Stores both parsed metadata and original archive
+- Stores parsed metadata + original ZIP archive in `skills` table
+- Extracts all files individually into `skill_files` table (for fast VFS mounting)
 - Sets `source_type = "archive"`
 
 #### GET /v1/skills
@@ -187,7 +203,7 @@ Get the full SKILL.md content for a skill (used during skill activation).
 ```
 
 For `source_type = "markdown"`: Returns `skill_md` only, `files` is empty.
-For `source_type = "archive"`: Returns `skill_md` and extracted file listing.
+For `source_type = "archive"`: Returns `skill_md` and file listing from `skill_files` table.
 
 #### PATCH /v1/skills/{skill_id}
 
@@ -292,13 +308,33 @@ When the agent calls `activate_skill`:
 3. Agent uses the loaded instructions to perform the task
 4. For archive-based skills, file paths in instructions can be resolved via additional tool calls
 
-### Bundled File Access
+### Bundled File Access via VFS Mounting
 
-For archive-based skills, an additional tool enables access to bundled files:
+For archive-based skills, extracted files are mounted into the session's virtual filesystem when the skill is activated. This reuses the existing `MountPoint` / `MountSource` system that capabilities already use.
 
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `read_skill_file` | `{ "name": "skill-name", "path": "scripts/extract.py" }` | Reads a bundled file from the skill archive |
+**Mount path**: `/skills/{skill-name}/`
+
+Example: A skill named `pdf-processing` with files `scripts/extract.py` and `references/REFERENCE.md` would be mounted as:
+```
+/skills/pdf-processing/
+├── SKILL.md
+├── scripts/extract.py
+└── references/REFERENCE.md
+```
+
+The agent can then read these files using existing session filesystem tools (`read_file`), no special `read_skill_file` tool needed.
+
+**Mounting strategy**:
+1. On `activate_skill` call, the worker fetches skill files from the `skill_files` table via gRPC
+2. Files are mounted into the session VFS at `/skills/{skill-name}/`
+3. The `activate_skill` tool result includes the SKILL.md body AND a note about mounted file paths
+4. Text files become `MountSource::InlineFile` with `encoding: "text"`
+5. Binary files become `MountSource::InlineFile` with `encoding: "base64"`
+
+This approach:
+- Reuses existing VFS infrastructure (no new tool needed)
+- Files are accessible via the same `read_file` / `list_files` tools the agent already has
+- Consistent with how other capabilities mount content (e.g., `sample_data`)
 
 ## Database Schema
 
@@ -329,6 +365,22 @@ CREATE UNIQUE INDEX idx_skills_org_public_id ON skills(org_id, public_id);
 CREATE UNIQUE INDEX idx_skills_org_name ON skills(org_id, name);
 CREATE INDEX idx_skills_status ON skills(status);
 CREATE INDEX idx_skills_org_id ON skills(org_id);
+
+-- Extracted files from archive-based skills
+-- Stored individually for fast reads and VFS mounting (no ZIP extraction at runtime)
+CREATE TABLE skill_files (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+    path VARCHAR(500) NOT NULL,
+    content TEXT,
+    content_binary BYTEA,
+    is_binary BOOLEAN NOT NULL DEFAULT FALSE,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(skill_id, path)
+);
+
+CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 ```
 
 ## Security Considerations
@@ -379,9 +431,9 @@ CREATE INDEX idx_skills_org_id ON skills(org_id);
 
 **SkillToolExecutor** (`crates/worker/src/skill_executor.rs`):
 - Handles `activate_skill` tool calls
-- Fetches skill content via gRPC
+- Fetches skill instructions + files via gRPC
 - Returns SKILL.md body as tool result
-- Handles `read_skill_file` for archive-based skills
+- Mounts extracted files into session VFS at `/skills/{name}/`
 
 ### gRPC Protocol
 
@@ -392,6 +444,14 @@ message SkillInfo {
     string description = 3;
     string instructions = 4;
     string source_type = 5;
+    repeated SkillFileInfo files = 6;  // Extracted files for VFS mounting
+}
+
+message SkillFileInfo {
+    string path = 1;
+    string content = 2;         // Text content (empty for binary)
+    bytes content_binary = 3;   // Binary content (empty for text)
+    bool is_binary = 4;
 }
 
 message GetSkillByNameRequest {
@@ -401,16 +461,6 @@ message GetSkillByNameRequest {
 
 message GetSkillByNameResponse {
     optional SkillInfo skill = 1;
-}
-
-message GetSkillFileRequest {
-    string skill_name = 1;
-    string file_path = 2;
-    int64 org_id = 3;
-}
-
-message GetSkillFileResponse {
-    optional string content = 1;
 }
 ```
 
@@ -472,3 +522,6 @@ New migration file: `NNN_add_skills.sql` (next available number after current mi
 | Why `activate_skill` tool? | Agent-driven activation | Agent decides when a skill is relevant, matching the agentskills.io design. |
 | Why per-org uniqueness? | Multitenancy | Different orgs can have skills with same name. |
 | Why 10 MB archive limit? | Practical bound | Skills are instructions, not large binary packages. |
+| Why keep original ZIP + extracted files? | Both needed | ZIP for reference/re-download. Extracted rows for fast reads and VFS mounting (no runtime extraction). |
+| Why `skill_files` table? | VFS mounting | Session VFS needs individual file content. Extracting from ZIP on every activation is wasteful. |
+| Why VFS mounting instead of `read_skill_file` tool? | Reuse existing infra | Session filesystem tools (`read_file`, `list_files`) already exist. No new tool needed. Consistent with how `sample_data` capability mounts files. |
