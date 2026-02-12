@@ -254,6 +254,7 @@ pub async fn run(
         };
     let durable_state = api::durable::AppState::new(durable_store.clone());
     let schedules_state = api::schedules::ScheduleAppState::new(durable_store);
+    let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
     let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
     let health_state = HealthState {
@@ -289,6 +290,7 @@ pub async fn run(
         .merge(api::durable::routes(durable_state))
         .merge(api::schedules::routes(schedules_state))
         .merge(api::images::routes(images_state))
+        .merge(api::skills::routes(skills_state))
         .merge(api::organizations::routes(organizations_state));
 
     // Add auth-specific routes if the backend provides them

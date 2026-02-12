@@ -52,6 +52,7 @@ aes-gcm.workspace = true
 argon2.workspace = true
 parking_lot.workspace = true
 cron = "0.15"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
 everruns-session-sqldb = { path = "../session-sqldb" }

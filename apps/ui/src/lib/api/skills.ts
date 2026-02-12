@@ -1,0 +1,73 @@
+// Skills registry API functions
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+
+import { api } from "./client";
+import type {
+  Skill,
+  SkillContent,
+  SkillValidationResult,
+  CreateSkillRequest,
+  UpdateSkillRequest,
+  ValidateSkillRequest,
+  ListResponse,
+} from "./types";
+
+// Skill CRUD
+
+export async function getSkills(): Promise<Skill[]> {
+  const response = await api.get<ListResponse<Skill>>("/v1/skills");
+  return response.data.data;
+}
+
+export async function getSkill(skillId: string): Promise<Skill> {
+  const response = await api.get<Skill>(`/v1/skills/${skillId}`);
+  return response.data;
+}
+
+export async function getSkillContent(skillId: string): Promise<SkillContent> {
+  const response = await api.get<SkillContent>(`/v1/skills/${skillId}/content`);
+  return response.data;
+}
+
+export async function createSkill(data: CreateSkillRequest): Promise<Skill> {
+  const response = await api.post<Skill>("/v1/skills", data);
+  return response.data;
+}
+
+export async function updateSkill(skillId: string, data: UpdateSkillRequest): Promise<Skill> {
+  const response = await api.patch<Skill>(`/v1/skills/${skillId}`, data);
+  return response.data;
+}
+
+export async function deleteSkill(skillId: string): Promise<void> {
+  await api.delete(`/v1/skills/${skillId}`);
+}
+
+export async function validateSkill(data: ValidateSkillRequest): Promise<SkillValidationResult> {
+  const response = await api.post<SkillValidationResult>("/v1/skills/validate", data);
+  return response.data;
+}
+
+export async function uploadSkillArchive(file: File): Promise<Skill> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/v1/skills/upload", {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let errorMessage: string | undefined;
+    try {
+      const errorBody = await response.json();
+      errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+    } catch {
+      // Response body is not JSON or empty
+    }
+    throw new Error(errorMessage || `Upload failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
