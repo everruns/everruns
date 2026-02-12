@@ -50,7 +50,7 @@ base64.workspace = true
 url = "2"
 
 # Web fetching
-fetchkit = { git = "https://github.com/everruns/fetchkit" }
+fetchkit = "0.1.1"
 
 # Sandboxed bash interpreter
 bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.4" }
