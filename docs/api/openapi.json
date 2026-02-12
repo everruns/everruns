@@ -3506,6 +3506,316 @@
         }
       }
     },
+    "/v1/skills": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "GET /v1/skills - List all skills",
+        "operationId": "list_skills",
+        "responses": {
+          "200": {
+            "description": "List of skills",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Skill"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "POST /v1/skills - Create skill from SKILL.md",
+        "operationId": "create_skill",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Skill created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate skill name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid SKILL.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/upload": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "POST /v1/skills/upload - Create skill from ZIP archive",
+        "operationId": "upload_skill",
+        "responses": {
+          "201": {
+            "description": "Skill created from archive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate skill name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archive too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid archive or SKILL.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/validate": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "POST /v1/skills/validate - Validate SKILL.md content",
+        "operationId": "validate_skill",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillValidationResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/{skill_id}": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "GET /v1/skills/{skill_id} - Get skill by ID",
+        "operationId": "get_skill",
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "description": "Skill ID (prefixed, e.g., skill_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "DELETE /v1/skills/{skill_id} - Delete skill",
+        "operationId": "delete_skill",
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "description": "Skill ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Skill deleted"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "PATCH /v1/skills/{skill_id} - Update skill",
+        "operationId": "update_skill",
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Skill updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found"
+          },
+          "409": {
+            "description": "Duplicate skill name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid SKILL.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skills/{skill_id}/content": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "GET /v1/skills/{skill_id}/content - Get full skill content",
+        "operationId": "get_skill_content",
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "description": "Skill ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillContent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -4538,6 +4848,20 @@
               "$ref": "#/components/schemas/ToolDefinition"
             },
             "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client."
+          }
+        }
+      },
+      "CreateSkillRequest": {
+        "type": "object",
+        "description": "Request to create a skill from SKILL.md content",
+        "required": [
+          "skill_md"
+        ],
+        "properties": {
+          "skill_md": {
+            "type": "string",
+            "description": "Full SKILL.md content (YAML frontmatter + markdown body)",
+            "example": "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\n# PDF Processing\n\nUse pdfplumber..."
           }
         }
       },
@@ -6140,6 +6464,89 @@
                 "updated_at": {
                   "type": "string",
                   "description": "When the secret was last updated"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Skill": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Skill entity (API response type)",
+              "required": [
+                "id",
+                "name",
+                "description",
+                "source_type",
+                "status",
+                "version",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "allowed_tools": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "compatibility": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "description": {
+                  "type": "string",
+                  "example": "Extract text and tables from PDF files."
+                },
+                "id": {
+                  "type": "string",
+                  "example": "skill_01933b5a00007000800000000000001"
+                },
+                "license": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "metadata": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": "string",
+                  "example": "pdf-processing"
+                },
+                "source_type": {
+                  "$ref": "#/components/schemas/SkillSourceType"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/SkillStatus"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "version": {
+                  "type": "string"
                 }
               }
             },
@@ -8229,6 +8636,163 @@
           "waitingfortoolresults"
         ]
       },
+      "Skill": {
+        "type": "object",
+        "description": "Skill entity (API response type)",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "source_type",
+          "status",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "allowed_tools": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "compatibility": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string",
+            "example": "Extract text and tables from PDF files."
+          },
+          "id": {
+            "type": "string",
+            "example": "skill_01933b5a00007000800000000000001"
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "example": "pdf-processing"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SkillSourceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SkillStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillContent": {
+        "type": "object",
+        "description": "Skill content response (for /content endpoint)",
+        "required": [
+          "skill_md",
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillFileEntry"
+            }
+          },
+          "skill_md": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillFileEntry": {
+        "type": "object",
+        "description": "A file entry in a skill archive",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillSourceType": {
+        "type": "string",
+        "description": "Skill source type",
+        "enum": [
+          "markdown",
+          "archive"
+        ]
+      },
+      "SkillStatus": {
+        "type": "string",
+        "description": "Skill lifecycle status",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "SkillValidationResult": {
+        "type": "object",
+        "description": "Validation result for SKILL.md",
+        "required": [
+          "valid"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "StatRequest": {
         "type": "object",
         "description": "Request to get file stat",
@@ -9223,6 +9787,30 @@
           }
         }
       },
+      "UpdateSkillRequest": {
+        "type": "object",
+        "description": "Request to update a skill",
+        "properties": {
+          "skill_md": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Updated SKILL.md content (re-parses frontmatter)"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SkillStatus",
+                "description": "Update status"
+              }
+            ]
+          }
+        }
+      },
       "User": {
         "type": "object",
         "description": "User response for listing",
@@ -9264,6 +9852,19 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ValidateSkillRequest": {
+        "type": "object",
+        "description": "Request to validate a SKILL.md",
+        "required": [
+          "skill_md"
+        ],
+        "properties": {
+          "skill_md": {
+            "type": "string",
+            "description": "SKILL.md content to validate"
           }
         }
       }
@@ -9329,6 +9930,10 @@
     {
       "name": "session-storage",
       "description": "Session key-value storage endpoints"
+    },
+    {
+      "name": "skills",
+      "description": "Skills registry endpoints"
     }
   ]
 }
