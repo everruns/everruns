@@ -19,13 +19,7 @@ import { useSkills, useCreateSkill, useDeleteSkill, useUploadSkill } from "@/hoo
 import { Plus, BookOpen, Trash2, Upload, FileText, Archive } from "lucide-react";
 import type { Skill } from "@/lib/api/types";
 
-function SkillCard({
-  skill,
-  onDelete,
-}: {
-  skill: Skill;
-  onDelete: (id: string) => void;
-}) {
+function SkillCard({ skill, onDelete }: { skill: Skill; onDelete: (id: string) => void }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -59,9 +53,7 @@ function SkillCard({
             </Badge>
             <span className="text-muted-foreground">v{skill.version}</span>
           </div>
-          {skill.license && (
-            <div className="text-muted-foreground">License: {skill.license}</div>
-          )}
+          {skill.license && <div className="text-muted-foreground">License: {skill.license}</div>}
           {skill.allowed_tools && (
             <div className="text-muted-foreground">Tools: {skill.allowed_tools}</div>
           )}
