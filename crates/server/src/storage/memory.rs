@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
     AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
-    ModelId, ProviderId, SessionId,
+    ModelId, ProviderId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -40,6 +40,8 @@ pub struct InMemoryDatabase {
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
+    skills: RwLock<HashMap<SkillId, SkillRow>>,
+    skill_files: RwLock<Vec<SkillFileRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<SessionId, i32>>,
     // Session storage
@@ -82,6 +84,8 @@ impl Default for InMemoryDatabase {
             session_files: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
+            skills: RwLock::new(HashMap::new()),
+            skill_files: RwLock::new(Vec::new()),
             event_sequences: RwLock::new(HashMap::new()),
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
@@ -2299,6 +2303,183 @@ impl InMemoryDatabase {
             return Ok(Some(server.clone()));
         }
         Ok(None)
+    }
+
+    // ============================================
+    // Skills
+    // ============================================
+
+    pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
+        if self
+            .skills
+            .read()
+            .values()
+            .any(|s| s.name == input.name && s.org_id == org_id)
+        {
+            return Err(anyhow!("Skill with name '{}' already exists", input.name));
+        }
+
+        let now = Self::now();
+        let id = SkillId::new();
+
+        let row = SkillRow {
+            id,
+            public_id: input.public_id,
+            org_id,
+            name: input.name,
+            description: input.description,
+            license: input.license,
+            compatibility: input.compatibility,
+            metadata: input.metadata,
+            allowed_tools: input.allowed_tools,
+            instructions: input.instructions,
+            source_type: input.source_type,
+            archive_data: input.archive_data,
+            status: "active".to_string(),
+            version: input.version,
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.skills.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_skill(&self, org_id: i64, id: Uuid) -> Result<Option<SkillRow>> {
+        let id = SkillId::from_uuid(id);
+        Ok(self
+            .skills
+            .read()
+            .get(&id)
+            .filter(|s| s.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn get_skill_by_name(&self, org_id: i64, name: &str) -> Result<Option<SkillRow>> {
+        Ok(self
+            .skills
+            .read()
+            .values()
+            .find(|s| s.org_id == org_id && s.name == name)
+            .cloned())
+    }
+
+    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
+        let mut skills: Vec<_> = self
+            .skills
+            .read()
+            .values()
+            .filter(|s| s.org_id == org_id)
+            .cloned()
+            .collect();
+        skills.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(skills)
+    }
+
+    pub async fn update_skill(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateSkill,
+    ) -> Result<Option<SkillRow>> {
+        let id = SkillId::from_uuid(id);
+        let mut skills = self.skills.write();
+        if let Some(skill) = skills.get_mut(&id) {
+            if skill.org_id != org_id {
+                return Ok(None);
+            }
+            if let Some(name) = input.name {
+                skill.name = name;
+            }
+            if let Some(description) = input.description {
+                skill.description = description;
+            }
+            if let Some(license) = input.license {
+                skill.license = Some(license);
+            }
+            if let Some(compatibility) = input.compatibility {
+                skill.compatibility = Some(compatibility);
+            }
+            if let Some(metadata) = input.metadata {
+                skill.metadata = metadata;
+            }
+            if let Some(allowed_tools) = input.allowed_tools {
+                skill.allowed_tools = Some(allowed_tools);
+            }
+            if let Some(instructions) = input.instructions {
+                skill.instructions = instructions;
+            }
+            if let Some(status) = input.status {
+                skill.status = status;
+            }
+            if let Some(version) = input.version {
+                skill.version = version;
+            }
+            if let Some(archive_data) = input.archive_data {
+                skill.archive_data = Some(archive_data);
+            }
+            if let Some(source_type) = input.source_type {
+                skill.source_type = source_type;
+            }
+            skill.updated_at = Self::now();
+            return Ok(Some(skill.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let skill_id = SkillId::from_uuid(id);
+        let mut skills = self.skills.write();
+        if let Some(skill) = skills.get(&skill_id) {
+            if skill.org_id != org_id {
+                return Ok(false);
+            }
+            skills.remove(&skill_id);
+            // Also remove associated files
+            self.skill_files.write().retain(|f| f.skill_id != id);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    // ============================================
+    // Skill Files
+    // ============================================
+
+    pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
+        let now = Self::now();
+        let row = SkillFileRow {
+            id: Uuid::now_v7(),
+            skill_id: input.skill_id,
+            path: input.path,
+            content: input.content,
+            content_binary: input.content_binary,
+            is_binary: input.is_binary,
+            size_bytes: input.size_bytes,
+            created_at: now,
+        };
+
+        self.skill_files.write().push(row.clone());
+        Ok(row)
+    }
+
+    pub async fn list_skill_files(&self, skill_id: Uuid) -> Result<Vec<SkillFileRow>> {
+        let mut files: Vec<_> = self
+            .skill_files
+            .read()
+            .iter()
+            .filter(|f| f.skill_id == skill_id)
+            .cloned()
+            .collect();
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    }
+
+    pub async fn delete_skill_files(&self, skill_id: Uuid) -> Result<u64> {
+        let mut files = self.skill_files.write();
+        let before = files.len();
+        files.retain(|f| f.skill_id != skill_id);
+        Ok((before - files.len()) as u64)
     }
 
     // ============================================

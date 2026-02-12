@@ -11,7 +11,8 @@ use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
     GrepMatch, GrepResult, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus,
     LlmProviderType, McpServer, McpServerStatus, McpServerTransportType, Session, SessionFile,
-    SessionStatus, ToolCall,
+    SessionStatus, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus,
+    SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -115,6 +116,15 @@ use utoipa::OpenApi;
         api::session_storage::list_secrets,
         // Client-side tool results
         api::tool_results::submit_tool_results,
+        // Skills
+        api::skills::create_skill,
+        api::skills::upload_skill,
+        api::skills::list_skills,
+        api::skills::get_skill,
+        api::skills::get_skill_content,
+        api::skills::update_skill,
+        api::skills::delete_skill,
+        api::skills::validate_skill,
     ),
     components(
         schemas(
@@ -184,6 +194,13 @@ use utoipa::OpenApi;
             api::schedules::TriggerResponse,
             api::schedules::ListSchedulesQuery,
             api::schedules::ListExecutionsQuery,
+            // Skill types
+            Skill, SkillSourceType, SkillStatus, SkillContent, SkillFileEntry,
+            SkillValidationResult,
+            api::skills::CreateSkillRequest,
+            api::skills::UpdateSkillRequest,
+            api::skills::ValidateSkillRequest,
+            ListResponse<Skill>,
         )
     ),
     tags(
@@ -202,6 +219,7 @@ use utoipa::OpenApi;
         (name = "images", description = "Image upload and management endpoints"),
         (name = "session-databases", description = "Session-scoped SQL database endpoints"),
         (name = "session-storage", description = "Session key-value storage endpoints"),
+        (name = "skills", description = "Skills registry endpoints"),
     ),
     info(
         title = "Everruns API",

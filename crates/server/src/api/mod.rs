@@ -20,6 +20,7 @@ pub mod session_databases;
 pub mod session_files;
 pub mod session_storage;
 pub mod sessions;
+pub mod skills;
 pub mod sse;
 pub mod tool_results;
 pub mod users;

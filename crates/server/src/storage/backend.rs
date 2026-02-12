@@ -692,6 +692,55 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Skills
+    // ============================================
+
+    pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
+        dispatch!(self, create_skill, org_id, input)
+    }
+
+    pub async fn get_skill(&self, org_id: i64, id: Uuid) -> Result<Option<SkillRow>> {
+        dispatch!(self, get_skill, org_id, id)
+    }
+
+    pub async fn get_skill_by_name(&self, org_id: i64, name: &str) -> Result<Option<SkillRow>> {
+        dispatch!(self, get_skill_by_name, org_id, name)
+    }
+
+    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
+        dispatch!(self, list_skills, org_id)
+    }
+
+    pub async fn update_skill(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateSkill,
+    ) -> Result<Option<SkillRow>> {
+        dispatch!(self, update_skill, org_id, id, input)
+    }
+
+    pub async fn delete_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_skill, org_id, id)
+    }
+
+    // ============================================
+    // Skill Files
+    // ============================================
+
+    pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
+        dispatch!(self, create_skill_file, input)
+    }
+
+    pub async fn list_skill_files(&self, skill_id: Uuid) -> Result<Vec<SkillFileRow>> {
+        dispatch!(self, list_skill_files, skill_id)
+    }
+
+    pub async fn delete_skill_files(&self, skill_id: Uuid) -> Result<u64> {
+        dispatch!(self, delete_skill_files, skill_id)
+    }
+
+    // ============================================
     // LLM Generations (Usage Tracking)
     // ============================================
 

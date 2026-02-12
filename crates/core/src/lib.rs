@@ -48,6 +48,7 @@ pub mod organization;
 pub mod session;
 pub mod session_file;
 pub mod session_sqldb;
+pub mod skill;
 
 pub mod atoms;
 pub mod capabilities;
@@ -199,9 +200,13 @@ pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
 };
+pub use skill::{
+    ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus,
+    SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
+};
 pub use typed_id::{
     AgentId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId, MessageId,
-    ModelId, OrgId, ProviderId, SessionId, TurnId, TypedId,
+    ModelId, OrgId, ProviderId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Deployment configuration
