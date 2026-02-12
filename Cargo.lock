@@ -1325,9 +1325,9 @@ dependencies = [
 
 [[package]]
 name = "everruns-sdk"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d88d1f1e929b0282bc0a125b778aa397aa3863cf1c06574afd9de392103ad784"
+checksum = "19c1fcd224455d50b722c1578e563dba5d9a417e45e5725197fa35aa1774535c"
 dependencies = [
  "async-stream",
  "futures",
