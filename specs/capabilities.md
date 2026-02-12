@@ -119,6 +119,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 
 | ID | Name | Category | Status |
 |----|------|----------|--------|
+| `agent_instructions` | Agent Instructions | Configuration | Available |
 | `noop` | No-Op | Testing | Available |
 | `current_time` | Current Time | Utilities | Available |
 | `test_math` | Test Math | Testing | Available |

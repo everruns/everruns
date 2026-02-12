@@ -63,7 +63,7 @@ impl CapabilityInfo {
             status: cap.status(),
             icon: cap.icon().map(|s| s.to_string()),
             category: cap.category().map(|s| s.to_string()),
-            system_prompt: cap.system_prompt_addition().map(|s| s.to_string()),
+            system_prompt: cap.system_prompt_preview(),
             tool_definitions: cap.tool_definitions(),
             is_mcp,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
