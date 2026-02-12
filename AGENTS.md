@@ -9,6 +9,12 @@ Use Doppler for all secret-backed commands in cloud agents.
 doppler run -- just start-dev --no-watch
 ```
 
+Disable incremental compilation in cloud (saves ~3 GB, useless for single builds):
+
+```bash
+export CARGO_INCREMENTAL=0
+```
+
 All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`).
 
 For GitHub CLI, map token explicitly:

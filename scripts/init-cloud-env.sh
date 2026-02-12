@@ -23,6 +23,9 @@ info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
+# Disable incremental compilation — saves ~3 GB, not useful for single builds
+export CARGO_INCREMENTAL=0
+
 # Ensure ~/.cargo/bin exists and is in PATH
 INSTALL_DIR="${HOME}/.cargo/bin"
 mkdir -p "$INSTALL_DIR"

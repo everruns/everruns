@@ -108,7 +108,9 @@ rstest = "0.25"
 
 [profile.dev]
 opt-level = 0
-debug = true
+# line-tables-only: file:line in backtraces, drops full DWARF type/variable info
+# Saves ~5-6 GB across all binaries. Override locally: CARGO_PROFILE_DEV_DEBUG=2
+debug = "line-tables-only"
 
 [profile.release]
 opt-level = 3
