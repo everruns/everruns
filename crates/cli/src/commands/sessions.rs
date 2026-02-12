@@ -3,15 +3,19 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::Result;
 use clap::Subcommand;
-use everruns_sdk::{CreateSessionRequest, Everruns};
+use everruns_sdk::Everruns;
 
 #[derive(Subcommand)]
 pub enum SessionsCommand {
     /// Create a new session
     Create {
-        /// Agent ID (e.g. agt_xxx)
+        /// Harness ID (e.g. harness_xxx)
+        #[arg(long, short = 'H')]
+        harness: String,
+
+        /// Agent ID (optional, e.g. agent_xxx)
         #[arg(long, short)]
-        agent: String,
+        agent: Option<String>,
 
         /// Session title
         #[arg(long)]
@@ -35,46 +39,82 @@ pub enum SessionsCommand {
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
     match command {
         SessionsCommand::Create {
+            harness,
             agent,
             title,
             model,
-        } => create(client, output, quiet, agent, title, model).await,
+        } => {
+            create(
+                api_url, api_key, output, quiet, harness, agent, title, model,
+            )
+            .await
+        }
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
-    client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
-    agent_id: String,
+    harness_id: String,
+    agent_id: Option<String>,
     title: Option<String>,
     model_id: Option<String>,
 ) -> Result<()> {
-    let mut req = CreateSessionRequest::new(&agent_id);
+    // SDK doesn't support harness_id yet, use reqwest directly
+    let mut body = serde_json::json!({
+        "harness_id": harness_id,
+    });
+    if let Some(a) = agent_id {
+        body["agent_id"] = serde_json::Value::String(a);
+    }
     if let Some(t) = title {
-        req = req.title(t);
+        body["title"] = serde_json::Value::String(t);
     }
     if let Some(m) = model_id {
-        req = req.model_id(m);
+        body["model_id"] = serde_json::Value::String(m);
     }
 
-    let session = client.sessions().create_with_options(req).await?;
+    let http = reqwest::Client::new();
+    let url = format!("{}/v1/sessions", api_url.trim_end_matches('/'));
+    let resp = http
+        .post(&url)
+        .header("Authorization", api_key)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Failed to create session: {} {}", status, text);
+    }
+
+    let session: serde_json::Value = resp.json().await?;
 
     if output.is_text() {
+        let id = session["id"].as_str().unwrap_or("unknown");
         if quiet {
-            println!("{}", session.id);
+            println!("{}", id);
         } else {
-            println!("Created session: {}", session.id);
-            print_field("Agent", &session.agent_id);
-            let status = format!("{:?}", session.status).to_lowercase();
-            print_field("Status", &status);
+            println!("Created session: {}", id);
+            if let Some(agent) = session["agent_id"].as_str() {
+                print_field("Agent", agent);
+            }
+            let status = session["status"].as_str().unwrap_or("unknown");
+            print_field("Status", status);
         }
     } else {
         output.print_value(&session);

@@ -104,7 +104,15 @@ async fn main() -> anyhow::Result<()> {
             commands::capabilities::run(&api_url, &api_key, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(command, &client, output_format, cli.quiet).await
+            commands::sessions::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Chat {
             message,
@@ -159,6 +167,8 @@ mod tests {
             "everruns",
             "sessions",
             "create",
+            "--harness",
+            "harness_abc",
             "--agent",
             "agt_abc",
             "--title",
@@ -167,12 +177,14 @@ mod tests {
         .unwrap();
         if let Commands::Sessions { command } = cli.command {
             if let commands::sessions::SessionsCommand::Create {
+                harness,
                 agent,
                 title,
                 model,
             } = command
             {
-                assert_eq!(agent, "agt_abc");
+                assert_eq!(harness, "harness_abc");
+                assert_eq!(agent, Some("agt_abc".to_string()));
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
             } else {
