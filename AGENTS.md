@@ -15,11 +15,11 @@ Disable incremental compilation in cloud (saves ~3 GB, useless for single builds
 export CARGO_INCREMENTAL=0
 ```
 
-All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_MCP_API_KEY`).
+All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`).
 
 ### Linear
 
-We use [Linear](https://linear.app) for issue tracking. MCP server configured in `.mcp.json`. Token (`LINEAR_MCP_API_KEY`) is in Doppler.
+We use [Linear](https://linear.app) for issue tracking. MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler.
 
 For GitHub CLI, map token explicitly:
 
