@@ -114,4 +114,12 @@ export const queryKeys = {
     all: ["organizations"] as const,
     detail: (orgId: string) => ["organization", orgId] as const,
   },
+
+  // Skill queries
+  skills: {
+    all: ["skills"] as const,
+    list: () => ["skills"] as const,
+    detail: (skillId: string) => ["skill", skillId] as const,
+    content: (skillId: string) => ["skill", skillId, "content"] as const,
+  },
 };
