@@ -321,6 +321,16 @@ impl StorageBackend {
         dispatch!(self, list_message_events, session_id)
     }
 
+    /// List message events with an optional limit on count.
+    /// Returns most recent N messages in sequence order when limit is provided.
+    pub async fn list_message_events_limited(
+        &self,
+        session_id: SessionId,
+        limit: Option<i32>,
+    ) -> Result<Vec<EventRow>> {
+        dispatch!(self, list_message_events_limited, session_id, limit)
+    }
+
     /// List message events with filters applied
     ///
     /// This method applies the filters from the MessageQuery to efficiently

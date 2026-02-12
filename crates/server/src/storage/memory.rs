@@ -897,6 +897,16 @@ impl InMemoryDatabase {
     }
 
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
+        self.list_message_events_limited(session_id, None).await
+    }
+
+    /// List message events with an optional limit.
+    /// When `limit` is Some, returns the most recent N messages in sequence order.
+    pub async fn list_message_events_limited(
+        &self,
+        session_id: SessionId,
+        limit: Option<i32>,
+    ) -> Result<Vec<EventRow>> {
         let message_types = [
             "input.message",
             "output.message.completed",
@@ -911,6 +921,13 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by_key(|e| e.sequence);
+        if let Some(limit) = limit {
+            let len = result.len();
+            let limit = limit as usize;
+            if len > limit {
+                result = result.split_off(len - limit);
+            }
+        }
         Ok(result)
     }
 

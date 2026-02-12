@@ -226,9 +226,19 @@ impl EventService {
     /// Used by gRPC service to load conversation history for workers.
     /// Filters out unsupported events.
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<Event>> {
+        self.list_message_events_limited(session_id, None).await
+    }
+
+    /// List message events with an optional limit on count.
+    /// Returns most recent N messages in sequence order when limit is provided.
+    pub async fn list_message_events_limited(
+        &self,
+        session_id: Uuid,
+        limit: Option<i32>,
+    ) -> Result<Vec<Event>> {
         let rows = self
             .db
-            .list_message_events(SessionId::from_uuid(session_id))
+            .list_message_events_limited(SessionId::from_uuid(session_id), limit)
             .await?;
         Ok(rows
             .into_iter()

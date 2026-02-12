@@ -1029,18 +1029,50 @@ impl Database {
     /// Note: Tool calls are embedded in output.message.completed events via ContentPart::ToolCall.
     /// Note: Tool results come from tool.completed events (not message.tool_result).
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
-        let rows = sqlx::query_as::<_, EventRow>(
-            r#"
-            SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
-            FROM events
-            WHERE session_id = $1
-              AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
-            ORDER BY sequence ASC
-            "#,
-        )
-        .bind(session_id.uuid())
-        .fetch_all(&self.pool)
-        .await?;
+        self.list_message_events_limited(session_id, None).await
+    }
+
+    /// List message events with an optional limit.
+    /// When `limit` is Some, returns the most recent N messages (by sequence)
+    /// in ascending order for correct conversation reconstruction.
+    pub async fn list_message_events_limited(
+        &self,
+        session_id: SessionId,
+        limit: Option<i32>,
+    ) -> Result<Vec<EventRow>> {
+        let rows = if let Some(limit) = limit {
+            // Subquery: get most recent N by sequence DESC, then re-order ASC
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT * FROM (
+                    SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                    FROM events
+                    WHERE session_id = $1
+                      AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+                    ORDER BY sequence DESC
+                    LIMIT $2
+                ) recent
+                ORDER BY sequence ASC
+                "#,
+            )
+            .bind(session_id.uuid())
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                FROM events
+                WHERE session_id = $1
+                  AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+                ORDER BY sequence ASC
+                "#,
+            )
+            .bind(session_id.uuid())
+            .fetch_all(&self.pool)
+            .await?
+        };
 
         Ok(rows)
     }

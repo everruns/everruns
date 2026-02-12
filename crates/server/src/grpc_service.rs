@@ -334,19 +334,37 @@ impl WorkerService for WorkerServiceImpl {
                 .collect(),
         };
 
-        // Load messages from events using EventService
+        // Load messages from events using EventService with limit
+        let default_limit: i32 = std::env::var("TURN_CONTEXT_MESSAGE_LIMIT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+        let message_limit = req
+            .message_limit
+            .filter(|&l| l > 0)
+            .unwrap_or(default_limit);
+
+        // Fetch one extra to detect truncation
         let events = self
             .event_service
-            .list_message_events(session_id)
+            .list_message_events_limited(session_id, Some(message_limit + 1))
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list messages: {}", e);
                 Status::internal("Failed to list messages")
             })?;
 
-        let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
+        let messages_truncated = events.len() > message_limit as usize;
+        let events_iter: Box<dyn Iterator<Item = _>> = if messages_truncated {
+            // Skip the extra oldest message we fetched for truncation detection
+            Box::new(events.into_iter().skip(1))
+        } else {
+            Box::new(events.into_iter())
+        };
 
-        for event in events {
+        let mut proto_messages: Vec<proto::Message> = Vec::new();
+
+        for event in events_iter {
             // Extract message from typed event data
             let message = match event_to_message(&event) {
                 Some(m) => m,
@@ -431,6 +449,7 @@ impl WorkerService for WorkerServiceImpl {
             model,
             mcp_tool_definitions,
             harness: proto_harness,
+            messages_truncated,
         }))
     }
 
