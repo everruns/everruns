@@ -71,7 +71,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
         // Parse provider type
-        let provider_type = parse_provider_type(&provider_with_key.provider_type);
+        let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
 
         Ok(Some(ModelWithProvider {
             model: model_row.model_id,
@@ -114,7 +114,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
         // Parse provider type
-        let provider_type = parse_provider_type(&provider_with_key.provider_type);
+        let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
 
         Ok(Some(ModelWithProvider {
             model: model_row.model_id,
@@ -126,14 +126,17 @@ impl LlmProviderStore for DbLlmProviderStore {
 }
 
 /// Parse provider type string to enum
-fn parse_provider_type(provider_type_str: &str) -> LlmProviderType {
+fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
     match provider_type_str.to_lowercase().as_str() {
-        "openai" => LlmProviderType::Openai,
-        "openai_completions" => LlmProviderType::OpenaiCompletions,
-        "anthropic" => LlmProviderType::Anthropic,
-        "gemini" => LlmProviderType::Gemini,
-        "llmsim" => LlmProviderType::LlmSim,
-        _ => LlmProviderType::Openai, // Default to OpenAI
+        "openai" => Ok(LlmProviderType::Openai),
+        "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
+        "anthropic" => Ok(LlmProviderType::Anthropic),
+        "gemini" => Ok(LlmProviderType::Gemini),
+        "llmsim" => Ok(LlmProviderType::LlmSim),
+        _ => Err(AgentLoopError::Configuration(format!(
+            "Unsupported provider_type in database: {}",
+            provider_type_str
+        ))),
     }
 }
 
@@ -147,4 +150,24 @@ pub fn create_db_llm_provider_store(
     encryption: EncryptionService,
 ) -> DbLlmProviderStore {
     DbLlmProviderStore::new(db, encryption)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_provider_type_returns_error_for_unknown_value() {
+        let err = parse_provider_type("totally-custom").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Unsupported provider_type in database")
+        );
+    }
+
+    #[test]
+    fn parse_provider_type_accepts_known_values() {
+        assert_eq!(parse_provider_type("openai").unwrap().to_string(), "openai");
+        assert_eq!(parse_provider_type("gemini").unwrap().to_string(), "gemini");
+    }
 }
