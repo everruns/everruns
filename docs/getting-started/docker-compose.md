@@ -1,5 +1,5 @@
 ---
-title: Docker Compose Quickstart
+title: Docker Compose
 description: Deploy Everruns with Docker Compose in minutes
 ---
 

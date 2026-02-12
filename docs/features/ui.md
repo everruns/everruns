@@ -27,7 +27,6 @@ The sidebar provides access to main sections:
 | Agents | List, create, and manage agents |
 | Capabilities | Browse available capabilities |
 | Settings | Configure providers, API keys, and team members |
-| Dev Tools | Component previews (development mode only) |
 
 ## Dashboard
 
@@ -156,16 +155,6 @@ Manage API keys for programmatic access:
 ### Members
 
 View and manage team members (when authentication is enabled).
-
-## Development Mode
-
-When running in development mode (`NODE_ENV=development`), additional features are available:
-
-### Dev Tools
-
-Access component previews and testing utilities at `/dev`:
-
-- **Session Chat Components**: Preview chat UI elements with sample data
 
 ## Configuration
 
