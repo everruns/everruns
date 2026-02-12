@@ -477,9 +477,9 @@ message GetSkillByNameResponse {
 
 ## UI Integration
 
-### Skills Settings Page
+### Skills Page
 
-Located at `/settings/skills` in the UI. Components:
+Top-level route at `/skills` in the main sidebar (same level as Agents, Sessions, Capabilities). Components:
 
 1. **Skills List**: Cards showing each skill with name, description, status badge, source type badge
 2. **Add Skill Dialog**: Two tabs:
