@@ -226,12 +226,19 @@ All SDKs provide access to the full Everruns API:
 
 | Resource | Operations |
 |----------|------------|
-| **Agents** | Create, list, get, update, archive |
+| **Agents** | Create, list, get, update, upsert, archive, import, export, preview |
 | **Sessions** | Create, list, get, update, delete, cancel |
 | **Messages** | Create, list |
 | **Events** | Poll, stream (SSE) |
-| **Filesystem** | Session file operations |
-| **Images** | Upload, retrieve |
+| **Capabilities** | List, get |
+| **LLM Providers** | Create, list, get, update, delete, sync models |
+| **LLM Models** | Create, list, get, update, delete |
+| **MCP Servers** | Create, list, get, update, delete |
+| **Filesystem** | List, read, create, update, delete, move, copy, grep, stat |
+| **Session Databases** | Create, list, get, delete, schema |
+| **Images** | Upload, list, get, thumbnail, delete |
+| **Organizations** | Create, list, get, update |
+| **Scheduled Tasks** | Create, list, get, update, delete, pause, resume, trigger |
 
 ## Error Handling
 
@@ -295,7 +302,12 @@ The SDKs support all event types from the Everruns API:
 | **Input** | `input.message` |
 | **Output** | `output.message.started`, `output.message.delta`, `output.message.completed` |
 | **Turn** | `turn.started`, `turn.completed`, `turn.failed`, `turn.cancelled` |
-| **Tool** | `tool.started`, `tool.completed` |
+| **Reasoning** | `reason.started`, `reason.completed` |
+| **Thinking** | `reason.thinking.started`, `reason.thinking.delta`, `reason.thinking.completed` |
+| **Act** | `act.started`, `act.completed` |
+| **Tool** | `tool.started`, `tool.completed`, `tool.call_requested` |
+| **LLM** | `llm.generation` |
+| **Session** | `session.started`, `session.activated`, `session.idled` |
 
 See the [Events documentation](/features/events) for detailed information about event streaming.
 

@@ -91,14 +91,31 @@ Identify and fill gaps.
 4. Verify API example matches current API shape
 5. Check Docker Compose instructions match `examples/docker-compose-full.yaml`
 
-### 8. Rust Documentation
+### 8. SDK Documentation and Feature Parity
+
+Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`docs/features/sdk.mdx`) is current and the SDK supports latest main API features.
+
+**Documentation accuracy:**
+1. Compare SDK docs API coverage table against actual endpoints in `specs/apis.md`
+2. Verify documented sub-clients (agents, sessions, messages, events) match server routes
+3. Check documented event types match `specs/events.md`
+4. Verify code examples use current request/response shapes (compare against OpenAPI spec)
+5. Confirm installation instructions and version references are current
+
+**Feature parity:**
+6. Compare SDK version in `Cargo.toml` (`everruns-sdk`) against latest published release
+7. Check if new API resources added since last SDK release are missing from SDK (e.g., MCP servers, LLM providers, scheduled tasks, session databases, organizations)
+8. Verify CLI crate (`crates/cli/`) can exercise all SDK sub-clients without errors
+9. File issues or PRs on [everruns/sdk](https://github.com/everruns/sdk) for any gaps found
+
+### 9. Rust Documentation
 
 1. Run `cargo doc --no-deps --all-features` — must compile without warnings
 2. Verify public types have doc comments
 3. Check crate-level documentation (`//!` comments in `lib.rs`)
 4. Fix any broken intra-doc links
 
-### 9. AGENTS.md (CLAUDE.md)
+### 10. AGENTS.md (CLAUDE.md)
 
 `AGENTS.md` is the primary agent instruction file (`CLAUDE.md` references it).
 
@@ -110,7 +127,7 @@ Identify and fill gaps.
 6. Check commit convention matches `commitlint.config.js`
 7. Ensure tone/style guidance is clear and consistent
 
-### 10. Additional Checks
+### 11. Additional Checks
 
 1. `cargo deny check` — license compliance passes
 2. `cargo fmt --check` — formatting passes
@@ -121,7 +138,7 @@ Identify and fill gaps.
 
 ## Automation
 
-Run `just pre-pr` to automate checks 1-8 where possible. Manual review needed for spec accuracy, threat model, and AGENTS.md content.
+Run `just pre-pr` to automate checks 1-9 where possible. Manual review needed for spec accuracy, threat model, SDK parity, and AGENTS.md content.
 
 ## Frequency
 
