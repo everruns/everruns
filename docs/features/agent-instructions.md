@@ -1,5 +1,5 @@
 ---
-title: Agent Instructions (AGENTS.md)
+title: AGENTS.md
 description: Provide project-level instructions to agents via AGENTS.md
 ---
 
@@ -7,7 +7,7 @@ The **Agent Instructions** capability reads an `AGENTS.md` file from the session
 
 ## Overview
 
-`AGENTS.md` is an emerging open standard for providing project-level instructions to AI coding agents. It is backed by organizations including OpenAI, Google, Cursor, Sourcegraph, and the Linux Foundation.
+[`AGENTS.md`](https://agents.md/) is an emerging open standard for providing project-level instructions to AI coding agents. It is backed by organizations including OpenAI, Google, Cursor, Sourcegraph, and the Linux Foundation.
 
 Everruns implements `AGENTS.md` as a built-in capability. When enabled:
 

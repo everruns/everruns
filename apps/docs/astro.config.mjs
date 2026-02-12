@@ -51,7 +51,7 @@ export default defineConfig({
           items: [
             { label: "Introduction", slug: "getting-started/introduction" },
             { label: "Concepts", slug: "getting-started/concepts" },
-            { label: "Docker Compose Quickstart", slug: "getting-started/docker-compose" },
+            { label: "Docker Compose", slug: "getting-started/docker-compose" },
             { label: "Architecture", slug: "getting-started/architecture" },
           ],
         },
@@ -74,6 +74,7 @@ export default defineConfig({
           label: "Observability",
           autogenerate: { directory: "observability" },
         },
+        { label: "Event Reference", slug: "event-reference" },
         // Auto-generated API Reference from OpenAPI spec
         ...openAPISidebarGroups,
       ],
