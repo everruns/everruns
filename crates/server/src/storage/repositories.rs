@@ -6,9 +6,56 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
 use super::models::*;
+
+/// Database pool configuration loaded from environment variables.
+pub struct DatabasePoolConfig {
+    pub max_connections: u32,
+    pub min_connections: u32,
+    pub acquire_timeout: std::time::Duration,
+    pub idle_timeout: std::time::Duration,
+}
+
+impl Default for DatabasePoolConfig {
+    fn default() -> Self {
+        Self {
+            max_connections: 50,
+            min_connections: 5,
+            acquire_timeout: std::time::Duration::from_secs(5),
+            idle_timeout: std::time::Duration::from_secs(300),
+        }
+    }
+}
+
+impl DatabasePoolConfig {
+    /// Load pool configuration from environment variables with sensible defaults.
+    pub fn from_env() -> Self {
+        let defaults = Self::default();
+        Self {
+            max_connections: std::env::var("DATABASE_POOL_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.max_connections),
+            min_connections: std::env::var("DATABASE_POOL_MIN")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.min_connections),
+            acquire_timeout: std::env::var("DATABASE_ACQUIRE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .map(std::time::Duration::from_secs)
+                .unwrap_or(defaults.acquire_timeout),
+            idle_timeout: std::env::var("DATABASE_IDLE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .map(std::time::Duration::from_secs)
+                .unwrap_or(defaults.idle_timeout),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Database {
@@ -20,9 +67,23 @@ impl Database {
         Self { pool }
     }
 
-    /// Create database connection from URL
+    /// Create database connection pool from URL with configurable pool settings.
     pub async fn from_url(database_url: &str) -> Result<Self> {
-        let pool = PgPool::connect(database_url).await?;
+        let config = DatabasePoolConfig::from_env();
+        let pool = PgPoolOptions::new()
+            .max_connections(config.max_connections)
+            .min_connections(config.min_connections)
+            .acquire_timeout(config.acquire_timeout)
+            .idle_timeout(config.idle_timeout)
+            .connect(database_url)
+            .await?;
+        tracing::info!(
+            max_connections = config.max_connections,
+            min_connections = config.min_connections,
+            acquire_timeout_secs = config.acquire_timeout.as_secs(),
+            idle_timeout_secs = config.idle_timeout.as_secs(),
+            "Database connection pool initialized"
+        );
         Ok(Self { pool })
     }
 
@@ -3011,5 +3072,58 @@ impl Database {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn database_pool_config_defaults() {
+        let config = DatabasePoolConfig::default();
+        assert_eq!(config.max_connections, 50);
+        assert_eq!(config.min_connections, 5);
+        assert_eq!(config.acquire_timeout, std::time::Duration::from_secs(5));
+        assert_eq!(config.idle_timeout, std::time::Duration::from_secs(300));
+    }
+
+    #[test]
+    fn database_pool_config_from_env() {
+        // SAFETY: test is run single-threaded (--test-threads=1)
+        unsafe {
+            std::env::set_var("DATABASE_POOL_MAX", "100");
+            std::env::set_var("DATABASE_POOL_MIN", "10");
+            std::env::set_var("DATABASE_ACQUIRE_TIMEOUT_SECS", "15");
+            std::env::set_var("DATABASE_IDLE_TIMEOUT_SECS", "600");
+        }
+
+        let config = DatabasePoolConfig::from_env();
+        assert_eq!(config.max_connections, 100);
+        assert_eq!(config.min_connections, 10);
+        assert_eq!(config.acquire_timeout, std::time::Duration::from_secs(15));
+        assert_eq!(config.idle_timeout, std::time::Duration::from_secs(600));
+
+        unsafe {
+            std::env::remove_var("DATABASE_POOL_MAX");
+            std::env::remove_var("DATABASE_POOL_MIN");
+            std::env::remove_var("DATABASE_ACQUIRE_TIMEOUT_SECS");
+            std::env::remove_var("DATABASE_IDLE_TIMEOUT_SECS");
+        }
+    }
+
+    #[test]
+    fn database_pool_config_invalid_values_use_defaults() {
+        // SAFETY: test is run single-threaded (--test-threads=1)
+        unsafe {
+            std::env::set_var("DATABASE_POOL_MAX", "not_a_number");
+        }
+
+        let config = DatabasePoolConfig::from_env();
+        assert_eq!(config.max_connections, 50); // falls back to default
+
+        unsafe {
+            std::env::remove_var("DATABASE_POOL_MAX");
+        }
     }
 }
