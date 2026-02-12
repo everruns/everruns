@@ -229,17 +229,38 @@ export default function SkillsPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold">Skills</h2>
-            <p className="text-sm text-muted-foreground">
-              Manage agent skills. Skills are portable instruction packages following the
-              agentskills.io format.
-            </p>
-          </div>
-          <div className="flex gap-2">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Skills</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload ZIP
+          </Button>
+          <Button variant="accent" onClick={() => setAddSkillOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Skill
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+          Failed to load skills: {error.message}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <SkillCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : skills.length === 0 ? (
+        <div className="text-center py-12">
+          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <p className="text-muted-foreground mb-4">No skills yet</p>
+          <div className="flex justify-center gap-2">
             <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Upload ZIP
@@ -250,45 +271,13 @@ export default function SkillsPage() {
             </Button>
           </div>
         </div>
-
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-            Failed to load skills: {error.message}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <SkillCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : skills.length === 0 ? (
-          <Card className="p-8 text-center">
-            <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No skills configured</h3>
-            <p className="text-muted-foreground mb-4">
-              Add a skill to provide reusable instructions and tools for your agents.
-            </p>
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />
-                Upload ZIP
-              </Button>
-              <Button onClick={() => setAddSkillOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Skill
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {skills.map((skill) => (
-              <SkillCard key={skill.id} skill={skill} onDelete={handleDeleteSkill} />
-            ))}
-          </div>
-        )}
-      </section>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {skills.map((skill) => (
+            <SkillCard key={skill.id} skill={skill} onDelete={handleDeleteSkill} />
+          ))}
+        </div>
+      )}
 
       <AddSkillDialog open={addSkillOpen} onOpenChange={setAddSkillOpen} />
       <UploadSkillDialog open={uploadSkillOpen} onOpenChange={setUploadSkillOpen} />
