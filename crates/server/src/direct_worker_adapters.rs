@@ -814,8 +814,12 @@ fn string_to_provider_type(s: &str) -> LlmProviderType {
         "openai" => LlmProviderType::Openai,
         "openai_completions" => LlmProviderType::OpenaiCompletions,
         "anthropic" => LlmProviderType::Anthropic,
+        "gemini" => LlmProviderType::Gemini,
         "llmsim" => LlmProviderType::LlmSim,
-        _ => LlmProviderType::Openai,
+        _ => {
+            tracing::warn!(provider_type = %s, "Unknown provider_type in database; falling back to llmsim");
+            LlmProviderType::LlmSim
+        }
     }
 }
 
@@ -846,5 +850,23 @@ fn event_to_message(event: Event) -> Option<Message> {
             })
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn string_to_provider_type_maps_gemini() {
+        assert_eq!(string_to_provider_type("gemini").to_string(), "gemini");
+    }
+
+    #[test]
+    fn string_to_provider_type_falls_back_for_unknown() {
+        assert_eq!(
+            string_to_provider_type("custom-provider").to_string(),
+            "llmsim"
+        );
     }
 }

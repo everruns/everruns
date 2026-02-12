@@ -204,6 +204,33 @@ configure_gh_repo() {
     fi
 }
 
+
+configure_gh_auth() {
+    if ! command -v gh &> /dev/null; then
+        warn "gh not installed, skipping GitHub auth check"
+        return 0
+    fi
+
+    # Prefer Doppler-managed token for non-interactive cloud auth.
+    if command -v doppler &> /dev/null; then
+        if doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status >/dev/null 2>&1'; then
+            info "gh authenticated via Doppler token"
+            return 0
+        fi
+    fi
+
+    # Fallback: direct environment token (if present).
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        if GH_TOKEN="$GITHUB_TOKEN" gh auth status >/dev/null 2>&1; then
+            info "gh authenticated via GITHUB_TOKEN"
+        else
+            warn "GITHUB_TOKEN present but gh auth check failed"
+        fi
+        return 0
+    fi
+
+    warn "gh not authenticated. Run: doppler run -- bash -lc 'GH_TOKEN=\"\$GITHUB_TOKEN\" gh auth status'"
+}
 configure_doppler() {
     if [[ -z "${DOPPLER_TOKEN:-}" ]]; then
         warn "DOPPLER_TOKEN not set, skipping Doppler configuration"
@@ -235,6 +262,7 @@ main() {
     install_doppler
     configure_gh_repo
     configure_doppler
+    configure_gh_auth
 
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
@@ -252,6 +280,7 @@ main() {
     echo "  just --list              # See available commands"
     echo "  just start-dev --no-watch  # Quick start (recommended for cloud)"
     echo "  just init                # Full dev environment setup (for local dev)"
+    echo "  doppler run -- bash -lc 'GH_TOKEN=\"\$GITHUB_TOKEN\" gh auth status'"
     echo "================================================"
 }
 

@@ -186,7 +186,7 @@ CREATE TABLE llm_providers (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     name TEXT NOT NULL,
-    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'openai_completions', 'anthropic', 'llmsim')),
+    provider_type TEXT NOT NULL,
     base_url TEXT,
     -- Encrypted API key (AES-256-GCM): 12-byte nonce || ciphertext || 16-byte tag
     api_key_encrypted BYTEA,
