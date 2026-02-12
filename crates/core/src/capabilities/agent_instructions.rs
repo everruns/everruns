@@ -10,6 +10,8 @@
 //! - Re-read every turn so edits are picked up immediately
 //! - 32 KiB size limit (truncated with warning), matching Codex convention
 //! - Missing file is silently ignored
+//! - Content wrapped in `<agent-instructions>` XML tags to separate user-provided
+//!   instructions from system capability prompts (reduces prompt injection surface)
 
 use super::{Capability, CapabilityStatus};
 
@@ -54,8 +56,9 @@ impl Capability for AgentInstructionsCapability {
 
     fn system_prompt_preview(&self) -> Option<String> {
         Some(
-            "# Instructions (AGENTS.md)\n\n\
-             <contents of /workspace/AGENTS.md, re-read every turn>"
+            "<agent-instructions source=\"AGENTS.md\">\n\
+             (contents of /workspace/AGENTS.md, re-read every turn)\n\
+             </agent-instructions>"
                 .to_string(),
         )
     }
@@ -86,10 +89,11 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
         (content, false)
     };
 
-    let mut result = format!("# Instructions (AGENTS.md)\n\n{}", body);
+    let mut result = format!("<agent-instructions source=\"AGENTS.md\">\n{}", body);
     if was_truncated {
         result.push_str("\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]");
     }
+    result.push_str("\n</agent-instructions>");
     Some(result)
 }
 
@@ -121,6 +125,8 @@ mod tests {
         let preview = cap.system_prompt_preview().unwrap();
         assert!(preview.contains("AGENTS.md"));
         assert!(preview.contains("re-read every turn"));
+        assert!(preview.starts_with("<agent-instructions"));
+        assert!(preview.ends_with("</agent-instructions>"));
     }
 
     #[test]
@@ -146,7 +152,8 @@ mod tests {
         let content = "## Style\nUse snake_case for variables.";
         let result = format_agents_md_content(content).unwrap();
 
-        assert!(result.starts_with("# Instructions (AGENTS.md)"));
+        assert!(result.starts_with("<agent-instructions source=\"AGENTS.md\">"));
+        assert!(result.ends_with("</agent-instructions>"));
         assert!(result.contains("Use snake_case"));
     }
 
@@ -162,11 +169,15 @@ mod tests {
         let content = "x".repeat(MAX_AGENTS_MD_SIZE + 1000);
         let result = format_agents_md_content(&content).unwrap();
 
-        let header = "# Instructions (AGENTS.md)\n\n";
-        let suffix = "\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]";
-        let expected_len = header.len() + MAX_AGENTS_MD_SIZE + suffix.len();
+        let header = "<agent-instructions source=\"AGENTS.md\">\n";
+        let truncation_notice = "\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]";
+        let closing = "\n</agent-instructions>";
+        let expected_len =
+            header.len() + MAX_AGENTS_MD_SIZE + truncation_notice.len() + closing.len();
         assert_eq!(result.len(), expected_len);
-        assert!(result.ends_with(suffix));
+        assert!(result.starts_with("<agent-instructions"));
+        assert!(result.ends_with("</agent-instructions>"));
+        assert!(result.contains("truncated"));
     }
 
     #[test]

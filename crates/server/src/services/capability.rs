@@ -224,12 +224,12 @@ impl CapabilityService {
             }
         }
 
-        // Build final system prompt
+        // Build final system prompt (XML-wrapped when capabilities contribute prompts)
         let final_system_prompt = if system_prompt_parts.is_empty() {
             base_system_prompt.to_string()
         } else {
             format!(
-                "{}\n\n{}",
+                "{}\n\n<system-prompt>\n{}\n</system-prompt>",
                 system_prompt_parts.join("\n\n"),
                 base_system_prompt
             )

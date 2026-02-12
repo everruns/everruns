@@ -63,11 +63,11 @@ execute_llm_call()
 
 After injection, system prompt order (top to bottom):
 
-1. **AGENTS.md content** (project instructions)
-2. **Capability system prompt additions** (tool guidance, etc.)
-3. **Agent's base system prompt** (agent-specific behavior)
+1. **AGENTS.md content** — wrapped in `<agent-instructions source="AGENTS.md">` tags
+2. **Capability system prompt additions** — each wrapped in `<capability id="...">` tags
+3. **Agent's base system prompt** — wrapped in `<system-prompt>` tags (only when capabilities are present)
 
-This ensures project-level context comes first, then capability-specific instructions, then the agent's own personality/role.
+XML tags provide clear boundaries between sections. See `specs/xml-prompt-formatting.md` for rationale.
 
 ## ReasonAtom Changes
 

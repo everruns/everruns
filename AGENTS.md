@@ -83,6 +83,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/events-contract.md` - SSE event format contract
 - `specs/maintenance.md` - Pre-release maintenance checklist
+- `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 
 ### Skills
 

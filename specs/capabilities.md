@@ -728,6 +728,10 @@ When a session executes:
    - This allows temporarily extending capabilities without modifying the agent
 6. **Build RuntimeAgent**:
    - System prompt = session cap additions + agent cap additions + agent's base prompt
+   - Each section is wrapped in XML tags for clear boundaries (see `specs/xml-prompt-formatting.md`):
+     - AGENTS.md content: `<agent-instructions source="AGENTS.md">`
+     - Each capability's addition: `<capability id="{cap_id}">`
+     - Base prompt: `<system-prompt>` (only when capabilities contribute prompt additions)
    - Tools = merged tool list from agent capabilities + session capabilities
 7. **Execute**: Run Agent Loop with fully configured RuntimeAgent
 

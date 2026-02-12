@@ -166,8 +166,19 @@ impl RuntimeAgentBuilder {
 
         let collected = collect_capabilities(&resolved_ids, registry);
 
-        // Apply system prompt additions (prepend to existing)
+        // Apply system prompt additions (prepend to existing, wrap base in XML tags)
         if let Some(prefix) = collected.system_prompt_prefix() {
+            // Wrap the base system prompt in <system-prompt> tags on first capability
+            // application. Skip if already wrapped (e.g., session capabilities applied
+            // after agent capabilities).
+            if !self.runtime_agent.system_prompt.is_empty()
+                && !self.runtime_agent.system_prompt.contains("<system-prompt>")
+            {
+                self.runtime_agent.system_prompt = format!(
+                    "<system-prompt>\n{}\n</system-prompt>",
+                    self.runtime_agent.system_prompt
+                );
+            }
             self = self.prepend_system_prompt(prefix);
         }
 
@@ -360,7 +371,13 @@ mod tests {
             .build();
 
         assert!(runtime_agent.system_prompt.contains("math tools"));
-        assert!(runtime_agent.system_prompt.ends_with("Base prompt."));
+        // Base prompt wrapped in <system-prompt> tags
+        assert!(runtime_agent.system_prompt.contains("<system-prompt>"));
+        assert!(
+            runtime_agent
+                .system_prompt
+                .ends_with("<system-prompt>\nBase prompt.\n</system-prompt>")
+        );
     }
 
     #[test]
@@ -421,24 +438,36 @@ mod tests {
             .with_capabilities(&["sample_data".to_string()], &registry)
             .build();
 
-        // System prompt should include File System's contribution (the dependency)
+        // System prompt should include File System's contribution (the dependency) in XML tags
+        assert!(
+            runtime_agent
+                .system_prompt
+                .contains("<capability id=\"session_file_system\">"),
+            "Should include File System capability in XML tags"
+        );
         assert!(
             runtime_agent.system_prompt.contains("read_file"),
             "Should include File System system prompt (mentions read_file tool)"
         );
+        // Should also include Sample Data's contribution in XML tags
         assert!(
-            runtime_agent.system_prompt.contains("write_file"),
-            "Should include File System system prompt (mentions write_file tool)"
+            runtime_agent
+                .system_prompt
+                .contains("<capability id=\"sample_data\">"),
+            "Should include Sample Data capability in XML tags"
         );
-        // Should also include Sample Data's contribution
         assert!(
             runtime_agent.system_prompt.contains("/samples"),
             "Should include Sample Data system prompt (mentions /samples path)"
         );
-        // Base prompt should still be there
+        // Base prompt should still be there, wrapped
         assert!(
             runtime_agent.system_prompt.contains("Base prompt."),
             "Should preserve base prompt"
+        );
+        assert!(
+            runtime_agent.system_prompt.contains("<system-prompt>"),
+            "Base prompt should be wrapped in system-prompt tags"
         );
     }
 
@@ -571,7 +600,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let ts = Timestamp::now(NoContext);
 
-        // Agent has current_time capability
+        // Agent has current_time capability (no system prompt addition)
         let uuid = Uuid::new_v7(ts);
         let agent = Agent {
             public_id: AgentId::from_uuid(uuid),
@@ -589,7 +618,7 @@ mod tests {
             usage: None,
         };
 
-        // Session adds test_math capability (additive)
+        // Session adds test_math capability (additive — has system prompt addition)
         let session_capability_ids = vec!["test_math".to_string()];
 
         let runtime_agent = RuntimeAgentBuilder::new()
@@ -607,5 +636,19 @@ mod tests {
         // System prompt should contain both capability additions and agent prompt
         assert!(runtime_agent.system_prompt.contains("Agent prompt."));
         assert!(runtime_agent.system_prompt.contains("math tools"));
+        assert!(
+            runtime_agent
+                .system_prompt
+                .contains("<capability id=\"test_math\">")
+        );
+        // Base prompt should be wrapped in <system-prompt> tags (no double wrapping)
+        let system_prompt_count = runtime_agent
+            .system_prompt
+            .matches("<system-prompt>")
+            .count();
+        assert_eq!(
+            system_prompt_count, 1,
+            "Should have exactly one <system-prompt> tag, not double-wrapped"
+        );
     }
 }

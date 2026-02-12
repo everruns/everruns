@@ -11,6 +11,10 @@
 //! - CapabilityRegistry holds all available capability implementations
 //! - apply_capabilities() merges capability contributions into RuntimeAgent
 //! - The agent-loop remains execution-focused; capabilities are applied before execution
+//! - System prompt sections use XML tags for clear boundaries between components.
+//!   This follows Anthropic's recommendation for multi-component prompts and reduces
+//!   misattribution between capability instructions, user-provided AGENTS.md, and the
+//!   agent's base system prompt. See specs/xml-prompt-formatting.md for rationale.
 //!
 //! Each capability is in its own file with collocated tools.
 
@@ -727,9 +731,12 @@ pub fn collect_capabilities_with_configs(
                 continue;
             }
 
-            // Collect system prompt addition
+            // Collect system prompt addition wrapped in XML tags for clear boundaries
             if let Some(addition) = capability.system_prompt_addition() {
-                system_prompt_parts.push(addition.to_string());
+                system_prompt_parts.push(format!(
+                    "<capability id=\"{}\">\n{}\n</capability>",
+                    cap_id, addition
+                ));
             }
 
             // Collect tools
@@ -818,9 +825,12 @@ pub fn apply_capabilities(
 ) -> AppliedCapabilities {
     let collected = collect_capabilities(capability_ids, registry);
 
-    // Build final system prompt: capability additions + base prompt
+    // Build final system prompt: capability additions + base prompt (wrapped in XML tags)
     let final_system_prompt = match collected.system_prompt_prefix() {
-        Some(prefix) => format!("{}\n\n{}", prefix, base_runtime_agent.system_prompt),
+        Some(prefix) => format!(
+            "{}\n\n<system-prompt>\n{}\n</system-prompt>",
+            prefix, base_runtime_agent.system_prompt
+        ),
         None => base_runtime_agent.system_prompt,
     };
 
@@ -1111,6 +1121,32 @@ mod tests {
 
         // TestMath has system prompt addition and 4 tools
         assert!(applied.runtime_agent.system_prompt.contains("math tools"));
+        // Capability prompt wrapped in XML tags
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("<capability id=\"test_math\">")
+        );
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("</capability>")
+        );
+        // Base prompt wrapped in <system-prompt> tags
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("<system-prompt>")
+        );
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("</system-prompt>")
+        );
         assert!(applied.tool_registry.has("add"));
         assert!(applied.tool_registry.has("subtract"));
         assert!(applied.tool_registry.has("multiply"));
@@ -1135,6 +1171,12 @@ mod tests {
                 .runtime_agent
                 .system_prompt
                 .contains("weather tools")
+        );
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("<capability id=\"test_weather\">")
         );
         assert!(applied.tool_registry.has("get_weather"));
         assert!(applied.tool_registry.has("get_forecast"));
@@ -1202,6 +1244,88 @@ mod tests {
         assert!(applied.runtime_agent.system_prompt.contains("FetchKit"));
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
+    }
+
+    // =========================================================================
+    // XML prompt formatting tests
+    // =========================================================================
+
+    #[test]
+    fn test_xml_tags_wrap_capability_prompts() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(&["test_math".to_string()], &registry);
+
+        assert_eq!(collected.system_prompt_parts.len(), 1);
+        let part = &collected.system_prompt_parts[0];
+        assert!(part.starts_with("<capability id=\"test_math\">"));
+        assert!(part.ends_with("</capability>"));
+        assert!(part.contains("math tools"));
+    }
+
+    #[test]
+    fn test_xml_tags_multiple_capabilities() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(
+            &["test_math".to_string(), "test_weather".to_string()],
+            &registry,
+        );
+
+        assert_eq!(collected.system_prompt_parts.len(), 2);
+        assert!(collected.system_prompt_parts[0].starts_with("<capability id=\"test_math\">"));
+        assert!(collected.system_prompt_parts[1].starts_with("<capability id=\"test_weather\">"));
+
+        let prefix = collected.system_prompt_prefix().unwrap();
+        // Both capability sections separated by double newline
+        assert!(prefix.contains("</capability>\n\n<capability"));
+    }
+
+    #[test]
+    fn test_xml_tags_system_prompt_wrapping() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
+
+        let applied = apply_capabilities(base, &["test_math".to_string()], &registry);
+
+        let prompt = &applied.runtime_agent.system_prompt;
+        // Capability wrapped
+        assert!(prompt.contains("<capability id=\"test_math\">"));
+        assert!(prompt.contains("</capability>"));
+        // Base prompt wrapped
+        assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));
+    }
+
+    #[test]
+    fn test_no_xml_wrapping_without_capabilities() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
+
+        let applied = apply_capabilities(base, &[], &registry);
+
+        // No capabilities = no XML wrapping (plain base prompt)
+        assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
+        assert!(
+            !applied
+                .runtime_agent
+                .system_prompt
+                .contains("<system-prompt>")
+        );
+    }
+
+    #[test]
+    fn test_no_xml_wrapping_for_noop_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
+
+        // Noop has no system_prompt_addition, so no XML wrapping should occur
+        let applied = apply_capabilities(base, &["noop".to_string()], &registry);
+
+        assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
+        assert!(
+            !applied
+                .runtime_agent
+                .system_prompt
+                .contains("<system-prompt>")
+        );
     }
 
     // =========================================================================
