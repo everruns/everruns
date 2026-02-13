@@ -80,6 +80,7 @@ pub struct InMemoryWorkflowEventStore {
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
+    max_pending_tasks_per_workflow: u32,
 }
 
 impl InMemoryWorkflowEventStore {
@@ -95,7 +96,16 @@ impl InMemoryWorkflowEventStore {
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
+            max_pending_tasks_per_workflow: super::store::max_pending_tasks_per_workflow_from_env(),
         }
+    }
+
+    /// Create with a custom max pending tasks per workflow limit (for testing)
+    #[cfg(test)]
+    pub fn with_max_pending_tasks(limit: u32) -> Self {
+        let mut store = Self::new();
+        store.max_pending_tasks_per_workflow = limit;
+        store
     }
 
     /// Get the number of workflows
@@ -243,8 +253,27 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     }
 
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
+        let limit = self.max_pending_tasks_per_workflow;
+
         let task_id = Uuid::now_v7();
         let mut tasks = self.tasks.write();
+
+        // Check per-workflow pending task count
+        let pending_count = tasks
+            .values()
+            .filter(|t| {
+                t.definition.workflow_id == task.workflow_id && t.status == TaskStatus::Pending
+            })
+            .count() as u32;
+
+        if pending_count >= limit {
+            return Err(StoreError::TaskQueueLimitExceeded {
+                workflow_id: task.workflow_id,
+                current: pending_count,
+                limit,
+            });
+        }
+
         tasks.insert(
             task_id,
             TaskState {
@@ -1942,5 +1971,105 @@ mod tests {
             stats.last_execution_status,
             Some(ScheduleExecutionStatus::Failed)
         );
+    }
+
+    #[tokio::test]
+    async fn test_task_queue_limit_per_workflow() {
+        let store = InMemoryWorkflowEventStore::with_max_pending_tasks(3);
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Enqueue up to the limit
+        for i in 0..3 {
+            store
+                .enqueue_task(TaskDefinition {
+                    workflow_id,
+                    activity_id: format!("act_{i}"),
+                    activity_type: "test_activity".to_string(),
+                    input: serde_json::json!({}),
+                    options: ActivityOptions::default(),
+                })
+                .await
+                .unwrap();
+        }
+
+        // Fourth should fail
+        let result = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "act_overflow".to_string(),
+                activity_type: "test_activity".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await;
+
+        assert!(
+            matches!(result, Err(StoreError::TaskQueueLimitExceeded { .. })),
+            "expected TaskQueueLimitExceeded, got: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_task_queue_limit_does_not_block_other_workflows() {
+        let store = InMemoryWorkflowEventStore::with_max_pending_tasks(2);
+        let workflow_a = Uuid::now_v7();
+        let workflow_b = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_a, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .create_workflow(workflow_b, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Fill workflow A to limit
+        for i in 0..2 {
+            store
+                .enqueue_task(TaskDefinition {
+                    workflow_id: workflow_a,
+                    activity_id: format!("a_{i}"),
+                    activity_type: "test".to_string(),
+                    input: serde_json::json!({}),
+                    options: ActivityOptions::default(),
+                })
+                .await
+                .unwrap();
+        }
+
+        // Workflow B should still work
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: workflow_b,
+                activity_id: "b_0".to_string(),
+                activity_type: "test".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Workflow A should fail
+        let result = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: workflow_a,
+                activity_id: "a_overflow".to_string(),
+                activity_type: "test".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(StoreError::TaskQueueLimitExceeded { .. })
+        ));
     }
 }
