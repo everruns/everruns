@@ -138,9 +138,13 @@ impl TestServer {
             api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
         let messages_state =
             api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
+            everruns_server::api::sse::SseConnectionLimits::default(),
+        ));
         let events_state = api::events::AppState {
             session_service: Arc::new(services::SessionService::new(db.clone())),
             event_service: event_service.clone(),
+            sse_tracker,
             auth: auth_state.clone(),
         };
         let llm_providers_state = api::llm_providers::AppState::new(

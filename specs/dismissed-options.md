@@ -76,3 +76,28 @@ This document records technical options that were considered but dismissed for s
 **May revisit when**:
 - OpenAI officially documents the traces API for external use
 - OpenAI explicitly supports custom/third-party trace ingestion
+
+## Process-Level LLM Provider Rate Limiting (EVE-7)
+
+**Status**: Dismissed (implemented then reverted)
+
+**What it was**: Per-provider semaphore-based concurrency limiter wrapping `BoxedLlmDriver`. Each LLM call would acquire a permit from a per-provider `tokio::Semaphore` (default 50 concurrent calls per provider type), held for the full streaming duration. Configured via `LLM_MAX_CONCURRENT_PER_PROVIDER` env var.
+
+**Why considered**: Workers call LLM APIs with no in-process concurrency control. 100 workers simultaneously calling the same provider could burst past rate limits, causing mass 429 errors and wasted tokens on retries.
+
+**Why dismissed**:
+- **Existing retry logic already handles 429s**: `llm_retry.rs` implements per-call exponential backoff (2 retries, 1-60s backoff) with provider-specific rate-limit header parsing (Anthropic `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`). Transient 429s are handled transparently.
+- **Durable engine bounds concurrency**: The task queue with optimistic locking already limits how many activities run concurrently. Adding a second concurrency layer inside the process is redundant.
+- **Process-level semaphore doesn't help multi-process**: In production with multiple worker processes or pods, a per-process semaphore doesn't coordinate across instances. True rate limiting needs a distributed token bucket (e.g., Redis-based), which is a much larger effort.
+- **Circuit breaker already integrated**: The durable worker wraps `reason_activity` with `DistributedCircuitBreaker` recording (success/failure), providing automatic backoff on sustained provider failures.
+- **Complexity vs. benefit**: Adding a wrapper layer around every LLM driver, threading `Arc<LlmRateLimiter>` through `ReasonAtom`, `WorkerAdapters`, and `DirectWorkerAdapters` added significant plumbing for marginal benefit.
+
+**What we use instead**:
+- Per-call retry with exponential backoff and provider rate-limit header respect (`llm_retry.rs`)
+- Durable engine activity-level circuit breaker (`DistributedCircuitBreaker`)
+- Durable task queue concurrency bounding (task claiming limits active workers)
+
+**May revisit when**:
+- Distributed rate limiting (Redis-based token bucket) becomes necessary at scale
+- Provider-specific TPM/RPM budgets need explicit coordination across workers
+- Observed 429 storms that existing retry logic cannot absorb

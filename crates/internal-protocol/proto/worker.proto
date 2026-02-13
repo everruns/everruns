@@ -146,6 +146,8 @@ message GetTurnContextRequest {
     Uuid session_id = 1;
     // Organization ID for resource validation
     int64 org_id = 2;
+    // Max messages to return (most recent N). 0 = use server default.
+    optional int32 message_limit = 3;
 }
 
 message GetTurnContextResponse {
@@ -158,6 +160,8 @@ message GetTurnContextResponse {
     repeated McpToolDef mcp_tool_definitions = 5;
     // Harness for this session (always present)
     optional Harness harness = 6;
+    // True when older messages were truncated to stay within limit
+    bool messages_truncated = 7;
 }
 
 // MCP tool definition for passing to worker

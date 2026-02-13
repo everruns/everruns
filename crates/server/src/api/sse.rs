@@ -14,7 +14,15 @@
 // The SSE `retry:` field hints to clients how long to wait before reconnecting.
 // We use the current backoff value as the retry hint, so clients reconnect faster
 // when the stream is active (low backoff) and slower when idle (high backoff).
+//
+// Connection Limits (EVE-8 / TM-DOS-003):
+// SseConnectionTracker enforces global, per-session, and per-org limits to prevent
+// resource exhaustion from unbounded SSE connections. Each SSE stream holds a Tokio task
+// and polls the database, so limiting connections is critical for system stability.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// SSE stream configuration with backoff and connection cycling parameters
@@ -105,6 +113,209 @@ impl DisconnectReason {
             DisconnectReason::Shutdown => "shutdown",
             DisconnectReason::Error => "error",
         }
+    }
+}
+
+// ============================================================
+// SSE Connection Limits (EVE-8 / TM-DOS-003)
+// ============================================================
+
+/// Configuration for SSE connection limits.
+#[derive(Debug, Clone)]
+pub struct SseConnectionLimits {
+    /// Maximum total SSE connections across all users/sessions
+    pub global_max: usize,
+    /// Maximum SSE connections per session
+    pub per_session_max: usize,
+    /// Maximum SSE connections per organization (user)
+    pub per_org_max: usize,
+}
+
+impl Default for SseConnectionLimits {
+    fn default() -> Self {
+        Self {
+            global_max: 10_000,
+            per_session_max: 5,
+            per_org_max: 50,
+        }
+    }
+}
+
+impl SseConnectionLimits {
+    /// Load limits from environment variables with sensible defaults.
+    pub fn from_env() -> Self {
+        let defaults = Self::default();
+        Self {
+            global_max: std::env::var("SSE_GLOBAL_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.global_max),
+            per_session_max: std::env::var("SSE_PER_SESSION_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.per_session_max),
+            per_org_max: std::env::var("SSE_PER_ORG_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.per_org_max),
+        }
+    }
+}
+
+/// Reason why an SSE connection was rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SseConnectionRejection {
+    GlobalLimitReached,
+    SessionLimitReached,
+    OrgLimitReached,
+}
+
+impl std::fmt::Display for SseConnectionRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::GlobalLimitReached => write!(f, "global SSE connection limit reached"),
+            Self::SessionLimitReached => write!(f, "per-session SSE connection limit reached"),
+            Self::OrgLimitReached => write!(f, "per-organization SSE connection limit reached"),
+        }
+    }
+}
+
+/// Tracks active SSE connections and enforces limits.
+///
+/// Uses a RAII guard pattern: `try_acquire()` returns an `SseConnectionGuard`
+/// that automatically decrements counters when the SSE stream is dropped.
+#[derive(Debug)]
+pub struct SseConnectionTracker {
+    limits: SseConnectionLimits,
+    global_count: AtomicUsize,
+    /// org_id -> active connection count
+    per_org: Mutex<HashMap<i64, usize>>,
+    /// session_id (UUID) -> active connection count
+    per_session: Mutex<HashMap<uuid::Uuid, usize>>,
+}
+
+impl SseConnectionTracker {
+    pub fn new(limits: SseConnectionLimits) -> Self {
+        tracing::info!(
+            global_max = limits.global_max,
+            per_session_max = limits.per_session_max,
+            per_org_max = limits.per_org_max,
+            "SSE connection tracker initialized"
+        );
+        Self {
+            limits,
+            global_count: AtomicUsize::new(0),
+            per_org: Mutex::new(HashMap::new()),
+            per_session: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Try to acquire an SSE connection slot.
+    /// Returns a guard on success that auto-releases on drop, or a rejection reason.
+    pub fn try_acquire(
+        self: &Arc<Self>,
+        org_id: i64,
+        session_id: uuid::Uuid,
+    ) -> Result<SseConnectionGuard, SseConnectionRejection> {
+        // Check global limit
+        let prev = self.global_count.fetch_add(1, Ordering::SeqCst);
+        if prev >= self.limits.global_max {
+            self.global_count.fetch_sub(1, Ordering::SeqCst);
+            return Err(SseConnectionRejection::GlobalLimitReached);
+        }
+
+        // Check per-org limit
+        {
+            let mut per_org = self.per_org.lock().unwrap();
+            let count = per_org.entry(org_id).or_insert(0);
+            if *count >= self.limits.per_org_max {
+                self.global_count.fetch_sub(1, Ordering::SeqCst);
+                return Err(SseConnectionRejection::OrgLimitReached);
+            }
+            *count += 1;
+        }
+
+        // Check per-session limit
+        {
+            let mut per_session = self.per_session.lock().unwrap();
+            let count = per_session.entry(session_id).or_insert(0);
+            if *count >= self.limits.per_session_max {
+                // Undo org increment
+                let mut per_org = self.per_org.lock().unwrap();
+                if let Some(c) = per_org.get_mut(&org_id) {
+                    *c = c.saturating_sub(1);
+                    if *c == 0 {
+                        per_org.remove(&org_id);
+                    }
+                }
+                self.global_count.fetch_sub(1, Ordering::SeqCst);
+                return Err(SseConnectionRejection::SessionLimitReached);
+            }
+            *count += 1;
+        }
+
+        tracing::debug!(
+            org_id,
+            %session_id,
+            global = self.global_count.load(Ordering::Relaxed),
+            "SSE connection acquired"
+        );
+
+        Ok(SseConnectionGuard {
+            tracker: Arc::clone(self),
+            org_id,
+            session_id,
+        })
+    }
+
+    /// Get current global connection count (for metrics/health).
+    pub fn global_count(&self) -> usize {
+        self.global_count.load(Ordering::Relaxed)
+    }
+
+    fn release(&self, org_id: i64, session_id: uuid::Uuid) {
+        self.global_count.fetch_sub(1, Ordering::SeqCst);
+
+        {
+            let mut per_org = self.per_org.lock().unwrap();
+            if let Some(c) = per_org.get_mut(&org_id) {
+                *c = c.saturating_sub(1);
+                if *c == 0 {
+                    per_org.remove(&org_id);
+                }
+            }
+        }
+
+        {
+            let mut per_session = self.per_session.lock().unwrap();
+            if let Some(c) = per_session.get_mut(&session_id) {
+                *c = c.saturating_sub(1);
+                if *c == 0 {
+                    per_session.remove(&session_id);
+                }
+            }
+        }
+
+        tracing::debug!(
+            org_id,
+            %session_id,
+            global = self.global_count.load(Ordering::Relaxed),
+            "SSE connection released"
+        );
+    }
+}
+
+/// RAII guard that releases the SSE connection slot when the stream is dropped.
+#[derive(Debug)]
+pub struct SseConnectionGuard {
+    tracker: Arc<SseConnectionTracker>,
+    org_id: i64,
+    session_id: uuid::Uuid,
+}
+
+impl Drop for SseConnectionGuard {
+    fn drop(&mut self) {
+        self.tracker.release(self.org_id, self.session_id);
     }
 }
 
@@ -275,5 +486,130 @@ mod tests {
         assert_eq!(backoff, 20000); // Capped
         backoff = config.next_backoff(backoff);
         assert_eq!(backoff, 20000); // Stays at max
+    }
+
+    // ============================================
+    // Connection Tracker Tests
+    // ============================================
+
+    #[test]
+    fn test_connection_tracker_basic_acquire_release() {
+        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::default()));
+        let session = uuid::Uuid::new_v4();
+
+        let guard = tracker.try_acquire(1, session).unwrap();
+        assert_eq!(tracker.global_count(), 1);
+
+        drop(guard);
+        assert_eq!(tracker.global_count(), 0);
+    }
+
+    #[test]
+    fn test_connection_tracker_per_session_limit() {
+        let limits = SseConnectionLimits {
+            global_max: 100,
+            per_session_max: 2,
+            per_org_max: 50,
+        };
+        let tracker = Arc::new(SseConnectionTracker::new(limits));
+        let session = uuid::Uuid::new_v4();
+
+        let _g1 = tracker.try_acquire(1, session).unwrap();
+        let _g2 = tracker.try_acquire(1, session).unwrap();
+
+        // Third should fail
+        let result = tracker.try_acquire(1, session);
+        assert_eq!(
+            result.unwrap_err(),
+            SseConnectionRejection::SessionLimitReached
+        );
+
+        // Global should not have incremented for the failed attempt
+        assert_eq!(tracker.global_count(), 2);
+    }
+
+    #[test]
+    fn test_connection_tracker_per_org_limit() {
+        let limits = SseConnectionLimits {
+            global_max: 100,
+            per_session_max: 5,
+            per_org_max: 2,
+        };
+        let tracker = Arc::new(SseConnectionTracker::new(limits));
+
+        let _g1 = tracker.try_acquire(1, uuid::Uuid::new_v4()).unwrap();
+        let _g2 = tracker.try_acquire(1, uuid::Uuid::new_v4()).unwrap();
+
+        // Third for same org should fail
+        let result = tracker.try_acquire(1, uuid::Uuid::new_v4());
+        assert_eq!(result.unwrap_err(), SseConnectionRejection::OrgLimitReached);
+        assert_eq!(tracker.global_count(), 2);
+
+        // Different org should work
+        let _g3 = tracker.try_acquire(2, uuid::Uuid::new_v4()).unwrap();
+        assert_eq!(tracker.global_count(), 3);
+    }
+
+    #[test]
+    fn test_connection_tracker_global_limit() {
+        let limits = SseConnectionLimits {
+            global_max: 2,
+            per_session_max: 5,
+            per_org_max: 50,
+        };
+        let tracker = Arc::new(SseConnectionTracker::new(limits));
+
+        let _g1 = tracker.try_acquire(1, uuid::Uuid::new_v4()).unwrap();
+        let _g2 = tracker.try_acquire(2, uuid::Uuid::new_v4()).unwrap();
+
+        let result = tracker.try_acquire(3, uuid::Uuid::new_v4());
+        assert_eq!(
+            result.unwrap_err(),
+            SseConnectionRejection::GlobalLimitReached
+        );
+        assert_eq!(tracker.global_count(), 2);
+    }
+
+    #[test]
+    fn test_connection_tracker_release_allows_new_connections() {
+        let limits = SseConnectionLimits {
+            global_max: 1,
+            per_session_max: 1,
+            per_org_max: 1,
+        };
+        let tracker = Arc::new(SseConnectionTracker::new(limits));
+        let session = uuid::Uuid::new_v4();
+
+        let guard = tracker.try_acquire(1, session).unwrap();
+        assert!(tracker.try_acquire(1, session).is_err());
+
+        drop(guard);
+        // Should succeed after release
+        let _g2 = tracker.try_acquire(1, session).unwrap();
+        assert_eq!(tracker.global_count(), 1);
+    }
+
+    #[test]
+    fn test_connection_limits_defaults() {
+        let limits = SseConnectionLimits::default();
+        assert_eq!(limits.global_max, 10_000);
+        assert_eq!(limits.per_session_max, 5);
+        assert_eq!(limits.per_org_max, 50);
+    }
+
+    #[test]
+    fn test_connection_rejection_display() {
+        assert_eq!(
+            SseConnectionRejection::GlobalLimitReached.to_string(),
+            "global SSE connection limit reached"
+        );
+        assert_eq!(
+            SseConnectionRejection::SessionLimitReached.to_string(),
+            "per-session SSE connection limit reached"
+        );
+        assert_eq!(
+            SseConnectionRejection::OrgLimitReached.to_string(),
+            "per-organization SSE connection limit reached"
+        );
     }
 }

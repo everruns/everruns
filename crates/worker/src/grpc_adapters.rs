@@ -967,6 +967,7 @@ pub async fn load_turn_context(
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id.uuid())),
         org_id,
+        message_limit: None, // use server default
     };
 
     let response = grpc_client
