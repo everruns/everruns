@@ -519,7 +519,10 @@ mod tests {
 
         // Third should fail
         let result = tracker.try_acquire(1, session);
-        assert_eq!(result.unwrap_err(), SseConnectionRejection::SessionLimitReached);
+        assert_eq!(
+            result.unwrap_err(),
+            SseConnectionRejection::SessionLimitReached
+        );
 
         // Global should not have incremented for the failed attempt
         assert_eq!(tracker.global_count(), 2);
@@ -560,7 +563,10 @@ mod tests {
         let _g2 = tracker.try_acquire(2, uuid::Uuid::new_v4()).unwrap();
 
         let result = tracker.try_acquire(3, uuid::Uuid::new_v4());
-        assert_eq!(result.unwrap_err(), SseConnectionRejection::GlobalLimitReached);
+        assert_eq!(
+            result.unwrap_err(),
+            SseConnectionRejection::GlobalLimitReached
+        );
         assert_eq!(tracker.global_count(), 2);
     }
 

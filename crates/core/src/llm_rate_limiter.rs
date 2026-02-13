@@ -82,18 +82,11 @@ impl LlmRateLimiter {
             providers = provider_count,
             "LLM rate limiter initialized"
         );
-        Self {
-            semaphores,
-            config,
-        }
+        Self { semaphores, config }
     }
 
     /// Wrap a driver with rate limiting for the given provider.
-    pub fn wrap(
-        &self,
-        driver: BoxedLlmDriver,
-        provider_type: ProviderType,
-    ) -> BoxedLlmDriver {
+    pub fn wrap(&self, driver: BoxedLlmDriver, provider_type: ProviderType) -> BoxedLlmDriver {
         // LlmSim doesn't need rate limiting
         if provider_type == ProviderType::LlmSim {
             return driver;
@@ -133,12 +126,10 @@ impl LlmDriver for RateLimitedDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| crate::error::AgentLoopError::llm("LLM rate limiter semaphore closed"))?;
+        let permit =
+            self.semaphore.clone().acquire_owned().await.map_err(|_| {
+                crate::error::AgentLoopError::llm("LLM rate limiter semaphore closed")
+            })?;
 
         tracing::debug!(
             provider = %self.provider_type,
@@ -160,12 +151,10 @@ impl LlmDriver for RateLimitedDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        let _permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| crate::error::AgentLoopError::llm("LLM rate limiter semaphore closed"))?;
+        let _permit =
+            self.semaphore.clone().acquire_owned().await.map_err(|_| {
+                crate::error::AgentLoopError::llm("LLM rate limiter semaphore closed")
+            })?;
 
         self.inner.chat_completion(messages, config).await
     }
@@ -212,18 +201,12 @@ mod tests {
         let limiter = LlmRateLimiter::new(LlmRateLimitConfig {
             max_concurrent_per_provider: 10,
         });
-        assert_eq!(
-            limiter.available_permits(&ProviderType::OpenAI),
-            Some(10)
-        );
+        assert_eq!(limiter.available_permits(&ProviderType::OpenAI), Some(10));
         assert_eq!(
             limiter.available_permits(&ProviderType::Anthropic),
             Some(10)
         );
-        assert_eq!(
-            limiter.available_permits(&ProviderType::Gemini),
-            Some(10)
-        );
+        assert_eq!(limiter.available_permits(&ProviderType::Gemini), Some(10));
         assert_eq!(
             limiter.available_permits(&ProviderType::OpenAICompletions),
             Some(10)
