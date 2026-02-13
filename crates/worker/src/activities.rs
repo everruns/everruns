@@ -139,7 +139,6 @@ pub async fn reason_activity(
     grpc_client: GrpcClient,
     org_id: i64,
     input: ReasonInput,
-    llm_rate_limiter: Option<Arc<everruns_core::LlmRateLimiter>>,
 ) -> Result<ReasonResult> {
     use everruns_core::MessageRetriever;
     use everruns_core::events::{
@@ -175,7 +174,7 @@ pub async fn reason_activity(
     // Create file store for AGENTS.md reading (agent_instructions capability)
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
 
-    let mut atom = ReasonAtom::new(
+    let atom = ReasonAtom::new(
         harness_store,
         agent_store,
         session_store,
@@ -187,10 +186,6 @@ pub async fn reason_activity(
     )
     .with_image_resolver(image_resolver)
     .with_file_store(file_store);
-
-    if let Some(limiter) = llm_rate_limiter {
-        atom = atom.with_llm_rate_limiter(limiter);
-    }
 
     let result = atom
         .execute(input)

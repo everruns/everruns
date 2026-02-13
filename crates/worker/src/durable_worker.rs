@@ -883,7 +883,7 @@ impl DurableWorker {
         };
 
         // Use the existing reason_activity function with gRPC adapters
-        let result = reason_activity(grpc_client, input.org_id, reason_input, None).await;
+        let result = reason_activity(grpc_client, input.org_id, reason_input).await;
 
         // Record circuit breaker outcome
         {
