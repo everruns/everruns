@@ -67,6 +67,24 @@ impl McpServerService {
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
+    /// Batch fetch multiple MCP servers with their cached tools in a single query.
+    /// Returns a map of server_id -> (McpServer, Vec<McpToolDefinition>).
+    pub async fn get_batch_with_tools(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, (McpServer, Vec<McpToolDefinition>)>> {
+        let rows = self.db.get_mcp_servers_batch(ids).await?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let server = Self::row_to_mcp_server(row);
+                let tools: Vec<McpToolDefinition> =
+                    serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
+                (row.id.uuid(), (server, tools))
+            })
+            .collect())
+    }
+
     pub async fn list(&self) -> Result<Vec<McpServer>> {
         let rows = self.db.list_mcp_servers().await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())

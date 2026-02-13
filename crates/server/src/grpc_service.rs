@@ -165,50 +165,57 @@ impl WorkerServiceImpl {
     /// Build MCP tool definitions from agent's MCP capabilities.
     ///
     /// Extracts MCP server UUIDs from capability IDs (format: "mcp:{uuid}"),
-    /// fetches cached tools for each server, and converts to proto McpToolDef.
+    /// batch-fetches all servers with cached tools in a single query,
+    /// and converts to proto McpToolDef.
     async fn build_mcp_tool_definitions(&self, agent: &everruns_core::Agent) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
 
+        // Collect unique MCP server IDs from capabilities
+        let server_ids: Vec<uuid::Uuid> = agent
+            .capabilities
+            .iter()
+            .filter_map(|cap| parse_mcp_capability_id(cap.capability_id()))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if server_ids.is_empty() {
+            return vec![];
+        }
+
+        // Batch fetch all MCP servers with cached tools in one query
+        let servers = match self
+            .mcp_server_service
+            .get_batch_with_tools(&server_ids)
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to batch-fetch MCP servers");
+                return vec![];
+            }
+        };
+
         let mut mcp_tools = Vec::new();
 
         for cap in &agent.capabilities {
-            let cap_id = cap.capability_id();
-
-            // Parse MCP server UUID from capability ID
-            let server_id = match parse_mcp_capability_id(cap_id) {
+            let server_id = match parse_mcp_capability_id(cap.capability_id()) {
                 Some(id) => id,
-                None => continue, // Not an MCP capability
+                None => continue,
             };
 
-            // Fetch MCP server tools (using cache)
-            let tools = match self.mcp_server_service.get_tools(server_id, false).await {
-                Ok(t) => t,
-                Err(e) => {
-                    tracing::warn!(
-                        server_id = %server_id,
-                        error = %e,
-                        "Failed to get MCP server tools, skipping"
-                    );
-                    continue;
-                }
+            let Some((server, tools)) = servers.get(&server_id) else {
+                tracing::warn!(server_id = %server_id, "MCP server not found, skipping");
+                continue;
             };
 
-            // Get server name for tool prefixing
-            let server_name = match self.mcp_server_service.get(server_id).await {
-                Ok(Some(s)) => s.name,
-                _ => {
-                    tracing::warn!(server_id = %server_id, "MCP server not found, skipping");
-                    continue;
-                }
-            };
-
-            // Convert each MCP tool to proto McpToolDef
             for tool in tools {
-                let prefixed_name = mcp_tool_name(&server_name, &tool.name);
+                let prefixed_name = mcp_tool_name(&server.name, &tool.name);
                 let description = tool
                     .description
-                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
+                    .clone()
+                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server.name));
                 let parameters =
                     everruns_internal_protocol::json_to_proto_struct(&tool.input_schema);
 
