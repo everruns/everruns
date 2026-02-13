@@ -1,5 +1,6 @@
 "use client";
 
+import { version } from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -237,7 +238,7 @@ export function Sidebar() {
             </DropdownMenuPositioner>
           </DropdownMenu>
         ) : (
-          <p className="text-xs text-muted-foreground px-3">Everruns v0.1.0</p>
+          <p className="text-xs text-muted-foreground px-3">Everruns v{version}</p>
         )}
       </div>
     </div>
