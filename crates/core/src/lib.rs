@@ -53,6 +53,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
+pub mod llm_rate_limiter;
 pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
@@ -111,6 +112,9 @@ pub use llm_driver_registry::{
 
 // LLM retry types re-exports
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
+
+// LLM rate limiter re-exports
+pub use llm_rate_limiter::{LlmRateLimitConfig, LlmRateLimiter};
 
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
 pub use openai_protocol::OpenAIProtocolLlmDriver;

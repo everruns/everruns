@@ -16,6 +16,7 @@ use everruns_core::{
     Agent, DriverRegistry, Harness, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::mcp_executor::McpServerInfo;
@@ -165,6 +166,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the LLM driver registry
     fn driver_registry(&self) -> DriverRegistry;
+
+    /// Get the LLM rate limiter (if configured).
+    /// Default returns None (no concurrency limiting).
+    fn llm_rate_limiter(&self) -> Option<Arc<everruns_core::LlmRateLimiter>> {
+        None
+    }
 
     /// Create a tool registry with defaults and agent capabilities
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry>;

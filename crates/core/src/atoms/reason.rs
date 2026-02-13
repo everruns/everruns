@@ -182,6 +182,8 @@ where
     image_resolver: Option<Arc<dyn ImageResolver>>,
     /// Optional file store for reading AGENTS.md (agent_instructions capability)
     file_store: Option<Arc<dyn crate::traits::SessionFileStore>>,
+    /// Optional rate limiter for LLM provider concurrency control
+    llm_rate_limiter: Option<Arc<crate::llm_rate_limiter::LlmRateLimiter>>,
 }
 
 impl<H, A, S, M, P, E> ReasonAtom<H, A, S, M, P, E>
@@ -216,7 +218,17 @@ where
             event_emitter,
             image_resolver: None,
             file_store: None,
+            llm_rate_limiter: None,
         }
+    }
+
+    /// Set the LLM rate limiter for per-provider concurrency control
+    pub fn with_llm_rate_limiter(
+        mut self,
+        limiter: Arc<crate::llm_rate_limiter::LlmRateLimiter>,
+    ) -> Self {
+        self.llm_rate_limiter = Some(limiter);
+        self
     }
 
     /// Set the file store for reading AGENTS.md (agent_instructions capability)
@@ -1265,7 +1277,7 @@ where
         Ok((model, None))
     }
 
-    /// Create LLM driver using the driver registry
+    /// Create LLM driver using the driver registry, wrapped with rate limiting if configured.
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
@@ -1280,7 +1292,7 @@ where
             crate::llm_models::LlmProviderType::LlmSim => ProviderType::LlmSim,
         };
 
-        let mut config = ProviderConfig::new(provider_type);
+        let mut config = ProviderConfig::new(provider_type.clone());
         if let Some(ref api_key) = model.api_key {
             config = config.with_api_key(api_key);
         }
@@ -1288,7 +1300,14 @@ where
             config = config.with_base_url(base_url);
         }
 
-        self.driver_registry.create_driver(&config)
+        let driver = self.driver_registry.create_driver(&config)?;
+
+        // Wrap with rate limiter if configured
+        if let Some(ref limiter) = self.llm_rate_limiter {
+            Ok(limiter.wrap(driver, provider_type))
+        } else {
+            Ok(driver)
+        }
     }
 
     /// Resolve image_file references to actual image data

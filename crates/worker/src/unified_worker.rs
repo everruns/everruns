@@ -619,7 +619,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let image_resolver = Arc::new(AdapterImageResolver::new(adapters.clone()));
 
-    let atom = ReasonAtom::new(
+    let mut atom = ReasonAtom::new(
         harness_store,
         agent_store,
         session_store,
@@ -630,6 +630,10 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         event_emitter,
     )
     .with_image_resolver(image_resolver);
+
+    if let Some(limiter) = adapters.llm_rate_limiter() {
+        atom = atom.with_llm_rate_limiter(limiter);
+    }
 
     let reason_input = everruns_core::ReasonInput {
         context: context.clone(),

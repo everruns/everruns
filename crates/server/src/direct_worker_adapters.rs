@@ -61,6 +61,7 @@ pub struct DirectWorkerAdapters {
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
+    llm_rate_limiter: Option<Arc<everruns_core::LlmRateLimiter>>,
 }
 
 impl DirectWorkerAdapters {
@@ -72,6 +73,9 @@ impl DirectWorkerAdapters {
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
     ) -> Self {
+        let llm_rate_limiter = Arc::new(everruns_core::LlmRateLimiter::new(
+            everruns_core::LlmRateLimitConfig::from_env(),
+        ));
         Self {
             db,
             event_service,
@@ -79,6 +83,7 @@ impl DirectWorkerAdapters {
             mcp_server_service,
             capability_registry,
             sqldb_store: None,
+            llm_rate_limiter: Some(llm_rate_limiter),
         }
     }
 
@@ -734,6 +739,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn driver_registry(&self) -> DriverRegistry {
         create_driver_registry()
+    }
+
+    fn llm_rate_limiter(&self) -> Option<Arc<everruns_core::LlmRateLimiter>> {
+        self.llm_rate_limiter.clone()
     }
 
     fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
