@@ -48,7 +48,6 @@ pub mod mcp;
 mod noop;
 mod research;
 mod sample_data;
-mod sandbox;
 mod session_sql_database;
 mod session_storage;
 mod stateless_todo_list;
@@ -100,7 +99,6 @@ pub use mcp::{
 pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
-pub use sandbox::SandboxCapability;
 pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
@@ -294,7 +292,6 @@ impl CapabilityRegistry {
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(ResearchCapability);
-        registry.register(SandboxCapability);
         registry.register(FileSystemCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionSqlDatabaseCapability);
@@ -880,7 +877,6 @@ mod tests {
         assert!(registry.has("noop"));
         assert!(registry.has("current_time"));
         assert!(registry.has("research"));
-        assert!(registry.has("sandbox"));
         assert!(registry.has("session_file_system"));
         assert!(registry.has("session_storage"));
         assert!(registry.has("session_sql_database"));
@@ -896,7 +892,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 19);
+        assert_eq!(registry.len(), 18);
     }
 
     #[test]
@@ -908,7 +904,6 @@ mod tests {
         assert!(registry.has("noop"));
         assert!(registry.has("current_time"));
         assert!(registry.has("research"));
-        assert!(registry.has("sandbox"));
         assert!(registry.has("session_file_system"));
         assert!(registry.has("session_storage"));
         assert!(registry.has("session_sql_database"));
@@ -924,7 +919,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 18);
+        assert_eq!(registry.len(), 17);
     }
 
     #[test]

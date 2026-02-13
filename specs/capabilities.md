@@ -133,7 +133,6 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `docker_container` | Docker Container | Development | Available (Dev only) |
 | `session_sql_database` | SQL Database | Data | Available |
 | `research` | Research | AI | Coming Soon |
-| `sandbox` | Sandbox | Execution | Coming Soon |
 
 ```rust
 /// Simple string wrapper - capabilities define their own IDs via id() method
@@ -338,15 +337,6 @@ pub fn resolve_dependencies(
 - **Tools**: To be added (scratchpad, web search, etc.)
 - **Icon**: "search"
 - **Category**: "AI"
-
-#### Sandbox (Coming Soon)
-
-- **Status**: ComingSoon
-- **Purpose**: Sandboxed code execution environment
-- **System Prompt**: "You can execute code in a sandboxed environment. Use the execute_code tool to run code safely."
-- **Tools**: To be added (execute_code with language support)
-- **Icon**: "box"
-- **Category**: "Execution"
 
 #### FileSystem
 

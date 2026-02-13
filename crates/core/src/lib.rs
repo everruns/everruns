@@ -139,11 +139,11 @@ pub use capabilities::{
     MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability, MountAccess,
     MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool, NoopCapability,
     ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
-    SandboxCapability, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
-    StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
-    collect_capabilities_with_configs, get_dependencies, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id, resolve_dependencies,
+    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
+    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
+    WriteFileTool, WriteTodosTool, apply_capabilities, collect_capabilities_with_configs,
+    get_dependencies, is_mcp_capability, mcp_capability_id, parse_mcp_capability_id,
+    resolve_dependencies,
 };
 
 // Atoms re-exports (stateless atomic operations)
