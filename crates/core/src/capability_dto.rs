@@ -152,12 +152,12 @@ mod tests {
     #[test]
     fn test_agent_capability_serialization() {
         let agent_cap = AgentCapability {
-            capability_id: CapabilityId::new("sandbox"),
+            capability_id: CapabilityId::new("test_math"),
             position: 1,
         };
 
         let json = serde_json::to_string(&agent_cap).unwrap();
-        assert!(json.contains("\"capability_id\":\"sandbox\""));
+        assert!(json.contains("\"capability_id\":\"test_math\""));
         assert!(json.contains("\"position\":1"));
     }
 

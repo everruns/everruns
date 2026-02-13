@@ -416,7 +416,6 @@ Modular functionality that can be enabled on Agents. Capabilities contribute to 
 | `noop` | available | No-op capability for testing |
 | `current_time` | available | Tool to get current date/time |
 | `research` | coming_soon | Deep research with scratchpad |
-| `sandbox` | coming_soon | Sandboxed code execution |
 | `file_system` | coming_soon | File system access tools |
 
 ### AgentCapability
