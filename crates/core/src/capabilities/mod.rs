@@ -37,6 +37,7 @@ pub use crate::capability_types::{
 // ============================================================================
 
 mod agent_instructions;
+mod codesandbox;
 mod current_time;
 mod docker_container;
 mod fake_aws;
@@ -61,6 +62,10 @@ mod web_fetch;
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     MAX_AGENTS_MD_SIZE, format_agents_md_content,
+};
+pub use codesandbox::{
+    CodeSandboxCapability, CsbCreateTool, CsbExecTool, CsbReadFileTool, CsbShutdownTool,
+    CsbWriteFileTool,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use docker_container::{
@@ -316,6 +321,7 @@ impl CapabilityRegistry {
         // Experimental capabilities (dev only)
         if grade.experimental_features_enabled() {
             registry.register(DockerContainerCapability);
+            registry.register(CodeSandboxCapability);
         }
 
         registry
@@ -894,9 +900,10 @@ mod tests {
         assert!(registry.has("fake_aws"));
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
-        // Experimental capability included in dev
+        // Experimental capabilities included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 19);
+        assert!(registry.has("codesandbox"));
+        assert_eq!(registry.len(), 20);
     }
 
     #[test]
