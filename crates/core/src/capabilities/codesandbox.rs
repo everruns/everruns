@@ -9,7 +9,7 @@
 //! - All tools (except csb_create) take a `sandbox_id` parameter.
 //! - Connection info (pitcher_url, pitcher_token) cached in-process.
 //! - HTTP calls via reqwest to CodeSandbox Management + Pint APIs.
-//! - API key from `CSB_API_KEY` env var.
+//! - API key from session secrets (`CSB_API_KEY` via SessionStorageStore).
 //!
 //! **API surfaces:**
 //! - Management API (`https://api.codesandbox.io`): sandbox CRUD, VM lifecycle
@@ -66,12 +66,31 @@ fn remove_connection(sandbox_id: &str) {
 }
 
 // ============================================================================
-// API Key
+// API Key — from session secrets
 // ============================================================================
 
-fn get_api_key() -> Result<String, String> {
-    std::env::var("CSB_API_KEY")
-        .map_err(|_| "CSB_API_KEY environment variable not set. Get one at https://codesandbox.io/t/api".to_string())
+const CSB_API_KEY_SECRET: &str = "CSB_API_KEY";
+
+/// Read the CodeSandbox API key from session secrets.
+async fn get_api_key(context: &ToolContext) -> Result<String, String> {
+    let store = context
+        .storage_store
+        .as_ref()
+        .ok_or("No storage store available. Cannot read CSB_API_KEY secret.")?;
+
+    match store
+        .get_secret(context.session_id, CSB_API_KEY_SECRET)
+        .await
+    {
+        Ok(Some(key)) if !key.is_empty() => Ok(key),
+        Ok(_) => Err(
+            "CSB_API_KEY not found in session secrets. \
+             Store it first using the session storage set_secret tool \
+             with name 'CSB_API_KEY'. Get a key at https://codesandbox.io/t/api"
+                .to_string(),
+        ),
+        Err(e) => Err(format!("Failed to read CSB_API_KEY secret: {}", e)),
+    }
 }
 
 // ============================================================================
@@ -462,13 +481,16 @@ fn normalize_pint_path(path: &str) -> String {
 }
 
 /// Get connection, reconnecting (re-starting VM) if cache miss.
-async fn get_or_reconnect(sandbox_id: &str) -> Result<CsbConnection, String> {
+async fn get_or_reconnect(
+    sandbox_id: &str,
+    context: &ToolContext,
+) -> Result<CsbConnection, String> {
     if let Some(conn) = get_connection(sandbox_id) {
         return Ok(conn);
     }
 
     // Cache miss — try to start the VM (it may be hibernated)
-    let api_key = get_api_key()?;
+    let api_key = get_api_key(context).await?;
     info!(
         "Cache miss for sandbox {}, attempting VM start",
         sandbox_id
@@ -585,7 +607,9 @@ impl Capability for CodeSandboxCapability {
             r#"You have access to CodeSandbox for creating and managing cloud VM sandboxes.
 Each sandbox is a full Linux VM (Firecracker microVM) with its own filesystem, shell, and network.
 
-IMPORTANT: This is an EXPERIMENTAL capability. Requires CSB_API_KEY env var.
+IMPORTANT: This is an EXPERIMENTAL capability.
+Requires a CSB_API_KEY stored as a session secret (via set_secret with name 'CSB_API_KEY').
+Get a key at https://codesandbox.io/t/api
 
 Available tools:
 - `csb_create`: Create a new sandbox VM. Returns a sandbox_id you must use for all other calls.
@@ -597,10 +621,11 @@ Available tools:
 - `csb_shutdown`: Shutdown and delete a sandbox when done.
 
 Workflow:
-1. Create a sandbox with `csb_create` (optionally with a template).
-2. Use `csb_exec`, `csb_read_file`, `csb_write_file` to work in the sandbox.
-3. Use `csb_preview_url` to get URLs for running web servers.
-4. When finished, call `csb_shutdown` to clean up resources.
+1. Ensure CSB_API_KEY is stored as a session secret.
+2. Create a sandbox with `csb_create` (optionally with a template).
+3. Use `csb_exec`, `csb_read_file`, `csb_write_file` to work in the sandbox.
+4. Use `csb_preview_url` to get URLs for running web servers.
+5. When finished, call `csb_shutdown` to clean up resources.
 
 You can create multiple sandboxes and manage them independently.
 All tools (except csb_create) require the sandbox_id returned by csb_create.
@@ -684,8 +709,8 @@ impl Tool for CsbCreateTool {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_TIER);
 
-        // Get API key
-        let api_key = match get_api_key() {
+        // Get API key from session secrets
+        let api_key = match get_api_key(context).await {
             Ok(k) => k,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
@@ -793,7 +818,7 @@ impl Tool for CsbExecTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
         let sandbox_id = match arguments.get("sandbox_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -805,7 +830,7 @@ impl Tool for CsbExecTool {
             None => return ToolExecutionResult::tool_error("Missing required parameter: command"),
         };
 
-        let conn = match get_or_reconnect(sandbox_id).await {
+        let conn = match get_or_reconnect(sandbox_id, context).await {
             Ok(c) => c,
             Err(e) => return ToolExecutionResult::tool_error(format!("Sandbox connection failed: {}", e)),
         };
@@ -866,7 +891,7 @@ impl Tool for CsbReadFileTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
         let sandbox_id = match arguments.get("sandbox_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -878,7 +903,7 @@ impl Tool for CsbReadFileTool {
             None => return ToolExecutionResult::tool_error("Missing required parameter: path"),
         };
 
-        let conn = match get_or_reconnect(sandbox_id).await {
+        let conn = match get_or_reconnect(sandbox_id, context).await {
             Ok(c) => c,
             Err(e) => return ToolExecutionResult::tool_error(format!("Sandbox connection failed: {}", e)),
         };
@@ -947,7 +972,7 @@ impl Tool for CsbWriteFileTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
         let sandbox_id = match arguments.get("sandbox_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -964,7 +989,7 @@ impl Tool for CsbWriteFileTool {
             None => return ToolExecutionResult::tool_error("Missing required parameter: content"),
         };
 
-        let conn = match get_or_reconnect(sandbox_id).await {
+        let conn = match get_or_reconnect(sandbox_id, context).await {
             Ok(c) => c,
             Err(e) => return ToolExecutionResult::tool_error(format!("Sandbox connection failed: {}", e)),
         };
@@ -1030,7 +1055,7 @@ impl Tool for CsbPreviewUrlTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
         let sandbox_id = match arguments.get("sandbox_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1042,7 +1067,7 @@ impl Tool for CsbPreviewUrlTool {
             None => return ToolExecutionResult::tool_error("Missing required parameter: port"),
         };
 
-        let conn = match get_or_reconnect(sandbox_id).await {
+        let conn = match get_or_reconnect(sandbox_id, context).await {
             Ok(c) => c,
             Err(e) => return ToolExecutionResult::tool_error(format!("Sandbox connection failed: {}", e)),
         };
@@ -1116,7 +1141,7 @@ impl Tool for CsbShutdownTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
         let sandbox_id = match arguments.get("sandbox_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1128,7 +1153,7 @@ impl Tool for CsbShutdownTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let api_key = match get_api_key() {
+        let api_key = match get_api_key(context).await {
             Ok(k) => k,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
