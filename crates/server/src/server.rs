@@ -209,9 +209,13 @@ pub async fn run(
         event_listeners,
     ));
 
+    let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
+        crate::api::sse::SseConnectionLimits::from_env(),
+    ));
     let events_state = api::events::AppState {
         session_service: Arc::new(services::SessionService::new(db.clone())),
         event_service: event_service.clone(),
+        sse_tracker,
         auth: auth_state.clone(),
     };
     let driver_registry = Arc::new(create_driver_registry());

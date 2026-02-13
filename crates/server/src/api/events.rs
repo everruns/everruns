@@ -17,7 +17,7 @@ use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse};
-use super::sse::{DisconnectReason, SseStreamConfig};
+use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use crate::services::EventService;
 use futures::{
     StreamExt,
@@ -51,16 +51,22 @@ pub struct EventsQuery {
 pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
+    pub sse_tracker: Arc<SseConnectionTracker>,
     pub auth: AuthState,
 }
 
 impl AppState {
     /// Create app state with default event service (no listeners)
     #[allow(dead_code)]
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        auth: AuthState,
+        sse_tracker: Arc<SseConnectionTracker>,
+    ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::new(db)),
+            sse_tracker,
             auth,
         }
     }
@@ -70,10 +76,12 @@ impl AppState {
         db: Arc<StorageBackend>,
         listeners: Vec<Arc<dyn EventListener>>,
         auth: AuthState,
+        sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, listeners)),
+            sse_tracker,
             auth,
         }
     }
@@ -184,6 +192,26 @@ pub async fn stream_sse(
         })?;
 
     let session_id = session_id.uuid();
+
+    // Enforce SSE connection limits (EVE-8 / TM-DOS-003)
+    let sse_guard = state
+        .sse_tracker
+        .try_acquire(org.org_id, session_id)
+        .map_err(|rejection| {
+            tracing::warn!(
+                org_id = org.org_id,
+                %session_id,
+                reason = %rejection,
+                "SSE connection rejected"
+            );
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ErrorResponse {
+                    error: rejection.to_string(),
+                }),
+            )
+        })?;
+
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, exclude = ?query.exclude, "Starting event stream");
 
     let event_service = state.event_service.clone();
@@ -359,7 +387,31 @@ pub async fn stream_sse(
     })
     .flatten();
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    // Wrap stream to hold the SSE connection guard alive for the stream's lifetime.
+    // When the client disconnects and the stream is dropped, the guard releases the slot.
+    let guarded_stream = GuardedStream {
+        inner: Box::pin(stream),
+        _guard: sse_guard,
+    };
+
+    Ok(Sse::new(guarded_stream).keep_alive(KeepAlive::default()))
+}
+
+/// Stream wrapper that holds an SSE connection guard until the stream is dropped.
+struct GuardedStream<S> {
+    inner: std::pin::Pin<Box<S>>,
+    _guard: super::sse::SseConnectionGuard,
+}
+
+impl<S: Stream> Stream for GuardedStream<S> {
+    type Item = S::Item;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
 }
 
 // ============================================
