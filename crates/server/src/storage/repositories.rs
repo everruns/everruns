@@ -2346,6 +2346,25 @@ impl Database {
         Ok(row)
     }
 
+    /// Batch fetch multiple MCP servers by IDs in a single query.
+    pub async fn get_mcp_servers_batch(&self, ids: &[Uuid]) -> Result<Vec<McpServerRow>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let rows = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            FROM mcp_servers
+            WHERE id = ANY($1)
+            "#,
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
