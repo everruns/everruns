@@ -11,6 +11,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.7.0] - 2026-02-13
+
+### Highlights
+
+- **Skills Registry** — Agent skills registry with top-level navigation and agentskills.io format ([#460](https://github.com/everruns/everruns/pull/460))
+- **Harness Abstraction** — New Harness entity between Organization and Agent for flexible grouping ([#434](https://github.com/everruns/everruns/pull/434))
+- **Google Gemini Support** — Native Gemini API driver with parametrized LLM integration tests ([#437](https://github.com/everruns/everruns/pull/437))
+- **AGENTS.md Support** — New agent_instructions capability for dynamic project instructions ([#449](https://github.com/everruns/everruns/pull/449))
+- **Client-Side Tool Calls & Native Images** — Support for client-side tool execution and native image support in tool results ([#443](https://github.com/everruns/everruns/pull/443), [#442](https://github.com/everruns/everruns/pull/442))
+
+### What's Changed
+
+- refactor(migrations): squash SQL migrations to base and durable ([#462](https://github.com/everruns/everruns/pull/462))
+- fix: address 3 urgent Linear issues (EVE-5, EVE-6, EVE-8) ([#461](https://github.com/everruns/everruns/pull/461))
+- feat(skills): add skills registry with top-level navigation ([#460](https://github.com/everruns/everruns/pull/460))
+- fix: rename LINEAR_MCP_API_KEY to LINEAR_API_KEY ([#459](https://github.com/everruns/everruns/pull/459))
+- chore: add Linear MCP server configuration ([#458](https://github.com/everruns/everruns/pull/458))
+- docs(ui): remove dev-focused sections from Management UI doc ([#457](https://github.com/everruns/everruns/pull/457))
+- docs: rename sidebar entries, promote Event Reference, clean up UI doc ([#456](https://github.com/everruns/everruns/pull/456))
+- feat(core): wrap system prompt sections in XML tags ([#455](https://github.com/everruns/everruns/pull/455))
+- feat(harness): add Harness abstraction between Organization and Agent ([#434](https://github.com/everruns/everruns/pull/434))
+- chore(deps): update everruns-sdk to 0.1.2 ([#454](https://github.com/everruns/everruns/pull/454))
+- chore(specs): add SDK doc check to maintenance checklist ([#453](https://github.com/everruns/everruns/pull/453))
+- chore(deps): upgrade fetchkit to 0.1.1 from crates.io ([#452](https://github.com/everruns/everruns/pull/452))
+- chore(specs): align provider type model with app-layer validation ([#451](https://github.com/everruns/everruns/pull/451))
+- chore(build): reduce debug binary size and disable incremental in cloud ([#450](https://github.com/everruns/everruns/pull/450))
+- feat(core): add agent_instructions capability (AGENTS.md support) ([#449](https://github.com/everruns/everruns/pull/449))
+- chore(docs): remove redundant cloud legacy section ([#448](https://github.com/everruns/everruns/pull/448))
+- chore(dev): clarify doppler cloud-secret workflow ([#447](https://github.com/everruns/everruns/pull/447))
+- feat(test): add SKIP_LLM_INTEGRATION_TESTS_PROVIDERS env var ([#446](https://github.com/everruns/everruns/pull/446))
+- feat(auth): pluggable auth backend for SaaS repo support ([#445](https://github.com/everruns/everruns/pull/445))
+- fix(ci): handle multiline commit messages in release workflow ([#444](https://github.com/everruns/everruns/pull/444))
+- feat(core): add client-side tool calls support ([#443](https://github.com/everruns/everruns/pull/443))
+- feat(core): native image support in tool results ([#442](https://github.com/everruns/everruns/pull/442))
+- feat(gemini): add Google Gemini API support and parametrize LLM integration tests ([#437](https://github.com/everruns/everruns/pull/437))
+- docs: add concepts page with entity diagrams ([#441](https://github.com/everruns/everruns/pull/441))
+
+### Migration Notes
+
+**0.6.0 → 0.7.0:** This release includes database schema changes (Harness abstraction, migration squash). A fresh database is required — no automatic migration is supported.
+
 ## [0.6.0] - 2026-02-10
 
 ### Highlights

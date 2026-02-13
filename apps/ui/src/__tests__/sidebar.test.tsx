@@ -116,7 +116,7 @@ describe("Sidebar", () => {
   it("renders version in footer", () => {
     render(<Sidebar />);
 
-    expect(screen.getByText("Everruns v0.1.0")).toBeInTheDocument();
+    expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
   });
 
   it("has exactly 5 navigation items", () => {

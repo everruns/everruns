@@ -60,17 +60,25 @@ See `specs/release-process.md` for the full release process specification.
    **X.Y.Z → X.Y.Z:** Migration instructions if needed.
    ```
 
-5. **Ask about migrations**:
+5. **Update lock files**:
+   ```bash
+   # Regenerate Cargo.lock with new workspace version
+   cargo generate-lockfile
+   # Regenerate package-lock.json
+   cd apps/ui && npm install --package-lock-only
+   ```
+
+6. **Ask about migrations**:
    - "Does this release include database schema changes?"
    - If yes, add migration notes to CHANGELOG.md and remind about fresh DB requirement
 
-6. **Create commit**:
+7. **Create commit**:
    ```bash
    git add -A
    git commit -m "chore(release): prepare vX.Y.Z"
    ```
 
-7. **Create PR**:
+8. **Create PR**:
    ```bash
    git push -u origin <current-branch>
    gh pr create --title "chore(release): prepare vX.Y.Z" --body "$(cat <<'EOF'
@@ -93,7 +101,7 @@ See `specs/release-process.md` for the full release process specification.
    )"
    ```
 
-8. **Remind user**:
+9. **Remind user**:
    - Review the PR, especially CHANGELOG.md
    - Add any highlights or screenshots by editing CHANGELOG.md
    - Merge when CI is green
