@@ -89,6 +89,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/maintenance.md` - Pre-release maintenance checklist
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
+- `specs/messaging-channels.md` - Messaging channel adapters (WhatsApp, Discord, Slack, etc.)
 
 ### Skills
 
