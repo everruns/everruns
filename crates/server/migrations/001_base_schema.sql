@@ -1,4 +1,4 @@
--- Everruns Base Schema (v0.5.0)
+-- Everruns Base Schema (v0.6.0)
 -- Squashed migration - represents final state of all base migrations
 -- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
 --
@@ -8,8 +8,12 @@
 -- - API keys encrypted with AES-256-GCM, key from SECRETS_ENCRYPTION_KEY env var
 -- - PostgreSQL 17 with custom uuidv7() function (native support requires PostgreSQL 18+)
 -- - Capabilities validated at application layer via CapabilityRegistry (no DB constraint)
--- - Session status: started/active/idle lifecycle
+-- - Provider type validated at application layer (no DB constraint)
+-- - Session status: started/active/idle/waiting_for_tool_results lifecycle
+-- - Hierarchy: Harness (required) → Agent (optional) → Session
 -- - Organization-based multitenancy with default organization
+-- - External identity support for SaaS deployments (PropelAuth, Auth0)
+-- - Agent Skills registry (agentskills.io format)
 
 -- ============================================
 -- UUID v7 Function (conditional for PG < 18)
@@ -80,6 +84,9 @@ CREATE TABLE organizations (
     org_id BIGSERIAL PRIMARY KEY,
     public_id TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
+    -- External identity provider mapping (PropelAuth, Auth0, etc.)
+    -- OSS: unused (NULL). SaaS: populated by auth backend sync.
+    external_id TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -88,6 +95,7 @@ CREATE TABLE organizations (
 );
 
 CREATE INDEX idx_organizations_public_id ON organizations(public_id);
+CREATE INDEX idx_organizations_external_id ON organizations(external_id) WHERE external_id IS NOT NULL;
 
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -114,6 +122,9 @@ CREATE TABLE users (
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     auth_provider TEXT, -- 'local', 'google', 'github'
     auth_provider_id TEXT, -- External provider user ID
+    -- External identity provider mapping (PropelAuth, Auth0, etc.)
+    -- OSS: unused (NULL). SaaS: populated by auth backend sync.
+    external_id TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -121,6 +132,7 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_auth_provider ON users(auth_provider, auth_provider_id)
     WHERE auth_provider IS NOT NULL;
+CREATE INDEX idx_users_external_id ON users(external_id) WHERE external_id IS NOT NULL;
 
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -266,6 +278,8 @@ CREATE TABLE agents (
     description TEXT,
     system_prompt TEXT NOT NULL,
     default_model_id UUID REFERENCES llm_models(id),
+    -- Client-side tool definitions
+    tools JSONB NOT NULL DEFAULT '[]'::jsonb,
     tags TEXT[] NOT NULL DEFAULT '{}',
     status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
     -- Denormalized usage totals
@@ -319,19 +333,58 @@ CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, pos
 COMMENT ON COLUMN agent_capabilities.config IS 'Per-agent capability configuration (JSON object)';
 
 -- ============================================
+-- Harnesses (base rules and capabilities for sessions)
+-- ============================================
+-- Hierarchy: Harness (required) → Agent (optional) → Session
+
+CREATE TABLE harnesses (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    system_prompt TEXT NOT NULL,
+    default_model_id UUID REFERENCES llm_models(id),
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_harnesses_org_id ON harnesses(org_id);
+
+CREATE TRIGGER update_harnesses_updated_at BEFORE UPDATE ON harnesses
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Harness Capabilities (junction table)
+CREATE TABLE harness_capabilities (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    harness_id UUID NOT NULL REFERENCES harnesses(id) ON DELETE CASCADE,
+    capability_id VARCHAR(50) NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    config JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(harness_id, capability_id)
+);
+
+CREATE INDEX idx_harness_caps_harness_id ON harness_capabilities(harness_id);
+
+-- ============================================
 -- Sessions (instance of agentic loop execution)
 -- ============================================
 
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+    harness_id UUID REFERENCES harnesses(id),
     org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     title VARCHAR(255),
     tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
-    status VARCHAR(50) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'active', 'idle')),
+    status VARCHAR(50) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'active', 'idle', 'waiting_for_tool_results')),
     -- Session-level capabilities (additive to agent capabilities)
     capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Client-side tool definitions
+    tools JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- Denormalized usage totals
     total_input_tokens BIGINT NOT NULL DEFAULT 0,
     total_output_tokens BIGINT NOT NULL DEFAULT 0,
@@ -728,6 +781,56 @@ CREATE TABLE session_database_pages (
 );
 
 CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id);
+
+-- ============================================
+-- Skills (agentskills.io format)
+-- ============================================
+
+CREATE TABLE skills (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    public_id TEXT NOT NULL,
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
+    name VARCHAR(64) NOT NULL,
+    description VARCHAR(1024) NOT NULL,
+    license TEXT,
+    compatibility VARCHAR(500),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    allowed_tools TEXT,
+    instructions TEXT NOT NULL,
+    source_type VARCHAR(20) NOT NULL DEFAULT 'markdown'
+        CHECK (source_type IN ('markdown', 'archive')),
+    archive_data BYTEA,
+    status VARCHAR(50) NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'disabled')),
+    version VARCHAR(50) NOT NULL DEFAULT '1.0',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT skills_public_id_format CHECK (public_id ~ '^skill_[0-9a-f]{32}$')
+);
+
+CREATE UNIQUE INDEX idx_skills_org_public_id ON skills(org_id, public_id);
+CREATE UNIQUE INDEX idx_skills_org_name ON skills(org_id, name);
+CREATE INDEX idx_skills_status ON skills(status);
+CREATE INDEX idx_skills_org_id ON skills(org_id);
+
+CREATE TRIGGER update_skills_updated_at BEFORE UPDATE ON skills
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Extracted files from archive-based skills
+-- Stored individually for fast reads and VFS mounting (no ZIP extraction at runtime)
+CREATE TABLE skill_files (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+    path VARCHAR(500) NOT NULL,
+    content TEXT,
+    content_binary BYTEA,
+    is_binary BOOLEAN NOT NULL DEFAULT FALSE,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(skill_id, path)
+);
+
+CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 
 -- ============================================
 -- Helper Functions
