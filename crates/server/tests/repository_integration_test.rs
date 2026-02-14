@@ -1105,3 +1105,324 @@ async fn test_session_previews() {
 
     // Note: No cleanup - events are append-only so sessions with events cannot be deleted
 }
+
+// ============================================
+// Organization Isolation Tests (PostgreSQL)
+// ============================================
+
+/// Helper to create a new org for isolation testing
+async fn create_test_org(backend: &StorageBackend, name: &str) -> i64 {
+    let org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: name.to_string(),
+        })
+        .await
+        .expect("Failed to create org");
+    org.org_id
+}
+
+#[tokio::test]
+async fn test_mcp_server_org_isolation_postgres() {
+    let backend = create_test_backend().await;
+    let org2 = create_test_org(&backend, "Isolation Test Org").await;
+
+    let unique_name = format!("MCP-Iso-{}", Uuid::now_v7());
+    let server = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: unique_name.clone(),
+                description: None,
+                url: "https://mcp.example.com".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create server");
+
+    // Positive: own org sees the server
+    assert!(
+        backend
+            .get_mcp_server(TEST_ORG_ID, server.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_mcp_server_by_name(TEST_ORG_ID, &unique_name)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .list_mcp_servers(TEST_ORG_ID)
+            .await
+            .unwrap()
+            .iter()
+            .any(|s| s.id == server.id)
+    );
+
+    // Negative: other org cannot see it
+    assert!(
+        backend
+            .get_mcp_server(org2, server.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_mcp_server_by_name(org2, &unique_name)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !backend
+            .list_mcp_servers(org2)
+            .await
+            .unwrap()
+            .iter()
+            .any(|s| s.id == server.id)
+    );
+
+    // Negative: other org cannot delete
+    assert!(
+        !backend
+            .delete_mcp_server(org2, server.id.uuid())
+            .await
+            .unwrap()
+    );
+
+    // Cleanup
+    backend
+        .delete_mcp_server(TEST_ORG_ID, server.id.uuid())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_llm_provider_org_isolation_postgres() {
+    let backend = create_test_backend().await;
+    let org2 = create_test_org(&backend, "Provider Isolation Org").await;
+
+    let provider = backend
+        .create_llm_provider(
+            TEST_ORG_ID,
+            CreateLlmProviderRow {
+                name: format!("Provider-{}", Uuid::now_v7()),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create provider");
+
+    // Positive
+    assert!(
+        backend
+            .get_llm_provider(TEST_ORG_ID, provider.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // Negative
+    assert!(
+        backend
+            .get_llm_provider(org2, provider.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !backend
+            .list_llm_providers(org2)
+            .await
+            .unwrap()
+            .iter()
+            .any(|p| p.id == provider.id)
+    );
+    assert!(
+        !backend
+            .delete_llm_provider(org2, provider.id.uuid())
+            .await
+            .unwrap()
+    );
+
+    // Cleanup
+    backend
+        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_llm_model_org_isolation_postgres() {
+    let backend = create_test_backend().await;
+    let org2 = create_test_org(&backend, "Model Isolation Org").await;
+
+    let provider = backend
+        .create_llm_provider(
+            TEST_ORG_ID,
+            CreateLlmProviderRow {
+                name: format!("Prov-{}", Uuid::now_v7()),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create provider");
+
+    let model = backend
+        .create_llm_model(
+            TEST_ORG_ID,
+            CreateLlmModelRow {
+                provider_id: provider.id,
+                model_id: format!("model-{}", Uuid::now_v7()),
+                display_name: "Test Model".to_string(),
+                capabilities: vec![],
+                is_default: false,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .expect("create model");
+
+    // Positive
+    assert!(
+        backend
+            .get_llm_model(TEST_ORG_ID, model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_llm_model_with_provider(TEST_ORG_ID, model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // Negative
+    assert!(
+        backend
+            .get_llm_model(org2, model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_llm_model_with_provider(org2, model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .list_llm_models_for_provider(org2, provider.id.uuid())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !backend
+            .delete_llm_model(org2, model.id.uuid())
+            .await
+            .unwrap()
+    );
+
+    // Cleanup
+    backend
+        .delete_llm_model(TEST_ORG_ID, model.id.uuid())
+        .await
+        .unwrap();
+    backend
+        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_image_org_isolation_postgres() {
+    let backend = create_test_backend().await;
+    let org2 = create_test_org(&backend, "Image Isolation Org").await;
+
+    let image = backend
+        .create_image(
+            TEST_ORG_ID,
+            CreateImageRow {
+                org_id: TEST_ORG_ID,
+                filename: format!("iso-{}.png", Uuid::now_v7()),
+                content_type: "image/png".to_string(),
+                size_bytes: 4,
+                data: vec![0x89, 0x50, 0x4E, 0x47],
+                thumbnail_data: None,
+                thumbnail_content_type: None,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("create image");
+
+    // Positive
+    assert!(
+        backend
+            .get_image(TEST_ORG_ID, image.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_image_info(TEST_ORG_ID, image.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // Negative
+    assert!(
+        backend
+            .get_image(org2, image.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_image_info(org2, image.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !backend
+            .list_images(org2, 50, 0)
+            .await
+            .unwrap()
+            .iter()
+            .any(|i| i.id == image.id)
+    );
+    assert!(!backend.delete_image(org2, image.id.uuid()).await.unwrap());
+
+    // Cleanup
+    backend
+        .delete_image(TEST_ORG_ID, image.id.uuid())
+        .await
+        .unwrap();
+}

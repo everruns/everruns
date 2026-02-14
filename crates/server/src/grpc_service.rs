@@ -170,7 +170,7 @@ impl WorkerServiceImpl {
     /// and converts to proto McpToolDef.
     async fn build_mcp_tool_definitions(
         &self,
-        org_id: i64,
+        _org_id: i64,
         agent: &everruns_core::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
