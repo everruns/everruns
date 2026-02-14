@@ -61,6 +61,7 @@ pub struct DirectWorkerAdapters {
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
+    storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
 }
 
 impl DirectWorkerAdapters {
@@ -79,12 +80,22 @@ impl DirectWorkerAdapters {
             mcp_server_service,
             capability_registry,
             sqldb_store: None,
+            storage_store: None,
         }
     }
 
     /// Set the SQL database store for session-scoped SQL databases
     pub fn with_sqldb_store(mut self, store: everruns_core::traits::SessionSqlDbStoreRef) -> Self {
         self.sqldb_store = Some(store);
+        self
+    }
+
+    /// Set the session storage store for kv_store/secret_store tools
+    pub fn with_storage_store(
+        mut self,
+        store: Arc<dyn everruns_core::traits::SessionStorageStore>,
+    ) -> Self {
+        self.storage_store = Some(store);
         self
     }
 
@@ -743,6 +754,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
         self.sqldb_store.clone()
+    }
+
+    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
+        self.storage_store.clone()
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

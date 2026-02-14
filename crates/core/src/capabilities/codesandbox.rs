@@ -37,6 +37,8 @@ const CSB_SANDBOX_SECRET_PREFIX: &str = "csb_sandbox:";
 const EXEC_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const EXEC_POLL_MAX_WAIT: Duration = Duration::from_secs(120);
 const SSE_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const PINT_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const PINT_READY_MAX_WAIT: Duration = Duration::from_secs(30);
 
 // ============================================================================
 // API Response Types
@@ -53,6 +55,12 @@ pub struct VmStartResponse {
     pub pitcher_url: String,
     pub pitcher_token: String,
     pub workspace_path: Option<String>,
+    /// Pint API URL (newer API, preferred when use_pint is true)
+    pub pint_url: Option<String>,
+    /// Pint API token (newer API, preferred when use_pint is true)
+    pub pint_token: Option<String>,
+    /// Whether to use pint_url/pint_token instead of pitcher_url/pitcher_token
+    pub use_pint: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,10 +89,24 @@ pub struct DirEntry {
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreviewTokenResponse {
+    pub token: PreviewTokenInfo,
+    pub sandbox_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreviewTokenInfo {
+    pub token: String,
+    pub token_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxState {
     pub sandbox_id: String,
-    pub pitcher_url: String,
+    /// Pint API base URL: https://{sandbox_id}-57468.csb.app
+    pub pint_url: String,
     pub pitcher_token: String,
+    pub preview_token: String,
     pub workspace_path: String,
     pub started_at: String,
 }
@@ -149,15 +171,24 @@ impl CodeSandboxClient {
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from CodeSandbox: {e}"))
     }
 
+    /// Make a request to the Pint API (in-sandbox HTTP REST API).
+    /// pint_url: https://{sandbox_id}-57468.csb.app
+    /// preview_token: required for csb.app port proxy auth (query param)
+    /// pitcher_token: required for Pint API auth (Bearer header)
     async fn pint_request(
         &self,
         method: reqwest::Method,
-        pitcher_url: &str,
+        pint_url: &str,
         path: &str,
         pitcher_token: &str,
+        preview_token: &str,
         body: Option<Value>,
     ) -> Result<Value, String> {
-        let url = format!("{}{}", pitcher_url, path);
+        let separator = if path.contains('?') { '&' } else { '?' };
+        let url = format!(
+            "{}{}{separator}preview_token={preview_token}",
+            pint_url, path
+        );
         let mut req = self
             .http
             .request(method, &url)
@@ -218,6 +249,73 @@ impl CodeSandboxClient {
         serde_json::from_value(data).map_err(|e| format!("Failed to parse VM start response: {e}"))
     }
 
+    pub async fn create_preview_token(
+        &self,
+        sandbox_id: &str,
+    ) -> Result<PreviewTokenResponse, String> {
+        let resp = self
+            .management_request(
+                reqwest::Method::POST,
+                &format!("/sandbox/{sandbox_id}/tokens"),
+                None,
+            )
+            .await?;
+        let data = resp.get("data").cloned().unwrap_or(resp.clone());
+        serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse preview token response: {e}"))
+    }
+
+    /// Wait for the Pint API to become ready after VM start.
+    /// The VM may report as "RUNNING" before the internal Pint HTTP service has booted.
+    /// Polls the execs endpoint with backoff until it gets a non-502 response.
+    pub async fn wait_for_pint_ready(
+        &self,
+        pint_url: &str,
+        pitcher_token: &str,
+        preview_token: &str,
+    ) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        let mut interval = PINT_READY_POLL_INTERVAL;
+
+        while start.elapsed() < PINT_READY_MAX_WAIT {
+            let url = format!("{pint_url}/api/v1/execs?preview_token={preview_token}");
+
+            match self
+                .http
+                .get(&url)
+                .bearer_auth(pitcher_token)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let status = resp.status();
+                    // 502/503 = Pint service still booting; anything else means it's up
+                    if status.as_u16() != 502 && status.as_u16() != 503 {
+                        debug!(
+                            "Pint API ready (status: {status}) after {:?}",
+                            start.elapsed()
+                        );
+                        return Ok(());
+                    }
+                    debug!("Pint API not ready yet (status: {status}), retrying...");
+                }
+                Err(e) => {
+                    debug!("Pint API not reachable yet: {e}, retrying...");
+                }
+            }
+
+            tokio::time::sleep(interval).await;
+            // Cap backoff at 4s
+            interval = std::cmp::min(interval * 2, Duration::from_secs(4));
+        }
+
+        Err(format!(
+            "Pint API did not become ready within {}s",
+            PINT_READY_MAX_WAIT.as_secs()
+        ))
+    }
+
     pub async fn shutdown_vm(&self, sandbox_id: &str) -> Result<(), String> {
         self.management_request(
             reqwest::Method::POST,
@@ -248,34 +346,31 @@ impl CodeSandboxClient {
 
     pub async fn exec_create(
         &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
-        command: Vec<String>,
+        state: &SandboxState,
+        command: &str,
+        args: Vec<String>,
     ) -> Result<ExecInfo, String> {
         let resp = self
             .pint_request(
                 reqwest::Method::POST,
-                pitcher_url,
+                &state.pint_url,
                 "/api/v1/execs",
-                pitcher_token,
-                Some(json!({ "command": command })),
+                &state.pitcher_token,
+                &state.preview_token,
+                Some(json!({ "command": command, "args": args })),
             )
             .await?;
         serde_json::from_value(resp).map_err(|e| format!("Failed to parse exec info: {e}"))
     }
 
-    pub async fn exec_get(
-        &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
-        exec_id: &str,
-    ) -> Result<ExecInfo, String> {
+    pub async fn exec_get(&self, state: &SandboxState, exec_id: &str) -> Result<ExecInfo, String> {
         let resp = self
             .pint_request(
                 reqwest::Method::GET,
-                pitcher_url,
+                &state.pint_url,
                 &format!("/api/v1/execs/{exec_id}"),
-                pitcher_token,
+                &state.pitcher_token,
+                &state.preview_token,
                 None,
             )
             .await?;
@@ -284,15 +379,17 @@ impl CodeSandboxClient {
 
     pub async fn exec_get_output(
         &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
+        state: &SandboxState,
         exec_id: &str,
     ) -> Result<String, String> {
-        let url = format!("{pitcher_url}/api/v1/execs/{exec_id}/io");
+        let url = format!(
+            "{}/api/v1/execs/{exec_id}/io?preview_token={}",
+            state.pint_url, state.preview_token
+        );
         let resp = self
             .http
             .get(&url)
-            .bearer_auth(pitcher_token)
+            .bearer_auth(&state.pitcher_token)
             .timeout(SSE_READ_TIMEOUT)
             .send()
             .await
@@ -310,17 +407,13 @@ impl CodeSandboxClient {
         Ok(parse_sse_output(&body))
     }
 
-    pub async fn exec_kill(
-        &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
-        exec_id: &str,
-    ) -> Result<(), String> {
+    pub async fn exec_kill(&self, state: &SandboxState, exec_id: &str) -> Result<(), String> {
         self.pint_request(
             reqwest::Method::DELETE,
-            pitcher_url,
+            &state.pint_url,
             &format!("/api/v1/execs/{exec_id}"),
-            pitcher_token,
+            &state.pitcher_token,
+            &state.preview_token,
             None,
         )
         .await?;
@@ -329,19 +422,15 @@ impl CodeSandboxClient {
 
     // --- Pint API: Files ---
 
-    pub async fn file_read(
-        &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
-        path: &str,
-    ) -> Result<FileContent, String> {
+    pub async fn file_read(&self, state: &SandboxState, path: &str) -> Result<FileContent, String> {
         let encoded_path = encode_path(path);
         let resp = self
             .pint_request(
                 reqwest::Method::GET,
-                pitcher_url,
+                &state.pint_url,
                 &format!("/api/v1/files/{encoded_path}"),
-                pitcher_token,
+                &state.pitcher_token,
+                &state.preview_token,
                 None,
             )
             .await?;
@@ -350,17 +439,17 @@ impl CodeSandboxClient {
 
     pub async fn file_write(
         &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
+        state: &SandboxState,
         path: &str,
         content: &str,
     ) -> Result<(), String> {
         let encoded_path = encode_path(path);
         self.pint_request(
             reqwest::Method::POST,
-            pitcher_url,
+            &state.pint_url,
             &format!("/api/v1/files/{encoded_path}"),
-            pitcher_token,
+            &state.pitcher_token,
+            &state.preview_token,
             Some(json!({ "content": content })),
         )
         .await?;
@@ -371,17 +460,17 @@ impl CodeSandboxClient {
 
     pub async fn dir_list(
         &self,
-        pitcher_url: &str,
-        pitcher_token: &str,
+        state: &SandboxState,
         path: &str,
     ) -> Result<Vec<DirEntry>, String> {
         let encoded_path = encode_path(path);
         let resp = self
             .pint_request(
                 reqwest::Method::GET,
-                pitcher_url,
+                &state.pint_url,
                 &format!("/api/v1/directories/{encoded_path}"),
-                pitcher_token,
+                &state.pitcher_token,
+                &state.preview_token,
                 None,
             )
             .await?;
@@ -729,8 +818,14 @@ impl Tool for CsbCreateSandboxTool {
         let mut create_body = json!({
             "title": title,
             "privacy": 2,
+            "runtime": "vm",
+            "settings": { "use_pint": true },
         });
-        if let Some(template) = arguments.get("template").and_then(|v| v.as_str()) {
+        if let Some(template) = arguments
+            .get("template")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             create_body["template"] = json!(template);
         }
 
@@ -754,11 +849,37 @@ impl Tool for CsbCreateSandboxTool {
             .workspace_path
             .unwrap_or_else(|| "/project".to_string());
 
+        // Create preview token (required for Pint API port proxy auth)
+        debug!("Creating preview token for sandbox: {sandbox_id}");
+        let preview_token_resp = match client.create_preview_token(sandbox_id).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to create preview token: {e}"
+                ));
+            }
+        };
+        let preview_token = preview_token_resp.token.token;
+
+        // Pint API is accessed via port forwarding: https://{sandbox_id}-57468.csb.app
+        let pint_url = format!("https://{sandbox_id}-57468.csb.app");
+
+        // Wait for Pint API to be ready (VM service may still be booting)
+        debug!("Waiting for Pint API to become ready...");
+        if let Err(e) = client
+            .wait_for_pint_ready(&pint_url, &vm_info.pitcher_token, &preview_token)
+            .await
+        {
+            warn!("Pint API readiness check failed: {e}");
+            // Continue anyway — the sandbox was created, agent can retry later
+        }
+
         // Save state
         let state = SandboxState {
             sandbox_id: sandbox_id.clone(),
-            pitcher_url: vm_info.pitcher_url.clone(),
+            pint_url: pint_url.clone(),
             pitcher_token: vm_info.pitcher_token.clone(),
+            preview_token: preview_token.clone(),
             workspace_path: workspace_path.clone(),
             started_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -793,15 +914,7 @@ impl Tool for CsbCreateSandboxTool {
                     Ok(Some(file)) => {
                         // Write to sandbox
                         let content = file.content.unwrap_or_default();
-                        if let Err(e) = client
-                            .file_write(
-                                &vm_info.pitcher_url,
-                                &vm_info.pitcher_token,
-                                sandbox_path,
-                                &content,
-                            )
-                            .await
-                        {
+                        if let Err(e) = client.file_write(&state, sandbox_path, &content).await {
                             warn!("Failed to upload {session_path} to sandbox: {e}");
                         } else {
                             uploaded_count += 1;
@@ -904,12 +1017,10 @@ impl Tool for CsbExecTool {
 
         let client = CodeSandboxClient::new(api_key);
 
-        // Parse command into shell invocation
-        let cmd_parts = vec!["bash".to_string(), "-c".to_string(), command.to_string()];
-
+        // Exec API requires command and args split: {"command": "bash", "args": ["-c", "..."]}
         debug!("Executing in sandbox {sandbox_id}: {command}");
         let exec_info = match client
-            .exec_create(&state.pitcher_url, &state.pitcher_token, cmd_parts)
+            .exec_create(&state, "bash", vec!["-c".to_string(), command.to_string()])
             .await
         {
             Ok(info) => info,
@@ -937,12 +1048,10 @@ impl Tool for CsbExecTool {
 
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
 
-            match client
-                .exec_get(&state.pitcher_url, &state.pitcher_token, &exec_info.id)
-                .await
-            {
+            match client.exec_get(&state, &exec_info.id).await {
                 Ok(status) => {
                     let is_done = status.status == "finished"
+                        || status.status == "EXITED"
                         || status.status == "exited"
                         || status.status == "error"
                         || status.exit_code.is_some();
@@ -950,11 +1059,7 @@ impl Tool for CsbExecTool {
                     if is_done {
                         // Get output
                         let output = client
-                            .exec_get_output(
-                                &state.pitcher_url,
-                                &state.pitcher_token,
-                                &exec_info.id,
-                            )
+                            .exec_get_output(&state, &exec_info.id)
                             .await
                             .unwrap_or_default();
 
@@ -1043,16 +1148,13 @@ impl Tool for CsbExecStatusTool {
 
         let client = CodeSandboxClient::new(api_key);
 
-        let exec_info = match client
-            .exec_get(&state.pitcher_url, &state.pitcher_token, exec_id)
-            .await
-        {
+        let exec_info = match client.exec_get(&state, exec_id).await {
             Ok(info) => info,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
 
         let output = client
-            .exec_get_output(&state.pitcher_url, &state.pitcher_token, exec_id)
+            .exec_get_output(&state, exec_id)
             .await
             .unwrap_or_default();
 
@@ -1134,10 +1236,7 @@ impl Tool for CsbReadFileTool {
 
         let client = CodeSandboxClient::new(api_key);
 
-        match client
-            .file_read(&state.pitcher_url, &state.pitcher_token, path)
-            .await
-        {
+        match client.file_read(&state, path).await {
             Ok(content) => ToolExecutionResult::success(json!({
                 "path": content.path,
                 "content": content.content
@@ -1224,10 +1323,7 @@ impl Tool for CsbWriteFileTool {
 
         let client = CodeSandboxClient::new(api_key);
 
-        match client
-            .file_write(&state.pitcher_url, &state.pitcher_token, path, content)
-            .await
-        {
+        match client.file_write(&state, path, content).await {
             Ok(()) => ToolExecutionResult::success(json!({
                 "path": path,
                 "success": true
@@ -1332,10 +1428,7 @@ impl Tool for CsbDownloadWorkspaceTool {
         let mut dirs_to_visit = vec![sandbox_root.to_string()];
 
         while let Some(dir_path) = dirs_to_visit.pop() {
-            let entries = match client
-                .dir_list(&state.pitcher_url, &state.pitcher_token, &dir_path)
-                .await
-            {
+            let entries = match client.dir_list(&state, &dir_path).await {
                 Ok(e) => e,
                 Err(e) => {
                     errors.push(format!("Failed to list {dir_path}: {e}"));
@@ -1360,10 +1453,7 @@ impl Tool for CsbDownloadWorkspaceTool {
                     dirs_to_visit.push(full_path);
                 } else {
                     // Download file
-                    match client
-                        .file_read(&state.pitcher_url, &state.pitcher_token, &full_path)
-                        .await
-                    {
+                    match client.file_read(&state, &full_path).await {
                         Ok(content) => {
                             // Compute session destination path
                             let relative =
@@ -1652,16 +1742,18 @@ mod tests {
     fn test_sandbox_state_roundtrip() {
         let state = SandboxState {
             sandbox_id: "sb_123".to_string(),
-            pitcher_url: "https://pitcher-123.csb.app".to_string(),
+            pint_url: "https://sb_123-57468.csb.app".to_string(),
             pitcher_token: "tok_abc".to_string(),
+            preview_token: "prv_v1_test123".to_string(),
             workspace_path: "/project".to_string(),
             started_at: "2026-02-13T10:00:00Z".to_string(),
         };
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.sandbox_id, "sb_123");
-        assert_eq!(deserialized.pitcher_url, "https://pitcher-123.csb.app");
+        assert_eq!(deserialized.pint_url, "https://sb_123-57468.csb.app");
         assert_eq!(deserialized.pitcher_token, "tok_abc");
+        assert_eq!(deserialized.preview_token, "prv_v1_test123");
         assert_eq!(deserialized.workspace_path, "/project");
     }
 
@@ -1669,17 +1761,15 @@ mod tests {
     fn test_sandbox_state_with_special_chars() {
         let state = SandboxState {
             sandbox_id: "sb-test_123".to_string(),
-            pitcher_url: "https://pitcher.csb.app:8443/ws?token=abc&id=1".to_string(),
+            pint_url: "https://sb-test_123-57468.csb.app".to_string(),
             pitcher_token: "tok+abc/def==".to_string(),
+            preview_token: "prv_v1_special+chars==".to_string(),
             workspace_path: "/home/user/my project".to_string(),
             started_at: "2026-02-13T10:00:00+05:30".to_string(),
         };
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            deserialized.pitcher_url,
-            "https://pitcher.csb.app:8443/ws?token=abc&id=1"
-        );
+        assert_eq!(deserialized.pint_url, "https://sb-test_123-57468.csb.app");
         assert_eq!(deserialized.pitcher_token, "tok+abc/def==");
     }
 
@@ -1984,6 +2074,17 @@ data: {"output":"line 2"}
             assert!(result.is_ok());
         }
 
+        fn mock_state(pint_url: &str) -> SandboxState {
+            SandboxState {
+                sandbox_id: "sb_test".to_string(),
+                pint_url: pint_url.to_string(),
+                pitcher_token: "tok_test".to_string(),
+                preview_token: "prv_test".to_string(),
+                workspace_path: "/project".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+            }
+        }
+
         #[tokio::test]
         async fn test_client_exec_create() {
             let mock_server = MockServer::start().await;
@@ -1999,12 +2100,9 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
+            let state = mock_state(&mock_server.uri());
             let result = client
-                .exec_create(
-                    &mock_server.uri(),
-                    "tok_test",
-                    vec!["bash".into(), "-c".into(), "echo hi".into()],
-                )
+                .exec_create(&state, "bash", vec!["-c".into(), "echo hi".into()])
                 .await;
             assert!(result.is_ok());
             let info = result.unwrap();
@@ -2027,9 +2125,8 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
-            let result = client
-                .exec_get(&mock_server.uri(), "tok_test", "exec_1")
-                .await;
+            let state = mock_state(&mock_server.uri());
+            let result = client.exec_get(&state, "exec_1").await;
             assert!(result.is_ok());
             let info = result.unwrap();
             assert_eq!(info.status, "exited");
@@ -2049,9 +2146,8 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
-            let result = client
-                .exec_get_output(&mock_server.uri(), "tok_test", "exec_1")
-                .await;
+            let state = mock_state(&mock_server.uri());
+            let result = client.exec_get_output(&state, "exec_1").await;
             assert!(result.is_ok());
             let output = result.unwrap();
             assert!(output.contains("hello world"));
@@ -2072,9 +2168,8 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
-            let result = client
-                .file_read(&mock_server.uri(), "tok_test", "/project/main.py")
-                .await;
+            let state = mock_state(&mock_server.uri());
+            let result = client.file_read(&state, "/project/main.py").await;
             assert!(result.is_ok());
             let content = result.unwrap();
             assert_eq!(content.content, "print('hello')");
@@ -2094,13 +2189,9 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
+            let state = mock_state(&mock_server.uri());
             let result = client
-                .file_write(
-                    &mock_server.uri(),
-                    "tok_test",
-                    "/project/main.py",
-                    "print('hello')",
-                )
+                .file_write(&state, "/project/main.py", "print('hello')")
                 .await;
             assert!(result.is_ok());
         }
@@ -2119,9 +2210,8 @@ data: {"output":"line 2"}
 
             let client =
                 CodeSandboxClient::with_base_url("test_key".to_string(), mock_server.uri());
-            let result = client
-                .dir_list(&mock_server.uri(), "tok_test", "/project")
-                .await;
+            let state = mock_state(&mock_server.uri());
+            let result = client.dir_list(&state, "/project").await;
             assert!(result.is_ok());
             let entries = result.unwrap();
             assert_eq!(entries.len(), 2);

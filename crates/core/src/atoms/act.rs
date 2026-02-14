@@ -112,6 +112,8 @@ where
     file_store: Option<Arc<dyn SessionFileStore>>,
     /// Optional SQL database store for sql_execute/sql_query/sql_schema tools
     sqldb_store: Option<crate::traits::SessionSqlDbStoreRef>,
+    /// Optional session storage store for kv_store/secret_store tools
+    storage_store: Option<Arc<dyn crate::traits::SessionStorageStore>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -126,6 +128,7 @@ where
             event_emitter,
             file_store: None,
             sqldb_store: None,
+            storage_store: None,
         }
     }
 
@@ -140,12 +143,22 @@ where
             event_emitter,
             file_store: Some(file_store),
             sqldb_store: None,
+            storage_store: None,
         }
     }
 
     /// Set the SQL database store on this atom
     pub fn with_sqldb_store(mut self, store: crate::traits::SessionSqlDbStoreRef) -> Self {
         self.sqldb_store = Some(store);
+        self
+    }
+
+    /// Set the session storage store on this atom
+    pub fn with_storage_store(
+        mut self,
+        store: Arc<dyn crate::traits::SessionStorageStore>,
+    ) -> Self {
+        self.storage_store = Some(store);
         self
     }
 }
@@ -405,7 +418,10 @@ where
         };
 
         // Execute the tool
-        let result = if self.file_store.is_some() || self.sqldb_store.is_some() {
+        let result = if self.file_store.is_some()
+            || self.sqldb_store.is_some()
+            || self.storage_store.is_some()
+        {
             let mut tool_context = if let Some(ref store) = self.file_store {
                 ToolContext::with_file_store(context.session_id, store.clone())
             } else {
@@ -413,6 +429,9 @@ where
             };
             if let Some(ref store) = self.sqldb_store {
                 tool_context.sqldb_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.storage_store {
+                tool_context.storage_store = Some(store.clone());
             }
             self.tool_executor
                 .execute_with_context(&tool_call, tool_def, &tool_context)
