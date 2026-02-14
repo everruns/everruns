@@ -18,12 +18,14 @@ use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
+use crate::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 use futures::{
     StreamExt,
     stream::{self, Stream},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
+use tokio::sync::broadcast;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -52,6 +54,8 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
+    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
+    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
     pub auth: AuthState,
 }
 
@@ -67,6 +71,7 @@ impl AppState {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::new(db)),
             sse_tracker,
+            event_broadcaster: None,
             auth,
         }
     }
@@ -82,6 +87,7 @@ impl AppState {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, listeners)),
             sse_tracker,
+            event_broadcaster: None,
             auth,
         }
     }
@@ -222,6 +228,31 @@ pub async fn stream_sse(
     let config = SseStreamConfig::realtime();
     let connection_start = Instant::now();
 
+    // Set up push notification channel: when pg_notify fires for this session,
+    // the waker triggers immediate poll instead of waiting for backoff timeout.
+    // Falls back to polling in DEV_MODE (no PostgreSQL).
+    let event_waker = Arc::new(tokio::sync::Notify::new());
+    if let Some(ref broadcaster) = state.event_broadcaster {
+        let mut rx = broadcaster.subscribe();
+        let waker = event_waker.clone();
+        let target_session = session_id;
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(payload) if payload.session_id == target_session => {
+                        waker.notify_one();
+                    }
+                    Ok(_) => {} // Different session, ignore
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::debug!(lagged = n, "Event notification receiver lagged, waking");
+                        waker.notify_one();
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Stream state machine
     #[derive(Clone)]
     enum StreamPhase {
@@ -243,6 +274,8 @@ pub async fn stream_sse(
         config: SseStreamConfig,
         exclude_types: Vec<String>,
         connection_start: Instant,
+        /// Waker triggered by pg_notify when events arrive for this session
+        event_waker: Arc<tokio::sync::Notify>,
     }
 
     let initial_state = StreamState {
@@ -252,6 +285,7 @@ pub async fn stream_sse(
         config,
         exclude_types,
         connection_start,
+        event_waker,
     };
 
     // Create stream that replays events from database
@@ -361,14 +395,25 @@ pub async fn stream_sse(
                                 config: state.config,
                                 exclude_types: state.exclude_types,
                                 connection_start: state.connection_start,
+                                event_waker: state.event_waker,
                             };
                             Some((stream::iter(sse_events), new_state))
                         }
                         Ok(_) => {
-                            // No new events, wait with exponential backoff
-                            tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
+                            // No new events — wait for push notification or fallback timeout.
+                            // With pg_notify: waker fires in <5ms on event insert.
+                            // Without pg_notify (DEV_MODE): falls back to polling at backoff.
+                            let fallback = Duration::from_millis(state.backoff_ms);
+                            tokio::select! {
+                                _ = state.event_waker.notified() => {
+                                    // Notification received — poll immediately with reset backoff
+                                }
+                                _ = tokio::time::sleep(fallback) => {
+                                    // Fallback timeout — increase backoff
+                                }
+                            }
 
-                            // Increase backoff for next iteration
+                            // Increase backoff for next iteration (reset on event found above)
                             let new_backoff = state.config.next_backoff(state.backoff_ms);
                             let new_state = StreamState {
                                 backoff_ms: new_backoff,

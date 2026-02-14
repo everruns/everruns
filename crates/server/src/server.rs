@@ -212,10 +212,24 @@ pub async fn run(
     let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
         crate::api::sse::SseConnectionLimits::from_env(),
     ));
+    // Initialize event notification broadcaster for push-based SSE (requires PostgreSQL)
+    let event_broadcaster = if let Some(pool) = db.pool() {
+        let broadcaster =
+            crate::event_notifications::EventNotificationBroadcaster::new(pool.clone()).await;
+        tracing::info!("Event notification broadcaster initialized for push-based SSE");
+        Some(Arc::new(broadcaster))
+    } else {
+        tracing::info!(
+            "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
+        );
+        None
+    };
+
     let events_state = api::events::AppState {
         session_service: Arc::new(services::SessionService::new(db.clone())),
         event_service: event_service.clone(),
         sse_tracker,
+        event_broadcaster,
         auth: auth_state.clone(),
     };
     let driver_registry = Arc::new(create_driver_registry());
