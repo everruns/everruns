@@ -10,8 +10,8 @@ use crate::storage::{
 use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_core::{
-    DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderId, ProviderType,
-    get_model_profile,
+    DEFAULT_ORG_ID, DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderId,
+    ProviderType, get_model_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -50,11 +50,11 @@ impl ModelSyncService {
     }
 
     /// Sync models for a single provider
-    pub async fn sync_provider(&self, provider_id: Uuid) -> Result<SyncResult> {
+    pub async fn sync_provider(&self, org_id: i64, provider_id: Uuid) -> Result<SyncResult> {
         // Get the provider
         let provider_row = self
             .db
-            .get_llm_provider(provider_id)
+            .get_llm_provider(org_id, provider_id)
             .await?
             .context("Provider not found")?;
 
@@ -137,7 +137,7 @@ impl ModelSyncService {
 
         // Update provider's last_synced_at
         self.db
-            .update_provider_last_synced(provider_id, Utc::now())
+            .update_provider_last_synced(org_id, provider_id, Utc::now())
             .await?;
 
         Ok(sync_result)
@@ -145,12 +145,13 @@ impl ModelSyncService {
 
     /// Sync all providers (called by background job)
     pub async fn sync_all(&self) -> Result<Vec<(ProviderId, SyncResult)>> {
-        let providers = self.db.list_llm_providers().await?;
+        // TODO: List providers across all orgs for true multi-org background sync
+        let providers = self.db.list_llm_providers(DEFAULT_ORG_ID).await?;
         let mut results = Vec::with_capacity(providers.len());
 
         for provider in providers {
             let result = self
-                .sync_provider(provider.id.uuid())
+                .sync_provider(provider.org_id, provider.id.uuid())
                 .await
                 .unwrap_or_else(|e| SyncResult::Failed {
                     error: e.to_string(),
@@ -180,7 +181,7 @@ impl ModelSyncService {
         // Get existing models for this provider
         let existing = self
             .db
-            .list_llm_models_for_provider(provider.id.uuid())
+            .list_llm_models_for_provider(provider.org_id, provider.id.uuid())
             .await?;
         let existing_ids: std::collections::HashSet<_> =
             existing.iter().map(|m| m.model_id.as_str()).collect();
@@ -209,7 +210,7 @@ impl ModelSyncService {
                         ..Default::default()
                     };
                     self.db
-                        .update_llm_model(existing_model.id.uuid(), update)
+                        .update_llm_model(provider.org_id, existing_model.id.uuid(), update)
                         .await?;
                     updated += 1;
                 }

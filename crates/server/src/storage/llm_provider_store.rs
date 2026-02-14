@@ -43,7 +43,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the model
         let model_row = self
             .db
-            .get_llm_model(model_id.uuid())
+            .get_llm_model(DEFAULT_ORG_ID, model_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -55,7 +55,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id.uuid())
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -98,7 +98,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id.uuid())
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

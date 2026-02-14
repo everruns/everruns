@@ -1185,29 +1185,38 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
         Ok(self
             .llm_providers
             .read()
             .get(&ProviderId::from_uuid(id))
+            .filter(|p| p.org_id == org_id)
             .cloned())
     }
 
-    pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
         let providers = self.llm_providers.read();
-        let mut result: Vec<_> = providers.values().cloned().collect();
+        let mut result: Vec<_> = providers
+            .values()
+            .filter(|p| p.org_id == org_id)
+            .cloned()
+            .collect();
         result.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(result)
     }
 
     pub async fn update_llm_provider(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmProvider,
     ) -> Result<Option<LlmProviderRow>> {
         let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
         if let Some(provider) = providers.get_mut(&id) {
+            if provider.org_id != org_id {
+                return Ok(None);
+            }
             if let Some(name) = input.name {
                 provider.name = name;
             }
@@ -1230,8 +1239,19 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_llm_provider(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let id = ProviderId::from_uuid(id);
+        // Check org_id before deletion
+        {
+            let providers = self.llm_providers.read();
+            if let Some(provider) = providers.get(&id) {
+                if provider.org_id != org_id {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            }
+        }
         // Delete models first
         {
             let mut models = self.llm_models.write();
@@ -1250,11 +1270,15 @@ impl InMemoryDatabase {
     /// Update provider's last_synced_at timestamp
     pub async fn update_provider_last_synced(
         &self,
+        org_id: i64,
         id: Uuid,
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         let id = ProviderId::from_uuid(id);
         if let Some(provider) = self.llm_providers.write().get_mut(&id) {
+            if provider.org_id != org_id {
+                return Ok(());
+            }
             provider.last_synced_at = Some(last_synced_at);
             provider.updated_at = Self::now();
         }
@@ -1416,13 +1440,19 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let id = ModelId::from_uuid(id);
-        Ok(self.llm_models.read().get(&id).cloned())
+        Ok(self
+            .llm_models
+            .read()
+            .get(&id)
+            .filter(|m| m.org_id == org_id)
+            .cloned())
     }
 
     pub async fn get_llm_model_with_provider(
         &self,
+        org_id: i64,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let id = ModelId::from_uuid(id);
@@ -1430,6 +1460,7 @@ impl InMemoryDatabase {
         let providers = self.llm_providers.read();
 
         if let Some(model) = models.get(&id)
+            && model.org_id == org_id
             && let Some(provider) = providers.get(&model.provider_id)
         {
             return Ok(Some(LlmModelWithProviderRow {
@@ -1456,13 +1487,14 @@ impl InMemoryDatabase {
 
     pub async fn list_llm_models_for_provider(
         &self,
+        org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<LlmModelRow>> {
         let provider_id = ProviderId::from_uuid(provider_id);
         let models = self.llm_models.read();
         let mut result: Vec<_> = models
             .values()
-            .filter(|m| m.provider_id == provider_id)
+            .filter(|m| m.provider_id == provider_id && m.org_id == org_id)
             .cloned()
             .collect();
         result.sort_by(|a, b| a.display_name.cmp(&b.display_name));
@@ -1510,12 +1542,16 @@ impl InMemoryDatabase {
 
     pub async fn update_llm_model(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmModel,
     ) -> Result<Option<LlmModelRow>> {
         let id = ModelId::from_uuid(id);
         let mut models = self.llm_models.write();
         if let Some(model) = models.get_mut(&id) {
+            if model.org_id != org_id {
+                return Ok(None);
+            }
             if let Some(display_name) = input.display_name {
                 model.display_name = display_name;
             }
@@ -1537,9 +1573,17 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_llm_model(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let id = ModelId::from_uuid(id);
-        Ok(self.llm_models.write().remove(&id).is_some())
+        let mut models = self.llm_models.write();
+        if let Some(model) = models.get(&id) {
+            if model.org_id != org_id {
+                return Ok(false);
+            }
+        } else {
+            return Ok(false);
+        }
+        Ok(models.remove(&id).is_some())
     }
 
     pub async fn get_llm_model_by_model_id(
@@ -2098,41 +2142,65 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+    pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
         let id = McpServerId::from_uuid(id);
-        Ok(self.mcp_servers.read().get(&id).cloned())
+        Ok(self
+            .mcp_servers
+            .read()
+            .get(&id)
+            .filter(|s| s.org_id == org_id)
+            .cloned())
     }
 
     /// Batch fetch multiple MCP servers by IDs.
-    pub async fn get_mcp_servers_batch(&self, ids: &[Uuid]) -> Result<Vec<McpServerRow>> {
+    pub async fn get_mcp_servers_batch(
+        &self,
+        org_id: i64,
+        ids: &[Uuid],
+    ) -> Result<Vec<McpServerRow>> {
         let servers = self.mcp_servers.read();
         Ok(ids
             .iter()
-            .filter_map(|id| servers.get(&McpServerId::from_uuid(*id)).cloned())
+            .filter_map(|id| {
+                servers
+                    .get(&McpServerId::from_uuid(*id))
+                    .filter(|s| s.org_id == org_id)
+                    .cloned()
+            })
             .collect())
     }
 
-    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
+    pub async fn get_mcp_server_by_name(
+        &self,
+        org_id: i64,
+        name: &str,
+    ) -> Result<Option<McpServerRow>> {
         Ok(self
             .mcp_servers
             .read()
             .values()
-            .find(|s| s.name == name)
+            .find(|s| s.name == name && s.org_id == org_id)
             .cloned())
     }
 
-    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
-        let mut servers: Vec<_> = self.mcp_servers.read().values().cloned().collect();
-        servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        Ok(servers)
-    }
-
-    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
         let mut servers: Vec<_> = self
             .mcp_servers
             .read()
             .values()
-            .filter(|s| s.status == "active")
+            .filter(|s| s.org_id == org_id)
+            .cloned()
+            .collect();
+        servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(servers)
+    }
+
+    pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
+        let mut servers: Vec<_> = self
+            .mcp_servers
+            .read()
+            .values()
+            .filter(|s| s.status == "active" && s.org_id == org_id)
             .cloned()
             .collect();
         servers.sort_by(|a, b| a.name.cmp(&b.name));
@@ -2141,11 +2209,15 @@ impl InMemoryDatabase {
 
     pub async fn update_mcp_server(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
         let mut servers = self.mcp_servers.write();
         if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id {
+                return Ok(None);
+            }
             if let Some(name) = input.name {
                 server.name = name;
             }
@@ -2177,8 +2249,16 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
-        Ok(self.mcp_servers.write().remove(&id).is_some())
+    pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get(&id) {
+            if server.org_id != org_id {
+                return Ok(false);
+            }
+        } else {
+            return Ok(false);
+        }
+        Ok(servers.remove(&id).is_some())
     }
 
     // ============================================
@@ -2253,11 +2333,12 @@ impl InMemoryDatabase {
     // Images
     // ============================================
 
-    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
+    pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
         let now = Self::now();
         let id = ImageId::new();
         let row = ImageRow {
             id,
+            org_id,
             filename: input.filename,
             content_type: input.content_type,
             size_bytes: input.size_bytes,
@@ -2271,34 +2352,60 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+    pub async fn get_image(&self, org_id: i64, id: Uuid) -> Result<Option<ImageRow>> {
         let id = ImageId::from_uuid(id);
-        Ok(self.images.read().get(&id).cloned())
+        Ok(self
+            .images
+            .read()
+            .get(&id)
+            .filter(|img| img.org_id == org_id)
+            .cloned())
     }
 
-    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+    pub async fn get_image_info(&self, org_id: i64, id: Uuid) -> Result<Option<ImageInfoRow>> {
         let id = ImageId::from_uuid(id);
-        Ok(self.images.read().get(&id).map(|img| ImageInfoRow {
-            id: img.id,
-            filename: img.filename.clone(),
-            content_type: img.content_type.clone(),
-            size_bytes: img.size_bytes,
-            metadata: img.metadata.clone(),
-            created_at: img.created_at,
-        }))
+        Ok(self
+            .images
+            .read()
+            .get(&id)
+            .filter(|img| img.org_id == org_id)
+            .map(|img| ImageInfoRow {
+                id: img.id,
+                org_id: img.org_id,
+                filename: img.filename.clone(),
+                content_type: img.content_type.clone(),
+                size_bytes: img.size_bytes,
+                metadata: img.metadata.clone(),
+                created_at: img.created_at,
+            }))
     }
 
-    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_image(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let id = ImageId::from_uuid(id);
-        Ok(self.images.write().remove(&id).is_some())
+        let mut images = self.images.write();
+        if let Some(img) = images.get(&id) {
+            if img.org_id != org_id {
+                return Ok(false);
+            }
+        } else {
+            return Ok(false);
+        }
+        Ok(images.remove(&id).is_some())
     }
 
-    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
+    pub async fn list_images(
+        &self,
+        org_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ImageInfoRow>> {
         let images = self.images.read();
         let mut result: Vec<_> = images
             .values()
+            .filter(|img| img.org_id == org_id)
             .map(|img| ImageInfoRow {
                 id: img.id,
+                org_id: img.org_id,
                 filename: img.filename.clone(),
                 content_type: img.content_type.clone(),
                 size_bytes: img.size_bytes,
@@ -2317,12 +2424,16 @@ impl InMemoryDatabase {
 
     pub async fn update_mcp_server_tools(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
         let id = McpServerId::from_uuid(id);
         let mut servers = self.mcp_servers.write();
         if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id {
+                return Ok(None);
+            }
             server.cached_tools = input.cached_tools;
             server.tools_cached_at = Some(Self::now());
             server.updated_at = Self::now();

@@ -6,7 +6,7 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
-use everruns_core::{DEFAULT_ORG_ID, LlmProviderStatus, LlmProviderType};
+use everruns_core::{LlmProviderStatus, LlmProviderType};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ impl LlmProviderService {
         Self { db, encryption }
     }
 
-    pub async fn create(&self, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
+    pub async fn create(&self, org_id: i64, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -42,22 +42,23 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.create_llm_provider(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
+        let row = self.db.create_llm_provider(org_id, input).await?;
         Ok(Self::row_to_provider(&row))
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Option<LlmProvider>> {
-        let row = self.db.get_llm_provider(id).await?;
+    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProvider>> {
+        let row = self.db.get_llm_provider(org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    pub async fn list(&self) -> Result<Vec<LlmProvider>> {
-        let rows = self.db.list_llm_providers().await?;
+    pub async fn list(&self, org_id: i64) -> Result<Vec<LlmProvider>> {
+        let rows = self.db.list_llm_providers(org_id).await?;
         Ok(rows.iter().map(Self::row_to_provider).collect())
     }
 
     pub async fn update(
         &self,
+        org_id: i64,
         id: Uuid,
         req: UpdateLlmProviderRequest,
     ) -> Result<Option<LlmProvider>> {
@@ -84,12 +85,12 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.update_llm_provider(id, input).await?;
+        let row = self.db.update_llm_provider(org_id, id, input).await?;
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        self.db.delete_llm_provider(id).await
+    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        self.db.delete_llm_provider(org_id, id).await
     }
 
     fn row_to_provider(row: &LlmProviderRow) -> LlmProvider {

@@ -70,7 +70,8 @@ impl LlmResolverService {
     /// Resolve a model by ID with decrypted provider credentials
     pub async fn resolve_model(&self, model_id: Uuid) -> Result<Option<ResolvedModel>> {
         // Look up the model
-        let model_row = self.db.get_llm_model(model_id).await?;
+        // TODO: Get org_id from context after Phase 3
+        let model_row = self.db.get_llm_model(DEFAULT_ORG_ID, model_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -80,7 +81,7 @@ impl LlmResolverService {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id.uuid())
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {
@@ -113,7 +114,7 @@ impl LlmResolverService {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id.uuid())
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {

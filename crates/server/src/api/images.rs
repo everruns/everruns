@@ -179,7 +179,7 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     tag = "images"
 )]
 pub async fn upload_image(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<UploadImageQuery>,
     mut multipart: Multipart,
@@ -259,15 +259,19 @@ pub async fn upload_image(
     let size_bytes = data.len() as i64;
     let row = state
         .db
-        .create_image(CreateImageRow {
-            filename: filename.clone(),
-            content_type: content_type.clone(),
-            size_bytes,
-            data,
-            thumbnail_data,
-            thumbnail_content_type,
-            metadata,
-        })
+        .create_image(
+            org.org_id,
+            CreateImageRow {
+                org_id: org.org_id,
+                filename: filename.clone(),
+                content_type: content_type.clone(),
+                size_bytes,
+                data,
+                thumbnail_data,
+                thumbnail_content_type,
+                metadata,
+            },
+        )
         .await
         .map_err(|e| {
             tracing::error!("Failed to store image: {}", e);
@@ -304,13 +308,13 @@ pub async fn upload_image(
     tag = "images"
 )]
 pub async fn list_images(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListImagesQuery>,
 ) -> Result<Json<Vec<ImageInfo>>, StatusCode> {
     let rows = state
         .db
-        .list_images(query.limit, query.offset)
+        .list_images(org.org_id, query.limit, query.offset)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list images: {}", e);
@@ -348,7 +352,7 @@ pub async fn list_images(
     tag = "images"
 )]
 pub async fn get_image(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(image_id): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
@@ -358,7 +362,7 @@ pub async fn get_image(
 
     let row = state
         .db
-        .get_image(image_id.uuid())
+        .get_image(org.org_id, image_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get image: {}", e);
@@ -399,7 +403,7 @@ pub async fn get_image(
     tag = "images"
 )]
 pub async fn get_thumbnail(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(image_id): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
@@ -409,7 +413,7 @@ pub async fn get_thumbnail(
 
     let row = state
         .db
-        .get_image(image_id.uuid())
+        .get_image(org.org_id, image_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get image: {}", e);
@@ -452,7 +456,7 @@ pub async fn get_thumbnail(
     tag = "images"
 )]
 pub async fn delete_image(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(image_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
@@ -460,13 +464,17 @@ pub async fn delete_image(
         .parse()
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid image ID: {}", e)))?;
 
-    let deleted = state.db.delete_image(image_id.uuid()).await.map_err(|e| {
-        tracing::error!("Failed to delete image: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        )
-    })?;
+    let deleted = state
+        .db
+        .delete_image(org.org_id, image_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete image: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
+        })?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

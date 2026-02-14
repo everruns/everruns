@@ -120,11 +120,11 @@ pub struct UpdateLlmProviderRequest {
     tag = "llm-providers"
 )]
 pub async fn create_provider(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
-    let provider = state.service.create(req).await.map_err(|e| {
+    let provider = state.service.create(org.org_id, req).await.map_err(|e| {
         let error_msg = e.to_string();
         if error_msg.contains("Encryption not configured") {
             (
@@ -155,10 +155,10 @@ pub async fn create_provider(
     tag = "llm-providers"
 )]
 pub async fn list_providers(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let providers = state.service.list().await.map_err(|e| {
+    let providers = state.service.list(org.org_id).await.map_err(|e| {
         tracing::error!("Failed to list LLM providers: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -186,7 +186,7 @@ pub async fn list_providers(
     tag = "llm-providers"
 )]
 pub async fn get_provider(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
@@ -201,7 +201,7 @@ pub async fn get_provider(
 
     let provider = state
         .service
-        .get(provider_id.uuid())
+        .get(org.org_id, provider_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get LLM provider: {}", e);
@@ -240,7 +240,7 @@ pub async fn get_provider(
     tag = "llm-providers"
 )]
 pub async fn update_provider(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmProviderRequest>,
@@ -256,7 +256,7 @@ pub async fn update_provider(
 
     let provider = state
         .service
-        .update(provider_id.uuid(), req)
+        .update(org.org_id, provider_id.uuid(), req)
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
@@ -302,7 +302,7 @@ pub async fn update_provider(
     tag = "llm-providers"
 )]
 pub async fn delete_provider(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -317,7 +317,7 @@ pub async fn delete_provider(
 
     let deleted = state
         .service
-        .delete(provider_id.uuid())
+        .delete(org.org_id, provider_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to delete LLM provider: {}", e);
@@ -360,7 +360,7 @@ pub async fn delete_provider(
     tag = "llm-providers"
 )]
 pub async fn sync_models(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<SyncModelsResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -375,7 +375,7 @@ pub async fn sync_models(
 
     let result = state
         .sync_service
-        .sync_provider(provider_id.uuid())
+        .sync_provider(org.org_id, provider_id.uuid())
         .await
         .map_err(|e| {
             let error_msg = e.to_string();

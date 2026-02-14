@@ -16,9 +16,9 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData, Harness,
-    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
-    ToolRegistry, ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DriverRegistry,
+    EventData, Harness, HarnessStatus, LlmProviderType, Message, MessageRole, Session,
+    SessionStatus, ToolDefinition, ToolRegistry, ToolResultContentPart,
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -347,10 +347,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         // Get the image from storage
-        let image_row = self.db.get_image(image_id).await.map_err(|e| {
-            tracing::error!("Failed to get image: {}", e);
-            store_error("Failed to get image")
-        })?;
+        // TODO: Thread org_id through WorkerAdapters trait for image resolution
+        let image_row = self
+            .db
+            .get_image(DEFAULT_ORG_ID, image_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get image: {}", e);
+                store_error("Failed to get image")
+            })?;
 
         match image_row {
             Some(row) => {
@@ -617,12 +622,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn get_mcp_server_by_prefix(
         &self,
-        _org_id: i64,
+        org_id: i64,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
         // Search for MCP server by name prefix (using sanitized name matching)
         let server_prefix_lower = server_prefix.to_lowercase();
-        let servers = self.mcp_server_service.list().await.map_err(|e| {
+        let servers = self.mcp_server_service.list(org_id).await.map_err(|e| {
             tracing::error!("Failed to list MCP servers: {}", e);
             store_error("Failed to get MCP server")
         })?;
@@ -708,7 +713,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Build MCP tool definitions from agent capabilities (if agent present)
         let mcp_tool_definitions = if let Some(ref a) = agent {
-            self.build_mcp_tool_definitions(a.internal_id)
+            self.build_mcp_tool_definitions(org_id, a.internal_id)
                 .await
                 .unwrap_or_default()
         } else {
@@ -818,7 +823,11 @@ impl DirectWorkerAdapters {
     }
 
     /// Build MCP tool definitions from agent's MCP capabilities
-    async fn build_mcp_tool_definitions(&self, agent_id: Uuid) -> Result<Vec<ToolDefinition>> {
+    async fn build_mcp_tool_definitions(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Vec<ToolDefinition>> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
         use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
@@ -841,7 +850,11 @@ impl DirectWorkerAdapters {
                 None => continue,
             };
 
-            let tools = match self.mcp_server_service.get_tools(server_id, false).await {
+            let tools = match self
+                .mcp_server_service
+                .get_tools(org_id, server_id, false)
+                .await
+            {
                 Ok(t) => t,
                 Err(e) => {
                     tracing::warn!(
@@ -853,7 +866,7 @@ impl DirectWorkerAdapters {
                 }
             };
 
-            let server_name = match self.mcp_server_service.get(server_id).await {
+            let server_name = match self.mcp_server_service.get(org_id, server_id).await {
                 Ok(Some(s)) => s.name,
                 _ => {
                     tracing::warn!(server_id = %server_id, "MCP server not found, skipping");

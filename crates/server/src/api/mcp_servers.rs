@@ -142,7 +142,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "mcp-servers"
 )]
 pub async fn create_mcp_server(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<McpServer>), (StatusCode, Json<ErrorResponse>)> {
@@ -160,7 +160,7 @@ pub async fn create_mcp_server(
         );
     }
 
-    let server = state.service.create(req).await.map_err(|e| {
+    let server = state.service.create(org.org_id, req).await.map_err(|e| {
         // Check if it's a duplicate name error
         let msg = e.to_string();
         if msg.contains("already exists") {
@@ -185,12 +185,12 @@ pub async fn create_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn list_mcp_servers(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<McpServer>>, StatusCode> {
     let servers = state
         .service
-        .list()
+        .list(org.org_id)
         .await
         .log_internal_error("list MCP servers")?;
 
@@ -213,7 +213,7 @@ pub async fn list_mcp_servers(
     tag = "mcp-servers"
 )]
 pub async fn get_mcp_server(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
@@ -228,7 +228,7 @@ pub async fn get_mcp_server(
 
     let server = state
         .service
-        .get(server_id.uuid())
+        .get(org.org_id, server_id.uuid())
         .await
         .log_internal_error_json("get MCP server")?
         .ok_or_not_found_json("MCP server")?;
@@ -253,7 +253,7 @@ pub async fn get_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn update_mcp_server(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
@@ -287,7 +287,7 @@ pub async fn update_mcp_server(
 
     let server = state
         .service
-        .update(server_id.uuid(), req)
+        .update(org.org_id, server_id.uuid(), req)
         .await
         .log_internal_error_json("update MCP server")?
         .ok_or_not_found_json("MCP server")?;
@@ -311,7 +311,7 @@ pub async fn update_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn delete_mcp_server(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -326,7 +326,7 @@ pub async fn delete_mcp_server(
 
     let deleted = state
         .service
-        .delete(server_id.uuid())
+        .delete(org.org_id, server_id.uuid())
         .await
         .log_internal_error_json("delete MCP server")?;
 

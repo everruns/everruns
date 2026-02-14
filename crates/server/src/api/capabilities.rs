@@ -59,10 +59,10 @@ pub fn routes(state: AppState) -> Router {
     tag = "capabilities"
 )]
 pub async fn list_capabilities(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<CapabilityInfo>>, StatusCode> {
-    let capabilities = state.service.list_all().await.map_err(|e| {
+    let capabilities = state.service.list_all(org.org_id).await.map_err(|e| {
         tracing::error!("Failed to list capabilities: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -83,7 +83,7 @@ pub async fn list_capabilities(
     tag = "capabilities"
 )]
 pub async fn get_capability(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
 ) -> Result<Json<CapabilityInfo>, StatusCode> {
@@ -91,7 +91,7 @@ pub async fn get_capability(
 
     let capability = state
         .service
-        .get(&cap_id)
+        .get(org.org_id, &cap_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get capability: {}", e);

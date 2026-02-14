@@ -125,7 +125,7 @@ pub struct UpdateLlmModelRequest {
     tag = "llm-models"
 )]
 pub async fn create_model(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
     Json(req): Json<CreateLlmModelRequest>,
@@ -141,7 +141,7 @@ pub async fn create_model(
 
     let model = state
         .service
-        .create(provider_id.uuid(), req)
+        .create(org.org_id, provider_id.uuid(), req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create LLM model: {}", e);
@@ -170,7 +170,7 @@ pub async fn create_model(
     tag = "llm-models"
 )]
 pub async fn list_provider_models(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
 ) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
@@ -185,7 +185,7 @@ pub async fn list_provider_models(
 
     let models = state
         .service
-        .list_for_provider(provider_id.uuid())
+        .list_for_provider(org.org_id, provider_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to list LLM models for provider: {}", e);
@@ -213,13 +213,18 @@ pub async fn list_provider_models(
     tag = "llm-models"
 )]
 pub async fn list_all_models(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let models = state
         .service
-        .list_all_with_filters(query.source, query.include_stale, query.favorites_only)
+        .list_all_with_filters(
+            org.org_id,
+            query.source,
+            query.include_stale,
+            query.favorites_only,
+        )
         .await
         .map_err(|e| {
             tracing::error!("Failed to list all LLM models: {}", e);
@@ -249,7 +254,7 @@ pub async fn list_all_models(
     tag = "llm-models"
 )]
 pub async fn get_model(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
@@ -264,7 +269,7 @@ pub async fn get_model(
 
     let model = state
         .service
-        .get_with_provider(model_id.uuid())
+        .get_with_provider(org.org_id, model_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get LLM model: {}", e);
@@ -303,7 +308,7 @@ pub async fn get_model(
     tag = "llm-models"
 )]
 pub async fn update_model(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmModelRequest>,
@@ -319,7 +324,7 @@ pub async fn update_model(
 
     let model = state
         .service
-        .update(model_id.uuid(), req)
+        .update(org.org_id, model_id.uuid(), req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update LLM model: {}", e);
@@ -357,7 +362,7 @@ pub async fn update_model(
     tag = "llm-models"
 )]
 pub async fn delete_model(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -370,15 +375,19 @@ pub async fn delete_model(
         )
     })?;
 
-    let deleted = state.service.delete(model_id.uuid()).await.map_err(|e| {
-        tracing::error!("Failed to delete LLM model: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
+    let deleted = state
+        .service
+        .delete(org.org_id, model_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete LLM model: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
