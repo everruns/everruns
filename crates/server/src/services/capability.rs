@@ -34,7 +34,7 @@ impl CapabilityService {
     }
 
     /// List all available capabilities including MCP servers (public info only)
-    pub async fn list_all(&self) -> Result<Vec<CapabilityInfo>> {
+    pub async fn list_all(&self, org_id: i64) -> Result<Vec<CapabilityInfo>> {
         // Get built-in capabilities
         let mut capabilities: Vec<CapabilityInfo> = self
             .registry
@@ -44,7 +44,7 @@ impl CapabilityService {
             .collect();
 
         // Get MCP server capabilities
-        let mcp_servers = self.mcp_service.list_active_with_tools().await?;
+        let mcp_servers = self.mcp_service.list_active_with_tools(org_id).await?;
         for server_with_tools in mcp_servers {
             let mcp_cap = McpCapability::new(
                 server_with_tools.server.id.uuid(),
@@ -83,12 +83,12 @@ impl CapabilityService {
     /// For MCP capabilities, uses cached tools only (no external refresh).
     /// This ensures viewing a capability doesn't fail if the MCP server is unreachable.
     /// Use the refresh tools endpoint to explicitly update cached tools.
-    pub async fn get(&self, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
+    pub async fn get(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
         // Check if it's an MCP capability
         if let Some(server_id) = id.mcp_server_id() {
             // Use cached tools only - no external refresh on read
-            let tools = self.mcp_service.get_cached_tools(server_id).await;
-            let server = self.mcp_service.get(server_id).await?;
+            let tools = self.mcp_service.get_cached_tools(org_id, server_id).await;
+            let server = self.mcp_service.get(org_id, server_id).await?;
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(
@@ -131,16 +131,23 @@ impl CapabilityService {
     #[allow(dead_code)]
     pub async fn get_mcp_tools(
         &self,
+        org_id: i64,
         server_id: uuid::Uuid,
         force_refresh: bool,
     ) -> Result<Vec<McpToolDefinition>> {
-        self.mcp_service.get_tools(server_id, force_refresh).await
+        self.mcp_service
+            .get_tools(org_id, server_id, force_refresh)
+            .await
     }
 
     /// Refresh tools for an MCP server
     #[allow(dead_code)]
-    pub async fn refresh_mcp_tools(&self, server_id: uuid::Uuid) -> Result<Vec<McpToolDefinition>> {
-        self.mcp_service.refresh_tools(server_id).await
+    pub async fn refresh_mcp_tools(
+        &self,
+        org_id: i64,
+        server_id: uuid::Uuid,
+    ) -> Result<Vec<McpToolDefinition>> {
+        self.mcp_service.refresh_tools(org_id, server_id).await
     }
 
     /// Get the built-in capability registry
@@ -175,6 +182,7 @@ impl CapabilityService {
     /// A tuple of (final_system_prompt, tool_definitions)
     pub async fn preview(
         &self,
+        org_id: i64,
         base_system_prompt: &str,
         capability_configs: &[everruns_core::AgentCapabilityConfig],
     ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
@@ -210,8 +218,8 @@ impl CapabilityService {
         // Collect from MCP capabilities using cached tools only (no refresh)
         // Note: MCP capabilities don't have dependencies
         for server_id in mcp_cap_ids {
-            let tools = self.mcp_service.get_cached_tools(server_id).await;
-            let server = self.mcp_service.get(server_id).await?;
+            let tools = self.mcp_service.get_cached_tools(org_id, server_id).await;
+            let server = self.mcp_service.get(org_id, server_id).await?;
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(

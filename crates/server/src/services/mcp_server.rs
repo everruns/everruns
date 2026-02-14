@@ -8,8 +8,8 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    DEFAULT_ORG_ID, McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition,
-    McpToolsListRequest, McpToolsListResponse,
+    McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ impl McpServerService {
         Self { db, encryption }
     }
 
-    pub async fn create(&self, req: CreateMcpServerRequest) -> Result<McpServer> {
+    pub async fn create(&self, org_id: i64, req: CreateMcpServerRequest) -> Result<McpServer> {
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -58,12 +58,12 @@ impl McpServerService {
             settings: None,
         };
 
-        let row = self.db.create_mcp_server(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
+        let row = self.db.create_mcp_server(org_id, input).await?;
         Ok(Self::row_to_mcp_server(&row))
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Option<McpServer>> {
-        let row = self.db.get_mcp_server(id).await?;
+    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<McpServer>> {
+        let row = self.db.get_mcp_server(org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
@@ -85,12 +85,17 @@ impl McpServerService {
             .collect())
     }
 
-    pub async fn list(&self) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_mcp_servers().await?;
+    pub async fn list(&self, org_id: i64) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_mcp_servers(org_id).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
-    pub async fn update(&self, id: Uuid, req: UpdateMcpServerRequest) -> Result<Option<McpServer>> {
+    pub async fn update(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        req: UpdateMcpServerRequest,
+    ) -> Result<Option<McpServer>> {
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -115,23 +120,23 @@ impl McpServerService {
             settings: None,
         };
 
-        let row = self.db.update_mcp_server(id, input).await?;
+        let row = self.db.update_mcp_server(org_id, id, input).await?;
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        self.db.delete_mcp_server(id).await
+    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        self.db.delete_mcp_server(org_id, id).await
     }
 
     /// List active MCP servers (for capability listing)
-    pub async fn list_active(&self) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_active_mcp_servers().await?;
+    pub async fn list_active(&self, org_id: i64) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_active_mcp_servers(org_id).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
     /// List active MCP servers with their cached tools
-    pub async fn list_active_with_tools(&self) -> Result<Vec<McpServerWithTools>> {
-        let rows = self.db.list_active_mcp_servers().await?;
+    pub async fn list_active_with_tools(&self, org_id: i64) -> Result<Vec<McpServerWithTools>> {
+        let rows = self.db.list_active_mcp_servers(org_id).await?;
         Ok(rows
             .iter()
             .map(Self::row_to_mcp_server_with_tools)
@@ -139,11 +144,11 @@ impl McpServerService {
     }
 
     /// Refresh cached tools for an MCP server by calling tools/list
-    pub async fn refresh_tools(&self, id: Uuid) -> Result<Vec<McpToolDefinition>> {
+    pub async fn refresh_tools(&self, org_id: i64, id: Uuid) -> Result<Vec<McpToolDefinition>> {
         // Get the MCP server
         let row = self
             .db
-            .get_mcp_server(id)
+            .get_mcp_server(org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -172,17 +177,22 @@ impl McpServerService {
         // Cache tools in database
         let cached_tools = serde_json::to_value(&tools)?;
         self.db
-            .update_mcp_server_tools(id, UpdateMcpServerTools { cached_tools })
+            .update_mcp_server_tools(org_id, id, UpdateMcpServerTools { cached_tools })
             .await?;
 
         Ok(tools)
     }
 
     /// Get cached tools for an MCP server, refreshing if stale
-    pub async fn get_tools(&self, id: Uuid, force_refresh: bool) -> Result<Vec<McpToolDefinition>> {
+    pub async fn get_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        force_refresh: bool,
+    ) -> Result<Vec<McpToolDefinition>> {
         let row = self
             .db
-            .get_mcp_server(id)
+            .get_mcp_server(org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -202,13 +212,13 @@ impl McpServerService {
         }
 
         // Refresh tools
-        self.refresh_tools(id).await
+        self.refresh_tools(org_id, id).await
     }
 
     /// Get cached tools for an MCP server without refreshing (for preview)
     /// Returns empty vec if server not found or no cached tools
-    pub async fn get_cached_tools(&self, id: Uuid) -> Vec<McpToolDefinition> {
-        match self.db.get_mcp_server(id).await {
+    pub async fn get_cached_tools(&self, org_id: i64, id: Uuid) -> Vec<McpToolDefinition> {
+        match self.db.get_mcp_server(org_id, id).await {
             Ok(Some(row)) => serde_json::from_value(row.cached_tools.clone()).unwrap_or_default(),
             _ => Vec::new(),
         }

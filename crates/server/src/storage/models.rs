@@ -627,6 +627,7 @@ pub struct UpdateMcpServer {
 #[derive(Debug, Clone, FromRow)]
 pub struct ImageRow {
     pub id: ImageId,
+    pub org_id: i64,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -641,6 +642,7 @@ pub struct ImageRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct ImageInfoRow {
     pub id: ImageId,
+    pub org_id: i64,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -651,6 +653,7 @@ pub struct ImageInfoRow {
 /// Input for creating an image
 #[derive(Debug, Clone)]
 pub struct CreateImageRow {
+    pub org_id: i64,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,

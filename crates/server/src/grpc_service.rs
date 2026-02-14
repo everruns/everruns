@@ -13,6 +13,7 @@ use crate::services::{
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskNotificationBroadcaster;
 use base64::Engine;
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
@@ -167,7 +168,11 @@ impl WorkerServiceImpl {
     /// Extracts MCP server UUIDs from capability IDs (format: "mcp:{uuid}"),
     /// batch-fetches all servers with cached tools in a single query,
     /// and converts to proto McpToolDef.
-    async fn build_mcp_tool_definitions(&self, agent: &everruns_core::Agent) -> Vec<McpToolDef> {
+    async fn build_mcp_tool_definitions(
+        &self,
+        org_id: i64,
+        agent: &everruns_core::Agent,
+    ) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
 
@@ -444,7 +449,7 @@ impl WorkerService for WorkerServiceImpl {
         // Build MCP tool definitions from agent's MCP capabilities
         // This resolves MCP tools so the worker doesn't need to look them up
         let mcp_tool_definitions = if let Some(ref a) = agent {
-            self.build_mcp_tool_definitions(a).await
+            self.build_mcp_tool_definitions(req.org_id, a).await
         } else {
             vec![]
         };
@@ -1916,7 +1921,8 @@ impl WorkerService for WorkerServiceImpl {
         let image_id = parse_uuid(req.image_id.as_ref())?;
 
         // Get image from storage
-        let image_row = match self.db.get_image(image_id).await {
+        // TODO: Thread org_id through image resolution proto messages
+        let image_row = match self.db.get_image(DEFAULT_ORG_ID, image_id).await {
             Ok(Some(row)) => row,
             Ok(None) => {
                 return Ok(Response::new(ResolveImageResponse {
@@ -1957,7 +1963,7 @@ impl WorkerService for WorkerServiceImpl {
             let image_id = parse_uuid(Some(&proto_id))?;
 
             // Get image from storage
-            match self.db.get_image(image_id).await {
+            match self.db.get_image(DEFAULT_ORG_ID, image_id).await {
                 Ok(Some(row)) => {
                     let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
                     images.insert(
@@ -1994,7 +2000,7 @@ impl WorkerService for WorkerServiceImpl {
         // List active MCP servers and find one matching the prefix
         let servers = self
             .mcp_server_service
-            .list_active_with_tools()
+            .list_active_with_tools(req.org_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list MCP servers: {}", e);

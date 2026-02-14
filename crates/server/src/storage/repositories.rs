@@ -1382,14 +1382,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             FROM llm_providers
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -1397,14 +1398,16 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
         let rows = sqlx::query_as::<_, LlmProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             FROM llm_providers
+            WHERE org_id = $1
             ORDER BY created_at DESC
             "#,
         )
+        .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -1413,6 +1416,7 @@ impl Database {
 
     pub async fn update_llm_provider(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmProvider,
     ) -> Result<Option<LlmProviderRow>> {
@@ -1423,18 +1427,19 @@ impl Database {
             r#"
             UPDATE llm_providers
             SET
-                name = COALESCE($2, name),
-                provider_type = COALESCE($3, provider_type),
-                base_url = COALESCE($4, base_url),
-                api_key_encrypted = COALESCE($5, api_key_encrypted),
-                api_key_set = COALESCE($6, api_key_set),
-                status = COALESCE($7, status),
-                settings = COALESCE($8, settings),
+                name = COALESCE($3, name),
+                provider_type = COALESCE($4, provider_type),
+                base_url = COALESCE($5, base_url),
+                api_key_encrypted = COALESCE($6, api_key_encrypted),
+                api_key_set = COALESCE($7, api_key_set),
+                status = COALESCE($8, status),
+                settings = COALESCE($9, settings),
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.name)
         .bind(&input.provider_type)
@@ -1449,8 +1454,9 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_llm_provider(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM llm_providers WHERE id = $1")
+    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM llm_providers WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -1461,12 +1467,14 @@ impl Database {
     /// Update provider's last_synced_at timestamp
     pub async fn update_provider_last_synced(
         &self,
+        org_id: i64,
         id: Uuid,
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE llm_providers SET last_synced_at = $2, updated_at = NOW() WHERE id = $1",
+            "UPDATE llm_providers SET last_synced_at = $3, updated_at = NOW() WHERE org_id = $1 AND id = $2",
         )
+        .bind(org_id)
         .bind(id)
         .bind(last_synced_at)
         .execute(&self.pool)
@@ -1610,14 +1618,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -1627,6 +1636,7 @@ impl Database {
 
     pub async fn get_llm_model_with_provider(
         &self,
+        org_id: i64,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
@@ -1635,9 +1645,10 @@ impl Database {
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
-            WHERE m.id = $1
+            WHERE m.org_id = $1 AND m.id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -1647,16 +1658,18 @@ impl Database {
 
     pub async fn list_llm_models_for_provider(
         &self,
+        org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<LlmModelRow>> {
         let rows = sqlx::query_as::<_, LlmModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
-            WHERE provider_id = $1
+            WHERE org_id = $1 AND provider_id = $2
             ORDER BY display_name ASC
             "#,
         )
+        .bind(org_id)
         .bind(provider_id)
         .fetch_all(&self.pool)
         .await?;
@@ -1684,6 +1697,7 @@ impl Database {
 
     pub async fn update_llm_model(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmModel,
     ) -> Result<Option<LlmModelRow>> {
@@ -1696,19 +1710,20 @@ impl Database {
             r#"
             UPDATE llm_models
             SET
-                model_id = COALESCE($2, model_id),
-                display_name = COALESCE($3, display_name),
-                capabilities = COALESCE($4, capabilities),
-                is_default = COALESCE($5, is_default),
-                is_favorite = COALESCE($6, is_favorite),
-                status = COALESCE($7, status),
-                last_seen_at = COALESCE($8, last_seen_at),
-                provider_metadata = COALESCE($9, provider_metadata),
+                model_id = COALESCE($3, model_id),
+                display_name = COALESCE($4, display_name),
+                capabilities = COALESCE($5, capabilities),
+                is_default = COALESCE($6, is_default),
+                is_favorite = COALESCE($7, is_favorite),
+                status = COALESCE($8, status),
+                last_seen_at = COALESCE($9, last_seen_at),
+                provider_metadata = COALESCE($10, provider_metadata),
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.model_id)
         .bind(&input.display_name)
@@ -1724,8 +1739,9 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_llm_model(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM llm_models WHERE id = $1")
+    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM llm_models WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -2331,14 +2347,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+    pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -2365,14 +2382,19 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
+    pub async fn get_mcp_server_by_name(
+        &self,
+        org_id: i64,
+        name: &str,
+    ) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
-            WHERE name = $1
+            WHERE org_id = $1 AND name = $2
             "#,
         )
+        .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
         .await?;
@@ -2380,14 +2402,16 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
+            WHERE org_id = $1
             ORDER BY created_at DESC
             "#,
         )
+        .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -2395,15 +2419,16 @@ impl Database {
     }
 
     /// List only active MCP servers (for capability listing)
-    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+    pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
-            WHERE status = 'active'
+            WHERE org_id = $1 AND status = 'active'
             ORDER BY name ASC
             "#,
         )
+        .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -2412,6 +2437,7 @@ impl Database {
 
     pub async fn update_mcp_server(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
@@ -2422,19 +2448,20 @@ impl Database {
             r#"
             UPDATE mcp_servers
             SET
-                name = COALESCE($2, name),
-                description = COALESCE($3, description),
-                url = COALESCE($4, url),
-                transport_type = COALESCE($5, transport_type),
-                status = COALESCE($6, status),
-                api_key_encrypted = COALESCE($7, api_key_encrypted),
-                api_key_set = COALESCE($8, api_key_set),
-                headers = COALESCE($9, headers),
-                settings = COALESCE($10, settings)
-            WHERE id = $1
+                name = COALESCE($3, name),
+                description = COALESCE($4, description),
+                url = COALESCE($5, url),
+                transport_type = COALESCE($6, transport_type),
+                status = COALESCE($7, status),
+                api_key_encrypted = COALESCE($8, api_key_encrypted),
+                api_key_set = COALESCE($9, api_key_set),
+                headers = COALESCE($10, headers),
+                settings = COALESCE($11, settings)
+            WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.name)
         .bind(&input.description)
@@ -2454,6 +2481,7 @@ impl Database {
     /// Update cached tools for an MCP server
     pub async fn update_mcp_server_tools(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
@@ -2461,12 +2489,13 @@ impl Database {
             r#"
             UPDATE mcp_servers
             SET
-                cached_tools = $2,
+                cached_tools = $3,
                 tools_cached_at = NOW()
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.cached_tools)
         .fetch_optional(&self.pool)
@@ -2475,8 +2504,9 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM mcp_servers WHERE id = $1")
+    pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM mcp_servers WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -2778,14 +2808,15 @@ impl Database {
     // Images
     // ============================================
 
-    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
+    pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
         let row = sqlx::query_as::<_, ImageRow>(
             r#"
-            INSERT INTO images (filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+            INSERT INTO images (org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
             "#,
         )
+        .bind(org_id)
         .bind(&input.filename)
         .bind(&input.content_type)
         .bind(input.size_bytes)
@@ -2799,14 +2830,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+    pub async fn get_image(&self, org_id: i64, id: Uuid) -> Result<Option<ImageRow>> {
         let row = sqlx::query_as::<_, ImageRow>(
             r#"
-            SELECT id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+            SELECT id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
             FROM images
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -2814,14 +2846,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+    pub async fn get_image_info(&self, org_id: i64, id: Uuid) -> Result<Option<ImageInfoRow>> {
         let row = sqlx::query_as::<_, ImageInfoRow>(
             r#"
-            SELECT id, filename, content_type, size_bytes, metadata, created_at
+            SELECT id, org_id, filename, content_type, size_bytes, metadata, created_at
             FROM images
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -2829,8 +2862,9 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM images WHERE id = $1")
+    pub async fn delete_image(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM images WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -2838,15 +2872,22 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
+    pub async fn list_images(
+        &self,
+        org_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ImageInfoRow>> {
         let rows = sqlx::query_as::<_, ImageInfoRow>(
             r#"
-            SELECT id, filename, content_type, size_bytes, metadata, created_at
+            SELECT id, org_id, filename, content_type, size_bytes, metadata, created_at
             FROM images
+            WHERE org_id = $1
             ORDER BY created_at DESC
-            LIMIT $1 OFFSET $2
+            LIMIT $2 OFFSET $3
             "#,
         )
+        .bind(org_id)
         .bind(limit)
         .bind(offset)
         .fetch_all(&self.pool)

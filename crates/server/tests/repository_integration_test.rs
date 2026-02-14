@@ -423,7 +423,7 @@ async fn test_llm_provider_crud() {
 
     // Get provider
     let fetched = backend
-        .get_llm_provider(provider.id.into())
+        .get_llm_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to get provider")
         .expect("Provider not found");
@@ -432,6 +432,7 @@ async fn test_llm_provider_crud() {
     // Update provider
     let updated = backend
         .update_llm_provider(
+            TEST_ORG_ID,
             provider.id.into(),
             UpdateLlmProvider {
                 name: Some("Updated Provider".to_string()),
@@ -449,14 +450,14 @@ async fn test_llm_provider_crud() {
 
     // List providers
     let providers = backend
-        .list_llm_providers()
+        .list_llm_providers(TEST_ORG_ID)
         .await
         .expect("Failed to list providers");
     assert!(providers.iter().any(|p| p.id == provider.id));
 
     // Delete provider
     let deleted = backend
-        .delete_llm_provider(provider.id.into())
+        .delete_llm_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to delete provider");
     assert!(deleted);
@@ -507,7 +508,7 @@ async fn test_llm_model_crud() {
 
     // Get model
     let fetched = backend
-        .get_llm_model(model.id.into())
+        .get_llm_model(TEST_ORG_ID, model.id.into())
         .await
         .expect("Failed to get model")
         .expect("Model not found");
@@ -515,7 +516,7 @@ async fn test_llm_model_crud() {
 
     // Get model with provider
     let with_provider = backend
-        .get_llm_model_with_provider(model.id.into())
+        .get_llm_model_with_provider(TEST_ORG_ID, model.id.into())
         .await
         .expect("Failed to get model with provider")
         .expect("Model not found");
@@ -524,6 +525,7 @@ async fn test_llm_model_crud() {
     // Update model
     let updated = backend
         .update_llm_model(
+            TEST_ORG_ID,
             model.id.into(),
             UpdateLlmModel {
                 display_name: Some("Updated GPT-4".to_string()),
@@ -537,15 +539,18 @@ async fn test_llm_model_crud() {
 
     // List models for provider
     let models = backend
-        .list_llm_models_for_provider(provider.id.into())
+        .list_llm_models_for_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to list models");
     assert!(models.iter().any(|m| m.id == model.id));
 
     // Cleanup
-    backend.delete_llm_model(model.id.into()).await.unwrap();
     backend
-        .delete_llm_provider(provider.id.into())
+        .delete_llm_model(TEST_ORG_ID, model.id.into())
+        .await
+        .unwrap();
+    backend
+        .delete_llm_provider(TEST_ORG_ID, provider.id.into())
         .await
         .unwrap();
 }
@@ -694,7 +699,7 @@ async fn test_mcp_server_crud() {
 
     // Get MCP server
     let fetched = backend
-        .get_mcp_server(server.id.into())
+        .get_mcp_server(TEST_ORG_ID, server.id.uuid())
         .await
         .expect("Failed to get MCP server")
         .expect("MCP server not found");
@@ -702,7 +707,7 @@ async fn test_mcp_server_crud() {
 
     // Get by name
     let by_name = backend
-        .get_mcp_server_by_name(&unique_name)
+        .get_mcp_server_by_name(TEST_ORG_ID, &unique_name)
         .await
         .expect("Failed to get MCP server by name")
         .expect("MCP server not found");
@@ -710,14 +715,14 @@ async fn test_mcp_server_crud() {
 
     // List MCP servers
     let servers = backend
-        .list_mcp_servers()
+        .list_mcp_servers(TEST_ORG_ID)
         .await
         .expect("Failed to list MCP servers");
     assert!(servers.iter().any(|s| s.id == server.id));
 
     // Delete MCP server
     let deleted = backend
-        .delete_mcp_server(server.id.into())
+        .delete_mcp_server(TEST_ORG_ID, server.id.uuid())
         .await
         .expect("Failed to delete MCP server");
     assert!(deleted);
@@ -874,15 +879,19 @@ async fn test_image_crud() {
 
     // Create image
     let image = backend
-        .create_image(CreateImageRow {
-            filename: "test.png".to_string(),
-            content_type: "image/png".to_string(),
-            size_bytes: 4,
-            data: vec![0x89, 0x50, 0x4E, 0x47], // PNG header
-            thumbnail_data: None,
-            thumbnail_content_type: None,
-            metadata: json!({}),
-        })
+        .create_image(
+            TEST_ORG_ID,
+            CreateImageRow {
+                org_id: TEST_ORG_ID,
+                filename: "test.png".to_string(),
+                content_type: "image/png".to_string(),
+                size_bytes: 4,
+                data: vec![0x89, 0x50, 0x4E, 0x47], // PNG header
+                thumbnail_data: None,
+                thumbnail_content_type: None,
+                metadata: json!({}),
+            },
+        )
         .await
         .expect("Failed to create image");
 
@@ -891,7 +900,7 @@ async fn test_image_crud() {
 
     // Get image
     let fetched = backend
-        .get_image(image.id.into())
+        .get_image(TEST_ORG_ID, image.id.uuid())
         .await
         .expect("Failed to get image")
         .expect("Image not found");
@@ -900,7 +909,7 @@ async fn test_image_crud() {
 
     // Get image info (without data)
     let info = backend
-        .get_image_info(image.id.into())
+        .get_image_info(TEST_ORG_ID, image.id.uuid())
         .await
         .expect("Failed to get image info")
         .expect("Image not found");
@@ -909,14 +918,14 @@ async fn test_image_crud() {
 
     // List images
     let images = backend
-        .list_images(10, 0)
+        .list_images(TEST_ORG_ID, 10, 0)
         .await
         .expect("Failed to list images");
     assert!(images.iter().any(|i| i.id == image.id));
 
     // Delete image
     let deleted = backend
-        .delete_image(image.id.into())
+        .delete_image(TEST_ORG_ID, image.id.uuid())
         .await
         .expect("Failed to delete image");
     assert!(deleted);

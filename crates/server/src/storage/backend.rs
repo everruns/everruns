@@ -385,33 +385,41 @@ impl StorageBackend {
         dispatch!(self, create_llm_provider_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
-        dispatch!(self, get_llm_provider, id)
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
+        dispatch!(self, get_llm_provider, org_id, id)
     }
 
-    pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
-        dispatch!(self, list_llm_providers)
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
+        dispatch!(self, list_llm_providers, org_id)
     }
 
     pub async fn update_llm_provider(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmProvider,
     ) -> Result<Option<LlmProviderRow>> {
-        dispatch!(self, update_llm_provider, id, input)
+        dispatch!(self, update_llm_provider, org_id, id, input)
     }
 
-    pub async fn delete_llm_provider(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_llm_provider, id)
+    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_llm_provider, org_id, id)
     }
 
     /// Update provider's last_synced_at timestamp
     pub async fn update_provider_last_synced(
         &self,
+        org_id: i64,
         id: Uuid,
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
-        dispatch!(self, update_provider_last_synced, id, last_synced_at)
+        dispatch!(
+            self,
+            update_provider_last_synced,
+            org_id,
+            id,
+            last_synced_at
+        )
     }
 
     /// Get a provider with its decrypted API key
@@ -461,22 +469,24 @@ impl StorageBackend {
         dispatch!(self, create_llm_model_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
-        dispatch!(self, get_llm_model, id)
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
+        dispatch!(self, get_llm_model, org_id, id)
     }
 
     pub async fn get_llm_model_with_provider(
         &self,
+        org_id: i64,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProviderRow>> {
-        dispatch!(self, get_llm_model_with_provider, id)
+        dispatch!(self, get_llm_model_with_provider, org_id, id)
     }
 
     pub async fn list_llm_models_for_provider(
         &self,
+        org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<LlmModelRow>> {
-        dispatch!(self, list_llm_models_for_provider, provider_id)
+        dispatch!(self, list_llm_models_for_provider, org_id, provider_id)
     }
 
     pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
@@ -485,14 +495,15 @@ impl StorageBackend {
 
     pub async fn update_llm_model(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateLlmModel,
     ) -> Result<Option<LlmModelRow>> {
-        dispatch!(self, update_llm_model, id, input)
+        dispatch!(self, update_llm_model, org_id, id, input)
     }
 
-    pub async fn delete_llm_model(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_llm_model, id)
+    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_llm_model, org_id, id)
     }
 
     pub async fn get_llm_model_by_model_id(
@@ -665,8 +676,8 @@ impl StorageBackend {
         dispatch!(self, create_mcp_server_with_id, org_id, id, input)
     }
 
-    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
-        dispatch!(self, get_mcp_server, id)
+    pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
+        dispatch!(self, get_mcp_server, org_id, id)
     }
 
     /// Batch fetch multiple MCP servers by IDs in a single query.
@@ -674,36 +685,42 @@ impl StorageBackend {
         dispatch!(self, get_mcp_servers_batch, ids)
     }
 
-    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
-        dispatch!(self, get_mcp_server_by_name, name)
+    pub async fn get_mcp_server_by_name(
+        &self,
+        org_id: i64,
+        name: &str,
+    ) -> Result<Option<McpServerRow>> {
+        dispatch!(self, get_mcp_server_by_name, org_id, name)
     }
 
-    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
-        dispatch!(self, list_mcp_servers)
+    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
+        dispatch!(self, list_mcp_servers, org_id)
     }
 
-    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
-        dispatch!(self, list_active_mcp_servers)
+    pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
+        dispatch!(self, list_active_mcp_servers, org_id)
     }
 
     pub async fn update_mcp_server(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
-        dispatch!(self, update_mcp_server, id, input)
+        dispatch!(self, update_mcp_server, org_id, id, input)
     }
 
     pub async fn update_mcp_server_tools(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
-        dispatch!(self, update_mcp_server_tools, id, input)
+        dispatch!(self, update_mcp_server_tools, org_id, id, input)
     }
 
-    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_mcp_server, id)
+    pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_mcp_server, org_id, id)
     }
 
     // ============================================
@@ -837,24 +854,29 @@ impl StorageBackend {
     // Images
     // ============================================
 
-    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
-        dispatch!(self, create_image, input)
+    pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
+        dispatch!(self, create_image, org_id, input)
     }
 
-    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
-        dispatch!(self, get_image, id)
+    pub async fn get_image(&self, org_id: i64, id: Uuid) -> Result<Option<ImageRow>> {
+        dispatch!(self, get_image, org_id, id)
     }
 
-    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
-        dispatch!(self, get_image_info, id)
+    pub async fn get_image_info(&self, org_id: i64, id: Uuid) -> Result<Option<ImageInfoRow>> {
+        dispatch!(self, get_image_info, org_id, id)
     }
 
-    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_image, id)
+    pub async fn delete_image(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_image, org_id, id)
     }
 
-    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
-        dispatch!(self, list_images, limit, offset)
+    pub async fn list_images(
+        &self,
+        org_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ImageInfoRow>> {
+        dispatch!(self, list_images, org_id, limit, offset)
     }
 
     // ============================================

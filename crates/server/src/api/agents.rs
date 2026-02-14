@@ -734,13 +734,13 @@ fn slugify(s: &str) -> String {
     tag = "agents"
 )]
 pub async fn preview_agent(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<PreviewAgentRequest>,
 ) -> Result<Json<AgentPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (system_prompt, tools) = state
         .capability_service
-        .preview(&req.system_prompt, &req.capabilities)
+        .preview(org.org_id, &req.system_prompt, &req.capabilities)
         .await
         .map_err(|e| {
             tracing::error!("Failed to generate agent preview: {}", e);

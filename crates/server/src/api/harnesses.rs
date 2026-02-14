@@ -332,13 +332,13 @@ pub async fn delete_harness(
     tag = "harnesses"
 )]
 pub async fn preview_harness(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<PreviewHarnessRequest>,
 ) -> Result<Json<HarnessPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (system_prompt, tools) = state
         .capability_service
-        .preview(&req.system_prompt, &req.capabilities)
+        .preview(org.org_id, &req.system_prompt, &req.capabilities)
         .await
         .map_err(|e| {
             tracing::error!("Failed to generate harness preview: {}", e);
