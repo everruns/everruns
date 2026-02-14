@@ -1089,6 +1089,82 @@ This capability is experimental and only available in development environments d
 - Resource management considerations
 - API stability concerns
 
+#### CodeSandbox
+
+- **Status**: Available (Dev only)
+- **ID**: `codesandbox`
+- **Purpose**: Create and manage cloud-based sandbox VMs via CodeSandbox API for isolated code execution
+- **System Prompt**: Guidance on API key setup, sandbox lifecycle, tool usage, best practices
+- **Architecture**: Two-tier API — Management API for lifecycle, Pint API for in-sandbox operations
+- **State Management**: Sandbox connection info stored in session secrets (encrypted at rest)
+- **Configuration**: API key stored as session secret `CSB_API_KEY`
+- **Dependencies**: `session_storage`
+- **Tools**:
+  - `csb_create_sandbox` - Create a new sandbox VM, optionally upload files
+    - Parameters:
+      - `title`: string - Sandbox title
+      - `template`: string - Template ID to fork from
+      - `upload_files`: array - Files to upload from session storage `[{session_path, sandbox_path}]`
+    - Returns: sandbox_id, status, workspace_path
+    - Policy: Auto
+  - `csb_exec` - Execute shell command in a sandbox (sync or async)
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `command`: string (required) - Shell command
+      - `wait`: boolean (default: true) - Wait for completion
+    - Returns: exec_id, status, exit_code, output
+    - Policy: Auto
+  - `csb_exec_status` - Check execution status and get output
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `exec_id`: string (required) - Execution ID
+    - Returns: exec_id, status, exit_code, output
+    - Policy: Auto
+  - `csb_read_file` - Read file from sandbox filesystem
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `path`: string (required) - File path
+    - Returns: path, content
+    - Policy: Auto
+  - `csb_write_file` - Write content to file in sandbox
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `path`: string (required) - File path
+      - `content`: string (required) - File content
+    - Returns: path, success
+    - Policy: Auto
+  - `csb_download_workspace` - Download entire workspace to session storage
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `sandbox_path`: string - Root path in sandbox (default: workspace_path)
+      - `session_path`: string - Destination in session storage (default: /workspace)
+    - Returns: files_downloaded, files_skipped, errors
+    - Policy: Auto
+  - `csb_list_sandboxes` - List all sandboxes in this session
+    - Parameters: none
+    - Returns: sandboxes array with sandbox_id, started_at
+    - Policy: Auto
+  - `csb_manage_sandbox` - Lifecycle management (shutdown, hibernate, delete)
+    - Parameters:
+      - `sandbox_id`: string (required) - Target sandbox
+      - `action`: string (required) - "shutdown", "hibernate", or "delete"
+    - Returns: sandbox_id, action, success
+    - Policy: Auto
+- **Icon**: "cloud"
+- **Category**: "Execution"
+
+##### Design Decision: Multiple Sandboxes Per Session
+
+Unlike DockerContainer (single container per session), CodeSandbox supports multiple sandboxes. This enables workflows like running frontend and backend in separate sandboxes, A/B testing configurations, or parallel execution.
+
+##### Design Decision: Encrypted State Storage
+
+Pitcher URL and token are persisted in session secrets (encrypted at rest) rather than plain-text KV store. The `pitcher_token` grants full access to the sandbox VM, so encryption is appropriate. This also avoids ~200ms+ latency per tool call from re-deriving connection info.
+
+##### Design Decision: Dev-Only Availability
+
+This capability is experimental and only available in development environments. The CodeSandbox API is external and requires an API key, and the integration is still being validated.
+
 ### Message Filters
 
 Capabilities can contribute message filters that modify how messages are retrieved from the database. This enables features like:

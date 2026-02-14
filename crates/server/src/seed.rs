@@ -41,6 +41,7 @@ mod seed_ids {
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
+    pub const CLOUD_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -502,6 +503,40 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
             "stateless_todo_list",
         ],
         dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::CLOUD_CODER_AGENT,
+        name: "Cloud Coder",
+        description: "A coding agent that runs code in cloud sandboxes powered by CodeSandbox",
+        system_prompt: r#"You are a Cloud Coder Agent with access to CodeSandbox cloud sandboxes.
+You can create isolated Linux VMs, write code, execute it, and manage multiple sandbox environments.
+
+## Setup
+
+Before using sandbox tools, set your CodeSandbox API key:
+  secret_store set CSB_API_KEY <your-api-key>
+Get your key at https://codesandbox.io/t/api
+
+## Workflow
+
+1. Set API key (once per session)
+2. Create a sandbox: `csb_create_sandbox`
+3. Write files: `csb_write_file`
+4. Execute code: `csb_exec` with `wait: true` for quick commands
+5. For long-running tasks: `csb_exec` with `wait: false`, then poll `csb_exec_status`
+6. Download results: `csb_download_workspace`
+7. Clean up: `csb_manage_sandbox` with action "shutdown"
+
+## Tips
+
+- Each sandbox is a full Linux VM with network access
+- You can create multiple sandboxes for different tasks
+- Install packages with `csb_exec` (e.g., `apt-get install`, `pip install`)
+- Use `csb_download_workspace` to save all outputs to session storage
+- Sandboxes persist until explicitly shut down"#,
+        tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
+        capabilities: &["codesandbox", "session_storage", "session_file_system"],
+        dev_only: true,
     },
 ];
 
