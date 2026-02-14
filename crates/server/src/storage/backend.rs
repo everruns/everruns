@@ -681,7 +681,11 @@ impl StorageBackend {
     }
 
     /// Batch fetch multiple MCP servers by IDs in a single query.
-    pub async fn get_mcp_servers_batch(&self, org_id: i64, ids: &[Uuid]) -> Result<Vec<McpServerRow>> {
+    pub async fn get_mcp_servers_batch(
+        &self,
+        org_id: i64,
+        ids: &[Uuid],
+    ) -> Result<Vec<McpServerRow>> {
         dispatch!(self, get_mcp_servers_batch, org_id, ids)
     }
 
