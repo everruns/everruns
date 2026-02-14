@@ -170,7 +170,7 @@ impl WorkerServiceImpl {
     /// and converts to proto McpToolDef.
     async fn build_mcp_tool_definitions(
         &self,
-        _org_id: i64,
+        org_id: i64,
         agent: &everruns_core::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
@@ -192,7 +192,7 @@ impl WorkerServiceImpl {
         // Batch fetch all MCP servers with cached tools in one query
         let servers = match self
             .mcp_server_service
-            .get_batch_with_tools(&server_ids)
+            .get_batch_with_tools(org_id, &server_ids)
             .await
         {
             Ok(s) => s,

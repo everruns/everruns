@@ -2364,7 +2364,11 @@ impl Database {
     }
 
     /// Batch fetch multiple MCP servers by IDs in a single query.
-    pub async fn get_mcp_servers_batch(&self, ids: &[Uuid]) -> Result<Vec<McpServerRow>> {
+    pub async fn get_mcp_servers_batch(
+        &self,
+        org_id: i64,
+        ids: &[Uuid],
+    ) -> Result<Vec<McpServerRow>> {
         if ids.is_empty() {
             return Ok(vec![]);
         }
@@ -2372,9 +2376,10 @@ impl Database {
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
-            WHERE id = ANY($1)
+            WHERE org_id = $1 AND id = ANY($2)
             "#,
         )
+        .bind(org_id)
         .bind(ids)
         .fetch_all(&self.pool)
         .await?;

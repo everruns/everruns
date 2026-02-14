@@ -71,9 +71,10 @@ impl McpServerService {
     /// Returns a map of server_id -> (McpServer, Vec<McpToolDefinition>).
     pub async fn get_batch_with_tools(
         &self,
+        org_id: i64,
         ids: &[Uuid],
     ) -> Result<HashMap<Uuid, (McpServer, Vec<McpToolDefinition>)>> {
-        let rows = self.db.get_mcp_servers_batch(ids).await?;
+        let rows = self.db.get_mcp_servers_batch(org_id, ids).await?;
         Ok(rows
             .iter()
             .map(|row| {

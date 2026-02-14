@@ -2153,11 +2153,20 @@ impl InMemoryDatabase {
     }
 
     /// Batch fetch multiple MCP servers by IDs.
-    pub async fn get_mcp_servers_batch(&self, ids: &[Uuid]) -> Result<Vec<McpServerRow>> {
+    pub async fn get_mcp_servers_batch(
+        &self,
+        org_id: i64,
+        ids: &[Uuid],
+    ) -> Result<Vec<McpServerRow>> {
         let servers = self.mcp_servers.read();
         Ok(ids
             .iter()
-            .filter_map(|id| servers.get(&McpServerId::from_uuid(*id)).cloned())
+            .filter_map(|id| {
+                servers
+                    .get(&McpServerId::from_uuid(*id))
+                    .filter(|s| s.org_id == org_id)
+                    .cloned()
+            })
             .collect())
     }
 
