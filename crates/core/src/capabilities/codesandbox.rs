@@ -39,6 +39,8 @@ const EXEC_POLL_MAX_WAIT: Duration = Duration::from_secs(120);
 const SSE_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const PINT_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const PINT_READY_MAX_WAIT: Duration = Duration::from_secs(30);
+/// Auto-hibernate after 5 minutes of inactivity (safety net)
+const HIBERNATE_TIMEOUT_SECS: u64 = 300;
 
 // ============================================================================
 // API Response Types
@@ -820,6 +822,7 @@ impl Tool for CsbCreateSandboxTool {
             "privacy": 2,
             "runtime": "vm",
             "settings": { "use_pint": true },
+            "hibernationTimeoutSeconds": HIBERNATE_TIMEOUT_SECS,
         });
         if let Some(template) = arguments
             .get("template")
