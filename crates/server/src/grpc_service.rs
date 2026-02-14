@@ -1365,8 +1365,16 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         let task_id = store.enqueue_task(task).await.map_err(|e| {
-            tracing::error!("Failed to enqueue task: {}", e);
-            Status::internal("Failed to enqueue task")
+            if matches!(
+                e,
+                everruns_durable::StoreError::TaskQueueLimitExceeded { .. }
+            ) {
+                tracing::warn!("Task queue limit exceeded: {}", e);
+                Status::resource_exhausted(e.to_string())
+            } else {
+                tracing::error!("Failed to enqueue task: {}", e);
+                Status::internal("Failed to enqueue task")
+            }
         })?;
 
         // Record ActivityScheduled event

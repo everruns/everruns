@@ -44,12 +44,16 @@ use fail::fail_point;
 #[derive(Clone)]
 pub struct PostgresWorkflowEventStore {
     pool: PgPool,
+    max_pending_tasks_per_workflow: u32,
 }
 
 impl PostgresWorkflowEventStore {
     /// Create a new PostgreSQL store with the given connection pool
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            max_pending_tasks_per_workflow: super::store::max_pending_tasks_per_workflow_from_env(),
+        }
     }
 
     /// Get a reference to the connection pool
@@ -322,6 +326,31 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self, task))]
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
+        let limit = self.max_pending_tasks_per_workflow;
+
+        // Check per-workflow pending task count before inserting
+        let pending_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*) FROM durable_task_queue
+            WHERE workflow_id = $1 AND status = 'pending'
+            "#,
+        )
+        .bind(task.workflow_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to count pending tasks: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if pending_count >= limit as i64 {
+            return Err(StoreError::TaskQueueLimitExceeded {
+                workflow_id: task.workflow_id,
+                current: pending_count as u32,
+                limit,
+            });
+        }
+
         let task_id = Uuid::now_v7();
         let options_json = serde_json::to_value(&task.options)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;

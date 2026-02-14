@@ -9,6 +9,18 @@ use uuid::Uuid;
 
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 
+/// Default max pending (unclaimed) tasks per workflow.
+/// Prevents a single workflow from flooding the queue.
+pub const DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW: u32 = 100;
+
+/// Read max pending tasks per workflow from env, falling back to default.
+pub fn max_pending_tasks_per_workflow_from_env() -> u32 {
+    std::env::var("DURABLE_MAX_PENDING_TASKS_PER_WORKFLOW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW)
+}
+
 /// Error type for store operations
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -39,6 +51,16 @@ pub enum StoreError {
     /// Schedule limit exceeded
     #[error("schedule limit exceeded: {current}/{limit} schedules")]
     ScheduleLimitExceeded { current: u32, limit: u32 },
+
+    /// Task queue limit exceeded (per-workflow pending task cap)
+    #[error(
+        "task queue limit exceeded for workflow {workflow_id}: {current}/{limit} pending tasks"
+    )]
+    TaskQueueLimitExceeded {
+        workflow_id: Uuid,
+        current: u32,
+        limit: u32,
+    },
 
     /// Invalid cron expression
     #[error("invalid cron expression: {0}")]
