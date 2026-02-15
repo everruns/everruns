@@ -62,7 +62,7 @@ All state is stored in session **secrets** (encrypted at rest via AES-256-GCM en
 | `VmStartResponse` | `pitcher_url`, `pitcher_token`, `workspace_path?` | `POST /vm/{id}/start` response |
 | `ExecInfo` | `id`, `status`, `exit_code?` | `GET /api/v1/execs/{id}` response |
 | `FileContent` | `path`, `content` | `GET /api/v1/files/{path}` response |
-| `DirEntry` | `name`, `entry_type?` | `GET /api/v1/directories/{path}` response |
+| `DirEntry` | `name`, `path`, `is_dir`, `size` | `GET /api/v1/directories/{path}` → `{files: [...]}` |
 
 ## API Integration
 

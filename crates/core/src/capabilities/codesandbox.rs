@@ -80,10 +80,24 @@ pub struct FileContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DirEntry {
     pub name: String,
-    #[serde(rename = "type")]
-    pub entry_type: Option<String>,
+    /// Full path of the entry (e.g. "/workspace/src")
+    #[serde(default)]
+    pub path: String,
+    /// Whether this entry is a directory
+    #[serde(default)]
+    pub is_dir: bool,
+    /// File size in bytes
+    #[serde(default)]
+    pub size: u64,
+}
+
+/// Wrapper for the Pint directory listing response: `{"files": [...], "path": "..."}`
+#[derive(Debug, Clone, Deserialize)]
+struct DirListResponse {
+    files: Vec<DirEntry>,
 }
 
 // ============================================================================
@@ -482,13 +496,15 @@ impl CodeSandboxClient {
                 None,
             )
             .await?;
-        // Response may be an array directly or wrapped
-        if let Some(arr) = resp.as_array() {
-            serde_json::from_value(Value::Array(arr.clone()))
-                .map_err(|e| format!("Failed to parse directory listing: {e}"))
+        // Pint API returns {"files": [...], "path": "..."} or an error object
+        if resp.get("files").is_some() {
+            let listing: DirListResponse = serde_json::from_value(resp)
+                .map_err(|e| format!("Failed to parse directory listing: {e}"))?;
+            Ok(listing.files)
+        } else if let Some(msg) = resp.get("message").and_then(|m| m.as_str()) {
+            Err(format!("Directory listing error: {msg}"))
         } else {
-            serde_json::from_value(resp)
-                .map_err(|e| format!("Failed to parse directory listing: {e}"))
+            Err(format!("Unexpected directory listing response: {resp}"))
         }
     }
 }
@@ -1399,11 +1415,7 @@ impl Tool for CsbDownloadWorkspaceTool {
                     format!("{}/{}", dir_path, entry.name)
                 };
 
-                let is_dir = entry
-                    .entry_type
-                    .as_deref()
-                    .map(|t| t == "directory" || t == "dir")
-                    .unwrap_or(false);
+                let is_dir = entry.is_dir;
 
                 if is_dir {
                     dirs_to_visit.push(full_path);
@@ -2125,10 +2137,13 @@ mod tests {
             let mock_server = MockServer::start().await;
             Mock::given(method("GET"))
                 .and(path("/api/v1/directories/project"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                    {"name": "main.py", "type": "file"},
-                    {"name": "src", "type": "directory"}
-                ])))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "files": [
+                        {"name": "main.py", "path": "/project/main.py", "isDir": false, "size": 42},
+                        {"name": "src", "path": "/project/src", "isDir": true, "size": 0}
+                    ],
+                    "path": "/project"
+                })))
                 .mount(&mock_server)
                 .await;
 
@@ -2140,7 +2155,9 @@ mod tests {
             let entries = result.unwrap();
             assert_eq!(entries.len(), 2);
             assert_eq!(entries[0].name, "main.py");
+            assert!(!entries[0].is_dir);
             assert_eq!(entries[1].name, "src");
+            assert!(entries[1].is_dir);
         }
 
         // --- Error response tests ---
