@@ -185,8 +185,12 @@ pub async fn run(
     let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());
 
     // Create module-specific states
-    let sessions_state =
-        api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+    let sessions_state = api::sessions::AppState::new(
+        db.clone(),
+        runner.clone(),
+        auth_state.clone(),
+        encryption.clone(),
+    );
     let messages_state =
         api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
     let tool_results_state =
@@ -274,6 +278,12 @@ pub async fn run(
     let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
     let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+    let user_connections_state = api::user_connections::AppState {
+        db: db.clone(),
+        encryption: encryption.clone(),
+        auth: auth_state.clone(),
+        auth_config: auth_config.clone(),
+    };
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -308,7 +318,8 @@ pub async fn run(
         .merge(api::schedules::routes(schedules_state))
         .merge(api::images::routes(images_state))
         .merge(api::skills::routes(skills_state))
-        .merge(api::organizations::routes(organizations_state));
+        .merge(api::organizations::routes(organizations_state))
+        .merge(api::user_connections::routes(user_connections_state));
 
     // Add auth-specific routes if the backend provides them
     if let Some(auth_routes) = auth_backend.auth_routes() {

@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::config::{GitHubOAuthConfig, GoogleOAuthConfig};
+use super::config::{GitHubConnectionConfig, GitHubOAuthConfig, GoogleOAuthConfig};
 
 /// OAuth provider type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,6 +267,8 @@ struct GitHubTokenResponse {
     access_token: String,
     #[allow(dead_code)]
     token_type: String,
+    #[allow(dead_code)]
+    scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,6 +286,99 @@ struct GitHubEmail {
     primary: bool,
     #[allow(dead_code)]
     verified: bool,
+}
+
+/// Result of GitHub connection OAuth exchange (repo access, not login)
+#[derive(Debug, Clone)]
+pub struct GitHubConnectionResult {
+    /// GitHub access token (with repo scope)
+    pub access_token: String,
+    /// GitHub user ID
+    pub user_id: String,
+    /// GitHub username (login)
+    pub username: String,
+    /// Scopes granted
+    pub scopes: String,
+}
+
+/// GitHub Connection OAuth service (separate OAuth App for repo access)
+pub struct GitHubConnectionService {
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
+}
+
+impl GitHubConnectionService {
+    pub fn new(config: &GitHubConnectionConfig) -> Self {
+        Self {
+            client_id: config.client_id.clone(),
+            client_secret: config.client_secret.clone(),
+            redirect_uri: config.redirect_uri.clone(),
+        }
+    }
+
+    /// Generate authorization URL with repo scope
+    pub fn authorization_url(&self, state: &str) -> OAuthAuthorizationUrl {
+        let params = [
+            ("client_id", self.client_id.as_str()),
+            ("redirect_uri", self.redirect_uri.as_str()),
+            ("scope", "repo read:user"),
+            ("state", state),
+        ];
+
+        let query = params
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+
+        OAuthAuthorizationUrl {
+            url: format!("https://github.com/login/oauth/authorize?{}", query),
+            state: state.to_string(),
+        }
+    }
+
+    /// Exchange code for access token + user info
+    pub async fn exchange_code(&self, code: &str) -> Result<GitHubConnectionResult> {
+        let client = reqwest::Client::new();
+
+        let token_response: GitHubTokenResponse = client
+            .post("https://github.com/login/oauth/access_token")
+            .header("Accept", "application/json")
+            .form(&[
+                ("client_id", self.client_id.as_str()),
+                ("client_secret", self.client_secret.as_str()),
+                ("code", code),
+                ("redirect_uri", self.redirect_uri.as_str()),
+            ])
+            .send()
+            .await
+            .context("Failed to exchange code")?
+            .json()
+            .await
+            .context("Failed to parse token response")?;
+
+        let access_token = &token_response.access_token;
+
+        // Fetch user info to get username
+        let user_info: GitHubUserInfo = client
+            .get("https://api.github.com/user")
+            .header("User-Agent", "Everruns")
+            .bearer_auth(access_token)
+            .send()
+            .await
+            .context("Failed to fetch user info")?
+            .json()
+            .await
+            .context("Failed to parse user info")?;
+
+        Ok(GitHubConnectionResult {
+            access_token: token_response.access_token,
+            user_id: user_info.id.to_string(),
+            username: user_info.login,
+            scopes: token_response.scope.unwrap_or_default(),
+        })
+    }
 }
 
 /// URL encoding helper

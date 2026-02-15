@@ -707,6 +707,9 @@ Tools:
 - `csb_download_workspace` - Download sandbox workspace to session storage
 - `csb_list_sandboxes` - List session sandboxes
 - `csb_manage_sandbox` - Shutdown, hibernate, or delete a sandbox
+- `csb_git_clone` - Clone a git repository into a sandbox (auto-uses connected GitHub credentials)
+
+Git cloning: Use `csb_git_clone` to clone repositories. If the user has connected their GitHub account (Settings > Connections), private repos are automatically authenticated. For public repos, no credentials are needed. Supports "user/repo" shorthand.
 
 All tools except `csb_create_sandbox` and `csb_list_sandboxes` require a `sandbox_id`.
 Sandboxes auto-hibernate after 5 minutes of inactivity.
@@ -724,6 +727,7 @@ Always DELETE sandboxes when done (shutdown/hibernate leave them on the dashboar
             Box::new(CsbDownloadWorkspaceTool),
             Box::new(CsbListSandboxesTool),
             Box::new(CsbManageSandboxTool),
+            Box::new(CsbGitCloneTool),
         ]
     }
 
@@ -1643,6 +1647,293 @@ impl Tool for CsbManageSandboxTool {
 }
 
 // ============================================================================
+// CsbGitCloneTool
+// ============================================================================
+
+pub struct CsbGitCloneTool;
+
+#[async_trait]
+impl Tool for CsbGitCloneTool {
+    fn name(&self) -> &str {
+        "csb_git_clone"
+    }
+
+    fn description(&self) -> &str {
+        "Clone a git repository into a CodeSandbox VM. Automatically uses the user's \
+         connected GitHub credentials (GITHUB_TOKEN) if available. For private repos, \
+         the user must have connected their GitHub account in Settings > Connections."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "sandbox_id": {
+                    "type": "string",
+                    "description": "Sandbox ID to clone into"
+                },
+                "repo_url": {
+                    "type": "string",
+                    "description": "Repository URL (e.g., 'https://github.com/user/repo' or 'user/repo' shorthand)"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to clone (optional, defaults to default branch)"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Clone destination path inside sandbox (optional, defaults to /project/workspace/<repo_name>)"
+                }
+            },
+            "required": ["sandbox_id", "repo_url"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "csb_git_clone requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let sandbox_id = match required_str(&arguments, "sandbox_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let repo_url_raw = match required_str(&arguments, "repo_url") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let branch = arguments.get("branch").and_then(|v| v.as_str());
+        let clone_path = arguments.get("path").and_then(|v| v.as_str());
+
+        let api_key = match get_api_key(context).await {
+            Ok(k) => k,
+            Err(e) => return e,
+        };
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        // Normalize repo URL: "user/repo" → "https://github.com/user/repo.git"
+        let repo_url = normalize_repo_url(repo_url_raw);
+
+        // Extract repo name for default clone path
+        let repo_name = repo_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("repo")
+            .trim_end_matches(".git");
+        let default_path = format!("/project/workspace/{}", repo_name);
+        let target_path = clone_path.unwrap_or(&default_path);
+
+        // Try to get GITHUB_TOKEN from session secrets for authentication
+        let github_token = get_github_token(context).await;
+
+        let client = CodeSandboxClient::new(api_key);
+
+        // Step 1: Set up git credential helper if we have a token
+        if let Some(ref token) = github_token {
+            debug!("Setting up git credential helper for authenticated clone");
+            let credential_script = format!(
+                r#"#!/bin/sh
+echo "protocol=https"
+echo "host=github.com"
+echo "username=oauth2"
+echo "password={token}""#
+            );
+
+            // Write credential helper script
+            let write_helper = client
+                .exec_create(
+                    &state,
+                    "bash",
+                    vec![
+                        "-c".to_string(),
+                        format!(
+                            "mkdir -p /tmp && cat > /tmp/git-credential-helper.sh << 'CREDEOF'\n{credential_script}\nCREDEOF\nchmod +x /tmp/git-credential-helper.sh"
+                        ),
+                    ],
+                )
+                .await;
+
+            if let Err(e) = write_helper {
+                warn!("Failed to write credential helper: {e}");
+                // Continue without auth — will fail for private repos
+            } else if let Ok(exec_info) = write_helper {
+                let _ = poll_exec_completion(&client, &state, &exec_info.id).await;
+            }
+
+            // Configure git to use the credential helper
+            let configure_git = client
+                .exec_create(
+                    &state,
+                    "bash",
+                    vec![
+                        "-c".to_string(),
+                        "git config --global credential.helper '/tmp/git-credential-helper.sh'"
+                            .to_string(),
+                    ],
+                )
+                .await;
+
+            if let Ok(exec_info) = configure_git {
+                let _ = poll_exec_completion(&client, &state, &exec_info.id).await;
+            }
+        }
+
+        // Step 2: Build and run git clone command
+        let mut clone_cmd = format!("git clone --depth 1");
+        if let Some(b) = branch {
+            clone_cmd.push_str(&format!(" --branch {b}"));
+        }
+        clone_cmd.push_str(&format!(" {repo_url} {target_path}"));
+
+        debug!("Cloning repository: {clone_cmd}");
+        let exec_info = match client
+            .exec_create(&state, "bash", vec!["-c".to_string(), clone_cmd])
+            .await
+        {
+            Ok(info) => info,
+            Err(e) => return ToolExecutionResult::tool_error(e),
+        };
+
+        // Poll for completion
+        let output = match poll_exec_completion(&client, &state, &exec_info.id).await {
+            Ok(o) => o,
+            Err(e) => return e,
+        };
+
+        // Step 3: Get the HEAD commit SHA
+        let commit_sha = {
+            let sha_exec = client
+                .exec_create(
+                    &state,
+                    "bash",
+                    vec![
+                        "-c".to_string(),
+                        format!("cd {target_path} && git rev-parse --short HEAD"),
+                    ],
+                )
+                .await;
+            if let Ok(exec_info) = sha_exec {
+                if let Ok(sha_output) = poll_exec_completion(&client, &state, &exec_info.id).await {
+                    sha_output.trim().to_string()
+                } else {
+                    "unknown".to_string()
+                }
+            } else {
+                "unknown".to_string()
+            }
+        };
+
+        // Step 4: Clean up credential helper (security)
+        if github_token.is_some() {
+            let cleanup = client
+                .exec_create(
+                    &state,
+                    "bash",
+                    vec![
+                        "-c".to_string(),
+                        "rm -f /tmp/git-credential-helper.sh && git config --global --unset credential.helper"
+                            .to_string(),
+                    ],
+                )
+                .await;
+            if let Ok(exec_info) = cleanup {
+                let _ = poll_exec_completion(&client, &state, &exec_info.id).await;
+            }
+        }
+
+        // Check if clone succeeded (non-empty output usually means error)
+        if output.contains("fatal:") || output.contains("error:") {
+            return ToolExecutionResult::tool_error(format!(
+                "Git clone failed: {}",
+                output.lines().take(5).collect::<Vec<_>>().join("\n")
+            ));
+        }
+
+        ToolExecutionResult::success(json!({
+            "sandbox_id": sandbox_id,
+            "repo_url": repo_url,
+            "path": target_path,
+            "branch": branch.unwrap_or("default"),
+            "commit": commit_sha,
+            "authenticated": github_token.is_some()
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+/// Normalize repository URL: "user/repo" → "https://github.com/user/repo.git"
+fn normalize_repo_url(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("git@") {
+        url.to_string()
+    } else if url.contains('/') && !url.contains(' ') {
+        // Looks like "user/repo" shorthand
+        format!("https://github.com/{url}.git")
+    } else {
+        url.to_string()
+    }
+}
+
+/// Read GITHUB_TOKEN from session secrets (injected from user connections)
+async fn get_github_token(context: &ToolContext) -> Option<String> {
+    let storage = context.storage_store.as_ref()?;
+    match storage
+        .get_secret(context.session_id, "GITHUB_TOKEN")
+        .await
+    {
+        Ok(Some(token)) if !token.is_empty() => Some(token),
+        Ok(_) => None,
+        Err(e) => {
+            debug!("No GITHUB_TOKEN available: {e}");
+            None
+        }
+    }
+}
+
+/// Poll exec completion and return output
+async fn poll_exec_completion(
+    client: &CodeSandboxClient,
+    state: &SandboxState,
+    exec_id: &str,
+) -> Result<String, ToolExecutionResult> {
+    let start = std::time::Instant::now();
+    loop {
+        if start.elapsed() > EXEC_POLL_MAX_WAIT {
+            return Ok("(timed out waiting for completion)".to_string());
+        }
+
+        match client.exec_get(state, exec_id).await {
+            Ok(info) if info.status == "finished" => {
+                return match client.exec_get_output(state, exec_id).await {
+                    Ok(output) => Ok(output),
+                    Err(_) => Ok(String::new()),
+                };
+            }
+            Ok(_) => {
+                tokio::time::sleep(EXEC_POLL_INTERVAL).await;
+            }
+            Err(e) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Failed to check exec status: {e}"
+                )));
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1666,7 +1957,7 @@ mod tests {
     fn test_capability_has_all_tools() {
         let cap = CodeSandboxCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 9);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"csb_create_sandbox"));
@@ -1677,6 +1968,7 @@ mod tests {
         assert!(names.contains(&"csb_download_workspace"));
         assert!(names.contains(&"csb_list_sandboxes"));
         assert!(names.contains(&"csb_manage_sandbox"));
+        assert!(names.contains(&"csb_git_clone"));
     }
 
     #[test]
@@ -1688,6 +1980,7 @@ mod tests {
         assert!(prompt.contains("Experimental"));
         assert!(prompt.contains("csb_exec"));
         assert!(prompt.contains("csb_download_workspace"));
+        assert!(prompt.contains("csb_git_clone"));
         assert!(prompt.contains("Prerequisite"));
         // Should NOT duplicate workflow steps (that's the agent's job)
         assert!(!prompt.contains("Set API key (once per session)"));

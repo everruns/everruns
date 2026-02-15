@@ -811,3 +811,36 @@ pub struct CreateSkillFileRow {
     pub is_binary: bool,
     pub size_bytes: i64,
 }
+
+// ============================================
+// User Connection models
+// ============================================
+
+/// User connection row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct UserConnectionRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub provider: String,
+    pub provider_user_id: Option<String>,
+    pub provider_username: Option<String>,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub scopes: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a user connection
+#[derive(Debug, Clone)]
+pub struct CreateUserConnectionRow {
+    pub user_id: Uuid,
+    pub provider: String,
+    pub provider_user_id: Option<String>,
+    pub provider_username: Option<String>,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub scopes: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}

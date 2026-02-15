@@ -342,6 +342,18 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "value_encrypted",
         id_column: "id",
     },
+    // User connection access tokens are encrypted at rest
+    EncryptedColumn {
+        table: "user_connections",
+        column: "access_token_encrypted",
+        id_column: "id",
+    },
+    // User connection refresh tokens are encrypted at rest
+    EncryptedColumn {
+        table: "user_connections",
+        column: "refresh_token_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

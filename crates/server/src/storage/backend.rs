@@ -1028,4 +1028,45 @@ impl StorageBackend {
     ) -> Result<Vec<SessionSecretInfoRow>> {
         dispatch!(self, list_session_secrets, session_id)
     }
+
+    pub async fn upsert_session_secret(
+        &self,
+        input: UpsertSessionSecret,
+    ) -> Result<SessionSecretRow> {
+        dispatch!(self, upsert_session_secret, input)
+    }
+
+    // ============================================
+    // User Connections
+    // ============================================
+
+    pub async fn upsert_user_connection(
+        &self,
+        input: CreateUserConnectionRow,
+    ) -> Result<UserConnectionRow> {
+        dispatch!(self, upsert_user_connection, input)
+    }
+
+    pub async fn get_user_connection(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<UserConnectionRow>> {
+        dispatch!(self, get_user_connection, user_id, provider)
+    }
+
+    pub async fn list_user_connections(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserConnectionRow>> {
+        dispatch!(self, list_user_connections, user_id)
+    }
+
+    pub async fn delete_user_connection(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<bool> {
+        dispatch!(self, delete_user_connection, user_id, provider)
+    }
 }

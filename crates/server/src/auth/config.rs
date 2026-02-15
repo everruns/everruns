@@ -45,10 +45,18 @@ pub struct GoogleOAuthConfig {
     pub allowed_domains: Option<Vec<String>>,
 }
 
-/// GitHub OAuth configuration
+/// GitHub OAuth configuration (for login)
 #[derive(Debug, Clone)]
 pub struct GitHubOAuthConfig {
     pub base: OAuthProviderConfig,
+}
+
+/// GitHub Connection OAuth configuration (for repo access, separate OAuth App)
+#[derive(Debug, Clone)]
+pub struct GitHubConnectionConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
 }
 
 /// Admin user configuration (for admin-only mode or initial setup)
@@ -93,8 +101,10 @@ pub struct AuthConfig {
     pub admin: Option<AdminConfig>,
     /// Google OAuth configuration
     pub google: Option<GoogleOAuthConfig>,
-    /// GitHub OAuth configuration
+    /// GitHub OAuth configuration (login)
     pub github: Option<GitHubOAuthConfig>,
+    /// GitHub Connection OAuth configuration (repo access, separate OAuth App)
+    pub github_connection: Option<GitHubConnectionConfig>,
     /// Whether to disable password authentication
     pub disable_password_auth: bool,
     /// Whether to disable signup (registration)
@@ -112,6 +122,7 @@ impl Default for AuthConfig {
             admin: None,
             google: None,
             github: None,
+            github_connection: None,
             disable_password_auth: false,
             disable_signup: false,
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
@@ -223,6 +234,30 @@ impl AuthConfig {
             _ => None,
         };
 
+        // GitHub Connection OAuth (separate app for repo access)
+        let github_connection = match (
+            std::env::var("GITHUB_CONNECTION_CLIENT_ID"),
+            std::env::var("GITHUB_CONNECTION_CLIENT_SECRET"),
+        ) {
+            (Ok(client_id), Ok(client_secret))
+                if !client_id.is_empty() && !client_secret.is_empty() =>
+            {
+                let redirect_uri =
+                    std::env::var("GITHUB_CONNECTION_REDIRECT_URI").unwrap_or_else(|_| {
+                        format!(
+                            "{}{}/v1/user/connections/github/callback",
+                            base_url, api_prefix
+                        )
+                    });
+                Some(GitHubConnectionConfig {
+                    client_id,
+                    client_secret,
+                    redirect_uri,
+                })
+            }
+            _ => None,
+        };
+
         let disable_password_auth = std::env::var("AUTH_DISABLE_PASSWORD")
             .map(|s| s.to_lowercase() == "true" || s == "1")
             .unwrap_or(false);
@@ -244,6 +279,7 @@ impl AuthConfig {
             admin,
             google,
             github,
+            github_connection,
             disable_password_auth,
             disable_signup,
             session_max_age,
