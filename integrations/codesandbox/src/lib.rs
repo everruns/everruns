@@ -1789,7 +1789,7 @@ echo "password={token}""#
         }
 
         // Step 2: Build and run git clone command
-        let mut clone_cmd = format!("git clone --depth 1");
+        let mut clone_cmd = "git clone --depth 1".to_string();
         if let Some(b) = branch {
             clone_cmd.push_str(&format!(" --branch {b}"));
         }
@@ -1889,10 +1889,7 @@ fn normalize_repo_url(url: &str) -> String {
 /// Read GITHUB_TOKEN from session secrets (injected from user connections)
 async fn get_github_token(context: &ToolContext) -> Option<String> {
     let storage = context.storage_store.as_ref()?;
-    match storage
-        .get_secret(context.session_id, "GITHUB_TOKEN")
-        .await
-    {
+    match storage.get_secret(context.session_id, "GITHUB_TOKEN").await {
         Ok(Some(token)) if !token.is_empty() => Some(token),
         Ok(_) => None,
         Err(e) => {

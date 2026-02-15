@@ -70,6 +70,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
+- `specs/user-connections.md` - User connections (GitHub, GitLab) for repo access
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/usage-tracking.md` - LLM token usage tracking

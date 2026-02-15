@@ -69,18 +69,12 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
         .route("/v1/user/connections", post(create_connection))
-        .route(
-            "/v1/user/connections/{provider}",
-            delete(delete_connection),
-        )
+        .route("/v1/user/connections/{provider}", delete(delete_connection))
         .route(
             "/v1/user/connections/github/authorize",
             get(github_authorize),
         )
-        .route(
-            "/v1/user/connections/github/callback",
-            get(github_callback),
-        )
+        .route("/v1/user/connections/github/callback", get(github_callback))
         .with_state(state)
 }
 
@@ -89,14 +83,10 @@ pub async fn list_connections(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<ConnectionResponse>>, StatusCode> {
-    let rows = state
-        .db
-        .list_user_connections(auth.user_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list user connections: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let rows = state.db.list_user_connections(auth.id).await.map_err(|e| {
+        tracing::error!("Failed to list user connections: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let connections = rows
         .into_iter()
@@ -178,7 +168,7 @@ pub async fn create_connection(
     let row = state
         .db
         .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.user_id,
+            user_id: auth.id,
             provider: req.provider.clone(),
             provider_user_id,
             provider_username: provider_username.clone(),
@@ -215,7 +205,7 @@ pub async fn delete_connection(
 ) -> Result<StatusCode, StatusCode> {
     let deleted = state
         .db
-        .delete_user_connection(auth.user_id, &provider)
+        .delete_user_connection(auth.id, &provider)
         .await
         .map_err(|e| {
             tracing::error!("Failed to delete connection: {}", e);
@@ -235,12 +225,16 @@ pub async fn github_authorize(
     _auth: AuthUser,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let config = state.auth_config.github_connection.as_ref().ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "GitHub connection not configured".to_string(),
-        )
-    })?;
+    let config = state
+        .auth_config
+        .github_connection
+        .as_ref()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "GitHub connection not configured".to_string(),
+            )
+        })?;
 
     let service = GitHubConnectionService::new(config);
 
@@ -263,12 +257,16 @@ pub async fn github_callback(
     auth: AuthUser,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let config = state.auth_config.github_connection.as_ref().ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "GitHub connection not configured".to_string(),
-        )
-    })?;
+    let config = state
+        .auth_config
+        .github_connection
+        .as_ref()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "GitHub connection not configured".to_string(),
+            )
+        })?;
 
     let encryption = state.encryption.as_ref().ok_or_else(|| {
         (
@@ -289,22 +287,21 @@ pub async fn github_callback(
     })?;
 
     // Encrypt token
-    let access_token_encrypted =
-        encryption
-            .encrypt_string(&result.access_token)
-            .map_err(|e| {
-                tracing::error!("Failed to encrypt token: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to store connection".to_string(),
-                )
-            })?;
+    let access_token_encrypted = encryption
+        .encrypt_string(&result.access_token)
+        .map_err(|e| {
+            tracing::error!("Failed to encrypt token: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store connection".to_string(),
+            )
+        })?;
 
     // Upsert connection
     state
         .db
         .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.user_id,
+            user_id: auth.id,
             provider: "github".to_string(),
             provider_user_id: Some(result.user_id),
             provider_username: Some(result.username),

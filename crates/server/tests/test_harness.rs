@@ -135,7 +135,7 @@ impl TestServer {
 
         // Create module-specific states
         let sessions_state =
-            api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+            api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone(), None);
         let messages_state =
             api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(

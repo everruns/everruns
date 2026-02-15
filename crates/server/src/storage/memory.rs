@@ -3089,7 +3089,9 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
         secrets.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(secrets)
     }
+}
 
+impl InMemoryDatabase {
     // ============================================
     // User Connections
     // ============================================
@@ -3135,10 +3137,7 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_user_connections(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserConnectionRow>> {
+    pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         let mut connections: Vec<_> = self
             .user_connections
             .read()
@@ -3150,11 +3149,7 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
         Ok(connections)
     }
 
-    pub async fn delete_user_connection(
-        &self,
-        user_id: Uuid,
-        provider: &str,
-    ) -> Result<bool> {
+    pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         let mut connections = self.user_connections.write();
         let before = connections.len();
         connections.retain(|_, c| !(c.user_id == user_id && c.provider == provider));

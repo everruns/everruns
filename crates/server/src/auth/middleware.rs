@@ -369,6 +369,8 @@ pub struct ResolvedOrg {
     pub public_id: String,
     /// Organization name
     pub name: String,
+    /// Authenticated user ID (for user-scoped operations like connections)
+    pub user_id: Option<Uuid>,
 }
 
 impl<S> FromRequestParts<S> for ResolvedOrg
@@ -391,10 +393,16 @@ where
                     .organizations
                     .first()
                     .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
+                let user_id = if user.auth_method == AuthMethod::None {
+                    None
+                } else {
+                    Some(user.id)
+                };
                 Ok(ResolvedOrg {
                     org_id: org.org_id,
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
+                    user_id,
                 })
             }
             AuthMethod::Jwt => {
@@ -430,6 +438,7 @@ where
                     org_id: org.org_id,
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
+                    user_id: Some(user.id),
                 })
             }
         }

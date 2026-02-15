@@ -1,7 +1,7 @@
 // Session CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
-use crate::auth::{AuthState, AuthUser, ResolvedOrg};
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{EventService, SessionService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
@@ -173,7 +173,6 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn create_session(
     org: ResolvedOrg,
-    auth_user: Option<AuthUser>,
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
@@ -210,8 +209,8 @@ pub async fn create_session(
         .log_internal_error_json("create session")?;
 
     // Auto-inject user connections as session secrets (e.g., GITHUB_TOKEN)
-    if let Some(ref user) = auth_user {
-        inject_user_connections(&state, user.id, session.id.uuid()).await;
+    if let Some(user_id) = org.user_id {
+        inject_user_connections(&state, user_id, session.id.uuid()).await;
     }
 
     Ok((StatusCode::CREATED, Json(session)))
