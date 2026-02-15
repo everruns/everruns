@@ -36,6 +36,9 @@ pub use event_notifications::EventNotificationBroadcaster;
 // Internal gRPC service for worker communication
 pub mod grpc_service;
 
+// Event retention background job
+pub mod event_retention;
+
 // Service seeding (default agents, providers, models)
 pub mod seed;
 
