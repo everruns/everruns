@@ -145,6 +145,7 @@ impl TestServer {
             session_service: Arc::new(services::SessionService::new(db.clone())),
             event_service: event_service.clone(),
             sse_tracker,
+            event_broadcaster: None,
             auth: auth_state.clone(),
         };
         let llm_providers_state = api::llm_providers::AppState::new(

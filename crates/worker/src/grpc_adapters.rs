@@ -24,8 +24,11 @@ use everruns_internal_protocol::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
 use uuid::Uuid;
+
+use crate::grpc_durable_store::GrpcClientAuth;
 
 // Helper to create store errors for gRPC operations
 fn grpc_error(msg: impl Into<String>) -> AgentLoopError {
@@ -35,7 +38,7 @@ fn grpc_error(msg: impl Into<String>) -> AgentLoopError {
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
-    inner: Arc<Mutex<WorkerServiceClient<Channel>>>,
+    inner: Arc<Mutex<WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>>>,
 }
 
 /// Max gRPC message size (150MB for base64-encoded images + overhead)
@@ -56,8 +59,10 @@ impl GrpcClient {
             .await
             .map_err(|e| grpc_error(format!("gRPC connection failed: {}", e)))?;
 
-        // Configure client with larger message size for image resolution
-        let client = WorkerServiceClient::new(channel)
+        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
+        // Mitigation: Attach bearer token from GRPC_AUTH_TOKEN env
+        let auth = GrpcClientAuth::from_env();
+        let client = WorkerServiceClient::with_interceptor(channel, auth)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
@@ -68,7 +73,8 @@ impl GrpcClient {
 
     /// Create from an existing channel
     pub fn from_channel(channel: Channel) -> Self {
-        let client = WorkerServiceClient::new(channel)
+        let auth = GrpcClientAuth::from_env();
+        let client = WorkerServiceClient::with_interceptor(channel, auth)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {

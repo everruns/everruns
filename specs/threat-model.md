@@ -372,13 +372,13 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-DURABLE-001 | Task hijacking | High | Ownership verified on completion; late finisher gets `TaskNotOwned` error | MITIGATED |
-| TM-DURABLE-002 | gRPC unauthenticated access | High | Internal port 9001; relies on network isolation; no mutual auth | **OPEN** |
+| TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `GRPC_AUTH_TOKEN` env var; network isolation as defense-in-depth | MITIGATED |
 | TM-DURABLE-003 | Event injection | Medium | Events created via gRPC only; validated for session membership | MITIGATED |
-| TM-DURABLE-004 | Queue flooding | Medium | No rate limiting on task creation; backpressure via worker watermarks | **OPEN** |
+| TM-DURABLE-004 | Queue flooding | Medium | Per-workflow pending task limit (default 100, configurable via `MAX_PENDING_TASKS_PER_WORKFLOW`) | MITIGATED |
 | TM-DURABLE-005 | Heartbeat timeout manipulation | Low | 30s timeout is reasonable for LLM operations; reclaimed tasks re-queued | MITIGATED |
 | TM-DURABLE-006 | Dead letter queue growth | Low | Failed tasks preserved in DLQ; no automatic cleanup | **ACCEPTED** |
 | TM-DURABLE-007 | Task state manipulation | Medium | Tasks immutable after creation; only status transitions allowed via state machine | MITIGATED |
-| TM-DURABLE-008 | Worker impersonation | High | No worker authentication; any process on the network can claim tasks | **OPEN** (same as TM-DURABLE-002) |
+| TM-DURABLE-008 | Worker impersonation | High | Bearer token auth via `GRPC_AUTH_TOKEN` prevents unauthorized access | MITIGATED (same as TM-DURABLE-002) |
 | TM-DURABLE-009 | Replay attack on workflow events | Low | Event store is append-only; events processed in sequence order | MITIGATED |
 
 ### Mitigation Details
@@ -391,15 +391,12 @@ Worker B continues execution → task completes correctly
 ```
 Prevents duplicate activity execution when workers lose connectivity.
 
-**TM-DURABLE-002 — gRPC Security (OPEN):**
-Workers connect to control plane gRPC (port 9001) without authentication. Any process with network access to port 9001 can:
-- Claim tasks (`ClaimDurableTasks`)
-- Emit events (`EmitEventStream`)
-- Complete/fail tasks (`CompleteDurableTask`/`FailDurableTask`)
-
-Current mitigation: Network isolation (private network, no public exposure).
-- **Recommendation:** Implement mTLS or bearer token authentication for worker↔control-plane gRPC.
-- **Priority:** High for production deployments
+**TM-DURABLE-002 — gRPC Security (MITIGATED):**
+Workers authenticate to control plane gRPC (port 9001) via bearer token (`GRPC_AUTH_TOKEN` env var).
+- Server: `GrpcAuthInterceptor` validates `authorization: Bearer <token>` on every request
+- Client: `GrpcClientAuth` injects the bearer token into every outgoing request
+- When `GRPC_AUTH_TOKEN` is unset, auth is disabled (dev mode only)
+- Network isolation remains as defense-in-depth
 
 ## 10. Scheduled Tasks (TM-SCHED)
 
@@ -617,7 +614,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-003 | SSE connection exhaustion | Medium | SSE connections tied to session; no global connection limit | **OPEN** |
 | TM-DOS-004 | Database connection pool exhaustion | Medium | sqlx connection pool with max_connections; timeouts on acquisition | MITIGATED |
 | TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
-| TM-DOS-006 | Durable task queue flooding | Medium | No rate limiting on task creation; worker backpressure is reactive | **OPEN** (see TM-DURABLE-004) |
+| TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 
 ## Vulnerability Summary
@@ -627,7 +624,6 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | ID | Threat | Severity | Recommendation |
 |----|--------|----------|----------------|
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
-| TM-DURABLE-002 | gRPC unauthenticated | High | mTLS or bearer token auth for workers |
 | TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
@@ -662,7 +658,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | Enable TLS/HTTPS | TM-AUTH-005, TM-LLM-006 | All production traffic must use HTTPS |
 | Secure env vars | TM-AUTH-002, TM-CRYPTO-001 | Never commit secrets to source control |
 | Configure CORS | TM-API-007, TM-WEB-007 | Set explicit allowed origins in production |
-| Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network |
+| Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network; set `GRPC_AUTH_TOKEN` in production |
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
 | Secure OTLP endpoint | TM-OBS-003 | Use trusted internal infrastructure only |
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |

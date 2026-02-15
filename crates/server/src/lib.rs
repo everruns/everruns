@@ -29,6 +29,10 @@ pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod task_notifications;
 pub use task_notifications::TaskNotificationBroadcaster;
 
+// Event notification broadcaster for push-based SSE delivery
+pub mod event_notifications;
+pub use event_notifications::EventNotificationBroadcaster;
+
 // Internal gRPC service for worker communication
 pub mod grpc_service;
 

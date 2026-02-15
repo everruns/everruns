@@ -212,10 +212,24 @@ pub async fn run(
     let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
         crate::api::sse::SseConnectionLimits::from_env(),
     ));
+    // Initialize event notification broadcaster for push-based SSE (requires PostgreSQL)
+    let event_broadcaster = if let Some(pool) = db.pool() {
+        let broadcaster =
+            crate::event_notifications::EventNotificationBroadcaster::new(pool.clone()).await;
+        tracing::info!("Event notification broadcaster initialized for push-based SSE");
+        Some(Arc::new(broadcaster))
+    } else {
+        tracing::info!(
+            "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
+        );
+        None
+    };
+
     let events_state = api::events::AppState {
         session_service: Arc::new(services::SessionService::new(db.clone())),
         event_service: event_service.clone(),
         sse_tracker,
+        event_broadcaster,
         auth: auth_state.clone(),
     };
     let driver_registry = Arc::new(create_driver_registry());
@@ -370,9 +384,17 @@ pub async fn run(
                 grpc_svc.set_task_broadcaster(broadcaster);
             }
 
+            // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
+            // Mitigation: Bearer token auth via GRPC_AUTH_TOKEN env var
+            let auth_interceptor =
+                grpc_service::GrpcAuthInterceptor::new(grpc_service::grpc_auth_token_from_env());
+
             let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
             tracing::info!("gRPC server listening on {}", addr);
             if let Err(e) = tonic::transport::Server::builder()
+                .layer(tonic::service::interceptor::InterceptorLayer::new(
+                    auth_interceptor,
+                ))
                 .add_service(grpc_svc.into_server())
                 .serve(addr)
                 .await
