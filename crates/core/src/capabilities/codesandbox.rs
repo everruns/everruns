@@ -690,7 +690,8 @@ Tools:
 - `csb_manage_sandbox` - Shutdown, hibernate, or delete a sandbox
 
 All tools except `csb_create_sandbox` and `csb_list_sandboxes` require a `sandbox_id`.
-Sandboxes auto-hibernate after 5 minutes of inactivity. Always shut down when done."#,
+Sandboxes auto-hibernate after 5 minutes of inactivity.
+Always DELETE sandboxes when done (shutdown/hibernate leave them on the dashboard)."#,
         )
     }
 
@@ -1553,7 +1554,7 @@ impl Tool for CsbManageSandboxTool {
                 "action": {
                     "type": "string",
                     "enum": ["shutdown", "hibernate", "delete"],
-                    "description": "Action to perform: shutdown (stop VM), hibernate (save state), delete (remove permanently)"
+                    "description": "Action to perform: shutdown (stop and delete VM), hibernate (save state, keeps on dashboard), delete (same as shutdown)"
                 }
             },
             "required": ["sandbox_id", "action"],
@@ -1593,16 +1594,17 @@ impl Tool for CsbManageSandboxTool {
         let client = CodeSandboxClient::new(api_key);
 
         let result = match action {
-            "shutdown" => client.shutdown_vm(sandbox_id).await,
-            "hibernate" => client.hibernate_vm(sandbox_id).await,
-            "delete" => {
+            "shutdown" | "delete" => {
+                // Both shutdown and delete fully remove the sandbox.
+                // Plain shutdown leaves sandboxes lingering on the dashboard,
+                // so we always delete to clean up.
                 let r = client.delete_vm(sandbox_id).await;
-                // Also remove state on delete
                 if r.is_ok() {
                     let _ = delete_sandbox_state(context, sandbox_id).await;
                 }
                 r
             }
+            "hibernate" => client.hibernate_vm(sandbox_id).await,
             _ => {
                 return ToolExecutionResult::tool_error(format!(
                     "Invalid action: '{action}'. Must be one of: shutdown, hibernate, delete"
