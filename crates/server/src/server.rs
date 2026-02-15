@@ -515,6 +515,12 @@ pub async fn run(
                 tracing::info!("Model sync background task disabled (MODEL_SYNC_INTERVAL_HOURS=0)");
             }
         }
+
+        // Event retention (archive old events)
+        if let Some(pool) = db.pool() {
+            let retention_days = crate::event_retention::retention_days_from_env();
+            crate::event_retention::spawn_retention_task(pool.clone(), retention_days);
+        }
     } else {
         // DEV MODE: Start in-process task worker
         if let Some(shared_store) = shared_durable_store {
