@@ -353,6 +353,9 @@ pub async fn run(
         app
     };
 
+    // SECURITY[TM-WEB-004, TM-WEB-005]: Add security response headers
+    let app = app.layer(axum::middleware::from_fn(security_headers));
+
     let app = app.layer(TraceLayer::new_for_http());
 
     // Start gRPC server and background tasks (production) or in-process worker (dev)
@@ -591,6 +594,32 @@ pub async fn run(
     Ok(())
 }
 
+/// SECURITY[TM-WEB-004, TM-WEB-005]: Security response headers middleware.
+/// Adds clickjacking protection and standard browser security headers.
+async fn security_headers(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        "referrer-policy",
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+        ),
+    );
+    response
+}
+
 /// Build router with optional API prefix
 fn build_router_with_prefix<S: Clone + Send + Sync + 'static>(
     api_routes: Router<S>,
@@ -661,5 +690,40 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn test_security_headers_present() {
+        let app = test_routes().layer(axum::middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(
+            response.headers().get("x-content-type-options").unwrap(),
+            "nosniff"
+        );
+        assert_eq!(
+            response.headers().get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        assert!(
+            response
+                .headers()
+                .get("content-security-policy")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("default-src 'self'")
+        );
     }
 }

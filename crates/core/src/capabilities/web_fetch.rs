@@ -8,12 +8,58 @@
 //! - Binary content is not supported but returns metadata (filename, size, content_type)
 //! - Timeout for first byte: 1 second (connect + time to first response byte)
 //! - Timeout for body: 30 seconds total, partial content returned if exceeded
+//!
+//! SECURITY[TM-API-008, TM-API-009]: Uses fetchkit::Tool with block_prefixes to prevent
+//! SSRF to private IPs, localhost, and cloud metadata endpoints. See build_fetch_tool().
 
 use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
-use fetchkit::{FetchError, FetchRequest, TOOL_DESCRIPTION, TOOL_LLMTXT, fetch};
+use fetchkit::{FetchError, FetchRequest, TOOL_DESCRIPTION, TOOL_LLMTXT};
 use serde_json::Value;
+
+/// Build a configured fetchkit::Tool with SSRF block_prefixes.
+///
+/// Blocks private IPs, localhost, cloud metadata, and unspecified addresses.
+/// SECURITY[TM-API-008, TM-API-009]
+fn build_fetch_tool() -> fetchkit::Tool {
+    let mut builder = fetchkit::Tool::builder()
+        // Cloud metadata (AWS/GCP/Azure link-local)
+        .block_prefix("http://169.254.")
+        .block_prefix("https://169.254.")
+        // GCP metadata alias
+        .block_prefix("http://metadata.")
+        .block_prefix("https://metadata.")
+        // Localhost
+        .block_prefix("http://127.0.0.1")
+        .block_prefix("https://127.0.0.1")
+        .block_prefix("http://127.")
+        .block_prefix("https://127.")
+        // IPv6 localhost
+        .block_prefix("http://[::1]")
+        .block_prefix("https://[::1]")
+        // Localhost by name
+        .block_prefix("http://localhost")
+        .block_prefix("https://localhost")
+        // RFC 1918: 10.0.0.0/8
+        .block_prefix("http://10.")
+        .block_prefix("https://10.")
+        // RFC 1918: 192.168.0.0/16
+        .block_prefix("http://192.168.")
+        .block_prefix("https://192.168.")
+        // Unspecified
+        .block_prefix("http://0.0.0.0")
+        .block_prefix("https://0.0.0.0");
+
+    // RFC 1918: 172.16.0.0/12 (172.16.x.x through 172.31.x.x)
+    for octet in 16..=31 {
+        builder = builder
+            .block_prefix(format!("http://172.{octet}."))
+            .block_prefix(format!("https://172.{octet}."));
+    }
+
+    builder.build()
+}
 
 /// WebFetch capability - provides tools to fetch web content
 pub struct WebFetchCapability;
@@ -50,7 +96,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(WebFetchTool)]
+        vec![Box::new(WebFetchTool::new())]
     }
 }
 
@@ -58,8 +104,34 @@ impl Capability for WebFetchCapability {
 // Tool: web_fetch
 // ============================================================================
 
-/// Tool that fetches content from a URL using fetchkit
-pub struct WebFetchTool;
+/// Tool that fetches content from a URL using fetchkit.
+/// Holds a configured fetchkit::Tool with SSRF block_prefixes.
+pub struct WebFetchTool {
+    fetch_tool: fetchkit::Tool,
+}
+
+impl Default for WebFetchTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WebFetchTool {
+    /// Create with SSRF-protected fetch tool (production default).
+    pub fn new() -> Self {
+        Self {
+            fetch_tool: build_fetch_tool(),
+        }
+    }
+
+    /// Create with permissive fetch tool (no URL blocking). Test-only.
+    #[cfg(test)]
+    fn permissive() -> Self {
+        Self {
+            fetch_tool: fetchkit::Tool::default(),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for WebFetchTool {
@@ -124,8 +196,8 @@ impl Tool for WebFetchTool {
             as_text: if as_text { Some(true) } else { None },
         };
 
-        // Execute the fetch using fetchkit
-        match fetch(request).await {
+        // Execute the fetch using configured fetchkit tool (with SSRF block_prefixes)
+        match self.fetch_tool.execute(request).await {
             Ok(response) => {
                 // Convert the fetchkit response to JSON
                 ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(|_| {
@@ -165,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_web_fetch_tool_parameters() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let schema = tool.parameters_schema();
 
         assert_eq!(schema["type"], "object");
@@ -201,7 +273,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_missing_url() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool.execute(serde_json::json!({})).await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
@@ -213,7 +285,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_invalid_url() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({"url": "not-a-valid-url"}))
             .await;
@@ -227,7 +299,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_invalid_method() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({"url": "https://example.com", "method": "POST"}))
             .await;
@@ -254,7 +326,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri()),
@@ -289,7 +361,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri()),
@@ -322,7 +394,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri())
@@ -354,7 +426,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/image/png", mock_server.uri())
@@ -396,7 +468,7 @@ mod tests {
             .await;
 
         // Normal response should have truncated: false
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri())
@@ -417,12 +489,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_timeout_unreachable_host() {
-        // Use a non-routable IP address to trigger connection timeout
-        // 10.255.255.1 is typically non-routable and will timeout
-        let tool = WebFetchTool;
+        // Use a non-routable public IP to trigger connection timeout
+        // 198.51.100.1 (TEST-NET-2, RFC 5737) is non-routable
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
-                "url": "http://10.255.255.1:12345/test"
+                "url": "http://198.51.100.1:12345/test"
             }))
             .await;
 
@@ -455,7 +527,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri())
@@ -494,7 +566,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri()),
@@ -531,7 +603,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         // No as_markdown needed - fetchkit returns markdown by default for HTML
         let result = tool
             .execute(serde_json::json!({
@@ -566,7 +638,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/html", mock_server.uri()),
@@ -601,7 +673,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/json", mock_server.uri())
@@ -626,7 +698,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/status/404", mock_server.uri())
@@ -651,7 +723,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/status/500", mock_server.uri())
@@ -668,7 +740,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_dns_failure() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://this-domain-definitely-does-not-exist-12345.com/test"
@@ -693,7 +765,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_rejects_ftp_url() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "ftp://example.com/file.txt"
@@ -709,7 +781,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_rejects_file_url() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "file:///etc/passwd"
@@ -737,7 +809,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         // Note: mock_server.uri() returns http:// URL
         let result = tool
             .execute(serde_json::json!({
@@ -768,7 +840,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": format!("{}/newlines", mock_server.uri())
@@ -788,89 +860,104 @@ mod tests {
     }
 
     // ========================================================================
-    // SSRF security tests (TM-API-008 through TM-API-012)
+    // SSRF security tests (TM-API-008, TM-API-009)
     //
-    // These tests verify that private/internal URLs are blocked by policy.
-    // Currently fetchkit block_prefixes are NOT configured, so private IPs
-    // are NOT blocked. Tests document the current behavior and will fail
-    // (alerting developers) once the fix is applied.
-    //
-    // When the fix lands (switching to fetchkit Tool::execute with
-    // block_prefixes), update these tests to assert:
-    //   matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("blocked"))
+    // These tests verify that private/internal URLs are blocked by policy
+    // via fetchkit block_prefixes configured in build_fetch_tool().
     //
     // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_ssrf
     // ========================================================================
 
-    // Helper: asserts that a private/internal URL is NOT currently blocked
-    // by fetchkit policy (documenting the TM-API-008 gap). The request will
-    // either succeed (if host reachable) or fail with a connect/timeout error,
-    // but NOT with "blocked by policy".
-    async fn assert_not_blocked_by_policy(url: &str) {
-        let tool = WebFetchTool;
+    /// Helper: asserts that a URL is blocked by SSRF policy.
+    async fn assert_blocked_by_policy(url: &str) {
+        let tool = WebFetchTool::new();
         let result = tool.execute(serde_json::json!({"url": url})).await;
         match &result {
             ToolExecutionResult::ToolError(msg) if msg.contains("blocked") => {
-                panic!(
-                    "GOOD NEWS: URL {url} is now blocked by policy! \
-                     TM-API-008 mitigation is working. Update this test to \
-                     assert the blocked behavior."
-                );
+                // Expected: URL blocked by policy
             }
-            _ => {
-                // Expected: either Success (host reachable) or ToolError (timeout/connect).
-                // Both confirm that fetchkit did NOT block the URL by policy.
+            other => {
+                panic!("Expected URL {url} to be blocked by policy, got: {other:?}");
             }
         }
     }
 
-    /// THREAT[TM-API-009]: Cloud metadata endpoint is NOT blocked (vulnerability).
-    /// Once mitigated, this test should assert BlockedUrl error.
+    /// THREAT[TM-API-009]: Cloud metadata endpoint is blocked.
     #[tokio::test]
-    async fn test_ssrf_cloud_metadata_not_blocked() {
-        assert_not_blocked_by_policy("http://169.254.169.254/latest/meta-data/").await;
+    async fn test_ssrf_cloud_metadata_blocked() {
+        assert_blocked_by_policy("http://169.254.169.254/latest/meta-data/").await;
     }
 
-    /// THREAT[TM-API-008]: Localhost is NOT blocked (vulnerability).
+    /// THREAT[TM-API-009]: GCP metadata alias is blocked.
     #[tokio::test]
-    async fn test_ssrf_localhost_not_blocked() {
-        assert_not_blocked_by_policy("http://127.0.0.1:1/").await;
+    async fn test_ssrf_gcp_metadata_blocked() {
+        assert_blocked_by_policy("http://metadata.google.internal/computeMetadata/v1/").await;
     }
 
-    /// THREAT[TM-API-008]: RFC1918 10.x.x.x is NOT blocked (vulnerability).
+    /// THREAT[TM-API-008]: Localhost is blocked.
     #[tokio::test]
-    async fn test_ssrf_private_10_not_blocked() {
-        assert_not_blocked_by_policy("http://10.0.0.1:1/").await;
+    async fn test_ssrf_localhost_blocked() {
+        assert_blocked_by_policy("http://127.0.0.1:1/").await;
     }
 
-    /// THREAT[TM-API-008]: RFC1918 172.16.x.x is NOT blocked (vulnerability).
+    /// THREAT[TM-API-008]: Localhost by name is blocked.
     #[tokio::test]
-    async fn test_ssrf_private_172_not_blocked() {
-        assert_not_blocked_by_policy("http://172.16.0.1:1/").await;
+    async fn test_ssrf_localhost_name_blocked() {
+        assert_blocked_by_policy("http://localhost:8080/").await;
     }
 
-    /// THREAT[TM-API-008]: RFC1918 192.168.x.x is NOT blocked (vulnerability).
+    /// THREAT[TM-API-008]: RFC1918 10.x.x.x is blocked.
     #[tokio::test]
-    async fn test_ssrf_private_192_not_blocked() {
-        assert_not_blocked_by_policy("http://192.168.0.1:1/").await;
+    async fn test_ssrf_private_10_blocked() {
+        assert_blocked_by_policy("http://10.0.0.1:1/").await;
     }
 
-    /// THREAT[TM-API-008]: IPv6 localhost is NOT blocked (vulnerability).
+    /// THREAT[TM-API-008]: RFC1918 172.16.x.x is blocked.
     #[tokio::test]
-    async fn test_ssrf_ipv6_localhost_not_blocked() {
-        assert_not_blocked_by_policy("http://[::1]:1/").await;
+    async fn test_ssrf_private_172_16_blocked() {
+        assert_blocked_by_policy("http://172.16.0.1:1/").await;
     }
 
-    /// THREAT[TM-API-008]: 0.0.0.0 is NOT blocked (vulnerability).
+    /// THREAT[TM-API-008]: RFC1918 172.31.x.x (upper bound) is blocked.
     #[tokio::test]
-    async fn test_ssrf_unspecified_not_blocked() {
-        assert_not_blocked_by_policy("http://0.0.0.0:1/").await;
+    async fn test_ssrf_private_172_31_blocked() {
+        assert_blocked_by_policy("http://172.31.255.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: RFC1918 192.168.x.x is blocked.
+    #[tokio::test]
+    async fn test_ssrf_private_192_blocked() {
+        assert_blocked_by_policy("http://192.168.0.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: IPv6 localhost is blocked.
+    #[tokio::test]
+    async fn test_ssrf_ipv6_localhost_blocked() {
+        assert_blocked_by_policy("http://[::1]:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: 0.0.0.0 is blocked.
+    #[tokio::test]
+    async fn test_ssrf_unspecified_blocked() {
+        assert_blocked_by_policy("http://0.0.0.0:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: HTTPS variants are also blocked.
+    #[tokio::test]
+    async fn test_ssrf_https_variants_blocked() {
+        assert_blocked_by_policy("https://169.254.169.254/").await;
+        assert_blocked_by_policy("https://127.0.0.1/").await;
+        assert_blocked_by_policy("https://10.0.0.1/").await;
+        assert_blocked_by_policy("https://172.16.0.1/").await;
+        assert_blocked_by_policy("https://192.168.0.1/").await;
+        assert_blocked_by_policy("https://localhost/").await;
+        assert_blocked_by_policy("https://0.0.0.0/").await;
     }
 
     /// Verify file://, ftp://, gopher:// schemes are blocked (existing protection).
     #[tokio::test]
     async fn test_ssrf_non_http_schemes_blocked() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
 
         for (scheme, url) in [
             ("file://", "file:///etc/passwd"),
@@ -893,7 +980,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_fetch() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://docs.wasmtime.dev/"
@@ -925,7 +1012,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_as_text() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://docs.wasmtime.dev/",
@@ -956,7 +1043,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_head_request() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://docs.wasmtime.dev/",
@@ -983,7 +1070,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_subpage() {
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         // No as_markdown - fetchkit returns markdown by default
         let result = tool
             .execute(serde_json::json!({
@@ -1009,7 +1096,7 @@ mod tests {
     async fn test_real_github_wasm3_readme() {
         // GitHub READMEs may return HTML even though fetchkit tries to convert
         // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://github.com/wasm3/wasm3"
@@ -1047,7 +1134,7 @@ mod tests {
     async fn test_real_github_wasm3_as_text() {
         // Test as_text conversion on GitHub page
         // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
-        let tool = WebFetchTool;
+        let tool = WebFetchTool::permissive();
         let result = tool
             .execute(serde_json::json!({
                 "url": "https://github.com/wasm3/wasm3",

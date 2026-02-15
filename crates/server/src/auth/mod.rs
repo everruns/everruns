@@ -10,6 +10,7 @@ pub mod config;
 pub mod jwt;
 pub mod middleware;
 pub mod oauth;
+pub mod rate_limit;
 pub mod routes;
 
 pub use backend::AuthBackend;

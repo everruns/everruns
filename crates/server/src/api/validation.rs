@@ -3,6 +3,9 @@
 // Last-resort validation limits to guard Everruns from abuse.
 // These are hard limits, not configurable. Values chosen to allow legitimate
 // use while preventing resource exhaustion attacks.
+//
+// SECURITY[TM-AGENT-005]: Dangerous capability validation requires explicit
+// acknowledgement for high-risk capabilities and combinations.
 
 use super::common::ErrorResponse;
 use axum::Json;
@@ -179,6 +182,104 @@ pub fn validate_update_agent_input(
     Ok(())
 }
 
+// =============================================================================
+// Dangerous Capability Validation (TM-AGENT-005)
+// =============================================================================
+
+/// Capabilities that are individually dangerous (code execution, container access).
+const DANGEROUS_CAPABILITIES: &[&str] = &["virtual_bash", "docker_container"];
+
+/// Capability combinations that enable data exfiltration.
+/// Each pair: (execution_capability, exfiltration_capability).
+const DANGEROUS_COMBINATIONS: &[(&str, &str)] = &[
+    ("virtual_bash", "web_fetch"),
+    ("docker_container", "web_fetch"),
+];
+
+/// Result of checking capabilities for dangerous ones.
+pub struct DangerousCapabilityCheck {
+    /// Individual dangerous capabilities found.
+    pub dangerous: Vec<String>,
+    /// Dangerous combinations found (formatted as "A + B").
+    pub combinations: Vec<String>,
+}
+
+impl DangerousCapabilityCheck {
+    pub fn is_dangerous(&self) -> bool {
+        !self.dangerous.is_empty() || !self.combinations.is_empty()
+    }
+
+    /// Format a human-readable warning message.
+    pub fn warning_message(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.dangerous.is_empty() {
+            parts.push(format!(
+                "dangerous capabilities: {}",
+                self.dangerous.join(", ")
+            ));
+        }
+        if !self.combinations.is_empty() {
+            parts.push(format!(
+                "dangerous combinations: {}",
+                self.combinations.join("; ")
+            ));
+        }
+        format!(
+            "Agent uses {}. Set \"acknowledge_dangerous_capabilities\": true to confirm.",
+            parts.join(" and ")
+        )
+    }
+}
+
+/// Check a set of capability IDs for dangerous capabilities and combinations.
+pub fn check_dangerous_capabilities(capability_ids: &[&str]) -> DangerousCapabilityCheck {
+    let dangerous: Vec<String> = DANGEROUS_CAPABILITIES
+        .iter()
+        .filter(|&&cap| capability_ids.contains(&cap))
+        .map(|s| s.to_string())
+        .collect();
+
+    let combinations: Vec<String> = DANGEROUS_COMBINATIONS
+        .iter()
+        .filter(|&&(a, b)| capability_ids.contains(&a) && capability_ids.contains(&b))
+        .map(|(a, b)| format!("{a} + {b}"))
+        .collect();
+
+    DangerousCapabilityCheck {
+        dangerous,
+        combinations,
+    }
+}
+
+/// Validate that dangerous capabilities are acknowledged.
+/// Returns Err with 400 if dangerous capabilities are present without acknowledgement.
+pub fn validate_dangerous_capabilities(
+    capability_ids: &[&str],
+    acknowledged: bool,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let check = check_dangerous_capabilities(capability_ids);
+    if check.is_dangerous() {
+        if !acknowledged {
+            tracing::warn!(
+                dangerous = ?check.dangerous,
+                combinations = ?check.combinations,
+                "Agent creation/update with dangerous capabilities without acknowledgement"
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(check.warning_message())),
+            ));
+        }
+        // Acknowledged — log for audit
+        tracing::info!(
+            dangerous = ?check.dangerous,
+            combinations = ?check.combinations,
+            "Agent created/updated with dangerous capabilities (acknowledged)"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +342,57 @@ mod tests {
     #[test]
     fn test_invalid_import_file_size() {
         assert!(validate_import_file_size(MAX_AGENT_IMPORT_FILE_BYTES + 1).is_err());
+    }
+
+    // =========================================================================
+    // Dangerous capability tests (TM-AGENT-005)
+    // =========================================================================
+
+    #[test]
+    fn test_safe_capabilities_not_flagged() {
+        let check = check_dangerous_capabilities(&["current_time", "web_fetch"]);
+        assert!(!check.is_dangerous());
+    }
+
+    #[test]
+    fn test_dangerous_single_capability() {
+        let check = check_dangerous_capabilities(&["virtual_bash"]);
+        assert!(check.is_dangerous());
+        assert_eq!(check.dangerous, vec!["virtual_bash"]);
+        assert!(check.combinations.is_empty());
+    }
+
+    #[test]
+    fn test_dangerous_combination_detected() {
+        let check = check_dangerous_capabilities(&["virtual_bash", "web_fetch"]);
+        assert!(check.is_dangerous());
+        assert_eq!(check.dangerous, vec!["virtual_bash"]);
+        assert_eq!(check.combinations, vec!["virtual_bash + web_fetch"]);
+    }
+
+    #[test]
+    fn test_dangerous_docker_combination() {
+        let check = check_dangerous_capabilities(&["docker_container", "web_fetch"]);
+        assert!(check.is_dangerous());
+        assert_eq!(check.dangerous, vec!["docker_container"]);
+        assert_eq!(check.combinations, vec!["docker_container + web_fetch"]);
+    }
+
+    #[test]
+    fn test_validate_dangerous_without_ack_fails() {
+        let result = validate_dangerous_capabilities(&["virtual_bash"], false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_dangerous_with_ack_passes() {
+        let result = validate_dangerous_capabilities(&["virtual_bash"], true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_safe_without_ack_passes() {
+        let result = validate_dangerous_capabilities(&["current_time", "web_fetch"], false);
+        assert!(result.is_ok());
     }
 }

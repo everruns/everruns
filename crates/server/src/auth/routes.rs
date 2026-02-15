@@ -1,11 +1,13 @@
 // Authentication HTTP routes
 // Decision: Use /v1/auth/* prefix for all auth endpoints (consistent with other API routes)
 // Decision: Support both JSON and cookie-based sessions
+// SECURITY[TM-AUTH-001]: Rate limiting on login/register (5 req/min per IP)
 
 use axum::{
     Json, Router,
-    extract::{FromRef, Path, Query, State},
+    extract::{ConnectInfo, FromRef, Path, Query, State},
     http::StatusCode,
+    middleware as axum_mw,
     response::Redirect,
     routing::{delete, get, post},
 };
@@ -14,6 +16,7 @@ use chrono::{Duration, Utc};
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -148,25 +151,60 @@ pub struct AuthConfigResponse {
     pub signup_enabled: bool,
 }
 
+/// Auth rate limiter: 5 requests per 60 seconds per IP on login/register.
+static AUTH_RATE_LIMITER: std::sync::LazyLock<super::rate_limit::RateLimiter> =
+    std::sync::LazyLock::new(|| {
+        super::rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(60))
+    });
+
+/// Middleware that enforces rate limiting on auth endpoints.
+async fn rate_limit_middleware(
+    request: axum::extract::Request,
+    next: axum_mw::Next,
+) -> axum::response::Response {
+    let addr = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .cloned();
+    let ip = super::rate_limit::extract_client_ip(request.headers(), addr.as_ref());
+    match AUTH_RATE_LIMITER.check(&ip) {
+        Ok(()) => next.run(request).await,
+        Err(retry_after) => {
+            tracing::warn!(ip = %ip, "Auth rate limit exceeded");
+            super::rate_limit::rate_limit_response(retry_after)
+        }
+    }
+}
+
 /// Create auth routes
 pub fn routes(state: BuiltinAuthBackend) -> Router {
-    Router::new()
-        // Public routes
-        .route("/v1/auth/config", get(get_auth_config))
+    // Rate-limited routes (login, register)
+    let rate_limited = Router::new()
         .route("/v1/auth/login", post(login))
         .route("/v1/auth/register", post(register))
+        .layer(axum_mw::from_fn(rate_limit_middleware));
+
+    // Non-rate-limited public routes
+    let public = Router::new()
+        .route("/v1/auth/config", get(get_auth_config))
         .route("/v1/auth/refresh", post(refresh_token))
         .route("/v1/auth/logout", post(logout))
         // OAuth routes
         .route("/v1/auth/oauth/{provider}", get(oauth_redirect))
-        .route("/v1/auth/callback/{provider}", get(oauth_callback))
-        // Protected routes
+        .route("/v1/auth/callback/{provider}", get(oauth_callback));
+
+    // Protected routes
+    let protected = Router::new()
         .route("/v1/auth/me", get(get_current_user))
         .route(
             "/v1/auth/api-keys",
             get(list_api_keys).post(create_api_key_route),
         )
-        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route))
+        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route));
+
+    rate_limited
+        .merge(public)
+        .merge(protected)
         .with_state(state)
 }
 

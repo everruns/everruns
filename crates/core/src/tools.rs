@@ -431,7 +431,7 @@ impl ToolRegistry {
             .tool(DeleteFileTool)
             .tool(StatFileTool)
             // WebFetch capability tools
-            .tool(WebFetchTool)
+            .tool(WebFetchTool::new())
             .build()
     }
 

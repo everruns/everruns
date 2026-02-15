@@ -86,7 +86,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-AUTH-001 | Brute force login | High | No rate limiting on `/v1/auth/login` | **OPEN** |
+| TM-AUTH-001 | Brute force login | High | Per-IP rate limiting: 5 req/min on `/v1/auth/login` and `/v1/auth/register`; 429 + Retry-After header | MITIGATED |
 | TM-AUTH-002 | JWT secret compromise | Critical | Stored in env var `AUTH_JWT_SECRET`; min 32 bytes recommended; never logged | MITIGATED |
 | TM-AUTH-003 | Token replay after logout | Medium | Refresh tokens stored in DB, revocable via DELETE; access tokens short-lived (15 min) | MITIGATED |
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
@@ -102,10 +102,8 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 ### Mitigation Details
 
-**TM-AUTH-001 — Rate Limiting (OPEN):**
-No rate limiting is currently implemented on authentication endpoints. An attacker can attempt unlimited logins.
-- **Recommendation:** Implement per-IP rate limiting: 5 attempts/min on `/v1/auth/login`, exponential backoff on failures.
-- **Priority:** High
+**TM-AUTH-001 — Rate Limiting (MITIGATED):**
+Per-IP sliding window rate limiting (5 req/min) applied to `/v1/auth/login` and `/v1/auth/register`. Returns `429 Too Many Requests` with `Retry-After` header. Extracts client IP from `X-Forwarded-For` (for reverse proxy) or direct connection. See `crates/server/src/auth/rate_limit.rs`.
 
 **TM-AUTH-002 — JWT Secret:**
 ```
@@ -208,8 +206,8 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-API-005 | Internal error detail leakage | Medium | Generic `{"error": "Internal server error"}` for 500s; details logged server-side only | MITIGATED |
 | TM-API-006 | Missing auth on protected routes | Critical | All protected routes require `AuthUser` extractor; compile-time route registration | MITIGATED |
 | TM-API-007 | CORS misconfiguration | Medium | `CORS_ALLOWED_ORIGINS` not set by default (same-origin only); configurable for cross-origin | MITIGATED |
-| TM-API-008 | WebFetch SSRF to internal services | High | fetchkit `fetch()` used without block_prefixes; no private IP or metadata endpoint filtering | **OPEN** |
-| TM-API-009 | WebFetch cloud metadata access | Critical | `http://169.254.169.254/` not blocked; IAM credential theft possible in cloud deployments | **OPEN** |
+| TM-API-008 | WebFetch SSRF to internal services | High | fetchkit `Tool::builder()` with block_prefixes for private IPs (10/8, 172.16/12, 192.168/16), localhost, link-local | MITIGATED |
+| TM-API-009 | WebFetch cloud metadata access | Critical | Block prefixes for `169.254.` and `metadata.`; infrastructure-level IMDSv2 recommended as defense-in-depth | MITIGATED |
 | TM-API-010 | WebFetch internal DNS probing | Medium | Agent can resolve internal service names via web_fetch; enables service topology discovery | **OPEN** |
 | TM-API-011 | WebFetch internal port scanning | Medium | Agent can probe ports on discovered hosts; 1s first-byte timeout enables slow scanning | **OPEN** |
 | TM-API-012 | WebFetch DNS rebinding | Medium | No resolve-then-check; attacker domain can rebind from public to internal IP mid-request | **OPEN** |
@@ -235,63 +233,28 @@ Returns `400 Bad Request: "Input exceeds allowed limits"` (generic, no detail le
 ```
 Enforced at both application layer and database constraint (`session_files_path_check`).
 
-**TM-API-008 — WebFetch SSRF (OPEN — reclassified from ACCEPTED):**
+**TM-API-008 — WebFetch SSRF (MITIGATED):**
 
-Previously classified as ACCEPTED on the basis that "agent-controlled, not user-controlled URLs; agents are semi-trusted within session scope." Investigation reveals this significantly understates the risk:
+Previously OPEN. Fixed by switching from `fetchkit::fetch()` (standalone, no filtering) to `fetchkit::Tool::builder()` with `block_prefixes` covering:
+- Cloud metadata: `169.254.*`, `metadata.*`
+- Localhost: `127.*`, `[::1]`, `localhost`
+- RFC 1918: `10.*`, `172.16-31.*`, `192.168.*`
+- Unspecified: `0.0.0.0`
 
-1. **No URL filtering at all:** Everruns calls `fetchkit::fetch()` (standalone function), which creates `FetchOptions` with empty `allow_prefixes` and `block_prefixes`. The `BlockedUrl` error path in the web_fetch error handler can never trigger.
-2. **fetchkit supports filtering but it's unused:** The `fetchkit::Tool::execute()` method correctly passes configured `block_prefixes`/`allow_prefixes` to the fetcher, but Everruns bypasses this by using the standalone `fetch()` function.
-3. **Prompt injection compounds the risk:** While agents are "semi-trusted," indirect prompt injection via tool results (TM-AGENT-002) or MCP tool descriptions (TM-AGENT-003) can influence the agent to fetch attacker-chosen URLs. The agent is not truly in control of its own URL choices.
+Both `http://` and `https://` variants blocked. See `crates/core/src/capabilities/web_fetch.rs` → `build_fetch_tool()`.
 
-Attack surface from within the worker container:
-- Internal services: `postgres:5432`, `server:9000`/`9001`, `jaeger:4317`/`4318`/`16686`
-- Other containers on the Docker bridge network
-- Cloud metadata endpoints (see TM-API-009)
-- Any host reachable from the container's network namespace
-
-**Recommendation:** Switch from `fetchkit::fetch()` to `fetchkit::Tool` with configured `block_prefixes`:
-```rust
-let tool = fetchkit::Tool::builder()
-    .block_prefix("http://169.254.")       // Cloud metadata (AWS/GCP/Azure)
-    .block_prefix("https://169.254.")
-    .block_prefix("http://metadata.")       // GCP metadata alias
-    .block_prefix("https://metadata.")
-    .block_prefix("http://127.0.0.1")       // Localhost
-    .block_prefix("https://127.0.0.1")
-    .block_prefix("http://[::1]")           // IPv6 localhost
-    .block_prefix("https://[::1]")
-    .block_prefix("http://localhost")       // Localhost by name
-    .block_prefix("https://localhost")
-    .block_prefix("http://10.")             // RFC 1918 private
-    .block_prefix("https://10.")
-    .block_prefix("http://172.16.")         // RFC 1918 private
-    .block_prefix("https://172.16.")
-    .block_prefix("http://192.168.")        // RFC 1918 private
-    .block_prefix("https://192.168.")
-    .block_prefix("http://0.0.0.0")         // Unspecified
-    .block_prefix("https://0.0.0.0")
-    .build();
-```
-**Priority:** Critical — this is the single highest-impact network security gap.
-
-**Limitations of prefix-based blocking:**
+**Remaining limitations of prefix-based blocking:**
 - Does not block numeric IP variants (e.g., `http://2130706433` for 127.0.0.1 as decimal)
 - Does not block DNS names that resolve to private IPs (e.g., `http://internal.corp.com` → 10.0.0.5)
 - Does not prevent DNS rebinding attacks (see TM-API-012)
-- Prefix matching on `http://172.16.` misses `172.17.` through `172.31.` in the private range
 
-A robust long-term fix requires resolve-then-check: resolve the URL's hostname, then validate the resolved IP against blocked ranges before connecting. This requires changes in fetchkit itself.
+A robust long-term fix requires resolve-then-check in fetchkit itself (see EVE-26).
 
-**TM-API-009 — Cloud Metadata Access (OPEN):**
-Cloud providers expose instance metadata at `http://169.254.169.254/`. This endpoint returns:
-- AWS: IAM role credentials, instance identity, user data (may contain secrets)
-- GCP: Service account tokens, project metadata, SSH keys
-- Azure: Managed identity tokens, instance metadata
+**TM-API-009 — Cloud Metadata Access (MITIGATED):**
 
-An agent with `web_fetch` can call `http://169.254.169.254/latest/meta-data/iam/security-credentials/` to retrieve temporary AWS credentials, enabling lateral movement beyond the Everruns cluster.
+Fixed at application level: `169.254.*` and `metadata.*` prefixes blocked via fetchkit block_prefixes.
 
-- **Recommendation:** Block `169.254.0.0/16` at fetchkit level (see TM-API-008 recommendation) AND via infrastructure (AWS IMDSv2, GCP metadata concealment, cloud firewall egress rules).
-- **Priority:** Critical in cloud deployments.
+Defense-in-depth recommendation: also block via infrastructure (AWS IMDSv2, GCP metadata concealment, cloud firewall egress rules).
 
 **TM-API-010 — Internal DNS Probing (OPEN):**
 An agent can use `web_fetch` to discover internal services by trying known names:
@@ -535,22 +498,19 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-001 | XSS via stored content | Medium | React UI auto-escapes; file preview uses Shiki (no raw HTML injection) | MITIGATED |
 | TM-WEB-002 | CSRF on state-changing requests | Medium | SameSite=Lax cookies; JSON content type required; no GET side effects | MITIGATED |
 | TM-WEB-003 | Cookie theft via XSS | High | Refresh token cookie: HTTP-only; access token cookie: HTTP-only | MITIGATED |
-| TM-WEB-004 | Clickjacking | Medium | No X-Frame-Options or CSP frame-ancestors header set | **OPEN** |
-| TM-WEB-005 | Missing security headers | Low | No Content-Security-Policy, X-Content-Type-Options, Referrer-Policy headers | **OPEN** |
+| TM-WEB-004 | Clickjacking | Medium | X-Frame-Options: DENY; CSP default-src 'self' | MITIGATED |
+| TM-WEB-005 | Missing security headers | Low | X-Content-Type-Options: nosniff; Referrer-Policy: strict-origin-when-cross-origin; CSP | MITIGATED |
 | TM-WEB-006 | Open redirect in OAuth flow | Medium | OAuth callbacks validated against configured redirect URIs | MITIGATED |
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
 
 ### Mitigation Details
 
-**TM-WEB-004 / TM-WEB-005 — Security Headers (OPEN):**
-- **Recommendation:** Add the following response headers:
-  ```
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
-  ```
-- **Priority:** Medium
+**TM-WEB-004 / TM-WEB-005 — Security Headers (MITIGATED):**
+All four headers added via `security_headers` middleware in `crates/server/src/server.rs`:
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`
 
 ## 13. AI Agent Behavior (TM-AGENT)
 
@@ -562,7 +522,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | Agent creator chooses capabilities; no approval workflow for dangerous capabilities (virtual_bash, docker) | **OPEN** |
+| TM-AGENT-005 | Capability escalation via agent creation | High | Dangerous capabilities require `acknowledge_dangerous_capabilities: true`; audit-logged | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -598,11 +558,10 @@ Combined prompt sent to LLM as system message
 ```
 The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
 
-**TM-AGENT-005 — Capability Escalation (OPEN):**
-Capabilities are all-or-nothing. An org member can create an agent with `virtual_bash` + `web_fetch`, giving it the ability to execute bash commands and exfiltrate results via HTTP. No approval workflow exists for dangerous capability combinations.
+**TM-AGENT-005 — Capability Escalation (MITIGATED):**
+Dangerous capabilities (`virtual_bash`, `docker_container`) and dangerous combinations (execution + `web_fetch`) require explicit `acknowledge_dangerous_capabilities: true` in create/update requests. Assignments are audit-logged. See `crates/server/src/api/validation.rs`.
 
-- **Recommendation:** Implement HITL approval for high-risk capabilities (`virtual_bash`, `docker_container`). Consider capability scoping (e.g., read-only filesystem).
-- **Priority:** Medium
+Future enhancements: admin-only approval for the most dangerous combinations, capability scoping (e.g., read-only filesystem).
 
 **TM-AGENT-006 — Iteration Limit:**
 ```rust

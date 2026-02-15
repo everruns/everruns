@@ -18,7 +18,8 @@ use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, ToolDefinition};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{
-    validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
+    validate_create_agent_input, validate_dangerous_capabilities, validate_import_file_size,
+    validate_update_agent_input,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -61,6 +62,12 @@ pub struct CreateAgentRequest {
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    /// Set to true to acknowledge that this agent uses dangerous capabilities
+    /// (e.g., virtual_bash, docker_container). Required when assigning dangerous
+    /// capabilities. SECURITY[TM-AGENT-005]
+    #[serde(default)]
+    #[schema(example = false)]
+    pub acknowledge_dangerous_capabilities: bool,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -98,6 +105,10 @@ pub struct UpdateAgentRequest {
     /// Replaces existing tools if provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
+    /// Set to true to acknowledge dangerous capabilities. SECURITY[TM-AGENT-005]
+    #[serde(default)]
+    #[schema(example = false)]
+    pub acknowledge_dangerous_capabilities: bool,
 }
 
 /// Request to preview the final agent shape with capabilities applied
@@ -240,6 +251,14 @@ pub async fn create_agent(
         req.capabilities.len(),
     )?;
 
+    // SECURITY[TM-AGENT-005]: Validate dangerous capabilities
+    let cap_ids: Vec<&str> = req
+        .capabilities
+        .iter()
+        .map(|c| c.capability_ref.as_str())
+        .collect();
+    validate_dangerous_capabilities(&cap_ids, req.acknowledge_dangerous_capabilities)?;
+
     let client_id = req.id;
     let agent = match state.service.create(org.org_id, client_id, req).await {
         Ok(agent) => agent,
@@ -356,6 +375,12 @@ pub async fn update_agent(
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),
     )?;
+
+    // SECURITY[TM-AGENT-005]: Validate dangerous capabilities on update
+    if let Some(caps) = &req.capabilities {
+        let cap_ids: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
+        validate_dangerous_capabilities(&cap_ids, req.acknowledge_dangerous_capabilities)?;
+    }
 
     let agent = state
         .service
@@ -574,6 +599,19 @@ pub async fn import_agent(
     )?;
 
     let client_id = agent_file.id;
+    let capabilities: Vec<_> = agent_file
+        .capabilities
+        .iter()
+        .map(|c| c.to_agent_capability_config())
+        .collect();
+
+    // SECURITY[TM-AGENT-005]: Validate dangerous capabilities in import
+    let cap_ids: Vec<&str> = capabilities
+        .iter()
+        .map(|c| c.capability_ref.as_str())
+        .collect();
+    validate_dangerous_capabilities(&cap_ids, false)?;
+
     let request = CreateAgentRequest {
         id: None, // Already extracted as client_id
         name,
@@ -581,12 +619,9 @@ pub async fn import_agent(
         system_prompt,
         default_model_id: agent_file.default_model_id,
         tags: agent_file.tags,
-        capabilities: agent_file
-            .capabilities
-            .iter()
-            .map(|c| c.to_agent_capability_config())
-            .collect(),
+        capabilities,
         tools: vec![],
+        acknowledge_dangerous_capabilities: false,
     };
 
     let agent = state
