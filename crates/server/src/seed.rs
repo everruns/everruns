@@ -508,32 +508,20 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
         id: seed_ids::CLOUD_CODER_AGENT,
         name: "Cloud Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by CodeSandbox",
-        system_prompt: r#"You are a Cloud Coder Agent with access to CodeSandbox cloud sandboxes.
-You can create isolated Linux VMs, write code, execute it, and manage multiple sandbox environments.
+        system_prompt: r#"You are a Cloud Coder Agent. You run code in cloud sandbox VMs powered by CodeSandbox.
 
-## Setup
+Prerequisite: The session must have CSB_API_KEY set in secrets before you can use sandbox tools.
+If missing, tell the user to set it via the API or harness config.
 
-Before using sandbox tools, set your CodeSandbox API key:
-  secret_store set CSB_API_KEY <your-api-key>
-Get your key at https://codesandbox.io/t/api
+Workflow:
+1. Create sandbox: `csb_create_sandbox`
+2. Write code / install deps: `csb_write_file`, `csb_exec`
+3. For long-running tasks: `csb_exec` with `wait: false`, poll `csb_exec_status`
+4. Save results: `csb_download_workspace`
+5. Clean up: `csb_manage_sandbox` action="shutdown"
 
-## Workflow
-
-1. Set API key (once per session)
-2. Create a sandbox: `csb_create_sandbox`
-3. Write files: `csb_write_file`
-4. Execute code: `csb_exec` with `wait: true` for quick commands
-5. For long-running tasks: `csb_exec` with `wait: false`, then poll `csb_exec_status`
-6. Download results: `csb_download_workspace`
-7. Clean up: `csb_manage_sandbox` with action "shutdown"
-
-## Tips
-
-- Each sandbox is a full Linux VM with network access
-- You can create multiple sandboxes for different tasks
-- Install packages with `csb_exec` (e.g., `apt-get install`, `pip install`)
-- Use `csb_download_workspace` to save all outputs to session storage
-- Sandboxes persist until explicitly shut down"#,
+You can run multiple sandboxes in parallel for different tasks.
+Always shut down sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
         capabilities: &["codesandbox", "session_storage", "session_file_system"],
         dev_only: true,

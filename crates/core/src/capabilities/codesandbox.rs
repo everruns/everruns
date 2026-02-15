@@ -692,42 +692,23 @@ impl Capability for CodeSandboxCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to CodeSandbox for running code in cloud-based sandbox VMs.
-Each sandbox is an isolated Firecracker microVM with a full Linux environment and network access.
+            r#"## CodeSandbox (Experimental)
 
-IMPORTANT: This is an EXPERIMENTAL capability.
+Cloud-based sandbox VMs via CodeSandbox. Each sandbox is an isolated Firecracker microVM with full Linux and network access.
 
-## Setup
+Prerequisite: CSB_API_KEY must be set in session secrets before using any sandbox tool.
 
-Set your CodeSandbox API key first (get one at https://codesandbox.io/t/api):
-  secret_store set CSB_API_KEY <your-api-key>
+Tools:
+- `csb_create_sandbox` - Create and start a new sandbox VM
+- `csb_exec` - Run a shell command (`wait: true` for output, `wait: false` for async)
+- `csb_exec_status` - Poll async execution status/output
+- `csb_read_file` / `csb_write_file` - Read/write files in sandbox
+- `csb_download_workspace` - Download sandbox workspace to session storage
+- `csb_list_sandboxes` - List session sandboxes
+- `csb_manage_sandbox` - Shutdown, hibernate, or delete a sandbox
 
-## Tools
-
-- `csb_create_sandbox` - Create a new sandbox VM. Optionally upload files from session storage.
-- `csb_exec` - Execute a shell command. Set `wait: true` (default) to get output, or `wait: false` for async.
-- `csb_exec_status` - Check async execution status and get output.
-- `csb_read_file` - Read a file from sandbox filesystem.
-- `csb_write_file` - Write a file to sandbox filesystem.
-- `csb_download_workspace` - Download entire sandbox workspace to session file storage.
-- `csb_list_sandboxes` - List all sandboxes in this session.
-- `csb_manage_sandbox` - Shutdown, hibernate, or delete a sandbox.
-
-## Workflow
-
-1. Set API key (once per session)
-2. Create sandbox: `csb_create_sandbox`
-3. Write files / execute commands using the sandbox_id
-4. For long-running commands: `csb_exec` with `wait: false`, then poll `csb_exec_status`
-5. Download results: `csb_download_workspace`
-6. Clean up: `csb_manage_sandbox` with action "shutdown"
-
-## Tips
-
-- All tools require a `sandbox_id` (except csb_create_sandbox and csb_list_sandboxes)
-- You can manage multiple sandboxes simultaneously
-- Use `bash -c "..."` for complex shell commands
-- Sandboxes persist until explicitly shut down or the session ends"#,
+All tools except `csb_create_sandbox` and `csb_list_sandboxes` require a `sandbox_id`.
+Sandboxes auto-hibernate after 5 minutes of inactivity. Always shut down when done."#,
         )
     }
 
@@ -1716,9 +1697,12 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("csb_create_sandbox"));
         assert!(prompt.contains("CSB_API_KEY"));
-        assert!(prompt.contains("EXPERIMENTAL"));
+        assert!(prompt.contains("Experimental"));
         assert!(prompt.contains("csb_exec"));
         assert!(prompt.contains("csb_download_workspace"));
+        assert!(prompt.contains("Prerequisite"));
+        // Should NOT duplicate workflow steps (that's the agent's job)
+        assert!(!prompt.contains("Set API key (once per session)"));
     }
 
     #[test]
