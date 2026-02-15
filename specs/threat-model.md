@@ -208,7 +208,11 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-API-005 | Internal error detail leakage | Medium | Generic `{"error": "Internal server error"}` for 500s; details logged server-side only | MITIGATED |
 | TM-API-006 | Missing auth on protected routes | Critical | All protected routes require `AuthUser` extractor; compile-time route registration | MITIGATED |
 | TM-API-007 | CORS misconfiguration | Medium | `CORS_ALLOWED_ORIGINS` not set by default (same-origin only); configurable for cross-origin | MITIGATED |
-| TM-API-008 | WebFetch SSRF | Medium | Agent-controlled, not user-controlled URLs; agents are semi-trusted within session scope | **ACCEPTED** |
+| TM-API-008 | WebFetch SSRF to internal services | High | fetchkit `fetch()` used without block_prefixes; no private IP or metadata endpoint filtering | **OPEN** |
+| TM-API-009 | WebFetch cloud metadata access | Critical | `http://169.254.169.254/` not blocked; IAM credential theft possible in cloud deployments | **OPEN** |
+| TM-API-010 | WebFetch internal DNS probing | Medium | Agent can resolve internal service names via web_fetch; enables service topology discovery | **OPEN** |
+| TM-API-011 | WebFetch internal port scanning | Medium | Agent can probe ports on discovered hosts; 1s first-byte timeout enables slow scanning | **OPEN** |
+| TM-API-012 | WebFetch DNS rebinding | Medium | No resolve-then-check; attacker domain can rebind from public to internal IP mid-request | **OPEN** |
 
 ### Mitigation Details
 
@@ -230,6 +234,100 @@ Returns `400 Bad Request: "Input exceeds allowed limits"` (generic, no detail le
 ✗ /src/\0hidden.rs     (null byte blocked)
 ```
 Enforced at both application layer and database constraint (`session_files_path_check`).
+
+**TM-API-008 — WebFetch SSRF (OPEN — reclassified from ACCEPTED):**
+
+Previously classified as ACCEPTED on the basis that "agent-controlled, not user-controlled URLs; agents are semi-trusted within session scope." Investigation reveals this significantly understates the risk:
+
+1. **No URL filtering at all:** Everruns calls `fetchkit::fetch()` (standalone function), which creates `FetchOptions` with empty `allow_prefixes` and `block_prefixes`. The `BlockedUrl` error path in the web_fetch error handler can never trigger.
+2. **fetchkit supports filtering but it's unused:** The `fetchkit::Tool::execute()` method correctly passes configured `block_prefixes`/`allow_prefixes` to the fetcher, but Everruns bypasses this by using the standalone `fetch()` function.
+3. **Prompt injection compounds the risk:** While agents are "semi-trusted," indirect prompt injection via tool results (TM-AGENT-002) or MCP tool descriptions (TM-AGENT-003) can influence the agent to fetch attacker-chosen URLs. The agent is not truly in control of its own URL choices.
+
+Attack surface from within the worker container:
+- Internal services: `postgres:5432`, `server:9000`/`9001`, `jaeger:4317`/`4318`/`16686`
+- Other containers on the Docker bridge network
+- Cloud metadata endpoints (see TM-API-009)
+- Any host reachable from the container's network namespace
+
+**Recommendation:** Switch from `fetchkit::fetch()` to `fetchkit::Tool` with configured `block_prefixes`:
+```rust
+let tool = fetchkit::Tool::builder()
+    .block_prefix("http://169.254.")       // Cloud metadata (AWS/GCP/Azure)
+    .block_prefix("https://169.254.")
+    .block_prefix("http://metadata.")       // GCP metadata alias
+    .block_prefix("https://metadata.")
+    .block_prefix("http://127.0.0.1")       // Localhost
+    .block_prefix("https://127.0.0.1")
+    .block_prefix("http://[::1]")           // IPv6 localhost
+    .block_prefix("https://[::1]")
+    .block_prefix("http://localhost")       // Localhost by name
+    .block_prefix("https://localhost")
+    .block_prefix("http://10.")             // RFC 1918 private
+    .block_prefix("https://10.")
+    .block_prefix("http://172.16.")         // RFC 1918 private
+    .block_prefix("https://172.16.")
+    .block_prefix("http://192.168.")        // RFC 1918 private
+    .block_prefix("https://192.168.")
+    .block_prefix("http://0.0.0.0")         // Unspecified
+    .block_prefix("https://0.0.0.0")
+    .build();
+```
+**Priority:** Critical — this is the single highest-impact network security gap.
+
+**Limitations of prefix-based blocking:**
+- Does not block numeric IP variants (e.g., `http://2130706433` for 127.0.0.1 as decimal)
+- Does not block DNS names that resolve to private IPs (e.g., `http://internal.corp.com` → 10.0.0.5)
+- Does not prevent DNS rebinding attacks (see TM-API-012)
+- Prefix matching on `http://172.16.` misses `172.17.` through `172.31.` in the private range
+
+A robust long-term fix requires resolve-then-check: resolve the URL's hostname, then validate the resolved IP against blocked ranges before connecting. This requires changes in fetchkit itself.
+
+**TM-API-009 — Cloud Metadata Access (OPEN):**
+Cloud providers expose instance metadata at `http://169.254.169.254/`. This endpoint returns:
+- AWS: IAM role credentials, instance identity, user data (may contain secrets)
+- GCP: Service account tokens, project metadata, SSH keys
+- Azure: Managed identity tokens, instance metadata
+
+An agent with `web_fetch` can call `http://169.254.169.254/latest/meta-data/iam/security-credentials/` to retrieve temporary AWS credentials, enabling lateral movement beyond the Everruns cluster.
+
+- **Recommendation:** Block `169.254.0.0/16` at fetchkit level (see TM-API-008 recommendation) AND via infrastructure (AWS IMDSv2, GCP metadata concealment, cloud firewall egress rules).
+- **Priority:** Critical in cloud deployments.
+
+**TM-API-010 — Internal DNS Probing (OPEN):**
+An agent can use `web_fetch` to discover internal services by trying known names:
+```
+web_fetch("http://postgres:5432/")
+web_fetch("http://server:9000/health")
+web_fetch("http://jaeger:16686/")
+web_fetch("http://redis:6379/")
+```
+Error messages distinguish between DNS failures ("Failed to connect") and timeouts ("timed out"), enabling service enumeration.
+
+- **Recommendation:** Block private IP ranges (covers resolved addresses if using resolve-then-check). For DNS-level protection, use split-horizon DNS or restrict container DNS resolution.
+- **Priority:** Medium
+
+**TM-API-011 — Internal Port Scanning (OPEN):**
+With the 1-second first-byte timeout, an agent can probe ~60 ports per minute. Combined with DNS probing (TM-API-010), an attacker can map the internal network.
+- Open port: returns HTTP response or connection refused (fast)
+- Closed port: times out after 1 second
+- Non-existent host: DNS failure (fast)
+
+The agent iteration limit (default 100) and tool call limits constrain the scope, but a determined attacker can spread scanning across multiple sessions.
+
+- **Recommendation:** Block private IP ranges at fetchkit level. Consider per-session rate limiting on web_fetch calls.
+- **Priority:** Medium
+
+**TM-API-012 — DNS Rebinding (OPEN):**
+Fetchkit performs no resolve-then-check. An attacker can:
+1. Register a domain (e.g., `evil.example.com`) that initially resolves to a public IP
+2. Configure short DNS TTL
+3. After URL validation passes (if any), rebind the domain to an internal IP (e.g., `10.0.0.1`)
+4. The HTTP client connects to the internal IP
+
+This bypasses any URL-based prefix filtering since the domain looks public.
+
+- **Recommendation:** Implement resolve-then-check in fetchkit: resolve hostname → validate resolved IP → connect. This requires upstream changes to fetchkit.
+- **Priority:** Medium (defense-in-depth; prefix blocking mitigates most practical attacks).
 
 ## 5. Session Filesystem (TM-FS)
 
@@ -623,6 +721,11 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 
 | ID | Threat | Severity | Recommendation |
 |----|--------|----------|----------------|
+| TM-API-008 | WebFetch SSRF to internal services | High | Use fetchkit `Tool::execute()` with block_prefixes for private IPs |
+| TM-API-009 | WebFetch cloud metadata access | Critical | Block 169.254.0.0/16; enforce IMDSv2; cloud firewall egress rules |
+| TM-API-010 | WebFetch internal DNS probing | Medium | Block private IP ranges via resolve-then-check |
+| TM-API-011 | WebFetch internal port scanning | Medium | Block private IPs; rate-limit web_fetch per session |
+| TM-API-012 | WebFetch DNS rebinding | Medium | Implement resolve-then-check in fetchkit |
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
 | TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
@@ -641,7 +744,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 |----|--------|-----------|
 | TM-AUTH-010 | Admin password in env var | Limited to development mode; documented |
 | TM-AUTH-011 | Auth bypass in none mode | By design for local development |
-| TM-API-008 | WebFetch SSRF | Agent-controlled, not user-controlled URLs |
+| TM-API-008 | ~~WebFetch SSRF~~ | Reclassified to **OPEN** — no URL filtering in place; see TM-API-008 details |
 | TM-FS-006 | File content unencrypted at rest | Relies on infrastructure encryption |
 | TM-FS-007 | No file access audit log | Privacy tradeoff; not compliance-required |
 | TM-LLM-007 | Indirect prompt injection | Inherent LLM limitation; mitigated by role separation |
@@ -664,6 +767,8 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |
 | Review agent capabilities | TM-AGENT-005, TM-AGENT-013 | Audit capability assignments; avoid virtual_bash + web_fetch on untrusted agents |
 | System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
+| Block cloud metadata | TM-API-009 | Enable IMDSv2 (AWS), metadata concealment (GCP), or equivalent; block 169.254.0.0/16 egress at cloud firewall |
+| Worker network isolation | TM-API-008, TM-API-010, TM-API-011 | Restrict worker container egress to LLM provider IPs and required external services only |
 
 ## Security Controls Matrix
 
@@ -702,3 +807,4 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
+- [fetchkit v0.1.1 source](https://crates.io/crates/fetchkit) — URL prefix blocking, fetch options, fetcher registry
