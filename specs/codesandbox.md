@@ -70,7 +70,7 @@ All state is stored in session **secrets** (encrypted at rest via AES-256-GCM en
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ title?, template?, runtime: "vm" }` |
+| POST | `/sandbox` | Create sandbox | `{ title?, runtime: "vm" }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
 | POST | `/vm/{id}/start` | Start VM | `{ tier? }` |
 | POST | `/vm/{id}/shutdown` | Shutdown VM | — |
@@ -98,7 +98,6 @@ Creates a new sandbox VM. Optionally uploads files from session storage.
 
 - **Parameters**:
   - `title`: string (optional) — sandbox title
-  - `template`: string (optional) — template ID to fork from
   - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
 - **Returns**: `{ sandbox_id, status, workspace_path }`
 - **Policy**: Auto
@@ -229,6 +228,10 @@ The `csb_exec` tool supports both `wait: true` (blocks until completion, returns
 ### Workspace snapshot download
 
 The `csb_download_workspace` tool downloads the entire workspace directory tree rather than individual files. This supports the common workflow of running computations in a sandbox and bringing all results back to session storage.
+
+### Template field removed (2026-02-15)
+
+The `template` field on `csb_create_sandbox` was removed. The CodeSandbox API returns 500 Internal Server Error when a template ID is specified (tested with `python`/`in2qez` and others from their template library). Sandboxes created without a template work correctly — they get a universal VM with full Linux and network access. If CodeSandbox fixes their template API in the future, the field can be re-added.
 
 ### session_storage dependency
 

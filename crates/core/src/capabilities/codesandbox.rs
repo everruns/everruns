@@ -113,28 +113,9 @@ pub struct SandboxState {
     pub started_at: String,
 }
 
-// ============================================================================
-// Template alias resolution
-// ============================================================================
-
-/// Map friendly template names to CodeSandbox template IDs.
-/// Not all templates resolve by name — some need their opaque ID.
-/// Source: https://codesandbox.io/docs/sdk/template-library
-fn resolve_template_alias(name: &str) -> &str {
-    match name {
-        "javascript" => "3l5fg9",
-        "node" | "node-http-server" => "node",
-        "nodejs" | "node.js" => "k8dsq1",
-        "python" => "in2qez",
-        "rust" => "rk69p3",
-        "universal" => "pcz35m",
-        "go" => "ej14tt",
-        "deno" => "kc6kgh",
-        "bun" => "0uzq6f",
-        "docker" => "hsd8ke",
-        other => other,
-    }
-}
+// NOTE: Template alias resolution was removed. The CodeSandbox `template` field
+// caused 500 errors from their API for most template IDs (tested 2026-02-15).
+// Sandboxes created without a template work fine. See specs/codesandbox.md for details.
 
 // ============================================================================
 // CodeSandboxClient - HTTP client for CodeSandbox APIs
@@ -777,10 +758,6 @@ impl Tool for CsbCreateSandboxTool {
                     "type": "string",
                     "description": "Sandbox title (optional)"
                 },
-                "template": {
-                    "type": "string",
-                    "description": "Template to fork from (optional, defaults to universal). Known: javascript, python, node, rust, go, deno, bun, docker, universal"
-                },
                 "upload_files": {
                     "type": "array",
                     "description": "Files to upload from session storage (optional)",
@@ -821,22 +798,13 @@ impl Tool for CsbCreateSandboxTool {
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("Everruns Sandbox");
-        let mut create_body = json!({
+        let create_body = json!({
             "title": title,
             "privacy": 2,
             "runtime": "vm",
             "settings": { "use_pint": true },
             "hibernationTimeoutSeconds": HIBERNATE_TIMEOUT_SECS,
         });
-        if let Some(template) = arguments
-            .get("template")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-        {
-            // Some templates require their ID rather than name
-            let resolved = resolve_template_alias(template);
-            create_body["template"] = json!(resolved);
-        }
 
         // Create sandbox
         debug!("Creating CodeSandbox: {title}");
@@ -1728,21 +1696,6 @@ mod tests {
         assert!(prompt.contains("Prerequisite"));
         // Should NOT duplicate workflow steps (that's the agent's job)
         assert!(!prompt.contains("Set API key (once per session)"));
-    }
-
-    #[test]
-    fn test_resolve_template_alias() {
-        assert_eq!(resolve_template_alias("python"), "in2qez");
-        assert_eq!(resolve_template_alias("javascript"), "3l5fg9");
-        assert_eq!(resolve_template_alias("go"), "ej14tt");
-        assert_eq!(resolve_template_alias("rust"), "rk69p3");
-        assert_eq!(resolve_template_alias("universal"), "pcz35m");
-        assert_eq!(resolve_template_alias("deno"), "kc6kgh");
-        assert_eq!(resolve_template_alias("bun"), "0uzq6f");
-        assert_eq!(resolve_template_alias("node"), "node");
-        assert_eq!(resolve_template_alias("docker"), "hsd8ke");
-        // Unknown names pass through unchanged
-        assert_eq!(resolve_template_alias("custom-abc123"), "custom-abc123");
     }
 
     #[test]
