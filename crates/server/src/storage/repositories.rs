@@ -3396,13 +3396,11 @@ impl Database {
         input: CreateUserConnectionRow,
     ) -> Result<UserConnectionRow> {
         // App-level uniqueness: delete existing connection for this user+provider
-        sqlx::query(
-            "DELETE FROM user_connections WHERE user_id = $1 AND provider = $2",
-        )
-        .bind(input.user_id)
-        .bind(&input.provider)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("DELETE FROM user_connections WHERE user_id = $1 AND provider = $2")
+            .bind(input.user_id)
+            .bind(&input.provider)
+            .execute(&self.pool)
+            .await?;
 
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
@@ -3449,10 +3447,7 @@ impl Database {
     }
 
     /// List all connections for a user
-    pub async fn list_user_connections(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserConnectionRow>> {
+    pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         let rows = sqlx::query_as::<_, UserConnectionRow>(
             r#"
             SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, created_at, updated_at
@@ -3469,18 +3464,13 @@ impl Database {
     }
 
     /// Delete a user's connection for a specific provider
-    pub async fn delete_user_connection(
-        &self,
-        user_id: Uuid,
-        provider: &str,
-    ) -> Result<bool> {
-        let result = sqlx::query(
-            "DELETE FROM user_connections WHERE user_id = $1 AND provider = $2",
-        )
-        .bind(user_id)
-        .bind(provider)
-        .execute(&self.pool)
-        .await?;
+    pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM user_connections WHERE user_id = $1 AND provider = $2")
+                .bind(user_id)
+                .bind(provider)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected() > 0)
     }

@@ -1055,18 +1055,11 @@ impl StorageBackend {
         dispatch!(self, get_user_connection, user_id, provider)
     }
 
-    pub async fn list_user_connections(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserConnectionRow>> {
+    pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         dispatch!(self, list_user_connections, user_id)
     }
 
-    pub async fn delete_user_connection(
-        &self,
-        user_id: Uuid,
-        provider: &str,
-    ) -> Result<bool> {
+    pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
 }
