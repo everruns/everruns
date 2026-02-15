@@ -89,6 +89,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/maintenance.md` - Pre-release maintenance checklist
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
+- `specs/linear-issues.md` - Linear issue processing workflow
 
 ### Skills
 
