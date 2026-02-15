@@ -410,7 +410,9 @@ impl CodeSandboxClient {
             .await
             .map_err(|e| format!("Failed to read exec output: {e}"))?;
 
-        Ok(parse_sse_output(&body))
+        // The /io endpoint returns plain text output, not SSE.
+        // Trim trailing whitespace but preserve internal newlines.
+        Ok(body.trim_end().to_string())
     }
 
     pub async fn exec_kill(&self, state: &SandboxState, exec_id: &str) -> Result<(), String> {
@@ -500,30 +502,6 @@ fn encode_path(path: &str) -> String {
     // Strip leading slash and pass through — CodeSandbox Pint API accepts
     // unencoded paths in practice. Only encode spaces as %20.
     path.trim_start_matches('/').replace(' ', "%20")
-}
-
-/// Parse SSE stream output, extracting data lines.
-fn parse_sse_output(raw: &str) -> String {
-    let mut output = String::new();
-    for line in raw.lines() {
-        if let Some(data) = line.strip_prefix("data: ") {
-            // Try to parse as JSON with "output" or "data" field
-            if let Ok(val) = serde_json::from_str::<Value>(data) {
-                if let Some(text) = val.get("output").and_then(|v| v.as_str()) {
-                    output.push_str(text);
-                } else if let Some(text) = val.get("data").and_then(|v| v.as_str()) {
-                    output.push_str(text);
-                } else {
-                    output.push_str(data);
-                    output.push('\n');
-                }
-            } else {
-                output.push_str(data);
-                output.push('\n');
-            }
-        }
-    }
-    output
 }
 
 // ============================================================================
@@ -1755,42 +1733,6 @@ mod tests {
 
     // --- SSE parsing tests ---
 
-    #[test]
-    fn test_parse_sse_output_with_data_lines() {
-        let raw = "data: hello\ndata: world\n";
-        let output = parse_sse_output(raw);
-        assert_eq!(output, "hello\nworld\n");
-    }
-
-    #[test]
-    fn test_parse_sse_output_empty() {
-        let output = parse_sse_output("");
-        assert_eq!(output, "");
-    }
-
-    #[test]
-    fn test_parse_sse_output_json_with_output_field() {
-        let raw = r#"data: {"output":"line 1"}
-data: {"output":"line 2"}
-"#;
-        let output = parse_sse_output(raw);
-        assert_eq!(output, "line 1line 2");
-    }
-
-    #[test]
-    fn test_parse_sse_output_mixed_events() {
-        let raw = "event: message\ndata: first\n\nevent: done\ndata: second\n";
-        let output = parse_sse_output(raw);
-        assert_eq!(output, "first\nsecond\n");
-    }
-
-    #[test]
-    fn test_parse_sse_output_ignores_non_data_lines() {
-        let raw = "id: 1\nevent: test\nretry: 1000\ndata: actual data\n:comment\n";
-        let output = parse_sse_output(raw);
-        assert_eq!(output, "actual data\n");
-    }
-
     // --- URL encoding tests ---
 
     #[test]
@@ -2119,7 +2061,8 @@ data: {"output":"line 2"}
             Mock::given(method("GET"))
                 .and(path("/api/v1/execs/exec_1/io"))
                 .respond_with(
-                    ResponseTemplate::new(200).set_body_string("data: hello world\ndata: done\n"),
+                    // The real CodeSandbox /io endpoint returns plain text, not SSE
+                    ResponseTemplate::new(200).set_body_string("hello world\n"),
                 )
                 .mount(&mock_server)
                 .await;
@@ -2130,8 +2073,7 @@ data: {"output":"line 2"}
             let result = client.exec_get_output(&state, "exec_1").await;
             assert!(result.is_ok());
             let output = result.unwrap();
-            assert!(output.contains("hello world"));
-            assert!(output.contains("done"));
+            assert_eq!(output, "hello world");
         }
 
         #[tokio::test]
