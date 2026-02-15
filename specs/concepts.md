@@ -185,3 +185,13 @@ A remote server that exposes tools via the Model Context Protocol. Integrated as
 - Tools are discovered at runtime and cached with a 24-hour TTL
 - Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
 - Execution happens via HTTP JSON-RPC
+
+### User Connection
+
+A linked external service account (GitHub, GitLab, etc.) associated with a user. Provides authenticated access to external services from agent sessions.
+
+- User-scoped (not org-scoped) — represents the user's identity on the external service
+- Tokens encrypted at rest via AES-256-GCM envelope encryption
+- Auto-injected into sessions as secrets (e.g., `GITHUB_TOKEN`) when sessions are created
+- Capabilities like `codesandbox` use injected tokens transparently (e.g., `csb_git_clone` for private repos)
+- See [user-connections.md](user-connections.md) for full specification

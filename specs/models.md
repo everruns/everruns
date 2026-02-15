@@ -613,6 +613,24 @@ Automatic discovery of available models from provider APIs.
 - `include_stale` - Include stale models (default: true)
 - `favorites_only` - Only return favorites (default: false)
 
+### UserConnection
+
+A linked external service account. User-scoped (not org-scoped). See [user-connections.md](user-connections.md) for full specification.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Internal primary key |
+| `user_id` | UUID | FK to users.id |
+| `provider` | string | `github`, `gitlab`, `bitbucket` |
+| `provider_user_id` | string? | Provider's user ID |
+| `provider_username` | string? | Display name (e.g., `octocat`) |
+| `access_token_encrypted` | bytes | Encrypted with envelope encryption |
+| `refresh_token_encrypted` | bytes? | For providers that support refresh |
+| `scopes` | string? | Granted scopes (e.g., `repo,read:user`) |
+| `expires_at` | timestamp? | NULL = no expiry (GitHub OAuth App tokens) |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+
 ## Design Decisions
 
 | Question | Decision |
