@@ -16,6 +16,7 @@ use everruns_core::{
     Agent, DriverRegistry, Harness, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::mcp_executor::McpServerInfo;
@@ -172,6 +173,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the session SQL database store (if available).
     /// Default returns None (not all backends support session SQL databases).
     fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
+        None
+    }
+
+    /// Get the session storage store for kv_store/secret_store tools (if available).
+    /// Default returns None (not all backends support session storage).
+    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
         None
     }
 }

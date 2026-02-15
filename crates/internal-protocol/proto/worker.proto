@@ -123,6 +123,33 @@ service WorkerService {
     // === MCP server operations ===
     // Get MCP server info by name prefix (for tool execution)
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
+
+    // === Session storage operations ===
+    // Key/value and secret storage for session-scoped data
+
+    // Set a key/value pair (creates or updates)
+    rpc SessionStorageSetValue(SessionStorageSetValueRequest) returns (SessionStorageSetValueResponse);
+
+    // Get a value by key
+    rpc SessionStorageGetValue(SessionStorageGetValueRequest) returns (SessionStorageGetValueResponse);
+
+    // Delete a key/value pair
+    rpc SessionStorageDeleteValue(SessionStorageDeleteValueRequest) returns (SessionStorageDeleteValueResponse);
+
+    // List all keys in a session
+    rpc SessionStorageListKeys(SessionStorageListKeysRequest) returns (SessionStorageListKeysResponse);
+
+    // Set a secret (encrypted at rest)
+    rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
+
+    // Get a secret by name (decrypted)
+    rpc SessionStorageGetSecret(SessionStorageGetSecretRequest) returns (SessionStorageGetSecretResponse);
+
+    // Delete a secret
+    rpc SessionStorageDeleteSecret(SessionStorageDeleteSecretRequest) returns (SessionStorageDeleteSecretResponse);
+
+    // List all secret names in a session (without values)
+    rpc SessionStorageListSecrets(SessionStorageListSecretsRequest) returns (SessionStorageListSecretsResponse);
 }
 
 // ============================================================================
@@ -838,4 +865,94 @@ message GetMcpServerByPrefixRequest {
 
 message GetMcpServerByPrefixResponse {
     optional McpServerInfo server = 1;
+}
+
+// ============================================================================
+// Session storage types (key/value + secrets)
+// ============================================================================
+
+// Metadata for a stored key
+message StorageKeyInfo {
+    string key = 1;
+    Timestamp created_at = 2;
+    Timestamp updated_at = 3;
+}
+
+// Metadata for a stored secret (without value)
+message StorageSecretInfo {
+    string name = 1;
+    Timestamp created_at = 2;
+    Timestamp updated_at = 3;
+}
+
+// === Key/Value operations ===
+
+message SessionStorageSetValueRequest {
+    Uuid session_id = 1;
+    string key = 2;
+    string value = 3;
+}
+
+message SessionStorageSetValueResponse {}
+
+message SessionStorageGetValueRequest {
+    Uuid session_id = 1;
+    string key = 2;
+}
+
+message SessionStorageGetValueResponse {
+    optional string value = 1;
+}
+
+message SessionStorageDeleteValueRequest {
+    Uuid session_id = 1;
+    string key = 2;
+}
+
+message SessionStorageDeleteValueResponse {
+    bool deleted = 1;
+}
+
+message SessionStorageListKeysRequest {
+    Uuid session_id = 1;
+}
+
+message SessionStorageListKeysResponse {
+    repeated StorageKeyInfo keys = 1;
+}
+
+// === Secret operations ===
+
+message SessionStorageSetSecretRequest {
+    Uuid session_id = 1;
+    string name = 2;
+    string value = 3;
+}
+
+message SessionStorageSetSecretResponse {}
+
+message SessionStorageGetSecretRequest {
+    Uuid session_id = 1;
+    string name = 2;
+}
+
+message SessionStorageGetSecretResponse {
+    optional string value = 1;
+}
+
+message SessionStorageDeleteSecretRequest {
+    Uuid session_id = 1;
+    string name = 2;
+}
+
+message SessionStorageDeleteSecretResponse {
+    bool deleted = 1;
+}
+
+message SessionStorageListSecretsRequest {
+    Uuid session_id = 1;
+}
+
+message SessionStorageListSecretsResponse {
+    repeated StorageSecretInfo secrets = 1;
 }

@@ -536,6 +536,25 @@ pub async fn run(
             ));
             let capability_registry = CapabilityRegistry::with_builtins();
 
+            let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
+                match db.as_ref() {
+                    crate::storage::StorageBackend::Postgres(database) => {
+                        if let Some(enc) = &encryption {
+                            Arc::new(crate::storage::create_db_session_storage_store(
+                                database.clone(),
+                                enc.as_ref().clone(),
+                            ))
+                        } else {
+                            Arc::new(
+                                crate::storage::create_db_session_storage_store_without_encryption(
+                                    database.clone(),
+                                ),
+                            )
+                        }
+                    }
+                    crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
+                };
+
             let adapters = DirectWorkerAdapters::new(
                 db.clone(),
                 event_service.clone(),
@@ -543,7 +562,8 @@ pub async fn run(
                 mcp_server_service,
                 capability_registry,
             )
-            .with_sqldb_store(sqldb_store.clone());
+            .with_sqldb_store(sqldb_store.clone())
+            .with_storage_store(session_storage_store);
 
             let worker_config = TaskWorkerConfig::dev_mode();
             tokio::spawn(async move {

@@ -41,6 +41,7 @@ mod seed_ids {
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
+    pub const CLOUD_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -502,6 +503,28 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
             "stateless_todo_list",
         ],
         dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::CLOUD_CODER_AGENT,
+        name: "Cloud Coder",
+        description: "A coding agent that runs code in cloud sandboxes powered by CodeSandbox",
+        system_prompt: r#"You are a Cloud Coder Agent. You run code in cloud sandbox VMs powered by CodeSandbox.
+
+Prerequisite: The session must have CSB_API_KEY set in secrets before you can use sandbox tools.
+If missing, tell the user to set it via the API or harness config.
+
+Workflow:
+1. Create sandbox: `csb_create_sandbox`
+2. Write code / install deps: `csb_write_file`, `csb_exec`
+3. For long-running tasks: `csb_exec` with `wait: false`, poll `csb_exec_status`
+4. Save results: `csb_download_workspace`
+5. Clean up: `csb_manage_sandbox` action="shutdown"
+
+You can run multiple sandboxes in parallel for different tasks.
+Always shut down sandboxes when done."#,
+        tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
+        capabilities: &["codesandbox", "session_storage", "session_file_system"],
+        dev_only: true,
     },
 ];
 
