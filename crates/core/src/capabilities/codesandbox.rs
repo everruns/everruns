@@ -132,14 +132,6 @@ fn resolve_template_alias(name: &str) -> &str {
         "deno" => "kc6kgh",
         "bun" => "0uzq6f",
         "docker" => "hsd8ke",
-        "nextjs" | "next.js" => "fxis37",
-        "react" | "react-js" => "kd848j",
-        "react-ts" => "9qputt",
-        "vue" => "pb6sit",
-        "angular" => "angular",
-        "astro" => "j1qiqf",
-        "jupyter" => "29wlwy",
-        "flask" | "python-flask" => "4gppm4",
         other => other,
     }
 }
@@ -787,7 +779,7 @@ impl Tool for CsbCreateSandboxTool {
                 },
                 "template": {
                     "type": "string",
-                    "description": "Template to fork from (optional, defaults to universal). Known: javascript, python, node, rust, go, deno, bun, docker, nextjs, react, react-ts, vue, angular, astro, jupyter, flask"
+                    "description": "Template to fork from (optional, defaults to universal). Known: javascript, python, node, rust, go, deno, bun, docker, universal"
                 },
                 "upload_files": {
                     "type": "array",
