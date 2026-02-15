@@ -579,14 +579,16 @@ describe("FileBrowser Directory Expansion", () => {
 // ============================================
 
 describe("FileBrowser recursion guard", () => {
-  const makeFile = (overrides: Partial<{
-    id: string;
-    path: string;
-    name: string;
-    is_directory: boolean;
-    is_readonly: boolean;
-    size_bytes: number;
-  }>) => ({
+  const makeFile = (
+    overrides: Partial<{
+      id: string;
+      path: string;
+      name: string;
+      is_directory: boolean;
+      is_readonly: boolean;
+      size_bytes: number;
+    }>,
+  ) => ({
     id: overrides.id ?? "f1",
     session_id: "test-session",
     path: overrides.path ?? "/workspace/file.txt",
