@@ -45,9 +45,16 @@ use everruns_internal_protocol::proto::{
     SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
     SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
     SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
-    SessionWriteFileRequest, SessionWriteFileResponse, SetSessionStatusRequest,
-    SetSessionStatusResponse, SubscribeTaskNotificationsRequest, TaskNotification,
-    TaskNotificationType, UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
+    SessionStorageDeleteSecretRequest, SessionStorageDeleteSecretResponse,
+    SessionStorageDeleteValueRequest, SessionStorageDeleteValueResponse,
+    SessionStorageGetSecretRequest, SessionStorageGetSecretResponse, SessionStorageGetValueRequest,
+    SessionStorageGetValueResponse, SessionStorageListKeysRequest, SessionStorageListKeysResponse,
+    SessionStorageListSecretsRequest, SessionStorageListSecretsResponse,
+    SessionStorageSetSecretRequest, SessionStorageSetSecretResponse, SessionStorageSetValueRequest,
+    SessionStorageSetValueResponse, SessionWriteFileRequest, SessionWriteFileResponse,
+    SetSessionStatusRequest, SetSessionStatusResponse, SubscribeTaskNotificationsRequest,
+    TaskNotification, TaskNotificationType, UpdateDurableWorkflowStatusRequest,
+    UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
@@ -117,6 +124,8 @@ pub struct WorkerServiceImpl {
     task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
     /// Storage backend for image resolution
     db: Arc<StorageBackend>,
+    /// Session storage store for key/value and secret operations
+    session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
 }
 
 impl WorkerServiceImpl {
@@ -130,13 +139,31 @@ impl WorkerServiceImpl {
         let session_service = SessionService::new(db.clone());
         let session_file_service = SessionFileService::new(db.clone());
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
-        let mcp_server_service = McpServerService::new(db.clone(), encryption);
+        let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
         let durable_store = db
             .pool()
             .map(|pool| Arc::new(PostgresWorkflowEventStore::new(pool.clone())));
+
+        // Create session storage store (PostgreSQL mode only)
+        let session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>> =
+            db.pool().map(|pool| {
+                let database = crate::storage::Database::new(pool.clone());
+                if let Some(enc) = &encryption {
+                    Arc::new(crate::storage::create_db_session_storage_store(
+                        database,
+                        enc.as_ref().clone(),
+                    )) as Arc<dyn everruns_core::traits::SessionStorageStore>
+                } else {
+                    Arc::new(
+                        crate::storage::create_db_session_storage_store_without_encryption(
+                            database,
+                        ),
+                    ) as Arc<dyn everruns_core::traits::SessionStorageStore>
+                }
+            });
 
         Self {
             event_service,
@@ -149,6 +176,7 @@ impl WorkerServiceImpl {
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
+            session_storage_store,
         }
     }
 
@@ -163,6 +191,16 @@ impl WorkerServiceImpl {
         self.durable_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Durable execution not enabled"))
+    }
+
+    /// Get session storage store or return unavailable error
+    #[allow(clippy::result_large_err)]
+    fn storage_store(
+        &self,
+    ) -> Result<&Arc<dyn everruns_core::traits::SessionStorageStore>, Status> {
+        self.session_storage_store
+            .as_ref()
+            .ok_or_else(|| Status::unavailable("Session storage not available"))
     }
 
     /// Get organization public_id from org_id
@@ -2088,6 +2126,184 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(GetMcpServerByPrefixResponse {
             server: server_info,
+        }))
+    }
+
+    // =========================================================================
+    // Session Storage Operations
+    // =========================================================================
+
+    async fn session_storage_set_value(
+        &self,
+        request: Request<SessionStorageSetValueRequest>,
+    ) -> Result<Response<SessionStorageSetValueResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        store
+            .set_value(session_id.into(), &req.key, &req.value)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to set storage value: {}", e);
+                Status::internal("Failed to set storage value")
+            })?;
+
+        Ok(Response::new(SessionStorageSetValueResponse {}))
+    }
+
+    async fn session_storage_get_value(
+        &self,
+        request: Request<SessionStorageGetValueRequest>,
+    ) -> Result<Response<SessionStorageGetValueResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let value = store
+            .get_value(session_id.into(), &req.key)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get storage value: {}", e);
+                Status::internal("Failed to get storage value")
+            })?;
+
+        Ok(Response::new(SessionStorageGetValueResponse { value }))
+    }
+
+    async fn session_storage_delete_value(
+        &self,
+        request: Request<SessionStorageDeleteValueRequest>,
+    ) -> Result<Response<SessionStorageDeleteValueResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let deleted = store
+            .delete_value(session_id.into(), &req.key)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete storage value: {}", e);
+                Status::internal("Failed to delete storage value")
+            })?;
+
+        Ok(Response::new(SessionStorageDeleteValueResponse { deleted }))
+    }
+
+    async fn session_storage_list_keys(
+        &self,
+        request: Request<SessionStorageListKeysRequest>,
+    ) -> Result<Response<SessionStorageListKeysResponse>, Status> {
+        use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let keys = store.list_keys(session_id.into()).await.map_err(|e| {
+            tracing::error!("Failed to list storage keys: {}", e);
+            Status::internal("Failed to list storage keys")
+        })?;
+
+        let proto_keys = keys
+            .into_iter()
+            .map(|k| proto::StorageKeyInfo {
+                key: k.key,
+                created_at: Some(datetime_to_proto_timestamp(k.created_at)),
+                updated_at: Some(datetime_to_proto_timestamp(k.updated_at)),
+            })
+            .collect();
+
+        Ok(Response::new(SessionStorageListKeysResponse {
+            keys: proto_keys,
+        }))
+    }
+
+    async fn session_storage_set_secret(
+        &self,
+        request: Request<SessionStorageSetSecretRequest>,
+    ) -> Result<Response<SessionStorageSetSecretResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        store
+            .set_secret(session_id.into(), &req.name, &req.value)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to set secret: {}", e);
+                Status::internal("Failed to set secret")
+            })?;
+
+        Ok(Response::new(SessionStorageSetSecretResponse {}))
+    }
+
+    async fn session_storage_get_secret(
+        &self,
+        request: Request<SessionStorageGetSecretRequest>,
+    ) -> Result<Response<SessionStorageGetSecretResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let value = store
+            .get_secret(session_id.into(), &req.name)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get secret: {}", e);
+                Status::internal("Failed to get secret")
+            })?;
+
+        Ok(Response::new(SessionStorageGetSecretResponse { value }))
+    }
+
+    async fn session_storage_delete_secret(
+        &self,
+        request: Request<SessionStorageDeleteSecretRequest>,
+    ) -> Result<Response<SessionStorageDeleteSecretResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let deleted = store
+            .delete_secret(session_id.into(), &req.name)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete secret: {}", e);
+                Status::internal("Failed to delete secret")
+            })?;
+
+        Ok(Response::new(SessionStorageDeleteSecretResponse {
+            deleted,
+        }))
+    }
+
+    async fn session_storage_list_secrets(
+        &self,
+        request: Request<SessionStorageListSecretsRequest>,
+    ) -> Result<Response<SessionStorageListSecretsResponse>, Status> {
+        use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let secrets = store.list_secrets(session_id.into()).await.map_err(|e| {
+            tracing::error!("Failed to list secrets: {}", e);
+            Status::internal("Failed to list secrets")
+        })?;
+
+        let proto_secrets = secrets
+            .into_iter()
+            .map(|s| proto::StorageSecretInfo {
+                name: s.name,
+                created_at: Some(datetime_to_proto_timestamp(s.created_at)),
+                updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+            })
+            .collect();
+
+        Ok(Response::new(SessionStorageListSecretsResponse {
+            secrets: proto_secrets,
         }))
     }
 }

@@ -12,12 +12,14 @@ use everruns_core::traits::{AgentStore, ResolvedImage};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolRegistry};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
+    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStorageStore,
+    GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
@@ -308,6 +310,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn driver_registry(&self) -> DriverRegistry {
         create_driver_registry()
+    }
+
+    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
+        Some(Arc::new(GrpcSessionStorageStore::new(self.client.clone())))
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {
