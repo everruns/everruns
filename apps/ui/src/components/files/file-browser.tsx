@@ -249,19 +249,27 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
   };
 
   // Recursive component to render directory contents
-  const renderDirectoryContents = (path: string) => {
+  const renderDirectoryContents = (path: string, depth = 0) => {
+    // Guard against runaway recursion (symlink cycles, self-referencing entries)
+    if (depth > 50) {
+      return null;
+    }
+
     const files = loadedDirs.get(path);
     if (!files) {
       return null;
     }
 
     // Sort: directories first, then files, both alphabetically
-    const sortedFiles = [...files].sort((a, b) => {
-      if (a.is_directory !== b.is_directory) {
-        return a.is_directory ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
+    // Filter out entries that reference their own parent (prevents infinite recursion)
+    const sortedFiles = [...files]
+      .filter((f) => f.path !== path)
+      .sort((a, b) => {
+        if (a.is_directory !== b.is_directory) {
+          return a.is_directory ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
 
     return sortedFiles.map((file) => {
       if (file.is_directory) {
@@ -305,7 +313,7 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
                 </Button>
               )}
             </FileTreeActions>
-            {renderDirectoryContents(file.path)}
+            {renderDirectoryContents(file.path, depth + 1)}
           </FileTreeFolder>
         );
       }

@@ -573,3 +573,263 @@ describe("FileBrowser Directory Expansion", () => {
     });
   });
 });
+
+// ============================================
+// Recursion Guard & Edge Cases
+// ============================================
+
+describe("FileBrowser recursion guard", () => {
+  const makeFile = (
+    overrides: Partial<{
+      id: string;
+      path: string;
+      name: string;
+      is_directory: boolean;
+      is_readonly: boolean;
+      size_bytes: number;
+    }>,
+  ) => ({
+    id: overrides.id ?? "f1",
+    session_id: "test-session",
+    path: overrides.path ?? "/workspace/file.txt",
+    name: overrides.name ?? "file.txt",
+    is_directory: overrides.is_directory ?? false,
+    is_readonly: overrides.is_readonly ?? false,
+    size_bytes: overrides.size_bytes ?? 0,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("does not stack-overflow when a directory listing contains a self-referencing entry", () => {
+    // This is the exact bug: API returns an entry whose path equals the parent dir
+    const selfRef = makeFile({
+      id: "self",
+      path: "/workspace",
+      name: "workspace",
+      is_directory: true,
+    });
+    const normalFile = makeFile({
+      id: "ok",
+      path: "/workspace/hello.ts",
+      name: "hello.ts",
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [selfRef, normalFile],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    // Before the fix this would throw RangeError: Maximum call stack size exceeded
+    expect(() => {
+      renderWithProviders(<FileBrowser sessionId="test-session" />);
+    }).not.toThrow();
+
+    // The normal file should still render
+    expect(screen.getByText("hello.ts")).toBeInTheDocument();
+    // The self-referencing entry should be filtered out
+    expect(screen.queryByText("workspace")).not.toBeInTheDocument();
+  });
+
+  it("filters self-referencing entries but keeps legitimate children", () => {
+    const dirA = makeFile({
+      id: "dirA",
+      path: "/workspace/src",
+      name: "src",
+      is_directory: true,
+    });
+    const fileB = makeFile({
+      id: "fileB",
+      path: "/workspace/README.md",
+      name: "README.md",
+    });
+    // Pathological: an entry whose path matches the root listing path
+    const selfRef = makeFile({
+      id: "selfRef",
+      path: "/workspace",
+      name: ".",
+      is_directory: true,
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [dirA, fileB, selfRef],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<FileBrowser sessionId="test-session" />);
+
+    expect(screen.getByText("src")).toBeInTheDocument();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+  });
+
+  it("does not stack-overflow with mutual directory cycle (A lists B, B lists A)", async () => {
+    const dirA = makeFile({
+      id: "a",
+      path: "/workspace/a",
+      name: "a",
+      is_directory: true,
+    });
+    const dirBInsideA = makeFile({
+      id: "b-in-a",
+      path: "/workspace/a/b",
+      name: "b",
+      is_directory: true,
+    });
+    // Cycle: B's listing points back to A's path
+    const dirAInsideB = makeFile({
+      id: "a-in-b",
+      path: "/workspace/a",
+      name: "a",
+      is_directory: true,
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [dirA],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    // When dir A is expanded it returns B; when B is expanded it returns A (cycle)
+    mockListFiles.mockImplementation((_sid: string, path: string) => {
+      if (path === "/workspace/a") return Promise.resolve([dirBInsideA]);
+      if (path === "/workspace/a/b") return Promise.resolve([dirAInsideB]);
+      return Promise.resolve([]);
+    });
+
+    expect(() => {
+      renderWithProviders(<FileBrowser sessionId="test-session" />);
+    }).not.toThrow();
+
+    // Expand dir A
+    fireEvent.click(screen.getAllByText("a")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("b")).toBeInTheDocument();
+    });
+
+    // Expand dir B — dirAInsideB.path === "/workspace/a" which is already loaded,
+    // so the depth guard is the safety net against infinite recursive rendering
+    fireEvent.click(screen.getByText("b"));
+
+    await waitFor(() => {
+      expect(mockListFiles).toHaveBeenCalledWith("test-session", "/workspace/a/b");
+    });
+
+    // Should have rendered without throwing (depth guard caps recursion)
+    // Multiple "a" nodes appear because the cycle re-renders A's subtree
+    // until the depth limit is hit — that's the expected safe behavior
+    expect(screen.getAllByText("a").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders empty directory without errors", () => {
+    const emptyDir = makeFile({
+      id: "empty",
+      path: "/workspace/empty",
+      name: "empty",
+      is_directory: true,
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [emptyDir],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    expect(() => {
+      renderWithProviders(<FileBrowser sessionId="test-session" />);
+    }).not.toThrow();
+
+    expect(screen.getByText("empty")).toBeInTheDocument();
+  });
+
+  it("handles directory listing with only self-referencing entries (all filtered)", () => {
+    // Every entry in the root listing points back to /workspace
+    const selfRef1 = makeFile({
+      id: "s1",
+      path: "/workspace",
+      name: ".",
+      is_directory: true,
+    });
+    const selfRef2 = makeFile({
+      id: "s2",
+      path: "/workspace",
+      name: "..",
+      is_directory: true,
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [selfRef1, selfRef2],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    // All entries filtered → falls through to empty workspace
+    expect(() => {
+      renderWithProviders(<FileBrowser sessionId="test-session" />);
+    }).not.toThrow();
+  });
+
+  it("handles duplicate file entries gracefully", () => {
+    const file1 = makeFile({
+      id: "dup1",
+      path: "/workspace/dup.ts",
+      name: "dup.ts",
+    });
+    const file2 = makeFile({
+      id: "dup2",
+      path: "/workspace/dup.ts",
+      name: "dup.ts",
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [file1, file2],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    expect(() => {
+      renderWithProviders(<FileBrowser sessionId="test-session" />);
+    }).not.toThrow();
+
+    // Both render (keyed by unique id)
+    expect(screen.getAllByText("dup.ts")).toHaveLength(2);
+  });
+
+  it("sorts directories before files even when self-referencing entries are present", () => {
+    const selfRef = makeFile({
+      id: "self",
+      path: "/workspace",
+      name: "workspace",
+      is_directory: true,
+    });
+    const dirZ = makeFile({
+      id: "dirZ",
+      path: "/workspace/z-dir",
+      name: "z-dir",
+      is_directory: true,
+    });
+    const fileA = makeFile({
+      id: "fileA",
+      path: "/workspace/a-file.ts",
+      name: "a-file.ts",
+    });
+
+    (useFiles as jest.Mock).mockReturnValue({
+      data: [fileA, selfRef, dirZ],
+      isLoading: false,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<FileBrowser sessionId="test-session" />);
+
+    const items = screen.getAllByRole("treeitem");
+    // Directory "z-dir" should come before file "a-file.ts" despite alphabetical order
+    expect(items[0]).toHaveTextContent("z-dir");
+    expect(items[1]).toHaveTextContent("a-file.ts");
+  });
+});
