@@ -114,6 +114,37 @@ pub struct SandboxState {
 }
 
 // ============================================================================
+// Template alias resolution
+// ============================================================================
+
+/// Map friendly template names to CodeSandbox template IDs.
+/// Not all templates resolve by name — some need their opaque ID.
+/// Source: https://codesandbox.io/docs/sdk/template-library
+fn resolve_template_alias(name: &str) -> &str {
+    match name {
+        "javascript" => "3l5fg9",
+        "node" | "node-http-server" => "node",
+        "nodejs" | "node.js" => "k8dsq1",
+        "python" => "in2qez",
+        "rust" => "rk69p3",
+        "universal" => "pcz35m",
+        "go" => "ej14tt",
+        "deno" => "kc6kgh",
+        "bun" => "0uzq6f",
+        "docker" => "hsd8ke",
+        "nextjs" | "next.js" => "fxis37",
+        "react" | "react-js" => "kd848j",
+        "react-ts" => "9qputt",
+        "vue" => "pb6sit",
+        "angular" => "angular",
+        "astro" => "j1qiqf",
+        "jupyter" => "29wlwy",
+        "flask" | "python-flask" => "4gppm4",
+        other => other,
+    }
+}
+
+// ============================================================================
 // CodeSandboxClient - HTTP client for CodeSandbox APIs
 // ============================================================================
 
@@ -756,7 +787,7 @@ impl Tool for CsbCreateSandboxTool {
                 },
                 "template": {
                     "type": "string",
-                    "description": "Template ID to fork from (optional)"
+                    "description": "Template to fork from (optional, defaults to universal). Known: javascript, python, node, rust, go, deno, bun, docker, nextjs, react, react-ts, vue, angular, astro, jupyter, flask"
                 },
                 "upload_files": {
                     "type": "array",
@@ -810,7 +841,9 @@ impl Tool for CsbCreateSandboxTool {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
         {
-            create_body["template"] = json!(template);
+            // Some templates require their ID rather than name
+            let resolved = resolve_template_alias(template);
+            create_body["template"] = json!(resolved);
         }
 
         // Create sandbox
@@ -1703,6 +1736,21 @@ mod tests {
         assert!(prompt.contains("Prerequisite"));
         // Should NOT duplicate workflow steps (that's the agent's job)
         assert!(!prompt.contains("Set API key (once per session)"));
+    }
+
+    #[test]
+    fn test_resolve_template_alias() {
+        assert_eq!(resolve_template_alias("python"), "in2qez");
+        assert_eq!(resolve_template_alias("javascript"), "3l5fg9");
+        assert_eq!(resolve_template_alias("go"), "ej14tt");
+        assert_eq!(resolve_template_alias("rust"), "rk69p3");
+        assert_eq!(resolve_template_alias("universal"), "pcz35m");
+        assert_eq!(resolve_template_alias("deno"), "kc6kgh");
+        assert_eq!(resolve_template_alias("bun"), "0uzq6f");
+        assert_eq!(resolve_template_alias("node"), "node");
+        assert_eq!(resolve_template_alias("docker"), "hsd8ke");
+        // Unknown names pass through unchanged
+        assert_eq!(resolve_template_alias("custom-abc123"), "custom-abc123");
     }
 
     #[test]
