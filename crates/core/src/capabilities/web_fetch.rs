@@ -788,6 +788,104 @@ mod tests {
     }
 
     // ========================================================================
+    // SSRF security tests (TM-API-008 through TM-API-012)
+    //
+    // These tests verify that private/internal URLs are blocked by policy.
+    // Currently fetchkit block_prefixes are NOT configured, so private IPs
+    // are NOT blocked. Tests document the current behavior and will fail
+    // (alerting developers) once the fix is applied.
+    //
+    // When the fix lands (switching to fetchkit Tool::execute with
+    // block_prefixes), update these tests to assert:
+    //   matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("blocked"))
+    //
+    // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_ssrf
+    // ========================================================================
+
+    // Helper: asserts that a private/internal URL is NOT currently blocked
+    // by fetchkit policy (documenting the TM-API-008 gap). The request will
+    // either succeed (if host reachable) or fail with a connect/timeout error,
+    // but NOT with "blocked by policy".
+    async fn assert_not_blocked_by_policy(url: &str) {
+        let tool = WebFetchTool;
+        let result = tool.execute(serde_json::json!({"url": url})).await;
+        match &result {
+            ToolExecutionResult::ToolError(msg) if msg.contains("blocked") => {
+                panic!(
+                    "GOOD NEWS: URL {url} is now blocked by policy! \
+                     TM-API-008 mitigation is working. Update this test to \
+                     assert the blocked behavior."
+                );
+            }
+            _ => {
+                // Expected: either Success (host reachable) or ToolError (timeout/connect).
+                // Both confirm that fetchkit did NOT block the URL by policy.
+            }
+        }
+    }
+
+    /// THREAT[TM-API-009]: Cloud metadata endpoint is NOT blocked (vulnerability).
+    /// Once mitigated, this test should assert BlockedUrl error.
+    #[tokio::test]
+    async fn test_ssrf_cloud_metadata_not_blocked() {
+        assert_not_blocked_by_policy("http://169.254.169.254/latest/meta-data/").await;
+    }
+
+    /// THREAT[TM-API-008]: Localhost is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_localhost_not_blocked() {
+        assert_not_blocked_by_policy("http://127.0.0.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: RFC1918 10.x.x.x is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_private_10_not_blocked() {
+        assert_not_blocked_by_policy("http://10.0.0.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: RFC1918 172.16.x.x is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_private_172_not_blocked() {
+        assert_not_blocked_by_policy("http://172.16.0.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: RFC1918 192.168.x.x is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_private_192_not_blocked() {
+        assert_not_blocked_by_policy("http://192.168.0.1:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: IPv6 localhost is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_ipv6_localhost_not_blocked() {
+        assert_not_blocked_by_policy("http://[::1]:1/").await;
+    }
+
+    /// THREAT[TM-API-008]: 0.0.0.0 is NOT blocked (vulnerability).
+    #[tokio::test]
+    async fn test_ssrf_unspecified_not_blocked() {
+        assert_not_blocked_by_policy("http://0.0.0.0:1/").await;
+    }
+
+    /// Verify file://, ftp://, gopher:// schemes are blocked (existing protection).
+    #[tokio::test]
+    async fn test_ssrf_non_http_schemes_blocked() {
+        let tool = WebFetchTool;
+
+        for (scheme, url) in [
+            ("file://", "file:///etc/passwd"),
+            ("ftp://", "ftp://internal-server/data"),
+            ("gopher://", "gopher://internal-server/"),
+        ] {
+            let result = tool.execute(serde_json::json!({"url": url})).await;
+            assert!(
+                matches!(&result, ToolExecutionResult::ToolError(msg) if msg.contains("Invalid URL")),
+                "{scheme} should be rejected"
+            );
+        }
+    }
+
+    // ========================================================================
     // Real-world integration tests (require network access)
     // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_real --ignored
     // ========================================================================
