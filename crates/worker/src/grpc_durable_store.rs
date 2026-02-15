@@ -15,9 +15,39 @@ use everruns_internal_protocol::proto::{
     UpdateDurableWorkflowStatusRequest,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
-use tonic::Streaming;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
+use tonic::{Request, Status, Streaming};
 use uuid::Uuid;
+
+/// Client-side interceptor that injects `authorization: Bearer <token>` metadata.
+/// When `token` is `None` the interceptor is a no-op (dev mode).
+#[derive(Clone)]
+pub struct GrpcClientAuth {
+    token: Option<tonic::metadata::MetadataValue<tonic::metadata::Ascii>>,
+}
+
+impl GrpcClientAuth {
+    /// Build from env. Reads `GRPC_AUTH_TOKEN`; returns no-op when unset.
+    pub fn from_env() -> Self {
+        let token = std::env::var("GRPC_AUTH_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty())
+            .and_then(|t| format!("Bearer {}", t).parse().ok());
+        Self { token }
+    }
+}
+
+impl tonic::service::Interceptor for GrpcClientAuth {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        if let Some(ref token) = self.token {
+            request
+                .metadata_mut()
+                .insert("authorization", token.clone());
+        }
+        Ok(request)
+    }
+}
 
 /// gRPC-based durable store client for workers
 ///
@@ -25,7 +55,7 @@ use uuid::Uuid;
 /// eliminating the need for workers to have direct database access.
 #[derive(Clone)]
 pub struct GrpcDurableStore {
-    client: WorkerServiceClient<Channel>,
+    client: WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>,
 }
 
 impl GrpcDurableStore {
@@ -47,8 +77,16 @@ impl GrpcDurableStore {
 
         loop {
             attempt += 1;
-            match WorkerServiceClient::connect(endpoint.clone()).await {
-                Ok(client) => {
+            match Channel::from_shared(endpoint.clone())
+                .expect("valid endpoint")
+                .connect()
+                .await
+            {
+                Ok(channel) => {
+                    // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
+                    // Mitigation: Attach bearer token from GRPC_AUTH_TOKEN env
+                    let auth = GrpcClientAuth::from_env();
+                    let client = WorkerServiceClient::with_interceptor(channel, auth);
                     if attempt > 1 {
                         tracing::info!(
                             address = %address,
@@ -568,6 +606,7 @@ fn proto_state_to_circuit_state(state: proto::CircuitBreakerState) -> CircuitSta
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tonic::service::Interceptor;
 
     #[test]
     fn test_workflow_status_is_terminal() {
@@ -612,5 +651,29 @@ mod tests {
             "Error should mention timeout or attempts: {}",
             err_msg
         );
+    }
+
+    #[test]
+    fn test_client_auth_injects_bearer_token() {
+        let mut auth = GrpcClientAuth {
+            token: Some("Bearer my-secret".parse().unwrap()),
+        };
+        let request = Request::new(());
+        let result = auth.call(request).unwrap();
+        let authz = result
+            .metadata()
+            .get("authorization")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(authz, "Bearer my-secret");
+    }
+
+    #[test]
+    fn test_client_auth_noop_when_no_token() {
+        let mut auth = GrpcClientAuth { token: None };
+        let request = Request::new(());
+        let result = auth.call(request).unwrap();
+        assert!(result.metadata().get("authorization").is_none());
     }
 }

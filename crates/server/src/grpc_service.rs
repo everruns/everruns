@@ -58,6 +58,48 @@ use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
+/// Read the gRPC auth token from the environment. When set, all gRPC
+/// requests must include `authorization: Bearer <token>` metadata.
+/// Returns `None` if `GRPC_AUTH_TOKEN` is unset (auth disabled — dev only).
+pub fn grpc_auth_token_from_env() -> Option<String> {
+    std::env::var("GRPC_AUTH_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+}
+
+/// Tonic interceptor that validates bearer token on every gRPC request.
+/// If `expected_token` is `None`, all requests are allowed (dev mode).
+#[derive(Clone)]
+pub struct GrpcAuthInterceptor {
+    expected_token: Option<String>,
+}
+
+impl GrpcAuthInterceptor {
+    pub fn new(expected_token: Option<String>) -> Self {
+        Self { expected_token }
+    }
+}
+
+impl tonic::service::Interceptor for GrpcAuthInterceptor {
+    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        let Some(ref expected) = self.expected_token else {
+            return Ok(request); // No auth configured
+        };
+
+        let token = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "));
+
+        match token {
+            Some(t) if t == expected => Ok(request),
+            Some(_) => Err(Status::unauthenticated("Invalid gRPC auth token")),
+            None => Err(Status::unauthenticated("Missing gRPC auth token")),
+        }
+    }
+}
+
 /// gRPC service implementation for worker communication
 ///
 /// This service follows the layered architecture: gRPC -> Services -> Storage
@@ -2078,5 +2120,60 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
         DurableWorkflowStatus::Failed => WorkflowStatus::Failed,
         DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
         DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tonic::service::Interceptor;
+
+    #[test]
+    fn test_interceptor_allows_when_no_token_configured() {
+        let mut interceptor = GrpcAuthInterceptor::new(None);
+        let request = Request::new(());
+        assert!(interceptor.call(request).is_ok());
+    }
+
+    #[test]
+    fn test_interceptor_allows_valid_bearer_token() {
+        let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+        let mut request = Request::new(());
+        request
+            .metadata_mut()
+            .insert("authorization", "Bearer secret123".parse().unwrap());
+        assert!(interceptor.call(request).is_ok());
+    }
+
+    #[test]
+    fn test_interceptor_rejects_missing_token() {
+        let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+        let request = Request::new(());
+        let err = interceptor.call(request).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+        assert!(err.message().contains("Missing"));
+    }
+
+    #[test]
+    fn test_interceptor_rejects_wrong_token() {
+        let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+        let mut request = Request::new(());
+        request
+            .metadata_mut()
+            .insert("authorization", "Bearer wrong_token".parse().unwrap());
+        let err = interceptor.call(request).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+        assert!(err.message().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_interceptor_rejects_non_bearer_scheme() {
+        let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+        let mut request = Request::new(());
+        request
+            .metadata_mut()
+            .insert("authorization", "Basic secret123".parse().unwrap());
+        let err = interceptor.call(request).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
     }
 }
