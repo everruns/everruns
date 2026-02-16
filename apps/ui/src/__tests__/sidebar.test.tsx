@@ -51,6 +51,16 @@ jest.mock("@/providers/org-provider", () => ({
   }),
 }));
 
+// Mock organizations hooks
+jest.mock("@/hooks/use-organizations", () => ({
+  useCreateOrganization: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
