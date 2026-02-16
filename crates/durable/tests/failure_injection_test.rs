@@ -12,8 +12,9 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use chrono::Utc;
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkflowEventStore,
+    PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkerInfo, WorkflowEventStore,
 };
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
 
@@ -65,6 +66,39 @@ async fn cleanup_workflow(store: &PostgresWorkflowEventStore, workflow_id: Uuid)
 async fn cleanup_circuit_breaker(store: &PostgresWorkflowEventStore, key: &str) {
     sqlx::query("DELETE FROM durable_circuit_breaker_state WHERE key = $1")
         .bind(key)
+        .execute(store.pool())
+        .await
+        .ok();
+}
+
+async fn register_test_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
+    let now = Utc::now();
+    store
+        .register_worker(WorkerInfo {
+            id: worker_id.to_string(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["failpoint_test".to_string()],
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: now,
+            last_heartbeat_at: now,
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+}
+
+async fn cleanup_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
+    sqlx::query("DELETE FROM durable_workers WHERE id = $1")
+        .bind(worker_id)
         .execute(store.pool())
         .await
         .ok();
@@ -202,6 +236,10 @@ async fn test_claim_task_failure_after_db_commit_preserves_state() {
         .await
         .unwrap();
 
+    // Register workers (required by claim_task's worker_check CTE)
+    register_test_worker(&store, "worker-1").await;
+    register_test_worker(&store, "worker-2").await;
+
     // Enqueue task
     let task_id = store
         .enqueue_task(TaskDefinition {
@@ -241,6 +279,8 @@ async fn test_claim_task_failure_after_db_commit_preserves_state() {
     assert!(complete_result.is_ok());
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+    cleanup_worker(&store, "worker-2").await;
     scenario.teardown();
 }
 
@@ -261,6 +301,8 @@ async fn test_complete_task_failure_after_db_commit_is_idempotent() {
         .create_workflow(workflow_id, "complete_failure_test", json!({}), None)
         .await
         .unwrap();
+
+    register_test_worker(&store, "worker-1").await;
 
     store
         .enqueue_task(TaskDefinition {
@@ -303,6 +345,7 @@ async fn test_complete_task_failure_after_db_commit_is_idempotent() {
     );
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
     scenario.teardown();
 }
 
@@ -320,6 +363,8 @@ async fn test_heartbeat_failure_does_not_lose_task() {
         .create_workflow(workflow_id, "heartbeat_failure_test", json!({}), None)
         .await
         .unwrap();
+
+    register_test_worker(&store, "worker-1").await;
 
     store
         .enqueue_task(TaskDefinition {
@@ -354,6 +399,7 @@ async fn test_heartbeat_failure_does_not_lose_task() {
     assert!(result.unwrap().accepted);
 
     cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
     scenario.teardown();
 }
 
