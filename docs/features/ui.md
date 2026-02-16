@@ -94,7 +94,7 @@ The primary interface for viewing and participating in conversations:
 - Tool call visualization with expandable details
 - Tool results displayed inline
 - Message input with keyboard shortcuts (Enter to send, Shift+Enter for newline)
-- Reasoning effort selector (for models that support extended thinking)
+- Reasoning effort selector (for models that support extended thinking: Anthropic Claude, OpenAI GPT-5.x, o-series)
 
 #### File System Tab
 

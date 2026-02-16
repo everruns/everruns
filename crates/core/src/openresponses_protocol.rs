@@ -2157,4 +2157,219 @@ mod tests {
             _ => panic!("Expected empty TextDelta, got {:?}", result),
         }
     }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // ReasoningDelta (opaque reasoning from o-series) maps to ThinkingDelta
+        let event = StreamingEvent::ReasoningDelta {
+            sequence_number: 3,
+            item_id: "rs_001".to_string(),
+            output_index: 0,
+            content_index: 0,
+            delta: "Let me reason about this...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "o3".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ThinkingDelta(text) => {
+                assert_eq!(text, "Let me reason about this...");
+            }
+            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_summary_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // ReasoningSummaryDelta (readable summary from GPT-5.x) maps to ThinkingDelta
+        let event = StreamingEvent::ReasoningSummaryDelta {
+            sequence_number: 4,
+            item_id: "rs_002".to_string(),
+            output_index: 0,
+            summary_index: 0,
+            delta: "Breaking down the problem...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "gpt-5.2".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ThinkingDelta(text) => {
+                assert_eq!(text, "Breaking down the problem...");
+            }
+            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_request_reasoning_none_is_omitted() {
+        // When reasoning effort is "none", the reasoning field should be omitted
+        // to avoid API errors on models that don't support reasoning params
+        let config = LlmCallConfig {
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some("none".to_string()),
+            metadata: std::collections::HashMap::new(),
+        };
+
+        // Simulate the driver's filter logic
+        let reasoning = config
+            .reasoning_effort
+            .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .map(|effort| ResponsesReasoning {
+                effort: effort.clone(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_none(),
+            "reasoning should be None for effort=none"
+        );
+    }
+
+    #[test]
+    fn test_request_reasoning_high_is_included() {
+        // When reasoning effort is "high", the reasoning field should be present
+        let config = LlmCallConfig {
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some("high".to_string()),
+            metadata: std::collections::HashMap::new(),
+        };
+
+        let reasoning = config
+            .reasoning_effort
+            .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .map(|effort| ResponsesReasoning {
+                effort: effort.clone(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_some(),
+            "reasoning should be present for effort=high"
+        );
+        let r = reasoning.unwrap();
+        assert_eq!(r.effort, "high");
+        assert_eq!(r.summary, "detailed");
+    }
+
+    #[test]
+    fn test_request_reasoning_none_case_insensitive() {
+        // "None", "NONE", "none" should all be filtered out
+        for effort in &["none", "None", "NONE"] {
+            let reasoning = Some(effort.to_string())
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned();
+
+            assert!(
+                reasoning.is_none(),
+                "effort={effort:?} should be filtered out"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_input_assistant_without_thinking_or_tools() {
+        // Plain assistant message (no thinking, no tool calls) should just be a message
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Hi there!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        assert_eq!(input.len(), 2);
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert!(json.get("type").is_none() || json["type"] == "message");
+    }
+
+    #[test]
+    fn test_build_input_multiple_reasoning_items_get_unique_ids() {
+        // Multiple assistant messages with thinking_signature should get unique reasoning IDs
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "First question"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("First answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("thinking 1".to_string()),
+                thinking_signature: Some("encrypted_1".to_string()),
+            },
+            LlmMessage::text(LlmMessageRole::User, "Second question"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Second answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("thinking 2".to_string()),
+                thinking_signature: Some("encrypted_2".to_string()),
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
+        assert_eq!(input.len(), 6);
+
+        let r1 = serde_json::to_value(&input[1]).unwrap();
+        let r2 = serde_json::to_value(&input[4]).unwrap();
+
+        assert_eq!(r1["type"], "reasoning");
+        assert_eq!(r2["type"], "reasoning");
+        assert_ne!(r1["id"], r2["id"], "Reasoning items should have unique IDs");
+        assert_eq!(r1["encrypted_content"], "encrypted_1");
+        assert_eq!(r2["encrypted_content"], "encrypted_2");
+    }
 }

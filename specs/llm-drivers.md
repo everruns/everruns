@@ -200,26 +200,57 @@ When sending conversation history with thinking enabled:
 
 #### OpenAI-Specific Requirements (Responses API)
 
-1. **Reasoning Events**: OpenAI emits reasoning via streaming events:
-   - `response.reasoning.delta` - Incremental reasoning text
-   - `response.reasoning_summary_text.delta` - Summary reasoning text
+1. **Reasoning Config**: The `reasoning` request parameter requires TWO fields:
+   - `effort`: Reasoning depth (`none`, `low`, `medium`, `high`, `xhigh`)
+   - `summary`: Must be `"detailed"` to receive reasoning tokens in the stream. Without this, reasoning happens internally but tokens are NOT exposed to the caller.
+
+2. **Reasoning Events**: OpenAI emits reasoning via streaming events:
+   - `response.reasoning.delta` - Incremental reasoning text (o-series models, opaque)
+   - `response.reasoning_summary_text.delta` - Summary reasoning text (GPT-5.x, readable)
    - `response.output_item.done` with `reasoning` type - Contains `encrypted_content`
 
-2. **Encrypted Content**: OpenAI returns `encrypted_content` in `OutputItem::Reasoning` when the reasoning item completes. This MUST be:
+   Both delta event types map to `LlmStreamEvent::ThinkingDelta`.
+
+3. **Provider Differences (o-series vs GPT-5.x)**:
+
+   | Behavior | o-series (o1, o3) | GPT-5.x |
+   |----------|-------------------|---------|
+   | Reasoning event | `response.reasoning.delta` | `response.reasoning_summary_text.delta` |
+   | Content type | Opaque/encrypted | Readable summary |
+   | `encrypted_content` | Yes (in `OutputItem::Reasoning`) | No |
+   | `thinking_signature` | Set from `encrypted_content` | Not used |
+   | Reasoning trigger | Always (when effort > none) | Model decides based on question complexity |
+
+4. **Encrypted Content**: OpenAI returns `encrypted_content` in `OutputItem::Reasoning` when the reasoning item completes (o-series models only). This MUST be:
    - Captured from the `response.output_item.done` event
    - Stored in `thinking_signature` field
    - Sent back as a `ReasoningItem` with `encrypted_content` in subsequent API calls
 
-3. **Reasoning Item in Requests**: When sending conversation history with thinking:
+5. **Reasoning Item in Requests**: When sending conversation history with thinking:
    - Include a `Reasoning` input item BEFORE the assistant message
    - The `encrypted_content` field contains the preserved reasoning context
 
-4. **Reasoning Effort Levels**: Supported values:
+6. **Reasoning Effort Levels**: Supported values:
    - `none`: No reasoning
    - `low`: Minimal reasoning
    - `medium`: Moderate reasoning
    - `high`: Extensive reasoning
    - `xhigh`: Maximum reasoning
+
+#### Reasoning Guard Logic
+
+Reasoning parameters are validated at two levels to prevent API errors from non-thinking models:
+
+1. **ReasonAtom (`reason.rs`)**: Before building the LLM call config:
+   - Strips `reasoning_effort` when value is `"none"` (no-op)
+   - Looks up model profile via `get_model_profile()` — if `reasoning: false`, strips reasoning_effort with a warning log
+   - Unknown models (no profile) pass through to let the API decide
+
+2. **Driver level**: Both OpenAI drivers filter out `effort: "none"` before sending:
+   - Responses API: omits `reasoning` object entirely
+   - Chat Completions API: omits `reasoning_effort` field
+
+The UI also prevents setting reasoning on non-thinking models (checks `profile.reasoning` and `profile.reasoning_effort`).
 
 ### Completion Metadata
 

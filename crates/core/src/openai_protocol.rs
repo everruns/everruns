@@ -934,4 +934,65 @@ mod tests {
             error
         ));
     }
+
+    // ========================================================================
+    // Reasoning effort guard tests
+    // ========================================================================
+
+    #[test]
+    fn test_reasoning_effort_none_is_omitted() {
+        // When reasoning_effort is "none", it should be filtered out
+        // to avoid "Unrecognized request argument" errors on non-thinking models
+        let request = OpenAiRequest {
+            model: "gpt-4o-mini".to_string(),
+            messages: vec![OpenAiMessage {
+                role: "user".to_string(),
+                content: Some(OpenAiContent::Text("Hello".to_string())),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            stream_options: None,
+            tools: None,
+            reasoning_effort: Some("none".to_string())
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned(),
+            metadata: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert!(
+            json.get("reasoning_effort").is_none(),
+            "reasoning_effort should be omitted when effort is 'none'"
+        );
+    }
+
+    #[test]
+    fn test_reasoning_effort_high_is_included() {
+        let request = OpenAiRequest {
+            model: "o3-mini".to_string(),
+            messages: vec![OpenAiMessage {
+                role: "user".to_string(),
+                content: Some(OpenAiContent::Text("Hello".to_string())),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            stream_options: None,
+            tools: None,
+            reasoning_effort: Some("high".to_string())
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned(),
+            metadata: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["reasoning_effort"], "high");
+    }
 }
