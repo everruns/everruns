@@ -25,6 +25,7 @@ FROM chef AS planner
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
+COPY integrations integrations
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -40,6 +41,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # Copy source and build application
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
+COPY integrations integrations
 
 RUN cargo build --release -p everruns-server
 

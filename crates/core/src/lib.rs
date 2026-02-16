@@ -2,6 +2,7 @@
 //
 // This crate provides a DB-agnostic, streamable, and decomposable implementation
 // of an agentic loop (LLM call → tool execution → repeat).
+
 //
 // Key design decisions:
 // - Uses traits (MessageRetriever, ToolExecutor) for pluggable backends
@@ -135,10 +136,10 @@ pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
     CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool, FileSystemCapability,
-    GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool, ListDirectoryTool,
-    MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability, MountAccess,
-    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool, NoopCapability,
-    ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
+    GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool, IntegrationPlugin,
+    ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
+    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
+    NoopCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
     StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
     WriteFileTool, WriteTodosTool, apply_capabilities, collect_capabilities_with_configs,

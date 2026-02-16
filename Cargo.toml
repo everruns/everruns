@@ -12,6 +12,7 @@ members = [
     "crates/cli",
     "crates/durable",
     "crates/session-sqldb",
+    "integrations/codesandbox",
 ]
 
 [workspace.package]
@@ -105,6 +106,9 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # Fault injection testing
 fail = "0.5"
 rstest = "0.25"
+
+# Plugin system for external integrations
+inventory = "0.3"
 
 [profile.dev]
 opt-level = 0
