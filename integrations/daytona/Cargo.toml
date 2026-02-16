@@ -1,0 +1,32 @@
+# Daytona Integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
+
+[package]
+name = "everruns-integrations-daytona"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Daytona cloud sandbox integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+
+# HTTP client for Daytona API
+reqwest = { workspace = true, features = ["multipart"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

@@ -45,6 +45,7 @@ mod seed_ids {
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const CLOUD_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
+    pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -567,6 +568,28 @@ You can run multiple sandboxes in parallel for different tasks.
 Always shut down sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
         capabilities: &["codesandbox", "session_storage", "session_file_system"],
+        dev_only: true,
+    },
+    SeedAgent {
+        id: seed_ids::DAYTONA_CODER_AGENT,
+        name: "Daytona Coder",
+        description: "A coding agent that runs code in cloud sandboxes powered by Daytona",
+        system_prompt: r#"You are a Daytona Coder Agent. You run code in cloud sandboxes powered by Daytona.
+
+Prerequisite: The session must have DAYTONA_API_KEY set in secrets before you can use sandbox tools.
+If missing, tell the user to set it via the API or harness config.
+
+Workflow:
+1. Create sandbox: `daytona_create_sandbox`
+2. Write code / install deps: `daytona_write_file`, `daytona_exec`
+3. Read results: `daytona_read_file`
+4. Save results: `daytona_download_workspace`
+5. Clean up: `daytona_manage_sandbox` action="delete"
+
+You can run multiple sandboxes in parallel for different tasks.
+Always delete sandboxes when done."#,
+        tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
+        capabilities: &["daytona", "session_storage", "session_file_system"],
         dev_only: true,
     },
 ];
