@@ -69,7 +69,7 @@ Account linking by email is supported (same email = same account).
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external` | `none` |
-| `AUTH_BASE_URL` | Base URL for OAuth callbacks | `http://localhost:9000` |
+| `AUTH_BASE_URL` | Base URL for OAuth callbacks (include path prefix if behind reverse proxy) | `http://localhost:9300/api` |
 | `AUTH_ADMIN_EMAIL` | Admin user email (admin mode) | - |
 | `AUTH_ADMIN_PASSWORD` | Admin user password (admin mode) | - |
 | `AUTH_JWT_SECRET` | JWT signing secret (required for admin/full) | - |
@@ -84,6 +84,9 @@ Account linking by email is supported (same email = same account).
 | `AUTH_GITHUB_CLIENT_ID` | GitHub OAuth client ID | - |
 | `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret | - |
 | `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{base_url}{api_prefix}/v1/auth/callback/github` |
+| `GITHUB_CONNECTION_CLIENT_ID` | GitHub OAuth App client ID (for connections, NOT login) | - |
+| `GITHUB_CONNECTION_CLIENT_SECRET` | GitHub OAuth App client secret (for connections) | - |
+| `GITHUB_CONNECTION_REDIRECT_URI` | Callback URL for connections OAuth | `{AUTH_BASE_URL}{API_PREFIX}/v1/user/connections/github/callback` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins (only if cross-origin) | Not set |
 
 ### Database Schema

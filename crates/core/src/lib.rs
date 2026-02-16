@@ -98,7 +98,7 @@ pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider,
     NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
+    SessionStorageStore, SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 
 // Event listener re-exports

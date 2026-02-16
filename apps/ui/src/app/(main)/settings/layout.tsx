@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Server, Key, Users, Plug, Building2 } from "lucide-react";
+import { Server, Key, Users, Plug, Building2, Cable } from "lucide-react";
 
 const settingsNavigation = [
   {
@@ -24,6 +24,12 @@ const settingsNavigation = [
     href: "/settings/mcp-servers",
     icon: Plug,
     description: "Manage MCP server connections",
+  },
+  {
+    name: "Connections",
+    href: "/settings/connections",
+    icon: Cable,
+    description: "Connect external accounts",
   },
   {
     name: "API Keys",

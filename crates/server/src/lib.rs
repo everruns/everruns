@@ -3,6 +3,11 @@
 // Decision: Pluggable auth backend for SaaS wrapper repos
 // Decision: Server entrypoint extracted into run() for SaaS binary reuse
 
+// Force-link integration crates so inventory::submit! registrations are included
+extern crate everruns_integrations_codesandbox;
+extern crate everruns_integrations_daytona;
+extern crate everruns_integrations_docker;
+
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
 

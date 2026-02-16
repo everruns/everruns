@@ -114,6 +114,8 @@ where
     sqldb_store: Option<crate::traits::SessionSqlDbStoreRef>,
     /// Optional session storage store for kv_store/secret_store tools
     storage_store: Option<Arc<dyn crate::traits::SessionStorageStore>>,
+    /// Optional resolver for user connection tokens
+    connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -129,6 +131,7 @@ where
             file_store: None,
             sqldb_store: None,
             storage_store: None,
+            connection_resolver: None,
         }
     }
 
@@ -144,6 +147,7 @@ where
             file_store: Some(file_store),
             sqldb_store: None,
             storage_store: None,
+            connection_resolver: None,
         }
     }
 
@@ -159,6 +163,15 @@ where
         store: Arc<dyn crate::traits::SessionStorageStore>,
     ) -> Self {
         self.storage_store = Some(store);
+        self
+    }
+
+    /// Set the user connection resolver on this atom
+    pub fn with_connection_resolver(
+        mut self,
+        resolver: Arc<dyn crate::traits::UserConnectionResolver>,
+    ) -> Self {
+        self.connection_resolver = Some(resolver);
         self
     }
 }
@@ -421,6 +434,7 @@ where
         let result = if self.file_store.is_some()
             || self.sqldb_store.is_some()
             || self.storage_store.is_some()
+            || self.connection_resolver.is_some()
         {
             let mut tool_context = if let Some(ref store) = self.file_store {
                 ToolContext::with_file_store(context.session_id, store.clone())
@@ -432,6 +446,9 @@ where
             }
             if let Some(ref store) = self.storage_store {
                 tool_context.storage_store = Some(store.clone());
+            }
+            if let Some(ref resolver) = self.connection_resolver {
+                tool_context.connection_resolver = Some(resolver.clone());
             }
             self.tool_executor
                 .execute_with_context(&tool_call, tool_def, &tool_context)

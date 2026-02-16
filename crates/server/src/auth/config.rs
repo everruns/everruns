@@ -45,10 +45,18 @@ pub struct GoogleOAuthConfig {
     pub allowed_domains: Option<Vec<String>>,
 }
 
-/// GitHub OAuth configuration
+/// GitHub OAuth configuration (for login)
 #[derive(Debug, Clone)]
 pub struct GitHubOAuthConfig {
     pub base: OAuthProviderConfig,
+}
+
+/// GitHub Connection OAuth configuration (for repo access, separate OAuth App)
+#[derive(Debug, Clone)]
+pub struct GitHubConnectionConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
 }
 
 /// Admin user configuration (for admin-only mode or initial setup)
@@ -85,16 +93,20 @@ impl Default for JwtConfig {
 pub struct AuthConfig {
     /// Authentication mode
     pub mode: AuthMode,
-    /// Base URL for OAuth callbacks
+    /// Base URL for OAuth callbacks (backend origin)
     pub base_url: String,
+    /// Frontend URL for post-auth redirects (UI origin, same as base_url in production)
+    pub frontend_url: String,
     /// JWT configuration
     pub jwt: JwtConfig,
     /// Admin user (for admin mode or initial setup)
     pub admin: Option<AdminConfig>,
     /// Google OAuth configuration
     pub google: Option<GoogleOAuthConfig>,
-    /// GitHub OAuth configuration
+    /// GitHub OAuth configuration (login)
     pub github: Option<GitHubOAuthConfig>,
+    /// GitHub Connection OAuth configuration (repo access, separate OAuth App)
+    pub github_connection: Option<GitHubConnectionConfig>,
     /// Whether to disable password authentication
     pub disable_password_auth: bool,
     /// Whether to disable signup (registration)
@@ -107,11 +119,13 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             mode: AuthMode::None,
-            base_url: "http://localhost:9000".to_string(),
+            base_url: "http://localhost:9300/api".to_string(),
+            frontend_url: "http://localhost:9300".to_string(),
             jwt: JwtConfig::default(),
             admin: None,
             google: None,
             github: None,
+            github_connection: None,
             disable_password_auth: false,
             disable_signup: false,
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
@@ -128,7 +142,11 @@ impl AuthConfig {
 
         let base_url = std::env::var("AUTH_BASE_URL")
             .or_else(|_| std::env::var("BASE_URL"))
-            .unwrap_or_else(|_| "http://localhost:9000".to_string());
+            .unwrap_or_else(|_| "http://localhost:9300/api".to_string());
+
+        // Frontend URL for post-auth redirects. In dev with Caddy proxy, same origin without /api.
+        let frontend_url =
+            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9300".to_string());
 
         // API prefix for constructing OAuth callback URLs
         let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
@@ -223,6 +241,30 @@ impl AuthConfig {
             _ => None,
         };
 
+        // GitHub Connection OAuth (separate app for repo access)
+        let github_connection = match (
+            std::env::var("GITHUB_CONNECTION_CLIENT_ID"),
+            std::env::var("GITHUB_CONNECTION_CLIENT_SECRET"),
+        ) {
+            (Ok(client_id), Ok(client_secret))
+                if !client_id.is_empty() && !client_secret.is_empty() =>
+            {
+                let redirect_uri =
+                    std::env::var("GITHUB_CONNECTION_REDIRECT_URI").unwrap_or_else(|_| {
+                        format!(
+                            "{}{}/v1/user/connections/github/callback",
+                            base_url, api_prefix
+                        )
+                    });
+                Some(GitHubConnectionConfig {
+                    client_id,
+                    client_secret,
+                    redirect_uri,
+                })
+            }
+            _ => None,
+        };
+
         let disable_password_auth = std::env::var("AUTH_DISABLE_PASSWORD")
             .map(|s| s.to_lowercase() == "true" || s == "1")
             .unwrap_or(false);
@@ -240,10 +282,12 @@ impl AuthConfig {
         Self {
             mode,
             base_url,
+            frontend_url,
             jwt,
             admin,
             google,
             github,
+            github_connection,
             disable_password_auth,
             disable_signup,
             session_max_age,

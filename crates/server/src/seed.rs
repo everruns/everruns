@@ -568,7 +568,7 @@ You can run multiple sandboxes in parallel for different tasks.
 Always shut down sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
         capabilities: &["codesandbox", "session_storage", "session_file_system"],
-        dev_only: true,
+        dev_only: false,
     },
     SeedAgent {
         id: seed_ids::DAYTONA_CODER_AGENT,
@@ -647,7 +647,17 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
                 result.created += 1;
             }
             None => {
-                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, skipping");
+                // Agent exists — ensure capabilities stay in sync with seed definition
+                if !seed.capabilities.is_empty() {
+                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
+                        .capabilities
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+                        .collect();
+                    db.set_agent_capabilities(seed.id, cap_tuples).await?;
+                }
+                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, updated capabilities");
                 result.skipped += 1;
             }
         }

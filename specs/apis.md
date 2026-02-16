@@ -297,6 +297,17 @@ Providers with custom base URLs or providers that don't support model listing re
 - `include_stale` - Include stale models (default: `true`)
 - `favorites_only` - Only return favorites (default: `false`)
 
+### User Connections
+
+User-scoped external service accounts (e.g., GitHub) for repo access. See [user-connections.md](user-connections.md) for full specification.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/user/connections` | List user's connected accounts |
+| DELETE | `/v1/user/connections/{provider}` | Disconnect (delete stored token) |
+| GET | `/v1/user/connections/github/authorize` | Start GitHub OAuth flow |
+| GET | `/v1/user/connections/github/callback` | GitHub OAuth callback |
+
 ### Agent Capabilities
 
 | Method | Path | Description |
@@ -480,6 +491,7 @@ These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/durable/tasks` - Returns all tasks
 - `GET /v1/durable/dlq` - Returns all DLQ entries
 - `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
+- `GET /v1/user/connections` - Returns all user connections (array, no wrapper)
 
 **Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 

@@ -181,6 +181,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
         None
     }
+
+    /// Get the user connection resolver for lazy token lookup (if available).
+    /// Default returns None (not all backends support user connections).
+    fn connection_resolver(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+        None
+    }
 }
 
 // =============================================================================

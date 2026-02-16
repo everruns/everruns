@@ -1026,7 +1026,7 @@ Experimental capabilities are available in development environments only (`Deplo
 
 - **Status**: Available (Dev only, integration plugin)
 - **ID**: `docker_container`
-- **Crate**: `integrations/docker/` → `everruns-integrations-docker` (auto-registered via `inventory` plugin system)
+- **Crate**: `integrations/docker/` → `everruns-integrations-docker` (auto-registered via `inventory` plugin system, force-linked via `extern crate` in server and worker — see [architecture.md](architecture.md#integration-plugin-force-linking))
 - **Purpose**: Run commands and manage files in a Docker container tied to the session
 - **System Prompt**: Guidance on using container tools, best practices for command execution
 - **Container Lifecycle**:

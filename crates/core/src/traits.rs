@@ -312,6 +312,21 @@ pub trait SessionStorageStore: Send + Sync {
 /// Type alias for the session SQL DB store trait object.
 pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
 
+/// Resolves user connection tokens (e.g. GitHub) lazily at tool execution time.
+///
+/// Instead of eagerly injecting tokens at session creation, tools call this
+/// resolver when they need a token. If the user hasn't connected, returns None.
+#[async_trait]
+pub trait UserConnectionResolver: Send + Sync {
+    /// Get a decrypted connection token for the given provider.
+    /// Returns None if the user has no connection for this provider.
+    async fn get_connection_token(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<String>>;
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
@@ -336,6 +351,9 @@ pub struct ToolContext {
 
     /// Optional message retriever for tools that need conversation history access
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
+
+    /// Optional resolver for user connection tokens (lazy GitHub token lookup, etc.)
+    pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
 }
 
 impl ToolContext {
@@ -347,6 +365,7 @@ impl ToolContext {
             storage_store: None,
             sqldb_store: None,
             message_retriever: None,
+            connection_resolver: None,
         }
     }
 
@@ -358,6 +377,7 @@ impl ToolContext {
             storage_store: None,
             sqldb_store: None,
             message_retriever: None,
+            connection_resolver: None,
         }
     }
 
@@ -372,6 +392,7 @@ impl ToolContext {
             storage_store: Some(storage_store),
             sqldb_store: None,
             message_retriever: None,
+            connection_resolver: None,
         }
     }
 
@@ -387,6 +408,7 @@ impl ToolContext {
             storage_store: Some(storage_store),
             sqldb_store: None,
             message_retriever: None,
+            connection_resolver: None,
         }
     }
 
@@ -404,6 +426,12 @@ impl ToolContext {
         self.message_retriever = Some(retriever);
         self
     }
+
+    /// Add a connection resolver to this context
+    pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
+        self.connection_resolver = Some(resolver);
+        self
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -414,6 +442,7 @@ impl std::fmt::Debug for ToolContext {
             .field("storage_store", &self.storage_store.is_some())
             .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
+            .field("connection_resolver", &self.connection_resolver.is_some())
             .finish()
     }
 }

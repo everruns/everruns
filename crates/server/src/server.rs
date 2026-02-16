@@ -274,6 +274,12 @@ pub async fn run(
     let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
     let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+    let user_connections_state = api::user_connections::AppState {
+        db: db.clone(),
+        encryption: encryption.clone(),
+        auth: auth_state.clone(),
+        auth_config: auth_config.clone(),
+    };
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -308,7 +314,8 @@ pub async fn run(
         .merge(api::schedules::routes(schedules_state))
         .merge(api::images::routes(images_state))
         .merge(api::skills::routes(skills_state))
-        .merge(api::organizations::routes(organizations_state));
+        .merge(api::organizations::routes(organizations_state))
+        .merge(api::user_connections::routes(user_connections_state));
 
     // Add auth-specific routes if the backend provides them
     if let Some(auth_routes) = auth_backend.auth_routes() {
@@ -557,7 +564,7 @@ pub async fn run(
                     crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
 
-            let adapters = DirectWorkerAdapters::new(
+            let mut adapters = DirectWorkerAdapters::new(
                 db.clone(),
                 event_service.clone(),
                 llm_resolver,
@@ -566,6 +573,15 @@ pub async fn run(
             )
             .with_sqldb_store(sqldb_store.clone())
             .with_storage_store(session_storage_store);
+
+            // Wire lazy connection resolver (requires encryption for token decryption)
+            if let Some(ref enc) = encryption {
+                let resolver = Arc::new(crate::storage::DbConnectionResolver::new(
+                    db.as_ref().clone(),
+                    enc.as_ref().clone(),
+                ));
+                adapters = adapters.with_connection_resolver(resolver);
+            }
 
             let worker_config = TaskWorkerConfig::dev_mode();
             tokio::spawn(async move {

@@ -19,7 +19,7 @@ fn test_codesandbox_plugin_is_submitted() {
 }
 
 #[test]
-fn test_codesandbox_plugin_is_experimental() {
+fn test_codesandbox_plugin_is_not_experimental() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
     let csb = plugins
         .iter()
@@ -30,8 +30,8 @@ fn test_codesandbox_plugin_is_experimental() {
         .expect("CodeSandbox plugin not found");
 
     assert!(
-        csb.experimental_only,
-        "CodeSandbox should be marked experimental_only"
+        !csb.experimental_only,
+        "CodeSandbox should NOT be marked experimental_only"
     );
 }
 
@@ -45,11 +45,11 @@ fn test_codesandbox_registered_in_dev_registry() {
 }
 
 #[test]
-fn test_codesandbox_not_registered_in_prod_registry() {
+fn test_codesandbox_registered_in_prod_registry() {
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
     assert!(
-        !registry.has("codesandbox"),
-        "CodeSandbox should NOT be in prod registry"
+        registry.has("codesandbox"),
+        "CodeSandbox should be in prod registry"
     );
 }
 
@@ -61,11 +61,11 @@ fn test_codesandbox_capability_metadata() {
         .expect("CodeSandbox capability not found");
 
     assert_eq!(cap.id(), "codesandbox");
-    assert_eq!(cap.name(), "[Experimental] CodeSandbox");
+    assert_eq!(cap.name(), "CodeSandbox");
     assert_eq!(cap.icon(), Some("cloud"));
     assert_eq!(cap.category(), Some("Execution"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    assert_eq!(cap.tools().len(), 8);
+    assert_eq!(cap.tools().len(), 9);
 }
 
 #[test]

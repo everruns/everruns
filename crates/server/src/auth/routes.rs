@@ -676,8 +676,9 @@ pub async fn oauth_callback(
     // Generate tokens and set cookies
     let (jar, _) = generate_token_response(&state, jar, &auth_user).await?;
 
-    // Redirect to frontend
-    Ok((jar, Redirect::to("/")))
+    // Redirect to frontend (different origin in dev)
+    let redirect_url = format!("{}/", state.config.frontend_url.trim_end_matches('/'));
+    Ok((jar, Redirect::to(&redirect_url)))
 }
 
 /// GET /v1/auth/api-keys - List API keys for current user

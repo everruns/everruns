@@ -62,6 +62,7 @@ pub struct DirectWorkerAdapters {
     capability_registry: CapabilityRegistry,
     sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
+    connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
 }
 
 impl DirectWorkerAdapters {
@@ -81,6 +82,7 @@ impl DirectWorkerAdapters {
             capability_registry,
             sqldb_store: None,
             storage_store: None,
+            connection_resolver: None,
         }
     }
 
@@ -96,6 +98,15 @@ impl DirectWorkerAdapters {
         store: Arc<dyn everruns_core::traits::SessionStorageStore>,
     ) -> Self {
         self.storage_store = Some(store);
+        self
+    }
+
+    /// Set the user connection resolver for lazy token lookup
+    pub fn with_connection_resolver(
+        mut self,
+        resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
+    ) -> Self {
+        self.connection_resolver = Some(resolver);
         self
     }
 
@@ -758,6 +769,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
         self.storage_store.clone()
+    }
+
+    fn connection_resolver(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+        self.connection_resolver.clone()
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

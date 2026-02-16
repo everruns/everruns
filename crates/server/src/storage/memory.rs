@@ -47,6 +47,8 @@ pub struct InMemoryDatabase {
     // Session storage
     session_key_values: RwLock<HashMap<(SessionId, String), SessionKeyValueRow>>,
     session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
+    // User connections (external service accounts)
+    user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -89,6 +91,7 @@ impl Default for InMemoryDatabase {
             event_sequences: RwLock::new(HashMap::new()),
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
+            user_connections: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -2926,6 +2929,34 @@ impl InMemoryDatabase {
         secrets.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(secrets)
     }
+
+    pub async fn upsert_session_secret(
+        &self,
+        input: UpsertSessionSecret,
+    ) -> Result<SessionSecretRow> {
+        let now = Self::now();
+        let map_key = (input.session_id, input.name.clone());
+        let mut storage = self.session_secrets.write();
+
+        let row = if let Some(existing) = storage.get_mut(&map_key) {
+            existing.value_encrypted = input.value_encrypted;
+            existing.updated_at = now;
+            existing.clone()
+        } else {
+            let row = SessionSecretRow {
+                id: Uuid::now_v7(),
+                session_id: input.session_id,
+                name: input.name,
+                value_encrypted: input.value_encrypted,
+                created_at: now,
+                updated_at: now,
+            };
+            storage.insert(map_key, row.clone());
+            row
+        };
+
+        Ok(row)
+    }
 }
 
 // ============================================================================
@@ -3057,6 +3088,109 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
             .collect();
         secrets.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(secrets)
+    }
+}
+
+impl InMemoryDatabase {
+    // ============================================
+    // User Connections
+    // ============================================
+
+    pub async fn upsert_user_connection(
+        &self,
+        input: CreateUserConnectionRow,
+    ) -> Result<UserConnectionRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+
+        // Remove existing connection for same user+provider (app-level uniqueness)
+        let mut connections = self.user_connections.write();
+        connections.retain(|_, c| !(c.user_id == input.user_id && c.provider == input.provider));
+
+        let row = UserConnectionRow {
+            id,
+            user_id: input.user_id,
+            provider: input.provider,
+            provider_user_id: input.provider_user_id,
+            provider_username: input.provider_username,
+            access_token_encrypted: input.access_token_encrypted,
+            refresh_token_encrypted: input.refresh_token_encrypted,
+            scopes: input.scopes,
+            expires_at: input.expires_at,
+            created_at: now,
+            updated_at: now,
+        };
+        connections.insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_user_connection(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<UserConnectionRow>> {
+        Ok(self
+            .user_connections
+            .read()
+            .values()
+            .find(|c| c.user_id == user_id && c.provider == provider)
+            .cloned())
+    }
+
+    pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
+        let mut connections: Vec<_> = self
+            .user_connections
+            .read()
+            .values()
+            .filter(|c| c.user_id == user_id)
+            .cloned()
+            .collect();
+        connections.sort_by(|a, b| a.provider.cmp(&b.provider));
+        Ok(connections)
+    }
+
+    /// Get encrypted connection token for a session's org member (in-memory equivalent).
+    pub async fn get_connection_token_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        // Find the session to get org_id
+        let sessions = self.sessions.read();
+        let session = match sessions.get(&session_id) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let org_id = session.org_id;
+        drop(sessions);
+
+        // Find org members
+        let members = self.organization_members.read();
+        let user_ids: Vec<Uuid> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), _)| *uid)
+            .collect();
+        drop(members);
+
+        // Find first matching connection
+        let connections = self.user_connections.read();
+        for uid in user_ids {
+            for conn in connections.values() {
+                if conn.user_id == uid && conn.provider == provider {
+                    return Ok(Some(conn.access_token_encrypted.clone()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
+        let mut connections = self.user_connections.write();
+        let before = connections.len();
+        connections.retain(|_, c| !(c.user_id == user_id && c.provider == provider));
+        Ok(connections.len() < before)
     }
 }
 

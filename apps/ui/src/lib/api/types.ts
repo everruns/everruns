@@ -1517,3 +1517,14 @@ export interface ScheduleExecutionsResponse {
 export interface TriggerResponse {
   execution_id: string;
 }
+
+// ============================================
+// User Connection types
+// ============================================
+
+export interface UserConnection {
+  provider: string;
+  provider_username?: string;
+  scopes?: string;
+  connected_at: string;
+}
