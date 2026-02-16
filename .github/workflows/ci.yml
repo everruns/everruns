@@ -596,10 +596,11 @@ jobs:
           cache-from: type=gha,scope=docker-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
 
-  # Single required check for branch protection.
-  # Succeeds when all relevant jobs pass; skipped jobs (from path filtering) are OK.
+  # Aggregation gate for branch protection.
+  # Keeps the old "Build Check" name so existing branch protection rules work.
+  # TODO: rename required check to "CI" in branch protection, then rename this job.
   ci-success:
-    name: CI
+    name: Build Check
     runs-on: ubuntu-latest
     if: always()
     needs:
