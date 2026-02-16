@@ -13,6 +13,7 @@ members = [
     "crates/durable",
     "crates/session-sqldb",
     "integrations/codesandbox",
+    "integrations/docker",
 ]
 
 [workspace.package]

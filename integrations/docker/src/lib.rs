@@ -1,10 +1,13 @@
-//! Docker Container Capability (Experimental)
+//! Docker Container Integration (Experimental)
 //!
 //! This capability provides tools for running and interacting with a Docker container
 //! tied to the session lifecycle. The container is lazily started on first tool use
 //! and persists for the duration of the session.
 //!
-//! **EXPERIMENTAL**: This capability is experimental and may change significantly.
+//! Decision: External integration crate, auto-registered via inventory plugin system
+//! Decision: Experimental-only (gated behind DeploymentGrade::Dev)
+//! Decision: Single container per session, named everruns-{session_id}
+//! Decision: Lazy start on first tool use, host networking
 //!
 //! Configuration (via AgentCapabilityConfig.config):
 //! ```json
@@ -13,23 +16,32 @@
 //!   "working_dir": "/workspace"  // optional, defaults to /workspace
 //! }
 //! ```
-//!
-//! Tools provided:
-//! - `docker_exec`: Execute a command inside the container
-//! - `docker_read_file`: Read a file from the container
-//! - `docker_write_file`: Write a file to the container
-//! - `docker_logs`: Get logs from the container
-//! - `docker_stop`: Stop and remove the container
 
-use super::{Capability, CapabilityStatus};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::process::Stdio;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
+
+// ============================================================================
+// Integration Plugin Registration
+// ============================================================================
+
+inventory::submit! {
+    IntegrationPlugin {
+        experimental_only: true,
+        factory: || Box::new(DockerContainerCapability),
+    }
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
 
 /// Default Docker image if none specified in config
 const DEFAULT_IMAGE: &str = "mcr.microsoft.com/devcontainers/python:3.11";
@@ -39,6 +51,10 @@ const DEFAULT_WORKING_DIR: &str = "/workspace";
 
 /// Container name prefix
 const CONTAINER_PREFIX: &str = "everruns";
+
+// ============================================================================
+// Configuration
+// ============================================================================
 
 /// Configuration schema for the Docker Container capability
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +85,10 @@ impl Default for DockerContainerConfig {
     }
 }
 
-/// Docker Container capability - provides tools to interact with a Docker container
+// ============================================================================
+// DockerContainerCapability
+// ============================================================================
+
 pub struct DockerContainerCapability;
 
 impl Capability for DockerContainerCapability {
@@ -101,17 +120,19 @@ impl Capability for DockerContainerCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to a Docker container for executing commands and managing files.
+            r#"## Docker Container (Experimental)
+
+You have access to a Docker container for executing commands and managing files.
 The container is tied to this session and persists across tool calls.
 
 IMPORTANT: This is an EXPERIMENTAL capability. The container uses host networking.
 
-Available tools:
-- `docker_exec`: Execute a shell command inside the container. Returns stdout, stderr, and exit code.
-- `docker_read_file`: Read a file from the container filesystem.
-- `docker_write_file`: Write content to a file in the container filesystem.
-- `docker_logs`: Get logs from the container. Useful for debugging long-running processes.
-- `docker_stop`: Stop and remove the container (for cleanup or to reset state).
+Tools:
+- `docker_exec` - Execute a shell command inside the container. Returns stdout, stderr, and exit code.
+- `docker_read_file` - Read a file from the container filesystem.
+- `docker_write_file` - Write content to a file in the container filesystem.
+- `docker_logs` - Get logs from the container. Useful for debugging long-running processes.
+- `docker_stop` - Stop and remove the container (for cleanup or to reset state).
 
 The container is lazily started on first tool use. Subsequent calls reuse the same container.
 
@@ -140,7 +161,7 @@ Best practices:
 // ============================================================================
 
 /// Generate container name from session ID
-fn container_name(session_id: &crate::typed_id::SessionId) -> String {
+fn container_name(session_id: &everruns_core::typed_id::SessionId) -> String {
     format!("{}-{}", CONTAINER_PREFIX, session_id.uuid())
 }
 
@@ -267,7 +288,6 @@ fn parse_config(config: &Value) -> DockerContainerConfig {
 // DockerExecTool
 // ============================================================================
 
-/// Tool to execute commands inside the Docker container
 pub struct DockerExecTool;
 
 #[async_trait]
@@ -388,7 +408,6 @@ impl Tool for DockerExecTool {
 // DockerReadFileTool
 // ============================================================================
 
-/// Tool to read a file from the Docker container
 pub struct DockerReadFileTool;
 
 #[async_trait]
@@ -493,7 +512,6 @@ impl Tool for DockerReadFileTool {
 // DockerWriteFileTool
 // ============================================================================
 
-/// Tool to write a file to the Docker container
 pub struct DockerWriteFileTool;
 
 #[async_trait]
@@ -585,8 +603,7 @@ impl Tool for DockerWriteFileTool {
             warn!("Failed to create parent directory: {}", e);
         }
 
-        // Write content using docker exec with heredoc-style input via stdin
-        // We use base64 encoding to handle special characters safely
+        // Write content using docker exec with base64 encoding to handle special characters
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, content);
 
         let output = match Command::new("docker")
@@ -631,7 +648,6 @@ impl Tool for DockerWriteFileTool {
 // DockerStopTool
 // ============================================================================
 
-/// Tool to stop and remove the Docker container
 pub struct DockerStopTool;
 
 #[async_trait]
@@ -762,7 +778,6 @@ impl Tool for DockerStopTool {
 // DockerLogsTool
 // ============================================================================
 
-/// Tool to get logs from the Docker container
 pub struct DockerLogsTool;
 
 #[async_trait]
@@ -896,6 +911,8 @@ impl Tool for DockerLogsTool {
 mod tests {
     use super::*;
 
+    // --- Capability metadata tests ---
+
     #[test]
     fn test_capability_metadata() {
         let cap = DockerContainerCapability;
@@ -907,18 +924,17 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_has_tools() {
+    fn test_capability_has_all_tools() {
         let cap = DockerContainerCapability;
         let tools = cap.tools();
-
         assert_eq!(tools.len(), 5);
 
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"docker_exec"));
-        assert!(tool_names.contains(&"docker_read_file"));
-        assert!(tool_names.contains(&"docker_write_file"));
-        assert!(tool_names.contains(&"docker_logs"));
-        assert!(tool_names.contains(&"docker_stop"));
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"docker_exec"));
+        assert!(names.contains(&"docker_read_file"));
+        assert!(names.contains(&"docker_write_file"));
+        assert!(names.contains(&"docker_logs"));
+        assert!(names.contains(&"docker_stop"));
     }
 
     #[test]
@@ -934,13 +950,18 @@ mod tests {
     }
 
     #[test]
-    fn test_tools_require_context() {
-        assert!(DockerExecTool.requires_context());
-        assert!(DockerReadFileTool.requires_context());
-        assert!(DockerWriteFileTool.requires_context());
-        assert!(DockerLogsTool.requires_context());
-        assert!(DockerStopTool.requires_context());
+    fn test_all_tools_require_context() {
+        let cap = DockerContainerCapability;
+        for tool in cap.tools() {
+            assert!(
+                tool.requires_context(),
+                "Tool {} should require context",
+                tool.name()
+            );
+        }
     }
+
+    // --- Config tests ---
 
     #[test]
     fn test_config_default() {
@@ -973,20 +994,22 @@ mod tests {
     #[test]
     fn test_container_name() {
         let uuid = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
-        let session_id = crate::typed_id::SessionId::from_uuid(uuid);
+        let session_id = everruns_core::typed_id::SessionId::from_uuid(uuid);
         let name = container_name(&session_id);
         assert_eq!(name, "everruns-12345678-1234-1234-1234-123456789012");
     }
+
+    // --- Error path tests ---
 
     #[tokio::test]
     async fn test_docker_exec_without_context() {
         let tool = DockerExecTool;
         let result = tool.execute(json!({"command": "echo hello"})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("requires context"));
-        } else {
-            panic!("Expected tool error");
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("requires context"));
+            }
+            _ => panic!("Expected tool error"),
         }
     }
 
@@ -994,11 +1017,11 @@ mod tests {
     async fn test_docker_read_file_without_context() {
         let tool = DockerReadFileTool;
         let result = tool.execute(json!({"path": "/test.txt"})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("requires context"));
-        } else {
-            panic!("Expected tool error");
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("requires context"));
+            }
+            _ => panic!("Expected tool error"),
         }
     }
 
@@ -1008,65 +1031,11 @@ mod tests {
         let result = tool
             .execute(json!({"path": "/test.txt", "content": "hello"}))
             .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("requires context"));
-        } else {
-            panic!("Expected tool error");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_exec_missing_command() {
-        let tool = DockerExecTool;
-        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let result = tool.execute_with_context(json!({}), &context).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Missing required parameter"));
-        } else {
-            panic!("Expected tool error for missing command");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_read_file_missing_path() {
-        let tool = DockerReadFileTool;
-        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let result = tool.execute_with_context(json!({}), &context).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Missing required parameter"));
-        } else {
-            panic!("Expected tool error for missing path");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_write_file_missing_params() {
-        let tool = DockerWriteFileTool;
-        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        // Missing path
-        let result = tool
-            .execute_with_context(json!({"content": "hello"}), &context)
-            .await;
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Missing required parameter"));
-        } else {
-            panic!("Expected tool error for missing path");
-        }
-
-        // Missing content
-        let result = tool
-            .execute_with_context(json!({"path": "/test.txt"}), &context)
-            .await;
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Missing required parameter"));
-        } else {
-            panic!("Expected tool error for missing content");
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("requires context"));
+            }
+            _ => panic!("Expected tool error"),
         }
     }
 
@@ -1074,11 +1043,11 @@ mod tests {
     async fn test_docker_stop_without_context() {
         let tool = DockerStopTool;
         let result = tool.execute(json!({})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("requires context"));
-        } else {
-            panic!("Expected tool error");
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("requires context"));
+            }
+            _ => panic!("Expected tool error"),
         }
     }
 
@@ -1086,11 +1055,71 @@ mod tests {
     async fn test_docker_logs_without_context() {
         let tool = DockerLogsTool;
         let result = tool.execute(json!({})).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("requires context"));
+            }
+            _ => panic!("Expected tool error"),
+        }
+    }
 
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("requires context"));
-        } else {
-            panic!("Expected tool error");
+    #[tokio::test]
+    async fn test_docker_exec_missing_command() {
+        let tool = DockerExecTool;
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+            uuid::Uuid::nil(),
+        ));
+        let result = tool.execute_with_context(json!({}), &context).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Missing required parameter"));
+            }
+            _ => panic!("Expected tool error for missing command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_docker_read_file_missing_path() {
+        let tool = DockerReadFileTool;
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+            uuid::Uuid::nil(),
+        ));
+        let result = tool.execute_with_context(json!({}), &context).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Missing required parameter"));
+            }
+            _ => panic!("Expected tool error for missing path"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_docker_write_file_missing_params() {
+        let tool = DockerWriteFileTool;
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+            uuid::Uuid::nil(),
+        ));
+
+        // Missing path
+        let result = tool
+            .execute_with_context(json!({"content": "hello"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Missing required parameter"));
+            }
+            _ => panic!("Expected tool error for missing path"),
+        }
+
+        // Missing content
+        let result = tool
+            .execute_with_context(json!({"path": "/test.txt"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Missing required parameter"));
+            }
+            _ => panic!("Expected tool error for missing content"),
         }
     }
 }
