@@ -135,7 +135,21 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 5. No TODO/FIXME items that should be resolved before release
 6. CHANGELOG.md has entries for all changes since last release
 
-## Automation
+### 12. Code Simplification
+
+Run the [code-simplifier](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md) agent against recently modified code to clean up clarity, consistency, and maintainability issues while preserving exact functionality.
+
+1. Review code changed since last release (`git diff <last-release-tag>..HEAD --stat`)
+2. Run code-simplifier agent on changed files — focuses on:
+   - Deduplicating repeated patterns into shared helpers
+   - Consolidating split/scattered imports
+   - Removing redundant code (unused imports, passthrough wrappers, duplicate logic)
+   - Applying project conventions consistently (naming, error handling, type annotations)
+   - Simplifying overly nested or complex expressions
+3. Verify all tests still pass after simplification
+4. Ensure no behavioral changes — only structural improvements
+
+
 
 Run `just pre-pr` to automate checks 1-9 where possible. Manual review needed for spec accuracy, threat model, SDK parity, and AGENTS.md content.
 
