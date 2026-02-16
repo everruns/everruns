@@ -90,6 +90,7 @@ jobs:
           cargo test -p everruns-gemini --lib --all-features
           cargo test -p everruns-internal-protocol --lib --all-features
           cargo test -p everruns-core --lib --all-features
+          cargo test -p everruns-integrations-daytona --all-features
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
