@@ -102,7 +102,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 5 navigation items", () => {
+  it("has exactly 6 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -110,6 +110,6 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(5);
+    expect(navLinks).toHaveLength(6);
   });
 });
