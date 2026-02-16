@@ -90,7 +90,8 @@ pub use message::{
     ToolResultContentPart,
 };
 pub use message_filter::{
-    InjectedMessage, InjectionPosition, MessageFilter, MessageFilterProvider, MessageQuery,
+    ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
+    MessageFilterProvider, MessageQuery, PrependTransform,
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};

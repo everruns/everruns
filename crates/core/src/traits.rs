@@ -333,6 +333,9 @@ pub struct ToolContext {
 
     /// Optional session SQL database store
     pub sqldb_store: Option<SessionSqlDbStoreRef>,
+
+    /// Optional message retriever for tools that need conversation history access
+    pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
 }
 
 impl ToolContext {
@@ -343,6 +346,7 @@ impl ToolContext {
             file_store: None,
             storage_store: None,
             sqldb_store: None,
+            message_retriever: None,
         }
     }
 
@@ -353,6 +357,7 @@ impl ToolContext {
             file_store: Some(file_store),
             storage_store: None,
             sqldb_store: None,
+            message_retriever: None,
         }
     }
 
@@ -366,6 +371,7 @@ impl ToolContext {
             file_store: None,
             storage_store: Some(storage_store),
             sqldb_store: None,
+            message_retriever: None,
         }
     }
 
@@ -380,12 +386,22 @@ impl ToolContext {
             file_store: Some(file_store),
             storage_store: Some(storage_store),
             sqldb_store: None,
+            message_retriever: None,
         }
     }
 
     /// Add a SQL database store to this context
     pub fn with_sqldb_store(mut self, sqldb_store: SessionSqlDbStoreRef) -> Self {
         self.sqldb_store = Some(sqldb_store);
+        self
+    }
+
+    /// Add a message retriever to this context
+    pub fn with_message_retriever(
+        mut self,
+        retriever: Arc<dyn crate::message_retriever::MessageRetriever>,
+    ) -> Self {
+        self.message_retriever = Some(retriever);
         self
     }
 }
@@ -397,6 +413,7 @@ impl std::fmt::Debug for ToolContext {
             .field("file_store", &self.file_store.is_some())
             .field("storage_store", &self.storage_store.is_some())
             .field("sqldb_store", &self.sqldb_store.is_some())
+            .field("message_retriever", &self.message_retriever.is_some())
             .finish()
     }
 }
