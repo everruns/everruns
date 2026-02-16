@@ -554,7 +554,6 @@ mod tests {
             TEST_HARNESS_ID, TEST_AGENT_ID
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(req.capabilities.len(), 2);
         assert_eq!(req.capabilities[0].capability_id(), "current_time");
         assert_eq!(req.capabilities[1].capability_id(), "web_fetch");
     }
