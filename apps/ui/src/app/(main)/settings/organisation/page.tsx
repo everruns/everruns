@@ -7,17 +7,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/ui/copy-button";
-import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useOrganization,
+  useUpdateOrganization,
+  useCreateOrganization,
+} from "@/hooks/use-organizations";
 import { useOrg } from "@/providers/org-provider";
-import { Building2, Save, AlertCircle } from "lucide-react";
+import { Building2, Save, AlertCircle, Plus, Check } from "lucide-react";
 
 export default function OrganisationPage() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
   const updateOrganization = useUpdateOrganization();
+  const createOrganization = useCreateOrganization();
 
   const [name, setName] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
 
   // Sync name from fetched organization data
   useEffect(() => {
@@ -45,6 +60,16 @@ export default function OrganisationPage() {
     }
   };
 
+  const handleCreateOrg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOrgName.trim()) return;
+
+    const org = await createOrganization.mutateAsync({ name: newOrgName.trim() });
+    setCurrentOrg({ public_id: org.id, name: org.name });
+    setNewOrgName("");
+    setCreateDialogOpen(false);
+  };
+
   if (error) {
     return (
       <div className="space-y-8">
@@ -65,6 +90,7 @@ export default function OrganisationPage() {
 
   return (
     <div className="space-y-8">
+      {/* Current Organisation Settings */}
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-semibold">Organisation</h2>
@@ -147,6 +173,93 @@ export default function OrganisationPage() {
           </Card>
         )}
       </section>
+
+      {/* All Organisations */}
+      <section>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Your Organisations</h2>
+            <p className="text-sm text-muted-foreground">All organisations you are a member of.</p>
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Organisation
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {organizations.map((org) => {
+            const isCurrent = currentOrg?.public_id === org.public_id;
+            return (
+              <Card
+                key={org.public_id}
+                className={`p-4 flex items-center justify-between ${isCurrent ? "border-primary/50" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
+                    <Building2
+                      className={`h-4 w-4 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                  </div>
+                  <div>
+                    <p className="font-medium">{org.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{org.public_id}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isCurrent ? (
+                    <span className="flex items-center gap-1 text-sm text-primary">
+                      <Check className="h-4 w-4" />
+                      Current
+                    </span>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => setCurrentOrg(org)}>
+                      Switch
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Create Organisation Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Organisation</DialogTitle>
+            <DialogDescription>
+              Create a new organisation. You will be added as a member automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateOrg} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-org-name">Name</Label>
+              <Input
+                id="new-org-name"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+                placeholder="Organisation name"
+                required
+              />
+            </div>
+            {createOrganization.isError && (
+              <p className="text-sm text-destructive">
+                Failed to create: {createOrganization.error.message}
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createOrganization.isPending || !newOrgName.trim()}>
+                {createOrganization.isPending ? "Creating..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

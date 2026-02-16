@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { version } from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
@@ -8,7 +9,19 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useLogout } from "@/hooks/use-auth";
+import { useCreateOrganization } from "@/hooks/use-organizations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -38,6 +51,7 @@ import {
   Check,
   Shield,
   BookOpen,
+  Plus,
 } from "lucide-react";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -69,12 +83,74 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+function CreateOrganizationDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [name, setName] = useState("");
+  const createOrg = useCreateOrganization();
+  const { setCurrentOrg } = useOrg();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    const org = await createOrg.mutateAsync({ name: name.trim() });
+    // Switch to the newly created org
+    setCurrentOrg({ public_id: org.id, name: org.name });
+    setName("");
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Organisation</DialogTitle>
+          <DialogDescription>
+            Create a new organisation. You will be added as a member automatically.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="org-name">Name</Label>
+            <Input
+              id="org-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Organisation name"
+              required
+            />
+          </div>
+          {createOrg.isError && (
+            <p className="text-sm text-destructive">
+              Failed to create organisation: {createOrg.error.message}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createOrg.isPending || !name.trim()}>
+              {createOrg.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, requiresAuth } = useAuth();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const logoutMutation = useLogout();
+  const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
@@ -119,6 +195,11 @@ export function Sidebar() {
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setCreateOrgOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Organisation
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenuPositioner>
           </DropdownMenu>
@@ -241,6 +322,9 @@ export function Sidebar() {
           <p className="text-xs text-muted-foreground px-3">Everruns v{version}</p>
         )}
       </div>
+
+      {/* Create Organisation Dialog */}
+      <CreateOrganizationDialog open={createOrgOpen} onOpenChange={setCreateOrgOpen} />
     </div>
   );
 }

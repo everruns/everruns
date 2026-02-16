@@ -698,6 +698,11 @@ export interface Organization {
   updated_at: string;
 }
 
+/** Request to create an organization */
+export interface CreateOrganizationRequest {
+  name: string;
+}
+
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   name?: string;

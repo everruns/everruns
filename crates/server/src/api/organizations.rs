@@ -352,4 +352,29 @@ mod tests {
         assert_eq!(response.id, org.public_id);
         assert_eq!(response.name, org.name);
     }
+
+    #[test]
+    fn test_create_request_deserialization() {
+        let json = r#"{"name": "Acme Corp"}"#;
+        let req: CreateOrganizationRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.name, "Acme Corp");
+    }
+
+    #[test]
+    fn test_create_request_empty_name() {
+        let json = r#"{"name": ""}"#;
+        let req: CreateOrganizationRequest = serde_json::from_str(json).unwrap();
+        assert!(req.name.is_empty());
+    }
+
+    #[test]
+    fn test_update_request_partial() {
+        let json = r#"{}"#;
+        let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
+        assert!(req.name.is_none());
+
+        let json = r#"{"name": "New Name"}"#;
+        let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.name.unwrap(), "New Name");
+    }
 }

@@ -522,7 +522,9 @@ ApiError::Forbidden("You don't have access to this agent")
 - [x] Update all API calls with org path
 - [x] Add OrgProvider context with useOrg() hook
 - [x] Persist selected org in localStorage
-- [ ] Add org management page (view members) - deferred to future
+- [x] Add "Create Organisation" button in org dropdown
+- [x] Add org creation dialog (sidebar + settings page)
+- [x] Add organisation management section in settings (list all orgs, switch, create)
 
 ### Phase 8: Usage & Cleanup ✅
 - [x] Add `org_id` to usage tracking
@@ -632,7 +634,19 @@ Some resources remain system-wide (not org-scoped):
 - `/v1/auth/*` - Authentication endpoints
 
 ### UI Organization Selector
-Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component.
+Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component. Includes a "Create Organisation" button at the bottom of the dropdown.
+
+### UI Organization Creation
+Two entry points for creating organisations:
+1. **Sidebar dropdown:** "Create Organisation" menu item opens a dialog
+2. **Settings > Organisation page:** "Create Organisation" button in the "Your Organisations" section
+
+Both use the `useCreateOrganization` hook (`hooks/use-organizations.ts`) which calls `POST /v1/orgs`. On success, the new org is auto-selected as the current org via `setCurrentOrg()`.
+
+### UI Organisation Management
+The settings page (`/settings/organisation`) has two sections:
+1. **Current Organisation:** Edit name, view org ID (existing)
+2. **Your Organisations:** Lists all orgs the user belongs to with switch buttons. Current org highlighted with a "Current" badge.
 
 ## Future Considerations
 
