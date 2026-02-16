@@ -19,7 +19,7 @@ use everruns_core::tools::Tool;
 use std::time::Duration;
 
 use tools::{
-    DaytonaCreateSandboxTool, DaytonaDownloadWorkspaceTool, DaytonaExecTool,
+    DaytonaCreateSandboxTool, DaytonaDownloadWorkspaceTool, DaytonaExecTool, DaytonaGitCloneTool,
     DaytonaListSandboxesTool, DaytonaManageSandboxTool, DaytonaReadFileTool, DaytonaWriteFileTool,
 };
 
@@ -96,10 +96,15 @@ Tools:
 - `daytona_download_workspace` - Download sandbox workspace to session storage
 - `daytona_list_sandboxes` - List session sandboxes
 - `daytona_manage_sandbox` - Stop or delete a sandbox
+- `daytona_git_clone` - Clone a git repository into a sandbox (auto-uses connected GitHub credentials)
 
 All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
 Sandboxes auto-stop after 5 minutes of inactivity.
-Always DELETE sandboxes when done (stop leaves them on the dashboard)."#,
+Always DELETE sandboxes when done (stop leaves them on the dashboard).
+
+Git cloning: Use `daytona_git_clone` to clone repositories. If the user has connected
+their GitHub account (Settings > Connections), private repos are automatically
+authenticated. For public repos, no credentials are needed. Supports "user/repo" shorthand."#,
         )
     }
 
@@ -112,6 +117,7 @@ Always DELETE sandboxes when done (stop leaves them on the dashboard)."#,
             Box::new(DaytonaDownloadWorkspaceTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
+            Box::new(DaytonaGitCloneTool),
         ]
     }
 
@@ -143,7 +149,7 @@ mod tests {
     fn test_capability_has_all_tools() {
         let cap = DaytonaCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 7);
+        assert_eq!(tools.len(), 8);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"daytona_create_sandbox"));
@@ -153,6 +159,7 @@ mod tests {
         assert!(names.contains(&"daytona_download_workspace"));
         assert!(names.contains(&"daytona_list_sandboxes"));
         assert!(names.contains(&"daytona_manage_sandbox"));
+        assert!(names.contains(&"daytona_git_clone"));
     }
 
     #[test]
@@ -160,6 +167,7 @@ mod tests {
         let cap = DaytonaCapability;
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("daytona_create_sandbox"));
+        assert!(prompt.contains("daytona_git_clone"));
         assert!(prompt.contains("DAYTONA_API_KEY"));
         assert!(prompt.contains("Experimental"));
     }

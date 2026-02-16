@@ -769,6 +769,202 @@ impl Tool for DaytonaManageSandboxTool {
 }
 
 // ============================================================================
+// DaytonaGitCloneTool
+// ============================================================================
+
+pub struct DaytonaGitCloneTool;
+
+#[async_trait]
+impl Tool for DaytonaGitCloneTool {
+    fn name(&self) -> &str {
+        "daytona_git_clone"
+    }
+
+    fn description(&self) -> &str {
+        "Clone a git repository into a Daytona sandbox. Automatically uses the user's \
+         connected GitHub credentials if available. For private repos, \
+         the user must have connected their GitHub account in Settings > Connections."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "sandbox_id": {
+                    "type": "string",
+                    "description": "Sandbox ID to clone into"
+                },
+                "repo_url": {
+                    "type": "string",
+                    "description": "Repository URL (e.g., 'https://github.com/user/repo' or 'user/repo' shorthand)"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to clone (optional, defaults to default branch)"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Clone destination path inside sandbox (optional, defaults to /home/daytona/<repo_name>)"
+                }
+            },
+            "required": ["sandbox_id", "repo_url"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "daytona_git_clone requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let sandbox_id = match required_str(&arguments, "sandbox_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let repo_url_raw = match required_str(&arguments, "repo_url") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let branch = arguments.get("branch").and_then(|v| v.as_str());
+        let clone_path = arguments.get("path").and_then(|v| v.as_str());
+
+        let api_key = match get_api_key(context).await {
+            Ok(k) => k,
+            Err(e) => return e,
+        };
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        // Normalize repo URL: "user/repo" → "https://github.com/user/repo.git"
+        let repo_url = normalize_repo_url(repo_url_raw);
+
+        // Extract repo name for default clone path
+        let repo_name = repo_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("repo")
+            .trim_end_matches(".git");
+        let default_path = format!("{}/{}", state.workspace_path, repo_name);
+        let target_path = clone_path.unwrap_or(&default_path);
+
+        // Resolve GitHub token for authenticated cloning
+        let github_token = get_github_token(context).await;
+
+        let client = DaytonaClient::new(api_key);
+
+        // Use Daytona's native git clone API (POST /git/clone).
+        // Passes credentials directly via API body — no credential helper scripts needed.
+        let (username, password) = if let Some(ref token) = github_token {
+            (Some("oauth2"), Some(token.as_str()))
+        } else {
+            (None, None)
+        };
+
+        debug!("Cloning repository via Daytona git API: {repo_url} → {target_path}");
+        if let Err(e) = client
+            .git_clone(
+                sandbox_id,
+                &repo_url,
+                target_path,
+                branch,
+                username,
+                password,
+            )
+            .await
+        {
+            let hint = if github_token.is_none()
+                && (e.contains("Authentication")
+                    || e.contains("not found")
+                    || e.contains("401")
+                    || e.contains("403"))
+            {
+                "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
+            } else {
+                ""
+            };
+            return ToolExecutionResult::tool_error(format!("Git clone failed: {e}{hint}"));
+        }
+
+        // Get the HEAD commit SHA
+        let commit_sha = match client
+            .exec(
+                sandbox_id,
+                &format!("cd {target_path} && git rev-parse --short HEAD"),
+                None,
+                None,
+            )
+            .await
+        {
+            Ok(r) if r.exit_code == 0 => r.result.trim().to_string(),
+            _ => "unknown".to_string(),
+        };
+
+        ToolExecutionResult::success(json!({
+            "sandbox_id": sandbox_id,
+            "repo_url": repo_url,
+            "path": target_path,
+            "branch": branch.unwrap_or("default"),
+            "commit": commit_sha,
+            "authenticated": github_token.is_some()
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
+// Git Clone Helpers
+// ============================================================================
+
+/// Normalize repository URL: "user/repo" → "https://github.com/user/repo.git"
+fn normalize_repo_url(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("git@") {
+        url.to_string()
+    } else if url.contains('/') && !url.contains(' ') {
+        // Looks like "user/repo" shorthand
+        format!("https://github.com/{url}.git")
+    } else {
+        url.to_string()
+    }
+}
+
+/// Resolve GitHub token lazily from user connections, with session secret fallback.
+async fn get_github_token(context: &ToolContext) -> Option<String> {
+    // Try lazy resolution from user connections (preferred: always fresh)
+    if let Some(ref resolver) = context.connection_resolver {
+        match resolver
+            .get_connection_token(context.session_id, "github")
+            .await
+        {
+            Ok(Some(token)) if !token.is_empty() => return Some(token),
+            Ok(_) => {}
+            Err(e) => debug!("Connection resolver failed: {e}"),
+        }
+    }
+
+    // Fallback: session secret (for backward compat with pre-injected tokens)
+    if let Some(ref storage) = context.storage_store {
+        match storage.get_secret(context.session_id, "GITHUB_TOKEN").await {
+            Ok(Some(token)) if !token.is_empty() => return Some(token),
+            Ok(_) => {}
+            Err(e) => debug!("No GITHUB_TOKEN session secret: {e}"),
+        }
+    }
+
+    None
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -942,6 +1138,7 @@ mod tests {
             Box::new(DaytonaDownloadWorkspaceTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
+            Box::new(DaytonaGitCloneTool),
         ];
         for tool in &tools {
             assert!(
@@ -962,6 +1159,7 @@ mod tests {
             Box::new(DaytonaDownloadWorkspaceTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
+            Box::new(DaytonaGitCloneTool),
         ];
         for tool in &tools {
             assert!(
@@ -982,6 +1180,7 @@ mod tests {
             Box::new(DaytonaDownloadWorkspaceTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
+            Box::new(DaytonaGitCloneTool),
         ];
         for tool in &tools {
             let schema = tool.parameters_schema();
@@ -992,6 +1191,66 @@ mod tests {
                 tool.name()
             );
         }
+    }
+
+    // --- Git clone tool tests ---
+
+    #[tokio::test]
+    async fn test_git_clone_without_context() {
+        let tool = DaytonaGitCloneTool;
+        let result = tool
+            .execute(json!({"sandbox_id": "test", "repo_url": "user/repo"}))
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
+        );
+    }
+
+    #[test]
+    fn test_git_clone_schema() {
+        let tool = DaytonaGitCloneTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        assert!(required_strs.contains(&"repo_url"));
+        // branch and path are optional
+        assert!(!required_strs.contains(&"branch"));
+        assert!(!required_strs.contains(&"path"));
+        assert!(schema["properties"]["branch"].is_object());
+        assert!(schema["properties"]["path"].is_object());
+    }
+
+    #[test]
+    fn test_normalize_repo_url_shorthand() {
+        assert_eq!(
+            normalize_repo_url("user/repo"),
+            "https://github.com/user/repo.git"
+        );
+    }
+
+    #[test]
+    fn test_normalize_repo_url_https() {
+        let url = "https://github.com/user/repo.git";
+        assert_eq!(normalize_repo_url(url), url);
+    }
+
+    #[test]
+    fn test_normalize_repo_url_ssh() {
+        let url = "git@github.com:user/repo.git";
+        assert_eq!(normalize_repo_url(url), url);
+    }
+
+    #[test]
+    fn test_normalize_repo_url_http() {
+        let url = "http://github.com/user/repo";
+        assert_eq!(normalize_repo_url(url), url);
+    }
+
+    #[test]
+    fn test_normalize_repo_url_bare_word() {
+        // Single word without slash — returned as-is
+        assert_eq!(normalize_repo_url("something"), "something");
     }
 
     #[test]
