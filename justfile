@@ -94,6 +94,10 @@ check:
     cargo clippy --all-targets -- -D warnings
     cargo test
 
+# Run fast pre-push checks (fmt, lint, lockfile — ~30s)
+pre-push:
+    ./scripts/lib/pre-push.sh
+
 # Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
 pre-pr:
     ./scripts/lib/pre-pr.sh

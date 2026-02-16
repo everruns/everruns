@@ -117,21 +117,28 @@ just --list             # All commands
 - Stable Rust (edition 2024), toolchain in `rust-toolchain.toml`
 - `cargo fmt` and `cargo clippy -- -D warnings` for touched crates
 
+### Before Pushing
+
+**Always run `just pre-push` before `git push`.** Fast (~30s) checks that catch most CI failures locally: formatting, clippy, lockfile, UI lint.
+
+If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
+
 ### Pre-PR Checklist
 
-1. `just pre-pr` (runs 2-7 automatically)
-2. `cargo fmt --check`
-3. `cargo clippy --all-targets --all-features -- -D warnings`
-4. `cargo test --all-features`
-5. `npm run lint` + `npm run build` in `apps/ui/`
-6. OpenAPI spec fresh: `./scripts/export-openapi.sh`
-7. Docs build: `npm run build` in `apps/docs/`
-8. Rebase on main: `git fetch origin main && git rebase origin/main`
-9. Smoke test new functionality
-10. UI screenshots for UI changes (use `.claude/skills/ui-screenshots/`)
-11. Test coverage: tests must reproduce issue + verify fix, cover touched code paths
-12. CI green before merge
-13. Resolve all PR comments
+1. `just pre-push` (fast: fmt, lint, lockfile)
+2. `just pre-pr` (full: runs 3-8 automatically)
+3. `cargo fmt --check`
+4. `cargo clippy --all-targets --all-features -- -D warnings`
+5. `cargo test --all-features`
+6. `npm run lint` + `npm run build` in `apps/ui/`
+7. OpenAPI spec fresh: `./scripts/export-openapi.sh`
+8. Docs build: `npm run build` in `apps/docs/`
+9. Rebase on main: `git fetch origin main && git rebase origin/main`
+10. Smoke test new functionality
+11. UI screenshots for UI changes (use `.claude/skills/ui-screenshots/`)
+12. Test coverage: tests must reproduce issue + verify fix, cover touched code paths
+13. CI green before merge
+14. Resolve all PR comments
 
 ### CI
 
