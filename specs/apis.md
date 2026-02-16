@@ -304,7 +304,6 @@ User-scoped external service accounts (e.g., GitHub) for repo access. See [user-
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/user/connections` | List user's connected accounts |
-| POST | `/v1/user/connections` | Add connection via manual PAT |
 | DELETE | `/v1/user/connections/{provider}` | Disconnect (delete stored token) |
 | GET | `/v1/user/connections/github/authorize` | Start GitHub OAuth flow |
 | GET | `/v1/user/connections/github/callback` | GitHub OAuth callback |

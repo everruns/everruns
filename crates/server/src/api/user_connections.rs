@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Redirect,
-    routing::{delete, get, post},
+    routing::{delete, get},
 };
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -49,13 +49,6 @@ pub struct ConnectionResponse {
     pub connected_at: DateTime<Utc>,
 }
 
-/// Request to add a connection via manual token
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateConnectionRequest {
-    pub provider: String,
-    pub access_token: String,
-}
-
 /// OAuth callback query params
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallbackQuery {
@@ -68,7 +61,6 @@ pub struct OAuthCallbackQuery {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
-        .route("/v1/user/connections", post(create_connection))
         .route("/v1/user/connections/{provider}", delete(delete_connection))
         .route(
             "/v1/user/connections/github/authorize",
@@ -99,102 +91,6 @@ pub async fn list_connections(
         .collect();
 
     Ok(Json(connections))
-}
-
-/// POST /v1/user/connections — Add connection via manual PAT
-pub async fn create_connection(
-    State(state): State<AppState>,
-    auth: AuthUser,
-    Json(req): Json<CreateConnectionRequest>,
-) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, String)> {
-    if req.provider != "github" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("Unsupported provider: {}", req.provider),
-        ));
-    }
-
-    let encryption = state.encryption.as_ref().ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Encryption not configured".to_string(),
-        )
-    })?;
-
-    // Validate token against GitHub API
-    let client = reqwest::Client::new();
-    let user_info: serde_json::Value = client
-        .get("https://api.github.com/user")
-        .header("User-Agent", "Everruns")
-        .bearer_auth(&req.access_token)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to validate GitHub token: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid token: could not authenticate with github".to_string(),
-            )
-        })?
-        .json()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to parse GitHub response: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid token: could not authenticate with github".to_string(),
-            )
-        })?;
-
-    let provider_user_id = user_info["id"].as_i64().map(|id| id.to_string());
-    let provider_username = user_info["login"].as_str().map(|s| s.to_string());
-
-    if provider_user_id.is_none() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invalid token: could not authenticate with github".to_string(),
-        ));
-    }
-
-    // Encrypt token
-    let access_token_encrypted = encryption.encrypt_string(&req.access_token).map_err(|e| {
-        tracing::error!("Failed to encrypt token: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to store connection".to_string(),
-        )
-    })?;
-
-    let row = state
-        .db
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.id,
-            provider: req.provider.clone(),
-            provider_user_id,
-            provider_username: provider_username.clone(),
-            access_token_encrypted,
-            refresh_token_encrypted: None,
-            scopes: None, // Manual PAT — scopes unknown
-            expires_at: None,
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create connection: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to store connection".to_string(),
-            )
-        })?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ConnectionResponse {
-            provider: row.provider,
-            provider_username: row.provider_username,
-            scopes: row.scopes,
-            connected_at: row.created_at,
-        }),
-    ))
 }
 
 /// DELETE /v1/user/connections/:provider — Disconnect

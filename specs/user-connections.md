@@ -24,9 +24,9 @@ User connections allow users to link external service accounts (GitHub, GitLab, 
 
 No unique DB constraint on (user_id, provider). Uniqueness enforced in application code. This allows future multi-account support per provider if needed.
 
-### Connection Methods
+### Connection Method: GitHub OAuth App
 
-#### 1. GitHub OAuth App (Browser Flow)
+
 
 A **separate** GitHub OAuth App from the login OAuth App. Different client_id/secret, different scopes.
 
@@ -43,17 +43,6 @@ A **separate** GitHub OAuth App from the login OAuth App. Different client_id/se
 7. Redirect to UI settings page with success
 
 **Token behavior:** GitHub OAuth App tokens do not expire by default. No refresh flow needed for v1.
-
-#### 2. Manual PAT (Fallback)
-
-For GitHub Enterprise, fine-grained tokens, or users who prefer explicit control:
-
-```
-POST /v1/user/connections
-{ "provider": "github", "access_token": "ghp_xxxxxxxxxxxx" }
-```
-
-Server validates the token against `GET https://api.github.com/user`, extracts username/id, stores encrypted.
 
 ### Scoping
 
@@ -89,20 +78,6 @@ List user's connected accounts. Token values never returned.
   ]
 }
 ```
-
-#### POST /v1/user/connections
-
-Add connection via manual token.
-
-**Request:**
-```json
-{
-  "provider": "github",
-  "access_token": "ghp_xxxxxxxxxxxx"
-}
-```
-
-**Response:** `201 Created` with connection info (no token in response).
 
 #### DELETE /v1/user/connections/{provider}
 
@@ -141,8 +116,6 @@ GitHub OAuth callback. Exchanges code, stores token, redirects to UI.
 
 | Scenario | Response |
 |----------|----------|
-| Provider not supported | 400: "Unsupported provider: {name}" |
-| Token validation fails | 400: "Invalid token: could not authenticate with {provider}" |
 | Already connected (app-level check) | 409: "Already connected to {provider}. Disconnect first." |
 | OAuth state mismatch | 400: "Invalid OAuth state" |
 | Connection not found on delete | 404 |
