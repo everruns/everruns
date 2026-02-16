@@ -24,8 +24,18 @@ else
 fi
 echo ""
 
-# 1. Rust formatting
-echo "1️⃣  Checking Rust formatting..."
+# 1. Cargo.lock freshness
+echo "1️⃣  Checking Cargo.lock freshness..."
+if cargo fetch --locked 2>/dev/null; then
+  echo "   ✅ Cargo.lock is up to date"
+else
+  echo "   ❌ Cargo.lock is outdated. Run: cargo fetch"
+  FAILED=1
+fi
+echo ""
+
+# 2. Rust formatting
+echo "2️⃣  Checking Rust formatting..."
 if cargo fmt --check; then
   echo "   ✅ Rust formatting OK"
 else
@@ -34,8 +44,8 @@ else
 fi
 echo ""
 
-# 2. Rust linting
-echo "2️⃣  Running Clippy..."
+# 3. Rust linting
+echo "3️⃣  Running Clippy..."
 if cargo clippy --all-targets --all-features -- -D warnings; then
   echo "   ✅ Clippy passed"
 else
@@ -44,8 +54,8 @@ else
 fi
 echo ""
 
-# 3. Rust tests
-echo "3️⃣  Running Rust tests..."
+# 4. Rust tests
+echo "4️⃣  Running Rust tests..."
 if cargo test --all-features --lib --bins; then
   echo "   ✅ Rust tests passed"
 else
@@ -54,8 +64,8 @@ else
 fi
 echo ""
 
-# 4. UI formatting
-echo "4️⃣  Checking UI formatting..."
+# 5. UI formatting
+echo "5️⃣  Checking UI formatting..."
 cd "$PROJECT_ROOT/apps/ui"
 if npm run format:check; then
   echo "   ✅ UI formatting OK"
@@ -66,8 +76,8 @@ fi
 cd "$PROJECT_ROOT"
 echo ""
 
-# 5. UI lint
-echo "5️⃣  Running UI lint..."
+# 6. UI lint
+echo "6️⃣  Running UI lint..."
 cd "$PROJECT_ROOT/apps/ui"
 if npm run lint; then
   echo "   ✅ UI lint passed"
@@ -78,8 +88,8 @@ fi
 cd "$PROJECT_ROOT"
 echo ""
 
-# 6. UI build
-echo "6️⃣  Building UI..."
+# 7. UI build
+echo "7️⃣  Building UI..."
 cd "$PROJECT_ROOT/apps/ui"
 if npm run build; then
   echo "   ✅ UI build passed"
@@ -90,8 +100,8 @@ fi
 cd "$PROJECT_ROOT"
 echo ""
 
-# 7. OpenAPI spec freshness
-echo "7️⃣  Checking OpenAPI spec freshness..."
+# 8. OpenAPI spec freshness
+echo "8️⃣  Checking OpenAPI spec freshness..."
 TEMP_SPEC=$(mktemp)
 if cargo run --bin export-openapi --release 2>/dev/null > "$TEMP_SPEC"; then
   if diff -q "$PROJECT_ROOT/docs/api/openapi.json" "$TEMP_SPEC" > /dev/null 2>&1; then
@@ -108,8 +118,8 @@ fi
 rm -f "$TEMP_SPEC"
 echo ""
 
-# 8. Docs build
-echo "8️⃣  Building docs..."
+# 9. Docs build
+echo "9️⃣  Building docs..."
 cd "$PROJECT_ROOT/apps/docs"
 if npm run check && npm run build; then
   echo "   ✅ Docs build passed"
