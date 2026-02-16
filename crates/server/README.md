@@ -21,12 +21,12 @@ just start-all  # Start PostgreSQL, API, Worker, UI
 
 Migrations are applied automatically on server startup.
 
-The API will be available at `http://localhost:9000`
+The API will be available at `http://localhost:9300/api` (via Caddy reverse proxy)
 
 ### 3. Access the API
 
-- **API**: http://localhost:9000/v1/...
-- **OpenAPI Spec**: http://localhost:9000/api-doc/openapi.json
+- **API**: http://localhost:9300/api/v1/...
+- **OpenAPI Spec**: http://localhost:9300/api-doc/openapi.json
 
 ## Examples
 
@@ -155,7 +155,7 @@ Default: `postgres://everruns:everruns@localhost:5432/everruns`
 ### Create an Agent
 
 ```bash
-curl -X POST http://localhost:9000/v1/agents \
+curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Agent",
@@ -166,7 +166,7 @@ curl -X POST http://localhost:9000/v1/agents \
 ### List Agents
 
 ```bash
-curl http://localhost:9000/v1/agents | jq
+curl http://localhost:9300/api/v1/agents | jq
 ```
 
 ## Troubleshooting
@@ -188,7 +188,7 @@ just start-all
 
 ### Port Already in Use
 
-Check if another process is using port 9000:
+Check if another process is using port 9300:
 ```bash
-lsof -i :9000
+lsof -i :9300
 ```

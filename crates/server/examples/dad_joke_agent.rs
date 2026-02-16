@@ -18,7 +18,7 @@ use serde_json::json;
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
-const API_BASE_URL: &str = "http://localhost:9000";
+const API_BASE_URL: &str = "http://localhost:9300/api";
 const SSE_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Debug, Deserialize)]

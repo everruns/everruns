@@ -114,6 +114,7 @@ case "$cmd" in
     export DEV_MODE=true
     export DEPLOYMENT_GRADE=dev
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
+    export API_PREFIX=${API_PREFIX:-/api}
     export RUST_LOG=${RUST_LOG:-info}
 
     # Set encryption key if not provided (standard dev key from .env.example)
@@ -386,6 +387,7 @@ case "$cmd" in
 
     # Start API
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
+    export API_PREFIX=${API_PREFIX:-/api}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then

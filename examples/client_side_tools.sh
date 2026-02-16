@@ -12,16 +12,16 @@
 #
 # Prerequisites:
 #   - jq installed (https://stedolan.github.io/jq/)
-#   - Everruns server running (default: http://localhost:9000)
+#   - Everruns server running (default: http://localhost:9300)
 #   - An LLM provider configured with an API key
 #
 # Usage:
 #   ./examples/client_side_tools.sh
-#   BASE_URL=http://my-server:9000 ./examples/client_side_tools.sh
+#   BASE_URL=http://localhost:9300/api ./examples/client_side_tools.sh
 
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:9000}"
+BASE_URL="${BASE_URL:-http://localhost:9300/api}"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

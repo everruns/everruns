@@ -31,7 +31,10 @@ const OAUTH_STATE_TTL_MINUTES: i64 = 10;
 pub struct McpOAuthService {
     db: Arc<StorageBackend>,
     encryption: Arc<EncryptionService>,
+    /// External base URL (e.g. http://localhost:9300)
     base_url: String,
+    /// API prefix for constructing callback URLs (e.g. "/api")
+    api_prefix: String,
 }
 
 impl McpOAuthService {
@@ -39,11 +42,13 @@ impl McpOAuthService {
         db: Arc<StorageBackend>,
         encryption: Arc<EncryptionService>,
         base_url: String,
+        api_prefix: String,
     ) -> Self {
         Self {
             db,
             encryption,
             base_url,
+            api_prefix,
         }
     }
 
@@ -90,8 +95,8 @@ impl McpOAuthService {
 
         let authorization_url = if !authorized {
             Some(format!(
-                "{}/v1/mcp-servers/{}/oauth/authorize",
-                self.base_url, mcp_server_id
+                "{}{}/v1/mcp-servers/{}/oauth/authorize",
+                self.base_url, self.api_prefix, mcp_server_id
             ))
         } else {
             None
@@ -133,7 +138,7 @@ impl McpOAuthService {
         let code_challenge = generate_code_challenge(&code_verifier);
 
         // Single stable callback URL (server ID recovered from state parameter)
-        let redirect_uri = format!("{}/v1/oauth/callback", self.base_url);
+        let redirect_uri = format!("{}{}/v1/oauth/callback", self.base_url, self.api_prefix);
 
         // Store state in database
         let state = self

@@ -244,6 +244,7 @@ pub async fn run(
         encryption.clone(),
         auth_state.clone(),
         auth_config.base_url.clone(),
+        config.api_prefix.clone(),
     );
     let capability_service = Arc::new(services::CapabilityService::new(
         db.clone(),

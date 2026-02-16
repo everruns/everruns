@@ -10,7 +10,7 @@ set -euo pipefail
 # Environment Variables:
 #   OPENAI_API_KEY    - API key for OpenAI provider
 #   ANTHROPIC_API_KEY - API key for Anthropic provider
-#   API_URL           - API base URL (default: http://localhost:9000)
+#   API_URL           - API base URL (default: http://localhost:9300/api)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -26,7 +26,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
   set +a
 fi
 
-API_URL="${API_URL:-http://localhost:9000}"
+API_URL="${API_URL:-http://localhost:9300/api}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do

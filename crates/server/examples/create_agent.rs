@@ -9,7 +9,7 @@
 use everruns_core::Agent;
 use serde_json::json;
 
-const API_BASE_URL: &str = "http://localhost:9000";
+const API_BASE_URL: &str = "http://localhost:9300/api";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

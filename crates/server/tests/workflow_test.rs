@@ -10,7 +10,7 @@
 //! Run with: cargo test -p everruns-server --test workflow_test -- --test-threads=1
 //!
 //! Requirements:
-//! - API server running at localhost:9000
+//! - API server running at localhost:9300 (via Caddy reverse proxy)
 //! - Worker process running
 //! - PostgreSQL with migrations applied
 //! - Uses LlmSim for workflow tests, no real API keys needed
@@ -19,7 +19,7 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{Value, json};
 
-const API_BASE_URL: &str = "http://localhost:9000";
+const API_BASE_URL: &str = "http://localhost:9300/api";
 // Note: With AUTH_MODE=none, org is derived from the anonymous user's default org.
 // No cookie or header needed for integration tests.
 

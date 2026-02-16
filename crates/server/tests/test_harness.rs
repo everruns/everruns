@@ -159,7 +159,8 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
-            "http://localhost:9000".to_string(),
+            "http://localhost:9300".to_string(),
+            String::new(),
         );
         let capability_service = Arc::new(services::CapabilityService::new(
             db.clone(),

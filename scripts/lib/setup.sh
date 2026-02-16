@@ -99,7 +99,7 @@ case "$cmd" in
 
   upload-agents)
     echo "📤 Uploading example agents..."
-    API_URL="${API_URL:-http://localhost:9000}"
+    API_URL="${API_URL:-http://localhost:9300/api}"
     EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
 
     # Check API is healthy
