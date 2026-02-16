@@ -27,11 +27,15 @@ case "$cmd" in
         *)       echo "  ⚠️  Unsupported architecture: $ARCH, skipping caddy"; CADDY_ARCH="" ;;
       esac
       if [ -n "$CADDY_ARCH" ]; then
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        # Caddy uses "mac" not "darwin" in release asset names
+        case "$(uname -s)" in
+          Darwin) CADDY_OS="mac" ;;
+          *)      CADDY_OS=$(uname -s | tr '[:upper:]' '[:lower:]') ;;
+        esac
         CADDY_VERSION="2.9.1"
-        CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_${OS}_${CADDY_ARCH}.tar.gz"
+        CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_${CADDY_OS}_${CADDY_ARCH}.tar.gz"
         TEMP_DIR=$(mktemp -d)
-        curl -sSL "$CADDY_URL" -o "$TEMP_DIR/caddy.tar.gz"
+        curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/caddy.tar.gz"
         tar -xzf "$TEMP_DIR/caddy.tar.gz" -C "$TEMP_DIR" caddy
         mkdir -p "$HOME/.cargo/bin"
         mv "$TEMP_DIR/caddy" "$HOME/.cargo/bin/caddy"

@@ -172,7 +172,7 @@ install_caddy() {
     trap "rm -rf $TEMP_DIR" EXIT
 
     info "Downloading caddy v${CADDY_VERSION}..."
-    curl -sSL "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
+    curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
 
     tar -xzf "$TEMP_DIR/$CADDY_TARBALL" -C "$TEMP_DIR" caddy
 
