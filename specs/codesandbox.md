@@ -256,9 +256,9 @@ Core (`everruns-core`) has no compile-time knowledge of this crate.
 - **Dependencies**: `["session_storage"]`
 - **Registration**: `IntegrationPlugin` via `inventory::submit!` (experimental_only: true)
 
-## Seeded Agent: Cloud Coder
+## Seeded Agent: CodeSandbox Coder
 
-A pre-configured seed agent (`Cloud Coder`) demonstrates the capability:
+A pre-configured seed agent (`CodeSandbox Coder`) demonstrates the capability:
 - **Capabilities**: `codesandbox`, `session_storage`, `session_file_system`
 - **Dev-only**: true
 - **System prompt**: Guides users through API key setup, sandbox creation, code execution, and result download
