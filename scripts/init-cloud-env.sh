@@ -147,6 +147,46 @@ install_doppler() {
     fi
 }
 
+install_caddy() {
+    if command -v caddy &> /dev/null; then
+        info "caddy already installed: $(caddy version 2>/dev/null)"
+        return 0
+    fi
+
+    info "Installing Caddy (pre-built binary)..."
+
+    # Detect architecture
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  CADDY_ARCH="amd64" ;;
+        aarch64) CADDY_ARCH="arm64" ;;
+        *)       error "Unsupported architecture: $ARCH" ;;
+    esac
+
+    CADDY_VERSION="2.9.1"
+    CADDY_TARBALL="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
+    CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/${CADDY_TARBALL}"
+
+    # Download and extract
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
+    info "Downloading caddy v${CADDY_VERSION}..."
+    curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
+
+    tar -xzf "$TEMP_DIR/$CADDY_TARBALL" -C "$TEMP_DIR" caddy
+
+    # Install binary
+    cp "$TEMP_DIR/caddy" "$INSTALL_DIR/caddy"
+    chmod +x "$INSTALL_DIR/caddy"
+
+    if command -v caddy &> /dev/null; then
+        info "caddy installed: $(caddy version 2>/dev/null)"
+    else
+        error "Failed to install caddy"
+    fi
+}
+
 configure_gh_repo() {
     # Set default repo for gh CLI (needed when git remote uses local proxy)
     # Extract repo from git remote URL (handles both github.com and proxy URLs)
@@ -260,6 +300,7 @@ main() {
     install_just
     install_gh
     install_doppler
+    install_caddy
     configure_gh_repo
     configure_doppler
     configure_gh_auth
@@ -275,6 +316,7 @@ main() {
     echo "  - just $(just --version 2>/dev/null || echo '(not in PATH)')"
     echo "  - gh $(gh --version 2>/dev/null | head -1 || echo '(not in PATH)')"
     echo "  - doppler $(doppler --version 2>/dev/null || echo '(not in PATH)')"
+    echo "  - caddy $(caddy version 2>/dev/null || echo '(not in PATH)')"
     echo ""
     echo "Next steps:"
     echo "  just --list              # See available commands"

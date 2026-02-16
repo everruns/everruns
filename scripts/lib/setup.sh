@@ -15,6 +15,38 @@ case "$cmd" in
 
     echo "🧪 Preflight checks..."
 
+    # Caddy reverse proxy
+    echo "🔀 Reverse proxy:"
+    if ! command -v caddy &> /dev/null; then
+      echo "  Installing caddy..."
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        x86_64)  CADDY_ARCH="amd64" ;;
+        aarch64) CADDY_ARCH="arm64" ;;
+        arm64)   CADDY_ARCH="arm64" ;;
+        *)       echo "  ⚠️  Unsupported architecture: $ARCH, skipping caddy"; CADDY_ARCH="" ;;
+      esac
+      if [ -n "$CADDY_ARCH" ]; then
+        # Caddy uses "mac" not "darwin" in release asset names
+        case "$(uname -s)" in
+          Darwin) CADDY_OS="mac" ;;
+          *)      CADDY_OS=$(uname -s | tr '[:upper:]' '[:lower:]') ;;
+        esac
+        CADDY_VERSION="2.9.1"
+        CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_${CADDY_OS}_${CADDY_ARCH}.tar.gz"
+        TEMP_DIR=$(mktemp -d)
+        curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/caddy.tar.gz"
+        tar -xzf "$TEMP_DIR/caddy.tar.gz" -C "$TEMP_DIR" caddy
+        mkdir -p "$HOME/.cargo/bin"
+        mv "$TEMP_DIR/caddy" "$HOME/.cargo/bin/caddy"
+        chmod +x "$HOME/.cargo/bin/caddy"
+        rm -rf "$TEMP_DIR"
+        echo "  ✅ caddy installed: $(caddy version 2>/dev/null || echo 'installed')"
+      fi
+    else
+      echo "  ✅ caddy already installed: $(caddy version 2>/dev/null)"
+    fi
+
     # Rust tools
     echo "📦 Rust tools:"
     if ! command -v sqlx &> /dev/null; then

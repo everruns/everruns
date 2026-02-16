@@ -15,7 +15,7 @@ The management UI is a Next.js application that provides:
 - Settings management (LLM providers, API keys, team members)
 - Dashboard with system statistics
 
-Access the UI at `http://localhost:9100` when running locally.
+Access the UI at `http://localhost:9300` when running locally.
 
 ## Navigation
 

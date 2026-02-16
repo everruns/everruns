@@ -37,7 +37,7 @@ start tag="latest":
     cd examples
     docker compose -f docker-compose-full.yaml up -d
     echo "✅ Example full stack started!"
-    echo "   - UI: http://localhost:8080"
+    echo "   - UI: http://localhost:9300"
     echo "   - Jaeger UI: http://localhost:16686"
 
 # Stop example docker-compose-full

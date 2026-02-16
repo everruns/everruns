@@ -128,7 +128,7 @@ The order of capabilities matters - capabilities are applied in the order shown,
 Create agent with capabilities:
 
 ```bash
-curl -X POST http://localhost:9000/v1/agents \
+curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Agent",
@@ -140,7 +140,7 @@ curl -X POST http://localhost:9000/v1/agents \
 Update agent capabilities:
 
 ```bash
-curl -X PATCH http://localhost:9000/v1/agents/{agent_id} \
+curl -X PATCH http://localhost:9300/api/v1/agents/{agent_id} \
   -H "Content-Type: application/json" \
   -d '{
     "capabilities": ["current_time", "session_file_system"]
@@ -150,13 +150,13 @@ curl -X PATCH http://localhost:9000/v1/agents/{agent_id} \
 Get agent (includes capabilities):
 
 ```bash
-curl -X GET http://localhost:9000/v1/agents/{agent_id}
+curl -X GET http://localhost:9300/api/v1/agents/{agent_id}
 ```
 
 List all available capabilities:
 
 ```bash
-curl -X GET http://localhost:9000/v1/capabilities
+curl -X GET http://localhost:9300/api/v1/capabilities
 ```
 
 ## Capability Application Flow

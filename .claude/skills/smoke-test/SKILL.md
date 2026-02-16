@@ -51,7 +51,7 @@ Integration tests cover: API endpoints, tool calling (OpenAI/Anthropic/LLMSim), 
 ### 4. UI Check
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9300
 # Expected: 200 or 307
 ```
 
@@ -61,21 +61,22 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:9100
 ORG="org_00000000000000000000000000000001"
 
 # Create agent
-curl -s -X POST "http://localhost:9000/v1/agents" \
+curl -s -X POST "http://localhost:9300/api/v1/agents" \
   -H "Content-Type: application/json" \
   -d '{"name": "Test", "system_prompt": "You are helpful."}' | jq '.id'
 ```
 
 ## Full API Reference
 
-See http://localhost:9000/swagger-ui/ for complete API documentation.
+See http://localhost:9300/swagger-ui/ for complete API documentation.
 
 ## Troubleshooting
 
 ```bash
 # Check ports
-lsof -i :9000  # API
-lsof -i :9100  # UI
+lsof -i :9300  # Caddy reverse proxy
+lsof -i :9000  # API (direct)
+lsof -i :9100  # UI (direct)
 
 # View logs (DEV MODE runs in foreground)
 # Ctrl+C to stop, then restart with: just start-dev

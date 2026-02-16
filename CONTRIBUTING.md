@@ -29,9 +29,9 @@ just start-all
 ```
 
 Services available at:
-- **UI**: http://localhost:9100
-- **API**: http://localhost:9000
-- **API Docs**: http://localhost:9000/swagger-ui/
+- **App**: http://localhost:9300
+- **API**: http://localhost:9300/api/...
+- **API Docs**: http://localhost:9300/swagger-ui/
 - **Jaeger**: http://localhost:16686
 
 ### Quick Start (DEV_MODE - No Database)

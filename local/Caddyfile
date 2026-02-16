@@ -1,0 +1,29 @@
+# Local development reverse proxy
+# Unifies API (9000) and UI (9100) behind a single port (9300)
+#
+# Routes:
+#   /api/*        -> API server at :9000 (strips /api prefix)
+#   /swagger-ui/* -> API server at :9000
+#   /api-doc/*    -> API server at :9000
+#   /health       -> API server at :9000
+#   /*            -> UI dev server at :9100
+:9300 {
+	handle_path /api/* {
+		reverse_proxy localhost:9000 {
+			# Disable response buffering for SSE streaming
+			flush_interval -1
+		}
+	}
+	handle /swagger-ui/* {
+		reverse_proxy localhost:9000
+	}
+	handle /api-doc/* {
+		reverse_proxy localhost:9000
+	}
+	handle /health {
+		reverse_proxy localhost:9000
+	}
+	handle {
+		reverse_proxy localhost:9100
+	}
+}

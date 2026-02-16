@@ -22,7 +22,7 @@ Verify that the research agent completes a full research workflow: receives a qu
 
 1. Create research agent:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Research Agent",
@@ -34,7 +34,7 @@ Verify that the research agent completes a full research workflow: receives a qu
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -42,7 +42,7 @@ Verify that the research agent completes a full research workflow: receives a qu
 
 3. Send research request:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -57,13 +57,13 @@ Verify that the research agent completes a full research workflow: receives a qu
 5. Retrieve all data for assertions:
    ```bash
    # Events
-   curl -s "http://localhost:9000/v1/sessions/{session_id}/events"
+   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
 
    # Files
-   curl -s "http://localhost:9000/v1/sessions/{session_id}/fs?recursive=true"
+   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/fs?recursive=true"
 
    # Report content
-   curl -s "http://localhost:9000/v1/sessions/{session_id}/fs/research/report.md"
+   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/fs/research/report.md"
    ```
 
 ## Expected Result
