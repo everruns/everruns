@@ -237,6 +237,13 @@ The `template` field on `csb_create_sandbox` was removed. The CodeSandbox API re
 
 The capability declares `session_storage` as a dependency because it needs both the secrets store (for `CSB_API_KEY`) and the KV store (for sandbox state persistence).
 
+## Crate Location
+
+`integrations/codesandbox/` → `everruns-integrations-codesandbox`
+
+External integration crate, auto-registered via `inventory::submit!` plugin system.
+Core (`everruns-core`) has no compile-time knowledge of this crate.
+
 ## Capability Registration
 
 - **ID**: `codesandbox`
@@ -245,6 +252,7 @@ The capability declares `session_storage` as a dependency because it needs both 
 - **Icon**: `cloud`
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
+- **Registration**: `IntegrationPlugin` via `inventory::submit!` (experimental_only: true)
 
 ## Seeded Agent: Cloud Coder
 
