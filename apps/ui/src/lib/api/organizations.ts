@@ -1,8 +1,13 @@
 // Organization API functions
-// Routes: GET/PATCH /v1/orgs/{org}
+// Routes: POST /v1/orgs, GET/PATCH /v1/orgs/{org}
 
 import { api } from "./client";
-import type { Organization, UpdateOrganizationRequest } from "./types";
+import type { CreateOrganizationRequest, Organization, UpdateOrganizationRequest } from "./types";
+
+export async function createOrganization(data: CreateOrganizationRequest): Promise<Organization> {
+  const response = await api.post<Organization>("/v1/orgs", data);
+  return response.data;
+}
 
 export async function getOrganization(org: string): Promise<Organization> {
   const response = await api.get<Organization>(`/v1/orgs/${org}`);

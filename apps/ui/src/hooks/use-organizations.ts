@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOrganization, updateOrganization } from "@/lib/api/organizations";
+import { createOrganization, getOrganization, updateOrganization } from "@/lib/api/organizations";
 import { queryKeys } from "@/lib/query-keys";
-import type { UpdateOrganizationRequest } from "@/lib/api/types";
+import type { CreateOrganizationRequest, UpdateOrganizationRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useOrganization() {
@@ -22,6 +22,19 @@ export function useOrganization() {
     ...query,
     isLoading: orgLoading || query.isLoading,
   };
+}
+
+export function useCreateOrganization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateOrganizationRequest) => createOrganization(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+      // Refresh user's org list so the new org appears in the dropdown
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.me() });
+    },
+  });
 }
 
 export function useUpdateOrganization() {
