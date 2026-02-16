@@ -215,6 +215,10 @@ pub async fn github_callback(
             )
         })?;
 
-    // Redirect back to settings page
-    Ok(Redirect::to("/settings/connections?connected=github"))
+    // Redirect back to settings page (frontend may be on a different origin in dev)
+    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
+    Ok(Redirect::to(&format!(
+        "{}/settings/connections?connected=github",
+        frontend_url
+    )))
 }

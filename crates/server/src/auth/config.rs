@@ -93,8 +93,10 @@ impl Default for JwtConfig {
 pub struct AuthConfig {
     /// Authentication mode
     pub mode: AuthMode,
-    /// Base URL for OAuth callbacks
+    /// Base URL for OAuth callbacks (backend origin)
     pub base_url: String,
+    /// Frontend URL for post-auth redirects (UI origin, same as base_url in production)
+    pub frontend_url: String,
     /// JWT configuration
     pub jwt: JwtConfig,
     /// Admin user (for admin mode or initial setup)
@@ -118,6 +120,7 @@ impl Default for AuthConfig {
         Self {
             mode: AuthMode::None,
             base_url: "http://localhost:9000".to_string(),
+            frontend_url: "http://localhost:9100".to_string(),
             jwt: JwtConfig::default(),
             admin: None,
             google: None,
@@ -140,6 +143,11 @@ impl AuthConfig {
         let base_url = std::env::var("AUTH_BASE_URL")
             .or_else(|_| std::env::var("BASE_URL"))
             .unwrap_or_else(|_| "http://localhost:9000".to_string());
+
+        // Frontend URL for post-auth redirects. In production, typically same origin.
+        // In dev, UI runs on a different port (9100).
+        let frontend_url = std::env::var("FRONTEND_URL")
+            .unwrap_or_else(|_| "http://localhost:9100".to_string());
 
         // API prefix for constructing OAuth callback URLs
         let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
@@ -275,6 +283,7 @@ impl AuthConfig {
         Self {
             mode,
             base_url,
+            frontend_url,
             jwt,
             admin,
             google,
