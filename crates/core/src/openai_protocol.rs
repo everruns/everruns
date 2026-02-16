@@ -232,7 +232,12 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                 include_usage: true,
             }),
             tools,
-            reasoning_effort: config.reasoning_effort.clone(),
+            // Skip "none" — sending reasoning_effort to non-thinking models causes API errors
+            reasoning_effort: config
+                .reasoning_effort
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned(),
             metadata,
         };
 

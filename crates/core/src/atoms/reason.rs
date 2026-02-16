@@ -602,14 +602,40 @@ where
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
 
-        // 8. Extract reasoning effort from the last user message's controls
+        // 8. Extract reasoning effort from the last user message's controls,
+        //    but only if the model actually supports reasoning (per its profile).
+        //    This prevents sending unsupported `reasoning` params to non-thinking
+        //    models like gpt-4o-mini, which would cause API errors.
         let reasoning_effort = messages
             .iter()
             .rev()
             .find(|m| m.role == MessageRole::User)
             .and_then(|m| m.controls.as_ref())
             .and_then(|c| c.reasoning.as_ref())
-            .and_then(|r| r.effort.clone());
+            .and_then(|r| r.effort.clone())
+            .filter(|effort| {
+                // Skip "none" — it means "don't use reasoning"
+                if effort.eq_ignore_ascii_case("none") {
+                    return false;
+                }
+                // Check model profile; if profile exists and reasoning is false, strip it.
+                // Unknown models (no profile) pass through — let the API decide.
+                let profile = crate::llm_model_profiles::get_model_profile(
+                    &model_with_provider.provider_type,
+                    &model_with_provider.model,
+                );
+                match profile {
+                    Some(p) if !p.reasoning => {
+                        tracing::warn!(
+                            model = %model_with_provider.model,
+                            effort = %effort,
+                            "Stripping reasoning_effort: model does not support reasoning"
+                        );
+                        false
+                    }
+                    _ => true,
+                }
+            });
 
         // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);

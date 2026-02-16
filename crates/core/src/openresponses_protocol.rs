@@ -469,10 +469,13 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             Some(Self::convert_tools(&config.tools))
         };
 
-        // Build reasoning config if specified
+        // Build reasoning config if specified.
+        // Skip when effort is "none" — sending reasoning params to models that
+        // don't support them (or with effort=none) causes OpenAI API errors.
         let reasoning = config
             .reasoning_effort
             .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
             .map(|effort| ResponsesReasoning {
                 effort: effort.clone(),
                 summary: "detailed".to_string(),
