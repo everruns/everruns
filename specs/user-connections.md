@@ -48,6 +48,10 @@ A **separate** GitHub OAuth App from the login OAuth App. Different client_id/se
 
 Connections are **user-scoped**. The token represents the user's identity on the external service. It's usable in any org the user belongs to.
 
+**Visibility:** Connections are private to the user who created them. Other org members cannot list, view, or manage another user's connections via the API. The `GET /v1/user/connections` endpoint only returns the authenticated user's own connections.
+
+**Token resolution:** Although connections are private, the lazy token resolver (`UserConnectionResolver`) can resolve tokens across org members for tool execution. When a tool needs a GitHub token, the resolver finds any org member who has connected GitHub. This means a user's token may be used to serve tool requests in sessions belonging to the same org, but the connection itself remains invisible to other users.
+
 ### Lazy Token Resolution
 
 Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`:
@@ -145,7 +149,7 @@ The app requests `repo read:user` scopes (hardcoded in `GitHubConnectionService`
 | Question | Decision | Rationale |
 |----------|----------|-----------|
 | Separate OAuth App? | Yes | Different scopes (repo vs profile). Separation of concerns. User sees distinct authorization prompts. |
-| User-scoped not org-scoped? | Yes | Token represents user's GitHub identity, not org's. Different org members have different repo access. |
+| User-scoped not org-scoped? | Yes | Token represents user's GitHub identity, not org's. Different org members have different repo access. Connections are private — other org members cannot see them. |
 | No DB unique constraint? | Yes | Enforce in app code. Allows future multi-account per provider without migration. |
 | Auto-inject into sessions? | Yes | Seamless UX. User connects once, all sessions get access. |
 | Credential helper not URL-embedded token? | Yes | Token never appears in command line, process list, or exec output. Safer. |
