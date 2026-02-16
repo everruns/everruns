@@ -375,11 +375,36 @@ impl DaytonaClient {
         .await?;
         Ok(())
     }
-}
+    // --- Toolbox API: Git ---
 
-// ============================================================================
-// URL encoding helper (inline, avoids extra dependency)
-// ============================================================================
+    /// Clone a git repository using Daytona's native git clone endpoint.
+    pub async fn git_clone(
+        &self,
+        sandbox_id: &str,
+        url: &str,
+        path: &str,
+        branch: Option<&str>,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> Result<(), String> {
+        let mut body = json!({
+            "url": url,
+            "path": path,
+        });
+        if let Some(b) = branch {
+            body["branch"] = json!(b);
+        }
+        if let Some(u) = username {
+            body["username"] = json!(u);
+        }
+        if let Some(p) = password {
+            body["password"] = json!(p);
+        }
+        self.toolbox_request(reqwest::Method::POST, sandbox_id, "/git/clone", Some(body))
+            .await?;
+        Ok(())
+    }
+}
 
 pub(crate) mod urlencoding {
     /// Percent-encode a string for use in query parameters.
@@ -956,5 +981,87 @@ mod tests {
         let entries = client.file_list("sb_test", "/home").await.unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["name"], "only.txt");
+    }
+
+    #[tokio::test]
+    async fn test_client_git_clone() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/git/clone"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .git_clone(
+                "sb_test",
+                "https://github.com/user/repo.git",
+                "/home/daytona/repo",
+                Some("main"),
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_git_clone_with_auth() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/git/clone"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .git_clone(
+                "sb_test",
+                "https://github.com/user/private-repo.git",
+                "/home/daytona/private-repo",
+                None,
+                Some("oauth2"),
+                Some("ghp_token123"),
+            )
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_git_clone_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/git/clone"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Repository not found"))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .git_clone(
+                "sb_test",
+                "https://github.com/user/nonexistent.git",
+                "/home/daytona/nonexistent",
+                None,
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("500"));
     }
 }

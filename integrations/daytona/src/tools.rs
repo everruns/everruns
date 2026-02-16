@@ -12,7 +12,7 @@ use crate::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
     required_str, save_sandbox_state,
 };
-use crate::{AUTO_STOP_INTERVAL_MINUTES, EXEC_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS};
+use crate::{AUTO_STOP_INTERVAL_MINUTES, EXEC_TIMEOUT_MS};
 
 // ============================================================================
 // DaytonaCreateSandboxTool
@@ -860,99 +860,52 @@ impl Tool for DaytonaGitCloneTool {
 
         let client = DaytonaClient::new(api_key);
 
-        // Step 1: Set up git credential helper if we have a token
-        if let Some(ref token) = github_token {
-            debug!("Setting up git credential helper for authenticated clone");
-            let credential_script = format!(
-                r#"#!/bin/sh
-echo "protocol=https"
-echo "host=github.com"
-echo "username=oauth2"
-echo "password={token}""#
-            );
+        // Use Daytona's native git clone API (POST /git/clone).
+        // Passes credentials directly via API body — no credential helper scripts needed.
+        let (username, password) = if let Some(ref token) = github_token {
+            (Some("oauth2"), Some(token.as_str()))
+        } else {
+            (None, None)
+        };
 
-            // Write credential helper script and configure git
-            let setup_cmd = format!(
-                "mkdir -p /tmp && cat > /tmp/git-credential-helper.sh << 'CREDEOF'\n{credential_script}\nCREDEOF\nchmod +x /tmp/git-credential-helper.sh && git config --global credential.helper '/tmp/git-credential-helper.sh'"
-            );
-
-            match client.exec(sandbox_id, &setup_cmd, None, None).await {
-                Ok(result) if result.exit_code != 0 => {
-                    warn!(
-                        "Credential helper setup failed (exit {}): {}",
-                        result.exit_code, result.result
-                    );
-                    // Continue without auth — will fail for private repos
-                }
-                Err(e) => {
-                    warn!("Failed to set up credential helper: {e}");
-                }
-                Ok(_) => {}
-            }
-        }
-
-        // Step 2: Build and run git clone command
-        let mut clone_cmd = "git clone --depth 1".to_string();
-        if let Some(b) = branch {
-            clone_cmd.push_str(&format!(" --branch {b}"));
-        }
-        clone_cmd.push_str(&format!(" {repo_url} {target_path}"));
-
-        debug!("Cloning repository: {clone_cmd}");
-        let clone_result = match client
-            .exec(sandbox_id, &clone_cmd, None, Some(GIT_CLONE_TIMEOUT_MS))
+        debug!("Cloning repository via Daytona git API: {repo_url} → {target_path}");
+        if let Err(e) = client
+            .git_clone(
+                sandbox_id,
+                &repo_url,
+                target_path,
+                branch,
+                username,
+                password,
+            )
             .await
         {
-            Ok(r) => r,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!("Git clone exec failed: {e}"));
-            }
-        };
-
-        let output = &clone_result.result;
-
-        // Step 3: Get the HEAD commit SHA (only if clone succeeded)
-        let commit_sha = if clone_result.exit_code == 0 {
-            match client
-                .exec(
-                    sandbox_id,
-                    &format!("cd {target_path} && git rev-parse --short HEAD"),
-                    None,
-                    None,
-                )
-                .await
-            {
-                Ok(r) if r.exit_code == 0 => r.result.trim().to_string(),
-                _ => "unknown".to_string(),
-            }
-        } else {
-            "unknown".to_string()
-        };
-
-        // Step 4: Clean up credential helper (security)
-        if github_token.is_some() {
-            let cleanup_cmd = "rm -f /tmp/git-credential-helper.sh && git config --global --unset credential.helper";
-            if let Err(e) = client.exec(sandbox_id, cleanup_cmd, None, None).await {
-                warn!("Credential cleanup failed: {e}");
-            }
-        }
-
-        // Check if clone failed
-        if clone_result.exit_code != 0 || output.contains("fatal:") || output.contains("error:") {
-            let error_lines: String = output.lines().take(5).collect::<Vec<_>>().join("\n");
             let hint = if github_token.is_none()
-                && (output.contains("Authentication failed")
-                    || output.contains("could not read Username")
-                    || output.contains("Repository not found"))
+                && (e.contains("Authentication")
+                    || e.contains("not found")
+                    || e.contains("401")
+                    || e.contains("403"))
             {
                 "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
             } else {
                 ""
             };
-            return ToolExecutionResult::tool_error(format!(
-                "Git clone failed: {error_lines}{hint}"
-            ));
+            return ToolExecutionResult::tool_error(format!("Git clone failed: {e}{hint}"));
         }
+
+        // Get the HEAD commit SHA
+        let commit_sha = match client
+            .exec(
+                sandbox_id,
+                &format!("cd {target_path} && git rev-parse --short HEAD"),
+                None,
+                None,
+            )
+            .await
+        {
+            Ok(r) if r.exit_code == 0 => r.result.trim().to_string(),
+            _ => "unknown".to_string(),
+        };
 
         ToolExecutionResult::success(json!({
             "sandbox_id": sandbox_id,

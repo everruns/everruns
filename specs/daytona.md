@@ -75,6 +75,7 @@ All state is stored in session **secrets** (encrypted at rest via AES-256-GCM en
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
 | POST | `/process/execute` | Execute command (sync) | `{ command, cwd?, timeout? }` |
+| POST | `/git/clone` | Clone git repository | `{ url, path, branch?, username?, password? }` |
 | GET | `/files?path=` | List directory | — |
 | GET | `/files/download?path=` | Download file | — |
 | POST | `/files/upload?path=` | Upload file (multipart) | multipart/form-data |
@@ -155,10 +156,12 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
   - `path`: string (optional) — destination inside sandbox (defaults to `<workspace_path>/<repo_name>`)
 - **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
 
+**Implementation:** Uses Daytona's native `POST /git/clone` Toolbox API endpoint. Credentials are passed directly in the request body (`username`/`password` fields) — no credential helper scripts needed.
+
 **Authentication flow:**
 1. Lazily resolves GitHub token from user connections (`connection_resolver`)
 2. Falls back to `GITHUB_TOKEN` session secret
-3. If token found: writes temporary credential helper script, configures git, clones, then cleans up
+3. If token found: passes `username=oauth2`, `password=<token>` to the git clone API
 4. If no token: public repos only; private repos fail with hint to connect GitHub
 
 ## Security

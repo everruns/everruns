@@ -47,8 +47,6 @@ const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SANDBOX_READY_MAX_WAIT: Duration = Duration::from_secs(60);
 /// Auto-stop after 5 minutes of inactivity (safety net)
 const AUTO_STOP_INTERVAL_MINUTES: u64 = 5;
-/// Timeout for git clone operations (longer than default exec)
-const GIT_CLONE_TIMEOUT_MS: u64 = 300_000;
 
 // ============================================================================
 // DaytonaCapability
