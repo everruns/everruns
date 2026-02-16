@@ -3149,6 +3149,43 @@ impl InMemoryDatabase {
         Ok(connections)
     }
 
+    /// Get encrypted connection token for a session's org member (in-memory equivalent).
+    pub async fn get_connection_token_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        // Find the session to get org_id
+        let sessions = self.sessions.read();
+        let session = match sessions.get(&session_id) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let org_id = session.org_id;
+        drop(sessions);
+
+        // Find org members
+        let members = self.organization_members.read();
+        let user_ids: Vec<Uuid> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), _)| *uid)
+            .collect();
+        drop(members);
+
+        // Find first matching connection
+        let connections = self.user_connections.read();
+        for uid in user_ids {
+            for conn in connections.values() {
+                if conn.user_id == uid && conn.provider == provider {
+                    return Ok(Some(conn.access_token_encrypted.clone()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         let mut connections = self.user_connections.write();
         let before = connections.len();

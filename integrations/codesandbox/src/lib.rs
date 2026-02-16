@@ -1853,9 +1853,18 @@ echo "password={token}""#
 
         // Check if clone succeeded (non-empty output usually means error)
         if output.contains("fatal:") || output.contains("error:") {
+            let error_lines: String = output.lines().take(5).collect::<Vec<_>>().join("\n");
+            let hint = if github_token.is_none()
+                && (output.contains("Authentication failed")
+                    || output.contains("could not read Username")
+                    || output.contains("Repository not found"))
+            {
+                "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
+            } else {
+                ""
+            };
             return ToolExecutionResult::tool_error(format!(
-                "Git clone failed: {}",
-                output.lines().take(5).collect::<Vec<_>>().join("\n")
+                "Git clone failed: {error_lines}{hint}"
             ));
         }
 
@@ -1886,17 +1895,30 @@ fn normalize_repo_url(url: &str) -> String {
     }
 }
 
-/// Read GITHUB_TOKEN from session secrets (injected from user connections)
+/// Resolve GitHub token lazily from user connections, with session secret fallback.
 async fn get_github_token(context: &ToolContext) -> Option<String> {
-    let storage = context.storage_store.as_ref()?;
-    match storage.get_secret(context.session_id, "GITHUB_TOKEN").await {
-        Ok(Some(token)) if !token.is_empty() => Some(token),
-        Ok(_) => None,
-        Err(e) => {
-            debug!("No GITHUB_TOKEN available: {e}");
-            None
+    // Try lazy resolution from user connections (preferred: always fresh)
+    if let Some(ref resolver) = context.connection_resolver {
+        match resolver
+            .get_connection_token(context.session_id, "github")
+            .await
+        {
+            Ok(Some(token)) if !token.is_empty() => return Some(token),
+            Ok(_) => {}
+            Err(e) => debug!("Connection resolver failed: {e}"),
         }
     }
+
+    // Fallback: session secret (for backward compat with pre-injected tokens)
+    if let Some(ref storage) = context.storage_store {
+        match storage.get_secret(context.session_id, "GITHUB_TOKEN").await {
+            Ok(Some(token)) if !token.is_empty() => return Some(token),
+            Ok(_) => {}
+            Err(e) => debug!("No GITHUB_TOKEN session secret: {e}"),
+        }
+    }
+
+    None
 }
 
 /// Poll exec completion and return output

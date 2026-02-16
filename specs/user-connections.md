@@ -48,16 +48,21 @@ A **separate** GitHub OAuth App from the login OAuth App. Different client_id/se
 
 Connections are **user-scoped**. The token represents the user's identity on the external service. It's usable in any org the user belongs to.
 
-### Session Injection
+### Lazy Token Resolution
 
-When a session starts and the `codesandbox` capability is active:
+Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`:
 
-1. Resolve user from auth context (session creator)
-2. Query `user_connections` for user's `github` connection
-3. If found, decrypt token and set as session secret: `GITHUB_TOKEN`
-4. Also inject `GITHUB_USERNAME` and `GITHUB_EMAIL` as session KV values
+1. Tool (e.g. `csb_git_clone`) requests token via `context.connection_resolver`
+2. Resolver joins `sessions → org_members → user_connections` to find the token
+3. Token is decrypted and returned directly to the tool
+4. If no connection exists, tool returns guidance: "connect GitHub in Settings > Connections"
 
-Agent tools read `GITHUB_TOKEN` from session secrets internally. The token value never appears in tool arguments, tool results, or message history.
+Benefits over eager session injection:
+- Tokens are always fresh (reconnect mid-session works)
+- Sessions created before connecting still get tokens
+- No stale secrets in session storage
+
+The token value never appears in tool arguments, tool results, or message history.
 
 ### API Endpoints
 

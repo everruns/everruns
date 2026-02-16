@@ -3463,6 +3463,31 @@ impl Database {
         Ok(rows)
     }
 
+    /// Get the encrypted connection token for a session's org member.
+    /// Joins session → org_members → user_connections to resolve lazily.
+    pub async fn get_connection_token_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let row: Option<(Vec<u8>,)> = sqlx::query_as(
+            r#"
+            SELECT uc.access_token_encrypted
+            FROM sessions s
+            JOIN organization_members om ON om.org_id = s.org_id
+            JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+            WHERE s.id = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(blob,)| blob))
+    }
+
     /// Delete a user's connection for a specific provider
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         let result =

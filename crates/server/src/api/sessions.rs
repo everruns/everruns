@@ -3,7 +3,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{EventService, SessionService};
-use crate::storage::{EncryptionService, StorageBackend};
+use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
@@ -116,23 +116,16 @@ pub struct AppState {
     pub event_service: EventService,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
-    pub encryption: Option<Arc<EncryptionService>>,
 }
 
 impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
-        auth: AuthState,
-        encryption: Option<Arc<EncryptionService>>,
-    ) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: EventService::new(db.clone()),
             db,
             runner,
             auth,
-            encryption,
         }
     }
 }
@@ -208,66 +201,7 @@ pub async fn create_session(
         .await
         .log_internal_error_json("create session")?;
 
-    // Auto-inject user connections as session secrets (e.g., GITHUB_TOKEN)
-    if let Some(user_id) = org.user_id {
-        inject_user_connections(&state, user_id, session.id.uuid()).await;
-    }
-
     Ok((StatusCode::CREATED, Json(session)))
-}
-
-/// Inject user connection tokens as session secrets.
-/// Runs best-effort — failures are logged but don't block session creation.
-async fn inject_user_connections(state: &AppState, user_id: uuid::Uuid, session_id: uuid::Uuid) {
-    let Some(ref encryption) = state.encryption else {
-        return;
-    };
-
-    // Check for GitHub connection
-    let github_conn = match state.db.get_user_connection(user_id, "github").await {
-        Ok(Some(conn)) => conn,
-        Ok(None) => return,
-        Err(e) => {
-            tracing::warn!("Failed to check user connections: {}", e);
-            return;
-        }
-    };
-
-    // Decrypt the token, re-encrypt as session secret
-    let token = match encryption.decrypt_to_string(&github_conn.access_token_encrypted) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::warn!("Failed to decrypt GitHub connection token: {}", e);
-            return;
-        }
-    };
-
-    let secret_encrypted = match encryption.encrypt_string(&token) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Failed to encrypt session secret: {}", e);
-            return;
-        }
-    };
-
-    // Store as session secret
-    if let Err(e) = state
-        .db
-        .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
-            session_id: SessionId::from_uuid(session_id),
-            name: "GITHUB_TOKEN".to_string(),
-            value_encrypted: secret_encrypted,
-        })
-        .await
-    {
-        tracing::warn!("Failed to inject GITHUB_TOKEN session secret: {}", e);
-    } else {
-        tracing::debug!(
-            session_id = %session_id,
-            provider_username = ?github_conn.provider_username,
-            "Injected GITHUB_TOKEN from user connection"
-        );
-    }
 }
 
 /// GET /v1/sessions - List sessions in organization

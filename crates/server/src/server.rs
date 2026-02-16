@@ -185,12 +185,8 @@ pub async fn run(
     let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());
 
     // Create module-specific states
-    let sessions_state = api::sessions::AppState::new(
-        db.clone(),
-        runner.clone(),
-        auth_state.clone(),
-        encryption.clone(),
-    );
+    let sessions_state =
+        api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
     let messages_state =
         api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
     let tool_results_state =
@@ -568,7 +564,7 @@ pub async fn run(
                     crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
 
-            let adapters = DirectWorkerAdapters::new(
+            let mut adapters = DirectWorkerAdapters::new(
                 db.clone(),
                 event_service.clone(),
                 llm_resolver,
@@ -577,6 +573,15 @@ pub async fn run(
             )
             .with_sqldb_store(sqldb_store.clone())
             .with_storage_store(session_storage_store);
+
+            // Wire lazy connection resolver (requires encryption for token decryption)
+            if let Some(ref enc) = encryption {
+                let resolver = Arc::new(crate::storage::DbConnectionResolver::new(
+                    db.as_ref().clone(),
+                    enc.as_ref().clone(),
+                ));
+                adapters = adapters.with_connection_resolver(resolver);
+            }
 
             let worker_config = TaskWorkerConfig::dev_mode();
             tokio::spawn(async move {

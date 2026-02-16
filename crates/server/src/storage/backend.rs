@@ -1062,4 +1062,12 @@ impl StorageBackend {
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
+
+    pub async fn get_connection_token_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        dispatch!(self, get_connection_token_for_session, session_id, provider)
+    }
 }
