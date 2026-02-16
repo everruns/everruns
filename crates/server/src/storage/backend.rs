@@ -78,6 +78,16 @@ impl StorageBackend {
         dispatch!(self, create_user, input)
     }
 
+    /// Create user with a specific UUID (for seeding).
+    /// Returns None if id already exists.
+    pub async fn create_user_with_id(
+        &self,
+        id: Uuid,
+        input: CreateUserRow,
+    ) -> Result<Option<UserRow>> {
+        dispatch!(self, create_user_with_id, id, input)
+    }
+
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
         dispatch!(self, get_user_by_email, email)
     }

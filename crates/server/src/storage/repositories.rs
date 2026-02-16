@@ -120,6 +120,39 @@ impl Database {
         Ok(row)
     }
 
+    /// Create user with a specific UUID (for seeding).
+    /// Returns None if id already exists.
+    pub async fn create_user_with_id(
+        &self,
+        id: Uuid,
+        input: CreateUserRow,
+    ) -> Result<Option<UserRow>> {
+        let roles_json = serde_json::to_value(&input.roles)?;
+
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            INSERT INTO users (id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            "#,
+        )
+        .bind(id)
+        .bind(&input.email)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .bind(&input.auth_provider)
+        .bind(&input.auth_provider_id)
+        .bind(&input.external_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"

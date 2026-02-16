@@ -9,7 +9,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, validate_org_public_id};
+use everruns_core::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
+    DEFAULT_ORG_PUBLIC_ID, OrgMembership, validate_org_public_id,
+};
 use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -70,12 +73,14 @@ pub struct AuthUser {
 }
 
 impl AuthUser {
-    /// Create an anonymous user for no-auth mode
+    /// Create an anonymous user for no-auth mode.
+    /// Uses a well-known UUID that corresponds to a real database user,
+    /// so all code paths (org membership, API keys, etc.) work uniformly.
     pub fn anonymous() -> Self {
         Self {
-            id: Uuid::nil(),
-            email: "anonymous@local".to_string(),
-            name: "Anonymous".to_string(),
+            id: ANONYMOUS_USER_ID,
+            email: ANONYMOUS_USER_EMAIL.to_string(),
+            name: ANONYMOUS_USER_NAME.to_string(),
             roles: vec!["admin".to_string()], // Full access in no-auth mode
             auth_method: AuthMethod::None,
             organizations: vec![OrgMembership {
@@ -438,7 +443,8 @@ mod tests {
     #[test]
     fn test_auth_user_anonymous() {
         let user = AuthUser::anonymous();
-        assert_eq!(user.id, Uuid::nil());
+        assert_eq!(user.id, ANONYMOUS_USER_ID);
+        assert!(!user.id.is_nil(), "anonymous user should not use nil UUID");
         assert!(user.is_admin());
         assert!(user.has_role("admin"));
         assert_eq!(user.auth_method, AuthMethod::None);

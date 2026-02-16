@@ -10,7 +10,7 @@ This document defines the authentication system for Everruns, supporting flexibl
 
 Everruns supports three authentication modes:
 
-1. **None** (`AUTH_MODE=none`): No authentication required. All requests are allowed with anonymous user context. Suitable for local development.
+1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, API keys, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. Suitable for local development.
 
 2. **Admin** (`AUTH_MODE=admin`): Single admin user via environment variables. Suitable for local development with basic access control.
 
@@ -122,6 +122,20 @@ CREATE TABLE refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+#### Anonymous User (seeded at startup)
+
+For `auth=none` mode, a well-known anonymous user is seeded programmatically via `seed.rs` (not SQL migration):
+
+| Field | Value |
+|-------|-------|
+| `id` | `00000000-0000-0000-0000-000000000001` (`ANONYMOUS_USER_ID`) |
+| `email` | `anonymous@local` |
+| `name` | `Anonymous` |
+| `roles` | `["admin"]` |
+| `auth_provider` | `none` |
+
+The anonymous user is added to the default organization (`org_id = 1`) via `ensure_membership`. Constants defined in `crates/core/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`.
 
 ### Security Considerations
 

@@ -127,6 +127,36 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Create user with a specific UUID (for seeding).
+    /// Returns None if id already exists.
+    pub async fn create_user_with_id(
+        &self,
+        id: Uuid,
+        input: CreateUserRow,
+    ) -> Result<Option<UserRow>> {
+        let now = Self::now();
+        let mut users = self.users.write();
+        if users.contains_key(&id) {
+            return Ok(None);
+        }
+        let row = UserRow {
+            id,
+            email: input.email,
+            name: input.name,
+            avatar_url: input.avatar_url,
+            roles: serde_json::to_value(&input.roles)?,
+            password_hash: input.password_hash,
+            email_verified: input.email_verified,
+            auth_provider: input.auth_provider,
+            auth_provider_id: input.auth_provider_id,
+            external_id: input.external_id,
+            created_at: now,
+            updated_at: now,
+        };
+        users.insert(id, row.clone());
+        Ok(Some(row))
+    }
+
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
         Ok(self
             .users
