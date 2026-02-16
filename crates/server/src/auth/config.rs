@@ -146,8 +146,8 @@ impl AuthConfig {
 
         // Frontend URL for post-auth redirects. In production, typically same origin.
         // In dev, UI runs on a different port (9100).
-        let frontend_url = std::env::var("FRONTEND_URL")
-            .unwrap_or_else(|_| "http://localhost:9100".to_string());
+        let frontend_url =
+            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9100".to_string());
 
         // API prefix for constructing OAuth callback URLs
         let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();

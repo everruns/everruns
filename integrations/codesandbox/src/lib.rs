@@ -1,4 +1,4 @@
-//! CodeSandbox Integration (Experimental)
+//! CodeSandbox Integration
 //!
 //! Cloud-based sandboxed code execution via CodeSandbox REST API.
 //! Supports multiple sandboxes per session, each identified by sandbox_id.
@@ -25,7 +25,7 @@ use tracing::{debug, error, warn};
 
 inventory::submit! {
     IntegrationPlugin {
-        experimental_only: true,
+        experimental_only: false,
         factory: || Box::new(CodeSandboxCapability),
     }
 }
@@ -670,7 +670,7 @@ impl Capability for CodeSandboxCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] CodeSandbox"
+        "CodeSandbox"
     }
 
     fn description(&self) -> &str {
@@ -1944,7 +1944,7 @@ mod tests {
     fn test_capability_metadata() {
         let cap = CodeSandboxCapability;
         assert_eq!(cap.id(), "codesandbox");
-        assert_eq!(cap.name(), "[Experimental] CodeSandbox");
+        assert_eq!(cap.name(), "CodeSandbox");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("cloud"));
         assert_eq!(cap.category(), Some("Execution"));

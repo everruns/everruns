@@ -310,6 +310,7 @@ impl CapabilityRegistry {
     /// Create a registry with built-in capabilities for a specific deployment grade
     ///
     /// Experimental capabilities are included via integration plugins in dev environments.
+    /// Non-experimental integration plugins (like CodeSandbox) are included in all environments.
     pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
         let mut registry = Self::new();
 
