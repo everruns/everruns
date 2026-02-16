@@ -372,7 +372,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, &org_public_id, session_id)
+            .get(req.org_id, &org_public_id, session_id, None)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -641,7 +641,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, &org_public_id, session_id)
+            .get(req.org_id, &org_public_id, session_id, None)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);

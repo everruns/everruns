@@ -114,4 +114,8 @@ pub struct Session {
     /// Cumulative token usage for all LLM calls in this session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+    /// Whether this session is pinned by the current user.
+    /// Only populated when the request has an authenticated user context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_pinned: Option<bool>,
 }

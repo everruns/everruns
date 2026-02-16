@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useAgents, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
+import {
+  useAgents,
+  useHarnesses,
+  useSessions,
+  useCreateSession,
+  useLlmModels,
+  usePinSession,
+  useUnpinSession,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,8 +49,18 @@ export default function SessionsPage() {
   );
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const pinSessionMutation = usePinSession();
+  const unpinSessionMutation = useUnpinSession();
 
-  const sessions = sessionsResponse?.data ?? [];
+  // Sort pinned sessions first, preserving server order within each group
+  const sessions = useMemo(() => {
+    const data = sessionsResponse?.data ?? [];
+    return [...data].sort((a, b) => {
+      const aPinned = a.is_pinned === true ? 1 : 0;
+      const bPinned = b.is_pinned === true ? 1 : 0;
+      return bPinned - aPinned;
+    });
+  }, [sessionsResponse?.data]);
   const totalSessions = sessionsResponse?.total ?? 0;
   const totalPages = Math.ceil(totalSessions / PAGE_SIZE);
 
@@ -99,6 +117,14 @@ export default function SessionsPage() {
     setPage(0); // Reset pagination when filter changes
   };
 
+  const handleTogglePin = (sessionId: string, pinned: boolean) => {
+    if (pinned) {
+      pinSessionMutation.mutate({ sessionId });
+    } else {
+      unpinSessionMutation.mutate({ sessionId });
+    }
+  };
+
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -142,6 +168,7 @@ export default function SessionsPage() {
                     session={session}
                     agentName={agent?.name}
                     model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                    onTogglePin={handleTogglePin}
                   />
                 );
               })}

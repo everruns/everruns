@@ -157,6 +157,8 @@ export interface Session {
   finished_at: string | null;
   /** Cumulative token usage for all LLM calls in this session */
   usage?: TokenUsage;
+  /** Whether this session is pinned by the current user */
+  is_pinned?: boolean;
 }
 
 export interface CreateSessionRequest {

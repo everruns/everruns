@@ -10,6 +10,8 @@ import {
   listSessions,
   updateSession,
   sendUserMessage,
+  pinSession,
+  unpinSession,
 } from "@/lib/api/sessions";
 import { getSseUrl, listEvents } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -106,6 +108,38 @@ export function useDeleteSession() {
     mutationFn: ({ sessionId }: { sessionId: string }) => deleteSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+    },
+  });
+}
+
+export function usePinSession() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => pinSession(sessionId),
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.sessions.detail(org, sessionId),
+      });
+    },
+  });
+}
+
+export function useUnpinSession() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => unpinSession(sessionId),
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.sessions.detail(org, sessionId),
+      });
     },
   });
 }

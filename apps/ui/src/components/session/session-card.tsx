@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2, Zap } from "lucide-react";
+import { Info, MessageSquare, Loader2, Zap, Pin, PinOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -29,6 +29,8 @@ export interface SessionCardProps {
   summary?: string;
   /** Whether to show the delete button (if provided with onDelete) */
   onDelete?: (sessionId: string, sessionTitle: string) => void;
+  /** Callback to toggle pin state */
+  onTogglePin?: (sessionId: string, pinned: boolean) => void;
 }
 
 /**
@@ -118,7 +120,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
  * SessionCard displays a session with status, summary, and metadata.
  * Designed for use in session lists and overview pages.
  */
-export function SessionCard({ session, agentName, model, summary }: SessionCardProps) {
+export function SessionCard({ session, agentName, model, summary, onTogglePin }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
@@ -127,6 +129,7 @@ export function SessionCard({ session, agentName, model, summary }: SessionCardP
   const outputPreview = session.output_preview;
   // Sessions are org-level entities
   const sessionUrl = `/sessions/${session.id}`;
+  const isPinned = session.is_pinned === true;
 
   return (
     <Link
@@ -184,6 +187,26 @@ export function SessionCard({ session, agentName, model, summary }: SessionCardP
             <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
             {model.display_name}
           </Badge>
+        )}
+        {onTogglePin && (
+          <Tooltip>
+            <TooltipTrigger
+              className={cn(
+                "p-0.5 rounded transition-colors flex-shrink-0",
+                isPinned
+                  ? "text-primary hover:text-primary/80 hover:bg-muted/80"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
+              )}
+              aria-label={isPinned ? "Unpin session" : "Pin session"}
+              onClick={(e) => {
+                e.preventDefault();
+                onTogglePin(session.id, !isPinned);
+              }}
+            >
+              {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+            </TooltipTrigger>
+            <TooltipContent>{isPinned ? "Unpin session" : "Pin session"}</TooltipContent>
+          </Tooltip>
         )}
         <SessionInfoIcon session={session} />
       </div>

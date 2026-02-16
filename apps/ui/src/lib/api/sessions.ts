@@ -81,3 +81,17 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function cancelTurn(sessionId: string): Promise<void> {
   await api.post(`/v1/sessions/${sessionId}/cancel`);
 }
+
+// ============================================
+// Session Pinning
+// ============================================
+
+/** Pin a session for the current user */
+export async function pinSession(sessionId: string): Promise<void> {
+  await api.put(`/v1/sessions/${sessionId}/pin`);
+}
+
+/** Unpin a session for the current user */
+export async function unpinSession(sessionId: string): Promise<void> {
+  await api.delete(`/v1/sessions/${sessionId}/pin`);
+}

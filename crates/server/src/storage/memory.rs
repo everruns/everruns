@@ -18,6 +18,9 @@ use uuid::Uuid;
 
 use super::models::*;
 
+/// Stored data for a pinned session: (org_id, pinned_at)
+type PinnedSessionData = (i64, DateTime<Utc>);
+
 /// In-memory database for dev mode
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
@@ -49,6 +52,8 @@ pub struct InMemoryDatabase {
     session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
     // User connections (external service accounts)
     user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
+    // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
+    pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -92,6 +97,7 @@ impl Default for InMemoryDatabase {
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
             user_connections: RwLock::new(HashMap::new()),
+            pinned_sessions: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -3191,6 +3197,42 @@ impl InMemoryDatabase {
         let before = connections.len();
         connections.retain(|_, c| !(c.user_id == user_id && c.provider == provider));
         Ok(connections.len() < before)
+    }
+
+    // ============================================
+    // Pinned Sessions
+    // ============================================
+
+    pub async fn pin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<()> {
+        let mut pins = self.pinned_sessions.write();
+        pins.entry((user_id, session_id))
+            .or_insert((org_id, Self::now()));
+        Ok(())
+    }
+
+    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+        let mut pins = self.pinned_sessions.write();
+        Ok(pins.remove(&(user_id, session_id)).is_some())
+    }
+
+    pub async fn list_pinned_session_ids(
+        &self,
+        user_id: Uuid,
+        org_id: i64,
+    ) -> Result<Vec<SessionId>> {
+        let pins = self.pinned_sessions.read();
+        let mut entries: Vec<_> = pins
+            .iter()
+            .filter(|((uid, _), (oid, _))| *uid == user_id && *oid == org_id)
+            .map(|((_, sid), (_, pinned_at))| (*sid, *pinned_at))
+            .collect();
+        entries.sort_by(|a, b| b.1.cmp(&a.1)); // Most recently pinned first
+        Ok(entries.into_iter().map(|(sid, _)| sid).collect())
     }
 }
 
