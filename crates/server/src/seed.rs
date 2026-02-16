@@ -9,10 +9,13 @@ use crate::storage::{
     StorageBackend,
     models::{
         CreateAgentRow, CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow,
-        CreateMcpServerRow, CreateOrganizationRow,
+        CreateMcpServerRow, CreateOrganizationRow, CreateUserRow,
     },
 };
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
+use everruns_core::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
+    DEFAULT_ORG_PUBLIC_ID, DeploymentGrade,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -152,6 +155,46 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
             result.skipped += 1;
         }
     }
+
+    Ok(result)
+}
+
+// ============================================
+// Anonymous User Seeder
+// ============================================
+
+/// Seed anonymous user for auth=none mode.
+/// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
+/// work without special-casing a nil/missing user.
+async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    let input = CreateUserRow {
+        email: ANONYMOUS_USER_EMAIL.to_string(),
+        name: ANONYMOUS_USER_NAME.to_string(),
+        avatar_url: None,
+        roles: vec!["admin".to_string()],
+        password_hash: None,
+        email_verified: true,
+        auth_provider: Some("none".to_string()),
+        auth_provider_id: None,
+        external_id: None,
+    };
+
+    match db.create_user_with_id(ANONYMOUS_USER_ID, input).await? {
+        Some(_) => {
+            tracing::info!("Created anonymous user");
+            result.created += 1;
+        }
+        None => {
+            tracing::debug!("Anonymous user already exists, skipping");
+            result.skipped += 1;
+        }
+    }
+
+    // Ensure anonymous user is member of default org
+    db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
+        .await?;
 
     Ok(result)
 }
@@ -1228,6 +1271,15 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
         "Default organization seeded"
     );
     result.merge(org_result);
+
+    // Seed anonymous user (for auth=none mode, depends on default org)
+    let anon_result = seed_anonymous_user(db).await?;
+    tracing::debug!(
+        created = anon_result.created,
+        skipped = anon_result.skipped,
+        "Anonymous user seeded"
+    );
+    result.merge(anon_result);
 
     // Seed providers (models depend on them)
     let provider_result = seed_providers(db).await?;

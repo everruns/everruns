@@ -9,9 +9,8 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, AgentId, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId, ModelId, ProviderId,
-    SessionId, SkillId,
+    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
+    ModelId, ProviderId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -68,41 +67,10 @@ impl Default for InMemoryDatabase {
             },
         );
 
-        // Pre-create anonymous user (for auth=none mode)
-        let mut users = HashMap::new();
-        users.insert(
-            ANONYMOUS_USER_ID,
-            UserRow {
-                id: ANONYMOUS_USER_ID,
-                email: ANONYMOUS_USER_EMAIL.to_string(),
-                name: ANONYMOUS_USER_NAME.to_string(),
-                avatar_url: None,
-                roles: serde_json::json!(["admin"]),
-                password_hash: None,
-                email_verified: true,
-                auth_provider: Some("none".to_string()),
-                auth_provider_id: None,
-                created_at: now,
-                updated_at: now,
-                external_id: None,
-            },
-        );
-
-        // Add anonymous user to default org
-        let mut organization_members = HashMap::new();
-        organization_members.insert(
-            (DEFAULT_ORG_ID, ANONYMOUS_USER_ID),
-            OrganizationMemberRow {
-                org_id: DEFAULT_ORG_ID,
-                user_id: ANONYMOUS_USER_ID,
-                created_at: now,
-            },
-        );
-
         Self {
             organizations: RwLock::new(organizations),
-            organization_members: RwLock::new(organization_members),
-            users: RwLock::new(users),
+            organization_members: RwLock::new(HashMap::new()),
+            users: RwLock::new(HashMap::new()),
             api_keys: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),
             agents: RwLock::new(HashMap::new()),
@@ -157,6 +125,36 @@ impl InMemoryDatabase {
         };
         self.users.write().insert(id, row.clone());
         Ok(row)
+    }
+
+    /// Create user with a specific UUID (for seeding).
+    /// Returns None if id already exists.
+    pub async fn create_user_with_id(
+        &self,
+        id: Uuid,
+        input: CreateUserRow,
+    ) -> Result<Option<UserRow>> {
+        let now = Self::now();
+        let mut users = self.users.write();
+        if users.contains_key(&id) {
+            return Ok(None);
+        }
+        let row = UserRow {
+            id,
+            email: input.email,
+            name: input.name,
+            avatar_url: input.avatar_url,
+            roles: serde_json::to_value(&input.roles)?,
+            password_hash: input.password_hash,
+            email_verified: input.email_verified,
+            auth_provider: input.auth_provider,
+            auth_provider_id: input.auth_provider_id,
+            external_id: input.external_id,
+            created_at: now,
+            updated_at: now,
+        };
+        users.insert(id, row.clone());
+        Ok(Some(row))
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
