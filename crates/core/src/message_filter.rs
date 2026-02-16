@@ -173,10 +173,12 @@ impl InjectedMessage {
 ///
 /// ```
 /// use everruns_core::message_filter::{MessageQuery, MessageFilter};
+/// use everruns_core::typed_id::SessionId;
 /// use uuid::Uuid;
 /// use chrono::Utc;
 ///
-/// let query = MessageQuery::new(Uuid::now_v7())
+/// let session_id: SessionId = Uuid::now_v7().into();
+/// let query = MessageQuery::new(session_id)
 ///     .with_filter(MessageFilter::TimeRange {
 ///         from: Some(Utc::now() - chrono::Duration::hours(24)),
 ///         to: None,
