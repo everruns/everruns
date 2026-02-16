@@ -7,9 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserConnections, useDeleteUserConnection } from "@/hooks/use-user-connections";
-import { useAuth } from "@/providers/auth-provider";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, LinkIcon, ShieldAlert, Trash2, Check } from "lucide-react";
+import { ExternalLink, LinkIcon, Trash2, Check } from "lucide-react";
 import type { UserConnection } from "@/lib/api/types";
 import Image from "next/image";
 
@@ -101,7 +100,6 @@ function AvailableProviderRow({
 }
 
 export default function ConnectionsPage() {
-  const { requiresAuth } = useAuth();
   const { data: connections = [], isLoading, error } = useUserConnections();
   const deleteConnection = useDeleteUserConnection();
   const searchParams = useSearchParams();
@@ -127,28 +125,6 @@ export default function ConnectionsPage() {
       await deleteConnection.mutateAsync(provider);
     }
   };
-
-  if (!requiresAuth) {
-    return (
-      <div className="space-y-8">
-        <section>
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold">Connections</h2>
-            <p className="text-sm text-muted-foreground">
-              Connect external accounts for agent sessions.
-            </p>
-          </div>
-          <Card className="p-8 text-center">
-            <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
-            <p className="text-muted-foreground">
-              Connections are only available when authentication is enabled.
-            </p>
-          </Card>
-        </section>
-      </div>
-    );
-  }
 
   // Determine which providers are not yet connected
   const connectedProviders = new Set(connections.map((c) => c.provider));
