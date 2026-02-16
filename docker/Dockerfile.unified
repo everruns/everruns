@@ -49,6 +49,7 @@ WORKDIR /app
 # Copy source
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
+COPY integrations integrations
 
 # ============================================================================
 # Stage 2a: Build Server binary
