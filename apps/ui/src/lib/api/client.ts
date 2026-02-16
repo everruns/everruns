@@ -1,7 +1,6 @@
 // API base URL configuration:
-// All API requests use /api prefix which is either:
-// - Proxied by Next.js rewrites in development (strips /api, forwards to backend)
-// - Handled by reverse proxy in production (strips /api, forwards to backend)
+// All API requests (including SSE) use /api prefix.
+// Caddy reverse proxy strips /api and forwards to backend in all environments.
 const API_BASE = "/api";
 
 // Org selection is handled via server-side cookie (everruns_org), set by
@@ -104,27 +103,3 @@ export function getBackendUrl(): string {
   return API_BASE;
 }
 
-/**
- * Get the direct backend URL for SSE connections.
- *
- * In development: Connect directly to backend at localhost:9000
- *                 (Next.js rewrites don't handle SSE streaming properly)
- * In production: Uses origin + /api (reverse proxies like Caddy stream SSE correctly)
- *
- * Override with NEXT_PUBLIC_API_URL if needed.
- */
-export function getDirectBackendUrl(): string {
-  // Use NEXT_PUBLIC_API_URL if explicitly set
-  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  // In development, connect directly to backend (Next.js rewrites buffer SSE)
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:9000";
-  }
-  // In production, use origin + /api (reverse proxy handles SSE correctly)
-  if (typeof window !== "undefined") {
-    return window.location.origin + "/api";
-  }
-  return "/api";
-}

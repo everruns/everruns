@@ -4,7 +4,7 @@
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
 
-import { getApiBaseUrl, getDirectBackendUrl } from "./client";
+import { getApiBaseUrl } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
 
@@ -49,9 +49,7 @@ export async function uploadImage(file: File, sessionId?: string): Promise<Image
   const formData = new FormData();
   formData.append("file", file);
 
-  // Use direct backend URL for multipart uploads
-  // Next.js rewrites don't handle streaming/multipart properly (causes EPIPE errors)
-  const baseUrl = getDirectBackendUrl();
+  const baseUrl = getApiBaseUrl();
   const params = sessionId ? `?session_id=${sessionId}` : "";
   const url = `${baseUrl}/v1/images${params}`;
 
