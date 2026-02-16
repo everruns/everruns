@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/api/organizations";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateOrganizationRequest, UpdateOrganizationRequest } from "@/lib/api/types";
+import type { UpdateOrganizationRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useOrganization() {
@@ -11,7 +11,7 @@ export function useOrganization() {
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.organizations.detail(org ?? ""), org],
+    queryKey: queryKeys.organizations.detail(org ?? ""),
     queryFn: () => getOrganization(org!),
     enabled: !!org,
     staleTime: 30000,
@@ -28,7 +28,7 @@ export function useCreateOrganization() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateOrganizationRequest) => createOrganization(data),
+    mutationFn: createOrganization,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       // Refresh user's org list so the new org appears in the dropdown

@@ -27,6 +27,15 @@ impl AuthMode {
             _ => AuthMode::None,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AuthMode::None => "none",
+            AuthMode::Admin => "admin",
+            AuthMode::Full => "full",
+            AuthMode::External => "external",
+        }
+    }
 }
 
 /// OAuth provider configuration
@@ -313,6 +322,11 @@ impl AuthConfig {
         self.mode == AuthMode::Full && (self.google.is_some() || self.github.is_some())
     }
 
+    /// Check if user signup (registration) is enabled
+    pub fn signup_enabled(&self) -> bool {
+        self.mode != AuthMode::Admin && self.mode != AuthMode::External && !self.disable_signup
+    }
+
     /// Check if API key authentication is available
     #[allow(dead_code)]
     pub fn api_key_auth_enabled(&self) -> bool {
@@ -484,17 +498,14 @@ mod tests {
 
     #[test]
     fn test_admin_mode_signup_should_be_disabled() {
-        // In admin mode, signup should be disabled regardless of disable_signup setting
-        // (This is enforced in routes.rs, but we document the expected behavior here)
         let config = AuthConfig {
             mode: AuthMode::Admin,
             disable_signup: false, // Even if not explicitly disabled
             ..Default::default()
         };
-
-        // The signup_enabled check in routes.rs is:
-        // config.mode != AuthMode::Admin && !config.disable_signup
-        let signup_enabled = config.mode != AuthMode::Admin && !config.disable_signup;
-        assert!(!signup_enabled, "Admin mode should never allow signup");
+        assert!(
+            !config.signup_enabled(),
+            "Admin mode should never allow signup"
+        );
     }
 }

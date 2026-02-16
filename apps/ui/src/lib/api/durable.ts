@@ -12,6 +12,14 @@ import type {
   DlqResponse,
   CircuitBreakersResponse,
   DurableSystemHealth,
+  DurableSchedule,
+  SchedulesResponse,
+  CreateScheduleRequest,
+  UpdateScheduleRequest,
+  ScheduleExecution,
+  ScheduleExecutionsResponse,
+  ScheduleStats,
+  TriggerResponse,
 } from "./types";
 
 // ============================================
@@ -211,17 +219,6 @@ export async function deleteCircuitBreaker(key: string): Promise<void> {
 // ============================================
 // Schedules
 // ============================================
-
-import type {
-  DurableSchedule,
-  SchedulesResponse,
-  CreateScheduleRequest,
-  UpdateScheduleRequest,
-  ScheduleExecution,
-  ScheduleExecutionsResponse,
-  ScheduleStats,
-  TriggerResponse,
-} from "./types";
 
 export interface ListSchedulesParams {
   enabled?: boolean;
