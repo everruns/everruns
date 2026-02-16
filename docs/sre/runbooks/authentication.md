@@ -55,7 +55,7 @@ export AUTH_GITHUB_CLIENT_SECRET=your-github-client-secret
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `AUTH_MODE` | No | `none`, `admin`, or `full` (default: `none`) |
-| `AUTH_BASE_URL` | For OAuth | Base URL for callbacks (default: `http://localhost:9000`) |
+| `AUTH_BASE_URL` | For OAuth | Base URL for callbacks (default: `http://localhost:9300`) |
 | `AUTH_JWT_SECRET` | For admin/full | JWT signing secret (min 32 chars recommended) |
 
 ### Admin Mode Settings
