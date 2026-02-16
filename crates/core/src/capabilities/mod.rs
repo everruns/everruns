@@ -69,7 +69,6 @@ pub use crate::capability_types::{
 
 mod agent_instructions;
 mod current_time;
-mod docker_container;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -93,10 +92,6 @@ pub use agent_instructions::{
     MAX_AGENTS_MD_SIZE, format_agents_md_content,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
-pub use docker_container::{
-    DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
-    DockerStopTool, DockerWriteFileTool,
-};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -314,7 +309,7 @@ impl CapabilityRegistry {
 
     /// Create a registry with built-in capabilities for a specific deployment grade
     ///
-    /// Experimental capabilities (like DockerContainer) are only included in dev environments.
+    /// Experimental capabilities are included via integration plugins in dev environments.
     pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
         let mut registry = Self::new();
 
@@ -340,11 +335,6 @@ impl CapabilityRegistry {
         registry.register(FakeAwsCapability);
         registry.register(FakeCrmCapability);
         registry.register(FakeFinancialCapability);
-
-        // Experimental capabilities (dev only) — built-in
-        if grade.experimental_features_enabled() {
-            registry.register(DockerContainerCapability);
-        }
 
         // External integration plugins (registered via inventory::submit! in integration crates)
         for plugin in inventory::iter::<IntegrationPlugin>() {
@@ -913,7 +903,7 @@ mod tests {
 
     #[test]
     fn test_capability_registry_with_builtins_dev() {
-        // Dev mode includes all built-in capabilities including experimental
+        // Dev mode includes all built-in capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
         assert!(registry.has("agent_instructions"));
@@ -933,11 +923,9 @@ mod tests {
         assert!(registry.has("fake_aws"));
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
-        // Built-in experimental capabilities included in dev
-        assert!(registry.has("docker_container"));
-        // 17 core + 1 docker_container = 18 built-in
-        // (integration plugins add more when linked into the binary)
-        assert!(registry.len() >= 18);
+        // 17 core built-in capabilities
+        // (integration plugins like docker_container, codesandbox add more when linked)
+        assert!(registry.len() >= 17);
     }
 
     #[test]

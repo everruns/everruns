@@ -1306,6 +1306,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-docker"
+version = "0.7.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "everruns-core",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-internal-protocol"
 version = "0.7.0"
 dependencies = [
@@ -1379,6 +1394,7 @@ dependencies = [
  "everruns-core",
  "everruns-durable",
  "everruns-integrations-codesandbox",
+ "everruns-integrations-docker",
  "everruns-internal-protocol",
  "everruns-session-sqldb",
  "everruns-worker",
@@ -1443,6 +1459,7 @@ dependencies = [
  "everruns-durable",
  "everruns-gemini",
  "everruns-integrations-codesandbox",
+ "everruns-integrations-docker",
  "everruns-internal-protocol",
  "everruns-openai",
  "futures",
