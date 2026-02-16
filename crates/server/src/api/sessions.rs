@@ -147,6 +147,11 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_session)
                 .delete(delete_session),
         )
+        // Pin/unpin
+        .route(
+            "/v1/sessions/{session_id}/pin",
+            axum::routing::put(pin_session).delete(unpin_session),
+        )
         // Cancel turn endpoint
         .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
         .with_state(state)
@@ -238,7 +243,13 @@ pub async fn list_sessions(
 
     let (sessions, total) = state
         .session_service
-        .list(org.org_id, &org.public_id, agent_internal_id, pagination)
+        .list(
+            org.org_id,
+            &org.public_id,
+            agent_internal_id,
+            org.user_id,
+            pagination,
+        )
         .await
         .log_internal_error_json("list sessions")?;
 
@@ -276,7 +287,7 @@ pub async fn get_session(
 
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), org.user_id)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
@@ -372,6 +383,108 @@ pub async fn delete_session(
     }
 }
 
+/// PUT /v1/sessions/{session_id}/pin - Pin session for current user
+#[utoipa::path(
+    put,
+    path = "/v1/sessions/{session_id}/pin",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 204, description = "Session pinned successfully"),
+        (status = 400, description = "Invalid session ID"),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn pin_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let user_id = org.user_id.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Authentication required to pin sessions".to_string(),
+            }),
+        )
+    })?;
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
+    // Verify session exists in this org
+    state
+        .session_service
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .await
+        .log_internal_error_json("get session for pin")?
+        .ok_or_not_found_json("Session")?;
+
+    state
+        .session_service
+        .pin(user_id, session_id.uuid(), org.org_id)
+        .await
+        .log_internal_error_json("pin session")?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /v1/sessions/{session_id}/pin - Unpin session for current user
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/pin",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 204, description = "Session unpinned successfully"),
+        (status = 400, description = "Invalid session ID"),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn unpin_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let user_id = org.user_id.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Authentication required to unpin sessions".to_string(),
+            }),
+        )
+    })?;
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
+    state
+        .session_service
+        .unpin(user_id, session_id.uuid())
+        .await
+        .log_internal_error_json("unpin session")?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// POST /v1/sessions/{session_id}/cancel - Cancel current turn
 ///
 /// Cancels the currently running turn in the session. If no turn is running,
@@ -404,7 +517,7 @@ pub async fn cancel_turn(
     // Verify session exists
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .log_internal_error("get session for cancel")?
         .ok_or_not_found()?;

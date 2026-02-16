@@ -219,7 +219,7 @@ pub async fn create_message(
     // Get session to retrieve agent_id
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -315,7 +315,7 @@ pub async fn list_messages(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

@@ -964,6 +964,68 @@ impl Database {
     }
 
     // ============================================
+    // Pinned Sessions
+    // ============================================
+
+    /// Pin a session for a user
+    pub async fn pin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO pinned_sessions (user_id, session_id, org_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, session_id) DO NOTHING
+            "#,
+        )
+        .bind(user_id)
+        .bind(session_id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Unpin a session for a user
+    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM pinned_sessions
+            WHERE user_id = $1 AND session_id = $2
+            "#,
+        )
+        .bind(user_id)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get the set of pinned session IDs for a user in an org
+    pub async fn list_pinned_session_ids(
+        &self,
+        user_id: Uuid,
+        org_id: i64,
+    ) -> Result<Vec<SessionId>> {
+        let rows: Vec<(SessionId,)> = sqlx::query_as(
+            r#"
+            SELECT session_id
+            FROM pinned_sessions
+            WHERE user_id = $1 AND org_id = $2
+            ORDER BY pinned_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+
+    // ============================================
     // Events (source of truth for messages)
     // ============================================
     //

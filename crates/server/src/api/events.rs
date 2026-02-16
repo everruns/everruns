@@ -177,7 +177,7 @@ pub async fn stream_sse(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -497,7 +497,7 @@ pub async fn list_events(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

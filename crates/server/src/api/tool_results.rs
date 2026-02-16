@@ -143,7 +143,7 @@ pub async fn submit_tool_results(
     // Get session and verify status
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;

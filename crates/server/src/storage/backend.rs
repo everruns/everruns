@@ -303,6 +303,31 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Pinned Sessions
+    // ============================================
+
+    pub async fn pin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<()> {
+        dispatch!(self, pin_session, user_id, session_id, org_id)
+    }
+
+    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+        dispatch!(self, unpin_session, user_id, session_id)
+    }
+
+    pub async fn list_pinned_session_ids(
+        &self,
+        user_id: Uuid,
+        org_id: i64,
+    ) -> Result<Vec<SessionId>> {
+        dispatch!(self, list_pinned_session_ids, user_id, org_id)
+    }
+
+    // ============================================
     // Events
     // ============================================
 

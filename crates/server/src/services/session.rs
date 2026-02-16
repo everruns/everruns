@@ -185,7 +185,13 @@ impl SessionService {
         Ok(())
     }
 
-    pub async fn get(&self, org_id: i64, org_public_id: &str, id: Uuid) -> Result<Option<Session>> {
+    pub async fn get(
+        &self,
+        org_id: i64,
+        org_public_id: &str,
+        id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<Option<Session>> {
         let row = self
             .db
             .get_session(org_id, SessionId::from_uuid(id))
@@ -194,6 +200,11 @@ impl SessionService {
             Some(r) => {
                 let mut session = Self::row_to_session(r, org_public_id);
                 self.resolve_session_agent_id(org_id, &mut session).await?;
+                // Populate is_pinned if user context available
+                if let Some(uid) = user_id {
+                    let pinned = self.db.list_pinned_session_ids(uid, org_id).await?;
+                    session.is_pinned = Some(pinned.iter().any(|s| s.uuid() == id));
+                }
                 Ok(Some(session))
             }
             None => Ok(None),
@@ -208,6 +219,7 @@ impl SessionService {
         org_id: i64,
         org_public_id: &str,
         agent_id: Option<Uuid>,
+        user_id: Option<Uuid>,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
         let agent_id = agent_id.map(AgentId::from_uuid);
@@ -234,6 +246,16 @@ impl SessionService {
             }
             if let Some(preview) = output_previews.get(&session.id.uuid()) {
                 session.output_preview = Some(preview.clone());
+            }
+        }
+
+        // Populate is_pinned if user context available
+        if let Some(uid) = user_id {
+            let pinned_ids = self.db.list_pinned_session_ids(uid, org_id).await?;
+            let pinned_set: std::collections::HashSet<Uuid> =
+                pinned_ids.iter().map(|id| id.uuid()).collect();
+            for session in &mut sessions {
+                session.is_pinned = Some(pinned_set.contains(&session.id.uuid()));
             }
         }
 
@@ -298,6 +320,20 @@ impl SessionService {
             .await
     }
 
+    /// Pin a session for a user
+    pub async fn pin(&self, user_id: Uuid, session_id: Uuid, org_id: i64) -> Result<()> {
+        self.db
+            .pin_session(user_id, SessionId::from_uuid(session_id), org_id)
+            .await
+    }
+
+    /// Unpin a session for a user
+    pub async fn unpin(&self, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+        self.db
+            .unpin_session(user_id, SessionId::from_uuid(session_id))
+            .await
+    }
+
     /// Resolve a session's agent_id from internal UUID to the agent's public_id.
     /// The DB stores the internal UUID as FK; the API should return the public_id.
     async fn resolve_session_agent_id(&self, org_id: i64, session: &mut Session) -> Result<()> {
@@ -353,6 +389,7 @@ impl SessionService {
             started_at: row.started_at,
             finished_at: row.finished_at,
             usage,
+            is_pinned: None, // Populated by caller with user context
         }
     }
 }

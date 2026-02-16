@@ -164,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
         started_at: None,
         finished_at: None,
         usage: None,
+        is_pinned: None,
     };
     session_store.add_session(session).await;
 
