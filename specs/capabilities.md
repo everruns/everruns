@@ -549,12 +549,13 @@ Binary content (images, PDFs, audio, video, etc.) cannot be fetched as textual c
 
 ##### Design Decision: fetchkit Library
 
-The capability uses the [fetchkit](https://github.com/everruns/fetchkit) library for all HTTP operations and HTML conversion. This provides:
+The capability uses the [fetchkit](https://github.com/everruns/fetchkit) library (v0.1.2) for all HTTP operations and HTML conversion. This provides:
 - Consistent behavior across deployments
 - Built-in HTML to markdown/text conversion optimized for LLM consumption
 - Automatic binary content detection
 - Timeout management with partial content on body timeout
 - Excessive newline filtering
+- **SSRF protection** via `DnsPolicy::block_private_ips()` (default): resolve-then-check validates resolved IPs against blocked ranges (loopback, RFC1918, link-local/cloud metadata, CGNAT, multicast) with DNS pinning to prevent rebinding attacks
 
 #### StatelessTodoList
 

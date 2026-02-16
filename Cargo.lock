@@ -1503,9 +1503,9 @@ dependencies = [
 
 [[package]]
 name = "fetchkit"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78234c85007f12632e64570a2f3fc3deb2526e7b6ca748f39d36ac2a90c67e39"
+checksum = "1613575f52ffed08a5d0149e2dfcffce17dde3f2359827daa270bfc894df5653"
 dependencies = [
  "async-trait",
  "bytes",
