@@ -147,13 +147,14 @@ The model used for processing is determined using this priority chain:
 2. `controls.model_id` (from the last user message) - UUID reference
 3. `session.model_id` - session-level override (UUID)
 4. `agent.default_model_id` - agent's default model (UUID)
-5. System default model - fallback if no model is configured above
+5. `harness.default_model_id` - harness's default model (UUID)
+6. System default model - fallback if no model is configured above
 
 **Provider/Model String Format:**
 
 The `model` field accepts a string in the format `"provider/model"` (e.g., `"anthropic/opus-4.5"`). This format supports:
 
-- **Provider prefix**: `anthropic/`, `openai/`, `llmsim/`
+- **Provider prefix**: `anthropic/`, `openai/`, `gemini/`, `llmsim/`
 - **Model aliases**: Shorthand names that resolve to the latest model versions
 
 **Anthropic aliases:**
@@ -173,6 +174,12 @@ The `model` field accepts a string in the format `"provider/model"` (e.g., `"ant
 | `latest`, `flagship` | `gpt-5.2` |
 | `codex` | `gpt-5.2-codex` |
 | `pro` | `gpt-5.2-pro` |
+
+**Gemini aliases:**
+| Alias | Resolves to |
+|-------|-------------|
+| `pro`, `latest` | `gemini-2.5-pro` |
+| `flash` | `gemini-2.5-flash` |
 
 Full model IDs (e.g., `"claude-opus-4-5-20251101"`) can also be used and are passed through unchanged.
 

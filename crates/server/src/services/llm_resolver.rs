@@ -100,6 +100,51 @@ impl LlmResolverService {
         }))
     }
 
+    /// Resolve a model by its model_id string (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
+    /// with optional provider type filtering
+    pub async fn resolve_model_by_string(
+        &self,
+        provider_type_filter: Option<&str>,
+        model_string: &str,
+    ) -> Result<Option<ResolvedModel>> {
+        let model_row = self
+            .db
+            .get_llm_model_by_model_id(DEFAULT_ORG_ID, model_string)
+            .await?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        // Filter by provider type if specified
+        if let Some(filter_type) = provider_type_filter
+            && model_row.provider_type.to_lowercase() != filter_type.to_lowercase()
+        {
+            return Ok(None);
+        }
+
+        // Look up the provider
+        let provider_row = self
+            .db
+            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
+            .await?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let api_key = self.resolve_api_key(&provider_row)?;
+
+        Ok(Some(ResolvedModel {
+            model_id: model_row.model_id,
+            provider_type: provider_row.provider_type.clone(),
+            api_key,
+            base_url: provider_row.base_url.clone(),
+        }))
+    }
+
     /// Resolve the default model with decrypted provider credentials
     pub async fn resolve_default_model(&self) -> Result<Option<ResolvedModel>> {
         // Look up the default model

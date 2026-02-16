@@ -105,6 +105,7 @@ Sessions are top-level entities under organizations. Each session has an agent a
 ```json
 POST /v1/sessions
 {
+  "harness_id": "harness_01234567-...",
   "agent_id": "agent_01234567-...",
   "title": "Optional title",
   "tags": ["optional", "tags"],
@@ -117,10 +118,10 @@ POST /v1/sessions
 }
 ```
 
-The `agent_id` field is required and specifies which agent will work in this session.
+The `harness_id` field is required and specifies the harness for this session. The `agent_id` field is optional and specifies which agent will work in this session.
 
 **Model selection:**
-- `model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`). Supports aliases that resolve to latest versions. Takes precedence over `model_id`.
+- `model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`, `"gemini/pro"`). Supports aliases that resolve to latest versions. Takes precedence over `model_id`.
 - `model_id`: UUID reference to a configured model. Use either `model` or `model_id`, not both.
 
 See [Models spec](models.md) for the full list of supported aliases.
@@ -346,7 +347,7 @@ POST /v1/agents
 ```
 
 **Model selection:**
-- `default_model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`). Takes precedence over `default_model_id`.
+- `default_model`: Provider/model string format (e.g., `"anthropic/opus-4.5"`, `"openai/gpt-5.2"`, `"gemini/pro"`). Takes precedence over `default_model_id`.
 - `default_model_id`: UUID reference to a configured model. Use either `default_model` or `default_model_id`, not both.
 
 Update agent capabilities:

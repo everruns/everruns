@@ -334,6 +334,29 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        _org_id: i64,
+        provider_type: Option<&str>,
+        model_string: &str,
+    ) -> Result<Option<ModelWithProvider>> {
+        let resolved = self
+            .llm_resolver
+            .resolve_model_by_string(provider_type, model_string)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve model by string: {}", e);
+                store_error("Failed to resolve model by string")
+            })?;
+
+        Ok(resolved.map(|r| ModelWithProvider {
+            model: r.model_id,
+            provider_type: string_to_provider_type(&r.provider_type),
+            api_key: r.api_key,
+            base_url: r.base_url,
+        }))
+    }
+
     async fn get_default_model(&self, _org_id: i64) -> Result<Option<ModelWithProvider>> {
         let resolved = self
             .llm_resolver

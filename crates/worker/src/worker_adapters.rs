@@ -86,6 +86,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         model_id: Uuid,
     ) -> Result<Option<ModelWithProvider>>;
 
+    /// Get model by model_id string with optional provider type filter
+    async fn get_model_with_provider_by_string(
+        &self,
+        org_id: i64,
+        provider_type: Option<&str>,
+        model_string: &str,
+    ) -> Result<Option<ModelWithProvider>>;
+
     /// Get default model configuration
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>>;
 
@@ -328,13 +336,20 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
 
     async fn get_model_with_provider_by_string(
         &self,
-        _provider_type: Option<&everruns_core::LlmProviderType>,
-        _model_string: &str,
+        provider_type: Option<&everruns_core::LlmProviderType>,
+        model_string: &str,
     ) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
-        // Model string resolution should happen at the control plane (server),
-        // not on the worker. The server resolves the model string to a model_id
-        // before dispatching work to the worker. This method is not used in worker context.
-        Ok(None)
+        let provider_str = provider_type.map(|p| p.to_string());
+        let result = self
+            .adapters
+            .get_model_with_provider_by_string(self.org_id, provider_str.as_deref(), model_string)
+            .await?;
+        Ok(result.map(|m| everruns_core::traits::ModelWithProvider {
+            model: m.model,
+            provider_type: m.provider_type,
+            api_key: m.api_key,
+            base_url: m.base_url,
+        }))
     }
 
     async fn get_default_model(&self) -> Result<Option<everruns_core::traits::ModelWithProvider>> {

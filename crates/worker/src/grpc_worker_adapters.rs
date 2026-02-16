@@ -141,6 +141,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         }))
     }
 
+    async fn get_model_with_provider_by_string(
+        &self,
+        _org_id: i64,
+        _provider_type: Option<&str>,
+        _model_string: &str,
+    ) -> Result<Option<ModelWithProvider>> {
+        // gRPC workers don't support model string resolution directly.
+        // Model string resolution happens at the control plane (server).
+        Ok(None)
+    }
+
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
         let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
         let result = everruns_core::traits::LlmProviderStore::get_default_model(&store).await?;
