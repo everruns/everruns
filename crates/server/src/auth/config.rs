@@ -119,7 +119,7 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             mode: AuthMode::None,
-            base_url: "http://localhost:9300".to_string(),
+            base_url: "http://localhost:9300/api".to_string(),
             frontend_url: "http://localhost:9300".to_string(),
             jwt: JwtConfig::default(),
             admin: None,
@@ -142,9 +142,9 @@ impl AuthConfig {
 
         let base_url = std::env::var("AUTH_BASE_URL")
             .or_else(|_| std::env::var("BASE_URL"))
-            .unwrap_or_else(|_| "http://localhost:9300".to_string());
+            .unwrap_or_else(|_| "http://localhost:9300/api".to_string());
 
-        // Frontend URL for post-auth redirects. In dev with Caddy proxy, same as base_url.
+        // Frontend URL for post-auth redirects. In dev with Caddy proxy, same origin without /api.
         let frontend_url =
             std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9300".to_string());
 

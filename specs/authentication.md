@@ -69,7 +69,7 @@ Account linking by email is supported (same email = same account).
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external` | `none` |
-| `AUTH_BASE_URL` | Base URL for OAuth callbacks | `http://localhost:9300` |
+| `AUTH_BASE_URL` | Base URL for OAuth callbacks (include path prefix if behind reverse proxy) | `http://localhost:9300/api` |
 | `AUTH_ADMIN_EMAIL` | Admin user email (admin mode) | - |
 | `AUTH_ADMIN_PASSWORD` | Admin user password (admin mode) | - |
 | `AUTH_JWT_SECRET` | JWT signing secret (required for admin/full) | - |
