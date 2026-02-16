@@ -15,8 +15,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use everruns_core::{
     AuthorizationServerMetadata, McpOAuthStatus, McpServerAuthType, McpUserToken,
-    OAuthTokenResponse, ProtectedResourceMetadata,
-    organization::DEFAULT_ORG_ID,
+    OAuthTokenResponse, ProtectedResourceMetadata, organization::DEFAULT_ORG_ID,
 };
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -477,7 +476,7 @@ impl McpOAuthService {
 /// Generate PKCE code verifier (43-128 character random string)
 fn generate_code_verifier() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill(&mut bytes);
+    rand::rng().fill(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 

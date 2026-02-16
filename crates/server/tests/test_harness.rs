@@ -155,8 +155,12 @@ impl TestServer {
             auth_state.clone(),
         );
         let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone());
-        let mcp_servers_state =
-            api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+        let mcp_servers_state = api::mcp_servers::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+            "http://localhost:9000".to_string(),
+        );
         let capability_service = Arc::new(services::CapabilityService::new(
             db.clone(),
             encryption.clone(),

@@ -11,7 +11,6 @@ use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
-use uuid::Uuid;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

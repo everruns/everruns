@@ -367,6 +367,7 @@ impl InMemoryAgenticLoopBuilder {
             organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),
+            user_id: None,
             title: Some("In-Memory Session".to_string()),
             preview: None,
             output_preview: None,

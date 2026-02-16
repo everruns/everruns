@@ -147,6 +147,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         server_prefix: &str,
+        user_id: Option<uuid::Uuid>,
     ) -> Result<McpServerInfo>;
 
     // =========================================================================

@@ -46,6 +46,7 @@ impl SessionService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         org_id: i64,

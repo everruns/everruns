@@ -269,9 +269,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         server_prefix: &str,
+        user_id: Option<uuid::Uuid>,
     ) -> Result<McpServerInfo> {
         self.client
-            .get_mcp_server_by_prefix(org_id, server_prefix)
+            .get_mcp_server_by_prefix(org_id, server_prefix, user_id)
             .await
     }
 

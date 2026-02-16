@@ -8,8 +8,8 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    McpServer, McpServerAuthType, McpServerOAuthConfig, McpServerStatus,
-    McpServerTransportType, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
+    McpServer, McpServerAuthType, McpServerOAuthConfig, McpServerStatus, McpServerTransportType,
+    McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;

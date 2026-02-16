@@ -636,6 +636,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         server_prefix: &str,
+        _user_id: Option<uuid::Uuid>,
     ) -> Result<McpServerInfo> {
         // Search for MCP server by name prefix (using sanitized name matching)
         let server_prefix_lower = server_prefix.to_lowercase();
@@ -665,6 +666,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             // TODO: Add decryption support when needed for MCP tool execution
             api_key: None,
             headers: server.headers,
+            auth_type: server.auth_type.to_string(),
+            oauth_access_token: None,
+            oauth_required: server.auth_type == everruns_core::McpServerAuthType::OAuth,
         })
     }
 

@@ -49,6 +49,13 @@ async fn test_mcp_server_positive_own_org() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await
@@ -103,6 +110,13 @@ async fn test_mcp_server_negative_cross_org() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await
@@ -546,6 +560,13 @@ async fn test_multi_org_full_isolation() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await
@@ -611,6 +632,13 @@ async fn test_multi_org_full_isolation() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await
@@ -760,6 +788,13 @@ async fn test_update_mcp_server_tools_cross_org() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await

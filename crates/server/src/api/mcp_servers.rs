@@ -1,8 +1,8 @@
 // MCP Server CRUD HTTP routes
 // Routes: /v1/mcp-servers/...
 
-use crate::auth::{AuthState, ResolvedOrg};
 use crate::auth::middleware::AuthUser;
+use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{McpOAuthService, McpServerService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;

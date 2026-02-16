@@ -187,6 +187,7 @@ async fn test_session_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -277,6 +278,7 @@ async fn test_event_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -349,6 +351,7 @@ async fn test_event_exclude_types() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -590,6 +593,7 @@ async fn test_session_file_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -690,6 +694,13 @@ async fn test_mcp_server_crud() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await
@@ -980,6 +991,7 @@ async fn test_session_usage_tracking() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1058,6 +1070,7 @@ async fn test_session_previews() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            user_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1153,6 +1166,13 @@ async fn test_mcp_server_org_isolation_postgres() {
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
+                auth_type: "none".to_string(),
+                oauth_authorization_url: None,
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret_encrypted: None,
+                oauth_scopes: None,
+                oauth_resource_metadata_url: None,
             },
         )
         .await

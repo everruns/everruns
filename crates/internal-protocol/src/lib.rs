@@ -385,10 +385,7 @@ pub fn proto_session_to_schema(
         .map(|u| format!("model_{}", u.value.replace("-", "")));
 
     // Convert user_id UUID
-    let user_id_str = value
-        .user_id
-        .as_ref()
-        .map(|u| u.value.clone());
+    let user_id_str = value.user_id.as_ref().map(|u| u.value.clone());
 
     let json = serde_json::json!({
         "id": id_str,

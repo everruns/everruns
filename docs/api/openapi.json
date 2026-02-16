@@ -4627,7 +4627,18 @@
               "string",
               "null"
             ],
-            "description": "API key for authentication (optional)."
+            "description": "API key for authentication (when auth_type is api_key)."
+          },
+          "auth_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerAuthType",
+                "description": "Authentication type: none, api_key, or oauth."
+              }
+            ]
           },
           "description": {
             "type": [
@@ -4654,6 +4665,17 @@
             "type": "string",
             "description": "The name of the MCP server. Must be unique.",
             "example": "atlassian-mcp-server"
+          },
+          "oauth_config": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OAuthConfigInput",
+                "description": "OAuth configuration (when auth_type is oauth)."
+              }
+            ]
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
@@ -6256,7 +6278,11 @@
               "properties": {
                 "api_key_set": {
                   "type": "boolean",
-                  "description": "Whether an API key has been configured."
+                  "description": "Whether an API key has been configured (for api_key auth_type)."
+                },
+                "auth_type": {
+                  "$ref": "#/components/schemas/McpServerAuthType",
+                  "description": "Authentication type for the MCP server."
                 },
                 "created_at": {
                   "type": "string",
@@ -6290,6 +6316,17 @@
                   "type": "string",
                   "description": "Display name of the MCP server.",
                   "example": "atlassian-mcp-server"
+                },
+                "oauth_config": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/McpServerOAuthConfig",
+                      "description": "OAuth configuration (only set when auth_type is OAuth)."
+                    }
+                  ]
                 },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
@@ -7306,7 +7343,11 @@
         "properties": {
           "api_key_set": {
             "type": "boolean",
-            "description": "Whether an API key has been configured."
+            "description": "Whether an API key has been configured (for api_key auth_type)."
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/McpServerAuthType",
+            "description": "Authentication type for the MCP server."
           },
           "created_at": {
             "type": "string",
@@ -7341,6 +7382,17 @@
             "description": "Display name of the MCP server.",
             "example": "atlassian-mcp-server"
           },
+          "oauth_config": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerOAuthConfig",
+                "description": "OAuth configuration (only set when auth_type is OAuth)."
+              }
+            ]
+          },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
             "description": "Current lifecycle status of the MCP server."
@@ -7358,6 +7410,60 @@
             "type": "string",
             "description": "URL of the MCP server endpoint.",
             "example": "https://mcp.atlassian.com/v1/mcp"
+          }
+        }
+      },
+      "McpServerAuthType": {
+        "type": "string",
+        "description": "MCP Server authentication type.\nDetermines how authentication is handled for requests to the MCP server.",
+        "enum": [
+          "none",
+          "api_key",
+          "oauth"
+        ]
+      },
+      "McpServerOAuthConfig": {
+        "type": "object",
+        "description": "OAuth configuration for an MCP server.\nContains the OAuth endpoints and client credentials.",
+        "properties": {
+          "authorization_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth authorization endpoint URL."
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth client ID (public)."
+          },
+          "client_secret_set": {
+            "type": "boolean",
+            "description": "Whether a client secret has been configured."
+          },
+          "resource_metadata_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 9728 Protected Resource Metadata URL (auto-discovered)."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required OAuth scopes."
+          },
+          "token_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth token endpoint URL."
           }
         }
       },
@@ -7505,6 +7611,54 @@
           "src_path": {
             "type": "string",
             "description": "Source path"
+          }
+        }
+      },
+      "OAuthConfigInput": {
+        "type": "object",
+        "description": "OAuth configuration input for MCP server",
+        "properties": {
+          "authorization_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth authorization endpoint URL."
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth client ID (public)."
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth client secret (write-only)."
+          },
+          "resource_metadata_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 9728 Protected Resource Metadata URL."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required OAuth scopes."
+          },
+          "token_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth token endpoint URL."
           }
         }
       },
@@ -7755,6 +7909,14 @@
                       "description": "Cumulative token usage for all LLM calls in this session."
                     }
                   ]
+                },
+                "user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "ID of the user who created this session (for per-user OAuth tokens)."
                 }
               }
             },
@@ -8479,6 +8641,14 @@
                 "description": "Cumulative token usage for all LLM calls in this session."
               }
             ]
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "ID of the user who created this session (for per-user OAuth tokens)."
           }
         }
       },
@@ -9612,6 +9782,17 @@
             ],
             "description": "API key for authentication. Set to update."
           },
+          "auth_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerAuthType",
+                "description": "Authentication type: none, api_key, or oauth."
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -9640,6 +9821,17 @@
             ],
             "description": "The name of the MCP server.",
             "example": "updated-mcp-server"
+          },
+          "oauth_config": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OAuthConfigInput",
+                "description": "OAuth configuration. Set to update OAuth settings."
+              }
+            ]
           },
           "status": {
             "oneOf": [
