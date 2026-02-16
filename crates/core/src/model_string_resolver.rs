@@ -65,14 +65,22 @@ pub fn parse_model_string(model_string: &str) -> ParsedModelString {
     }
 }
 
-/// Parse a provider string to LlmProviderType
+/// Parse a provider string to LlmProviderType.
+///
+/// Uses `LlmProviderType::from_str` (the canonical source of truth for
+/// provider names) with a small set of convenience aliases on top.
 fn parse_provider(provider_str: &str) -> Option<LlmProviderType> {
-    match provider_str.to_lowercase().as_str() {
-        "openai" => Some(LlmProviderType::Openai),
-        "openai_completions" | "openai-completions" => Some(LlmProviderType::OpenaiCompletions),
-        "anthropic" => Some(LlmProviderType::Anthropic),
-        "gemini" | "google" => Some(LlmProviderType::Gemini),
-        "llmsim" => Some(LlmProviderType::LlmSim),
+    let lower = provider_str.to_lowercase();
+
+    // Try canonical FromStr first (matches "openai", "anthropic", "gemini", etc.)
+    if let Ok(pt) = lower.parse::<LlmProviderType>() {
+        return Some(pt);
+    }
+
+    // Convenience aliases that aren't canonical names
+    match lower.as_str() {
+        "openai-completions" => Some(LlmProviderType::OpenaiCompletions),
+        "google" => Some(LlmProviderType::Gemini),
         _ => None,
     }
 }
