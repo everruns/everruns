@@ -169,10 +169,14 @@ impl AuthBackend for BuiltinAuthBackend {
                 AuthMode::None => "none".to_string(),
                 AuthMode::Admin => "admin".to_string(),
                 AuthMode::Full => "full".to_string(),
+                AuthMode::External => "external".to_string(),
             },
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
-            signup_enabled: self.config.mode != AuthMode::Admin && !self.config.disable_signup,
+            // External mode: signup is managed by the external provider
+            signup_enabled: self.config.mode != AuthMode::Admin
+                && self.config.mode != AuthMode::External
+                && !self.config.disable_signup,
         }
     }
 }

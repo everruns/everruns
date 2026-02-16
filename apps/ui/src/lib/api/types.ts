@@ -657,7 +657,7 @@ export interface HealthResponse {
 // Authentication types
 // ============================================
 
-export type AuthMode = "none" | "admin" | "full";
+export type AuthMode = "none" | "admin" | "full" | "external";
 
 export interface AuthConfigResponse {
   mode: AuthMode;
