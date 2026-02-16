@@ -641,4 +641,320 @@ mod tests {
         let encoded = urlencoding::encode("/my project/file name.txt");
         assert!(encoded.contains("%20"));
     }
+
+    #[test]
+    fn test_encode_empty_string() {
+        assert_eq!(urlencoding::encode(""), "");
+    }
+
+    #[test]
+    fn test_encode_preserves_unreserved() {
+        assert_eq!(urlencoding::encode("abc-_.~123"), "abc-_.~123");
+    }
+
+    #[test]
+    fn test_encode_special_chars() {
+        let encoded = urlencoding::encode("hello@world#test");
+        assert_eq!(encoded, "hello%40world%23test");
+    }
+
+    #[tokio::test]
+    async fn test_client_start_sandbox() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sandbox/sb_test/start"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.start_sandbox("sb_test").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_set_autostop() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sandbox/sb_test/autostop/5"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.set_autostop("sb_test", 5).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_file_download() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sb_test/files/download"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"file content here".to_vec()))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.file_download("sb_test", "/main.py").await;
+        assert!(result.is_ok());
+        let bytes = result.unwrap();
+        assert_eq!(String::from_utf8_lossy(&bytes), "file content here");
+    }
+
+    #[tokio::test]
+    async fn test_client_file_delete() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/sb_test/files"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.file_delete("sb_test", "/old.txt").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_create_folder() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/files/folder"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.create_folder("sb_test", "/src", "755").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_file_upload() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/files/upload"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .file_upload("sb_test", "/home/daytona/test.py", b"print('hello')")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_exec_with_cwd_and_timeout() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/process/execute"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "output",
+                "exitCode": 1
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.exec("sb_test", "ls", Some("/tmp"), Some(5000)).await;
+        assert!(result.is_ok());
+        let exec_result = result.unwrap();
+        assert_eq!(exec_result.exit_code, 1);
+        assert_eq!(exec_result.result, "output");
+    }
+
+    #[tokio::test]
+    async fn test_client_exec_nonzero_exit() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/process/execute"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "command not found",
+                "exitCode": 127
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.exec("sb_test", "nonexistent", None, None).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().exit_code, 127);
+    }
+
+    #[tokio::test]
+    async fn test_client_wait_for_ready_already_started() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandbox/sb_test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_test",
+                "state": "started"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.wait_for_ready("sb_test").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_wait_for_ready_error_state() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandbox/sb_test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_test",
+                "state": "error"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.wait_for_ready("sb_test").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("error state"));
+    }
+
+    #[tokio::test]
+    async fn test_client_file_download_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sb_test/files/download"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.file_download("sb_test", "/missing.txt").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("404"));
+    }
+
+    #[tokio::test]
+    async fn test_client_file_upload_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sb_test/files/upload"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Disk full"))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.file_upload("sb_test", "/test.txt", b"content").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("500"));
+    }
+
+    #[tokio::test]
+    async fn test_client_empty_response_body() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sandbox/sb_test/stop"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        // Empty body should be treated as success for void operations
+        let result = client.stop_sandbox("sb_test").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_sandbox_info_optional_name() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandbox/sb_test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_test",
+                "state": "started"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let info = client.get_sandbox("sb_test").await.unwrap();
+        assert_eq!(info.name, None);
+    }
+
+    #[tokio::test]
+    async fn test_client_file_list_single_entry() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sb_test/files/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"name": "only.txt", "isDir": false}
+            ])))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let entries = client.file_list("sb_test", "/home").await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["name"], "only.txt");
+    }
 }

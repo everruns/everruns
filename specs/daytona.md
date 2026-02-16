@@ -179,11 +179,19 @@ Daytona uses a single API key for both management and toolbox APIs. No per-sandb
 
 Files are managed through the Toolbox API proxy (`proxy.app.daytona.io`). Upload uses multipart/form-data, download returns raw bytes.
 
-## Crate Location
+## Crate Structure
 
 `integrations/daytona/` → `everruns-integrations-daytona`
 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
+
+| File | Purpose |
+|------|---------|
+| `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
+| `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
+| `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
+| `src/tools.rs` | 7 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 
 ## Capability Registration
 

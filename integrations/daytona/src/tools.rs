@@ -879,4 +879,144 @@ mod tests {
         assert!(values.contains(&"stop"));
         assert!(values.contains(&"delete"));
     }
+
+    #[test]
+    fn test_read_file_schema() {
+        let tool = DaytonaReadFileTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        assert!(required_strs.contains(&"path"));
+        assert!(schema["properties"]["sandbox_id"].is_object());
+        assert!(schema["properties"]["path"].is_object());
+    }
+
+    #[test]
+    fn test_write_file_schema() {
+        let tool = DaytonaWriteFileTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        assert!(required_strs.contains(&"path"));
+        assert!(required_strs.contains(&"content"));
+    }
+
+    #[test]
+    fn test_download_workspace_schema() {
+        let tool = DaytonaDownloadWorkspaceTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        // sandbox_path and session_path are optional
+        assert!(!required_strs.contains(&"sandbox_path"));
+        assert!(!required_strs.contains(&"session_path"));
+    }
+
+    #[test]
+    fn test_list_sandboxes_schema_no_required() {
+        let tool = DaytonaListSandboxesTool;
+        let schema = tool.parameters_schema();
+        assert!(schema.get("required").is_none());
+    }
+
+    #[test]
+    fn test_manage_sandbox_schema_required() {
+        let tool = DaytonaManageSandboxTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        assert!(required_strs.contains(&"action"));
+    }
+
+    #[test]
+    fn test_all_tool_names_have_daytona_prefix() {
+        let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(DaytonaCreateSandboxTool),
+            Box::new(DaytonaExecTool),
+            Box::new(DaytonaReadFileTool),
+            Box::new(DaytonaWriteFileTool),
+            Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSandboxesTool),
+            Box::new(DaytonaManageSandboxTool),
+        ];
+        for tool in &tools {
+            assert!(
+                tool.name().starts_with("daytona_"),
+                "Tool {} should start with 'daytona_'",
+                tool.name()
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_tools_have_descriptions() {
+        let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(DaytonaCreateSandboxTool),
+            Box::new(DaytonaExecTool),
+            Box::new(DaytonaReadFileTool),
+            Box::new(DaytonaWriteFileTool),
+            Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSandboxesTool),
+            Box::new(DaytonaManageSandboxTool),
+        ];
+        for tool in &tools {
+            assert!(
+                !tool.description().is_empty(),
+                "Tool {} should have a description",
+                tool.name()
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_schemas_disallow_additional_properties() {
+        let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(DaytonaCreateSandboxTool),
+            Box::new(DaytonaExecTool),
+            Box::new(DaytonaReadFileTool),
+            Box::new(DaytonaWriteFileTool),
+            Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSandboxesTool),
+            Box::new(DaytonaManageSandboxTool),
+        ];
+        for tool in &tools {
+            let schema = tool.parameters_schema();
+            assert_eq!(
+                schema["additionalProperties"],
+                json!(false),
+                "Tool {} schema should disallow additional properties",
+                tool.name()
+            );
+        }
+    }
+
+    #[test]
+    fn test_exec_schema_has_optional_fields() {
+        let tool = DaytonaExecTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        // cwd and timeout are optional
+        assert!(!required_strs.contains(&"cwd"));
+        assert!(!required_strs.contains(&"timeout"));
+        // but they are in properties
+        assert!(schema["properties"]["cwd"].is_object());
+        assert!(schema["properties"]["timeout"].is_object());
+    }
+
+    #[test]
+    fn test_create_sandbox_schema_has_upload_files() {
+        let tool = DaytonaCreateSandboxTool;
+        let schema = tool.parameters_schema();
+        let upload_files = &schema["properties"]["upload_files"];
+        assert_eq!(upload_files["type"], "array");
+        let item_required = upload_files["items"]["required"].as_array().unwrap();
+        let strs: Vec<&str> = item_required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(strs.contains(&"session_path"));
+        assert!(strs.contains(&"sandbox_path"));
+    }
 }

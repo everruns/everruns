@@ -210,4 +210,88 @@ mod tests {
         let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.workspace_path, "/home/daytona/my project");
     }
+
+    #[test]
+    fn test_required_str_present() {
+        let args = serde_json::json!({"name": "test_value"});
+        let result = required_str(&args, "name");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test_value");
+    }
+
+    #[test]
+    fn test_required_str_missing() {
+        let args = serde_json::json!({"other": "value"});
+        let result = required_str(&args, "name");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_required_str_null_value() {
+        let args = serde_json::json!({"name": null});
+        let result = required_str(&args, "name");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_required_str_non_string_value() {
+        let args = serde_json::json!({"name": 42});
+        let result = required_str(&args, "name");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sandbox_info_deserialization() {
+        let json = r#"{"id": "sb_abc", "name": "My Sandbox", "state": "started"}"#;
+        let info: SandboxInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "sb_abc");
+        assert_eq!(info.name, Some("My Sandbox".to_string()));
+        assert_eq!(info.state, "started");
+    }
+
+    #[test]
+    fn test_sandbox_info_without_name() {
+        let json = r#"{"id": "sb_abc", "state": "stopped"}"#;
+        let info: SandboxInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "sb_abc");
+        assert_eq!(info.name, None);
+        assert_eq!(info.state, "stopped");
+    }
+
+    #[test]
+    fn test_exec_result_deserialization() {
+        let json = r#"{"result": "hello\n", "exitCode": 0}"#;
+        let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.result, "hello\n");
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn test_exec_result_defaults() {
+        let json = r#"{}"#;
+        let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.result, "");
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn test_exec_result_nonzero_exit() {
+        let json = r#"{"result": "error msg", "exitCode": 1}"#;
+        let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.exit_code, 1);
+        assert_eq!(result.result, "error msg");
+    }
+
+    #[test]
+    fn test_sandbox_state_json_has_all_fields() {
+        let state = SandboxState {
+            sandbox_id: "sb_x".to_string(),
+            workspace_path: "/home/daytona".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let val: serde_json::Value = serde_json::to_value(&state).unwrap();
+        assert!(val.get("sandbox_id").is_some());
+        assert!(val.get("workspace_path").is_some());
+        assert!(val.get("started_at").is_some());
+    }
 }
