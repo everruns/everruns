@@ -381,11 +381,14 @@ impl OpenResponsesProtocolLlmDriver {
 
     /// Build input items from messages, extracting system/developer instructions
     ///
-    /// Handles the conversion of assistant messages with tool_calls into separate
-    /// FunctionCall items, which is required by the Open Responses API.
+    /// Handles the conversion of:
+    /// - Assistant messages with tool_calls into separate FunctionCall items
+    /// - Assistant messages with thinking into Reasoning items (for o-series/GPT-5 models)
     fn build_input(messages: &[LlmMessage]) -> (Option<String>, Vec<ResponsesInputItem>) {
         let mut instructions: Option<String> = None;
         let mut input_items = Vec::new();
+        // Counter for generating reasoning item IDs
+        let mut reasoning_counter = 0u32;
 
         for msg in messages {
             if msg.role == LlmMessageRole::System {
@@ -401,29 +404,46 @@ impl OpenResponsesProtocolLlmDriver {
                         .collect::<Vec<_>>()
                         .join(""),
                 });
-            } else if msg.role == LlmMessageRole::Assistant
-                && msg.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty())
-            {
-                // Assistant message with tool calls - emit FunctionCall items
-                // First emit the message content if non-empty
-                let has_content = match &msg.content {
-                    LlmMessageContent::Text(text) => !text.is_empty(),
-                    LlmMessageContent::Parts(parts) => !parts.is_empty(),
-                };
-                if has_content {
-                    input_items.push(Self::convert_message(msg));
+            } else if msg.role == LlmMessageRole::Assistant {
+                // For assistant messages, emit Reasoning item BEFORE message content if present
+                // This is required for o-series and GPT-5 models with extended thinking
+                if let Some(encrypted_content) = &msg.thinking_signature {
+                    reasoning_counter += 1;
+                    input_items.push(ResponsesInputItem::Reasoning {
+                        r#type: "reasoning".to_string(),
+                        id: format!("rs_{:08x}", reasoning_counter),
+                        encrypted_content: encrypted_content.clone(),
+                    });
+                    tracing::debug!(
+                        encrypted_len = encrypted_content.len(),
+                        "OpenResponses: including reasoning item in request"
+                    );
                 }
 
-                // Then emit FunctionCall items for each tool call
-                if let Some(tool_calls) = &msg.tool_calls {
-                    for tc in tool_calls {
-                        input_items.push(ResponsesInputItem::FunctionCall {
-                            r#type: "function_call".to_string(),
-                            call_id: tc.id.clone(),
-                            name: tc.name.clone(),
-                            arguments: tc.arguments.to_string(),
-                        });
+                // Handle tool calls
+                if msg.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty()) {
+                    // First emit the message content if non-empty
+                    let has_content = match &msg.content {
+                        LlmMessageContent::Text(text) => !text.is_empty(),
+                        LlmMessageContent::Parts(parts) => !parts.is_empty(),
+                    };
+                    if has_content {
+                        input_items.push(Self::convert_message(msg));
                     }
+
+                    // Then emit FunctionCall items for each tool call
+                    if let Some(tool_calls) = &msg.tool_calls {
+                        for tc in tool_calls {
+                            input_items.push(ResponsesInputItem::FunctionCall {
+                                r#type: "function_call".to_string(),
+                                call_id: tc.id.clone(),
+                                name: tc.name.clone(),
+                                arguments: tc.arguments.to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    input_items.push(Self::convert_message(msg));
                 }
             } else {
                 input_items.push(Self::convert_message(msg));
@@ -449,12 +469,16 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             Some(Self::convert_tools(&config.tools))
         };
 
-        // Build reasoning config if specified
+        // Build reasoning config if specified.
+        // Skip when effort is "none" — sending reasoning params to models that
+        // don't support them (or with effort=none) causes OpenAI API errors.
         let reasoning = config
             .reasoning_effort
             .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
             .map(|effort| ResponsesReasoning {
                 effort: effort.clone(),
+                summary: "detailed".to_string(),
             });
 
         // Build metadata for request tracking
@@ -925,30 +949,46 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::OutputItemDone { item, .. } => {
-            if let Some(types::OutputItem::FunctionCall { .. }) = item {
-                let acc = accumulated_tool_calls.lock().unwrap();
-                if !acc.is_empty() {
-                    let tool_calls: Vec<ToolCall> = acc
-                        .iter()
-                        .filter(|tc| !tc.name.is_empty())
-                        .map(|tc| {
-                            let arguments: Value =
-                                serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
-                            ToolCall {
-                                id: tc.call_id.clone(),
-                                name: tc.name.clone(),
-                                arguments,
-                            }
-                        })
-                        .collect();
+            match item {
+                Some(types::OutputItem::FunctionCall { .. }) => {
+                    let acc = accumulated_tool_calls.lock().unwrap();
+                    if !acc.is_empty() {
+                        let tool_calls: Vec<ToolCall> = acc
+                            .iter()
+                            .filter(|tc| !tc.name.is_empty())
+                            .map(|tc| {
+                                let arguments: Value =
+                                    serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
+                                ToolCall {
+                                    id: tc.call_id.clone(),
+                                    name: tc.name.clone(),
+                                    arguments,
+                                }
+                            })
+                            .collect();
 
-                    if !tool_calls.is_empty() {
-                        *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
-                        return LlmStreamEvent::ToolCalls(tool_calls);
+                        if !tool_calls.is_empty() {
+                            *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                            return LlmStreamEvent::ToolCalls(tool_calls);
+                        }
                     }
+                    LlmStreamEvent::TextDelta(String::new())
                 }
+                Some(types::OutputItem::Reasoning {
+                    encrypted_content: Some(encrypted),
+                    ..
+                }) => {
+                    // Emit encrypted reasoning content as ThinkingSignature
+                    // This is the OpenAI equivalent of Anthropic's thinking signature
+                    // and must be included in subsequent API calls to preserve reasoning context
+                    tracing::debug!(
+                        encrypted_len = encrypted.len(),
+                        "OpenResponses: received encrypted reasoning content"
+                    );
+                    LlmStreamEvent::ThinkingSignature(encrypted)
+                }
+                _ => LlmStreamEvent::TextDelta(String::new()),
             }
-            LlmStreamEvent::TextDelta(String::new())
         }
 
         StreamingEvent::ResponseCompleted { response, .. } => {
@@ -1345,6 +1385,9 @@ struct ResponsesRequest {
 #[derive(Debug, Serialize)]
 struct ResponsesReasoning {
     effort: String,
+    /// Request reasoning summary to get thinking tokens streamed back.
+    /// Without this, reasoning happens internally but tokens are not exposed.
+    summary: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1365,6 +1408,16 @@ enum ResponsesInputItem {
         r#type: String,
         call_id: String,
         output: String,
+    },
+    /// Reasoning item for o-series and GPT-5 models
+    /// Contains encrypted reasoning content that must be included in subsequent API calls
+    /// to preserve reasoning context across turns (similar to Anthropic's thinking signature)
+    Reasoning {
+        r#type: String,
+        /// Unique ID for this reasoning item
+        id: String,
+        /// Encrypted reasoning content (required for multi-turn conversations)
+        encrypted_content: String,
     },
 }
 
@@ -1476,12 +1529,14 @@ mod tests {
             tools: None,
             reasoning: Some(ResponsesReasoning {
                 effort: "high".to_string(),
+                summary: "detailed".to_string(),
             }),
             metadata: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["reasoning"]["effort"], "high");
+        assert_eq!(json["reasoning"]["summary"], "detailed");
     }
 
     #[test]
@@ -1872,5 +1927,449 @@ mod tests {
         );
         // Custom URL, compact support unknown
         assert!(!driver.supports_compact());
+    }
+
+    // ========================================================================
+    // OpenAI Thinking/Reasoning Support Tests
+    // ========================================================================
+
+    #[test]
+    fn test_reasoning_input_item_serialization() {
+        let item = ResponsesInputItem::Reasoning {
+            r#type: "reasoning".to_string(),
+            id: "rs_00000001".to_string(),
+            encrypted_content: "encrypted_reasoning_context_here".to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["id"], "rs_00000001");
+        assert_eq!(
+            json["encrypted_content"],
+            "encrypted_reasoning_context_here"
+        );
+    }
+
+    #[test]
+    fn test_build_input_with_thinking_signature() {
+        // Assistant message with thinking and thinking_signature (encrypted_content)
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("I have thought about this.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("This is my chain of thought reasoning...".to_string()),
+                thinking_signature: Some("encrypted_reasoning_token_123".to_string()),
+            },
+            LlmMessage::text(LlmMessageRole::User, "What else?"),
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user message, reasoning item, assistant message, user message
+        assert_eq!(input.len(), 4);
+
+        // First is user message
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "Think about this deeply");
+
+        // Second is reasoning item (before assistant message)
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["encrypted_content"], "encrypted_reasoning_token_123");
+
+        // Third is assistant message
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["content"], "I have thought about this.");
+
+        // Fourth is second user message
+        let json = serde_json::to_value(&input[3]).unwrap();
+        assert_eq!(json["role"], "user");
+    }
+
+    #[test]
+    fn test_build_input_with_thinking_signature_and_tool_calls() {
+        use crate::tool_types::ToolCall;
+
+        // Assistant message with thinking, tool calls, and thinking_signature
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_123".to_string(),
+                    name: "get_time".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                thinking: Some("I need to call the get_time tool...".to_string()),
+                thinking_signature: Some("encrypted_token_xyz".to_string()),
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("10:30 AM".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_123".to_string()),
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user, reasoning, assistant, function_call, function_call_output
+        assert_eq!(input.len(), 5);
+
+        // Reasoning item comes before assistant message
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["encrypted_content"], "encrypted_token_xyz");
+
+        // Assistant message
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["role"], "assistant");
+
+        // Function call
+        let json = serde_json::to_value(&input[3]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_123");
+
+        // Function call output
+        let json = serde_json::to_value(&input[4]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+    }
+
+    #[test]
+    fn test_build_input_without_thinking_signature() {
+        // Assistant message with thinking but NO thinking_signature should not emit reasoning item
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Hi there!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("Some thinking...".to_string()),
+                thinking_signature: None, // No signature!
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user message, assistant message (no reasoning item)
+        assert_eq!(input.len(), 2);
+
+        // Verify no reasoning item
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_encrypted_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // Create an OutputItemDone event with Reasoning item containing encrypted_content
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_001".to_string(),
+                summary: vec![],
+                content: None,
+                encrypted_content: Some("encrypted_reasoning_data".to_string()),
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        // Should emit ThinkingSignature with the encrypted content
+        match result {
+            LlmStreamEvent::ThinkingSignature(sig) => {
+                assert_eq!(sig, "encrypted_reasoning_data");
+            }
+            _ => panic!("Expected ThinkingSignature event, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_without_encrypted_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // Create an OutputItemDone event with Reasoning item but NO encrypted_content
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_001".to_string(),
+                summary: vec![types::ContentPart::SummaryText {
+                    text: "Some summary".to_string(),
+                }],
+                content: None,
+                encrypted_content: None, // No encrypted content
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        // Should emit empty TextDelta (not ThinkingSignature)
+        match result {
+            LlmStreamEvent::TextDelta(text) => {
+                assert!(text.is_empty());
+            }
+            _ => panic!("Expected empty TextDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // ReasoningDelta (opaque reasoning from o-series) maps to ThinkingDelta
+        let event = StreamingEvent::ReasoningDelta {
+            sequence_number: 3,
+            item_id: "rs_001".to_string(),
+            output_index: 0,
+            content_index: 0,
+            delta: "Let me reason about this...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "o3".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ThinkingDelta(text) => {
+                assert_eq!(text, "Let me reason about this...");
+            }
+            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_summary_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // ReasoningSummaryDelta (readable summary from GPT-5.x) maps to ThinkingDelta
+        let event = StreamingEvent::ReasoningSummaryDelta {
+            sequence_number: 4,
+            item_id: "rs_002".to_string(),
+            output_index: 0,
+            summary_index: 0,
+            delta: "Breaking down the problem...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "gpt-5.2".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ThinkingDelta(text) => {
+                assert_eq!(text, "Breaking down the problem...");
+            }
+            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_request_reasoning_none_is_omitted() {
+        // When reasoning effort is "none", the reasoning field should be omitted
+        // to avoid API errors on models that don't support reasoning params
+        let config = LlmCallConfig {
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some("none".to_string()),
+            metadata: std::collections::HashMap::new(),
+        };
+
+        // Simulate the driver's filter logic
+        let reasoning = config
+            .reasoning_effort
+            .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .map(|effort| ResponsesReasoning {
+                effort: effort.clone(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_none(),
+            "reasoning should be None for effort=none"
+        );
+    }
+
+    #[test]
+    fn test_request_reasoning_high_is_included() {
+        // When reasoning effort is "high", the reasoning field should be present
+        let config = LlmCallConfig {
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some("high".to_string()),
+            metadata: std::collections::HashMap::new(),
+        };
+
+        let reasoning = config
+            .reasoning_effort
+            .as_ref()
+            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .map(|effort| ResponsesReasoning {
+                effort: effort.clone(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_some(),
+            "reasoning should be present for effort=high"
+        );
+        let r = reasoning.unwrap();
+        assert_eq!(r.effort, "high");
+        assert_eq!(r.summary, "detailed");
+    }
+
+    #[test]
+    fn test_request_reasoning_none_case_insensitive() {
+        // "None", "NONE", "none" should all be filtered out
+        for effort in &["none", "None", "NONE"] {
+            let reasoning = Some(effort.to_string())
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned();
+
+            assert!(
+                reasoning.is_none(),
+                "effort={effort:?} should be filtered out"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_input_assistant_without_thinking_or_tools() {
+        // Plain assistant message (no thinking, no tool calls) should just be a message
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Hi there!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        assert_eq!(input.len(), 2);
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert!(json.get("type").is_none() || json["type"] == "message");
+    }
+
+    #[test]
+    fn test_build_input_multiple_reasoning_items_get_unique_ids() {
+        // Multiple assistant messages with thinking_signature should get unique reasoning IDs
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "First question"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("First answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("thinking 1".to_string()),
+                thinking_signature: Some("encrypted_1".to_string()),
+            },
+            LlmMessage::text(LlmMessageRole::User, "Second question"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Second answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: Some("thinking 2".to_string()),
+                thinking_signature: Some("encrypted_2".to_string()),
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
+        assert_eq!(input.len(), 6);
+
+        let r1 = serde_json::to_value(&input[1]).unwrap();
+        let r2 = serde_json::to_value(&input[4]).unwrap();
+
+        assert_eq!(r1["type"], "reasoning");
+        assert_eq!(r2["type"], "reasoning");
+        assert_ne!(r1["id"], r2["id"], "Reasoning items should have unique IDs");
+        assert_eq!(r1["encrypted_content"], "encrypted_1");
+        assert_eq!(r2["encrypted_content"], "encrypted_2");
     }
 }

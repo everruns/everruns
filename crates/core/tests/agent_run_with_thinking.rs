@@ -8,6 +8,7 @@
 //
 // Required environment variables:
 //   - ANTHROPIC_API_KEY: For Anthropic tests
+//   - OPENAI_API_KEY: For OpenAI reasoning tests (GPT-5.2)
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -17,6 +18,7 @@ use rstest::rstest;
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_core::llm_models::LlmProviderType;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 
@@ -26,6 +28,7 @@ use everruns_core::message_retriever::InputMessage;
 
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
+#[case::openai_gpt52(OPENAI_GPT52)]
 #[tokio::test]
 async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {
@@ -45,11 +48,13 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
     let input = InputMessage {
         role: MessageRole::User,
-        content: vec![ContentPart::text("What is 17 * 23?")],
+        content: vec![ContentPart::text(
+            "A farmer has 17 chickens. All but 9 die. How many are left? Explain step by step why this is tricky.",
+        )],
         controls: Some(Controls {
             model_id: None,
             reasoning: Some(ReasoningConfig {
-                effort: Some("medium".into()),
+                effort: Some("high".into()),
             }),
         }),
         metadata: None,
@@ -60,10 +65,37 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
-        result.response.contains("391"),
-        "Response should contain the correct answer 391, got: {}",
+        result.response.contains("9"),
+        "Response should contain the answer 9, got: {}",
         result.response
     );
+
+    // Verify thinking tokens were captured on the stored assistant message
+    let messages = runner.messages().await.unwrap();
+    let assistant_msg = messages
+        .iter()
+        .find(|m| m.role == MessageRole::Agent)
+        .expect("Should have an agent message");
+
+    assert!(
+        assistant_msg.thinking.is_some(),
+        "Agent message should have thinking content for {config}"
+    );
+    assert!(
+        !assistant_msg.thinking.as_ref().unwrap().is_empty(),
+        "Thinking content should not be empty for {config}"
+    );
+
+    // thinking_signature is provider-specific:
+    // - Anthropic: cryptographic signature (always present with thinking)
+    // - OpenAI o-series: encrypted_content (present when model uses encrypted reasoning)
+    // - OpenAI GPT-5.x: not used (reasoning summary is readable, not encrypted)
+    if matches!(config.provider_type, LlmProviderType::Anthropic) {
+        assert!(
+            assistant_msg.thinking_signature.is_some(),
+            "Anthropic should have thinking_signature for multi-turn"
+        );
+    }
 }
 
 // ============================================================================
@@ -72,6 +104,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
+#[case::openai_gpt52(OPENAI_GPT52)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {

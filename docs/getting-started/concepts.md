@@ -120,7 +120,7 @@ A Message is a conversation entry reconstructed from the event log. Messages are
 
 - Roles: `user`, `agent`, `tool_result`
 - Content is an array of parts: text, image, tool_call, tool_result
-- Agent messages may include extended thinking content from reasoning models
+- Agent messages may include extended thinking content from reasoning models (Anthropic Claude, OpenAI GPT-5.x and o-series)
 - Supports per-message controls such as model override and reasoning effort
 
 ### Event

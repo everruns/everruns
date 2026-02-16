@@ -195,7 +195,7 @@ Emitted when a turn is cancelled by the user.
 
 ## Extended Thinking Events
 
-These events are emitted by models that support extended thinking (e.g., Claude with thinking enabled).
+These events are emitted by models that support extended thinking (e.g., Anthropic Claude with thinking enabled, OpenAI GPT-5.x and o-series models with reasoning effort configured).
 
 ### reason.thinking.started
 
