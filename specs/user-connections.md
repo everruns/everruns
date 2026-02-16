@@ -104,6 +104,20 @@ GitHub OAuth callback. Exchanges code, stores token, redirects to UI.
 | `GITHUB_CONNECTION_CLIENT_SECRET` | GitHub OAuth App client secret |
 | `GITHUB_CONNECTION_REDIRECT_URI` | Callback URL (default: `{AUTH_BASE_URL}/v1/user/connections/github/callback`) |
 
+### GitHub OAuth App Setup
+
+Create a **separate** GitHub OAuth App for connections (not the login OAuth App):
+
+1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**
+2. Configure:
+   - **Application name:** `Everruns`
+   - **Homepage URL:** `https://everruns.com` (or `http://localhost:9000` for local dev)
+   - **Authorization callback URL:** `http://localhost:9000/v1/user/connections/github/callback` (local) or `https://<domain>/v1/user/connections/github/callback` (production)
+3. Copy **Client ID** → `GITHUB_CONNECTION_CLIENT_ID`
+4. Generate **Client Secret** → `GITHUB_CONNECTION_CLIENT_SECRET`
+
+The app requests `repo read:user` scopes (hardcoded in `GitHubConnectionService`).
+
 ### Security
 
 - Tokens encrypted at rest via AES-256-GCM envelope encryption (same as MCP server API keys, session secrets)
