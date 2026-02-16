@@ -144,6 +144,23 @@ Lifecycle management: stop or delete.
   - `action`: `"stop" | "delete"` (required)
 - **Returns**: `{ sandbox_id, action, success }`
 
+### daytona_git_clone
+
+Clone a git repository into a sandbox. Automatically uses the user's connected GitHub credentials for private repos.
+
+- **Parameters**:
+  - `sandbox_id`: string (required)
+  - `repo_url`: string (required) — supports `https://`, `git@`, or `user/repo` shorthand
+  - `branch`: string (optional) — branch to clone (defaults to default branch)
+  - `path`: string (optional) — destination inside sandbox (defaults to `<workspace_path>/<repo_name>`)
+- **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
+
+**Authentication flow:**
+1. Lazily resolves GitHub token from user connections (`connection_resolver`)
+2. Falls back to `GITHUB_TOKEN` session secret
+3. If token found: writes temporary credential helper script, configures git, clones, then cleans up
+4. If no token: public repos only; private repos fail with hint to connect GitHub
+
 ## Security
 
 - **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest
@@ -192,7 +209,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
-| `src/tools.rs` | 7 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `src/tools.rs` | 8 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 
 ## Capability Registration
