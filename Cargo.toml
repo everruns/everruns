@@ -17,6 +17,10 @@ members = [
     "integrations/daytona",
 ]
 
+exclude = [
+    "research/infinity_context",
+]
+
 [workspace.package]
 version = "0.7.0"
 edition = "2024"

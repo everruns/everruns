@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::Message;
+use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageRetriever};
 use crate::traits::{AgentStore, HarnessStore, LlmProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
@@ -128,6 +129,88 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .get(&session_id)
             .cloned()
             .unwrap_or_default())
+    }
+
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        use crate::message_filter::MessageFilter;
+
+        let mut messages = self.load(query.session_id).await?;
+
+        // Apply filters
+        for filter in &query.filters {
+            match filter {
+                MessageFilter::TimeRange { from, to } => {
+                    messages.retain(|m| {
+                        let after_from = from.is_none_or(|t| m.created_at >= t);
+                        let before_to = to.is_none_or(|t| m.created_at <= t);
+                        after_from && before_to
+                    });
+                }
+                MessageFilter::Search(q) => {
+                    let q_lower = q.to_lowercase();
+                    messages.retain(|m| {
+                        m.text()
+                            .is_some_and(|t| t.to_lowercase().contains(&q_lower))
+                    });
+                }
+                MessageFilter::Custom(predicate) => {
+                    messages.retain(|m| predicate(m));
+                }
+                // Other filters not commonly used in-memory
+                _ => {}
+            }
+        }
+
+        // Apply offset
+        if let Some(offset) = query.offset {
+            let offset = offset.max(0i64) as usize;
+            if offset < messages.len() {
+                messages = messages.into_iter().skip(offset).collect();
+            } else {
+                messages.clear();
+            }
+        }
+
+        // Track count before limit for prepend transform
+        let count_before_limit = messages.len();
+
+        // Apply limit - keep the most RECENT messages (drop oldest)
+        if let Some(limit) = query.limit {
+            let limit = limit.max(0i64) as usize;
+            if messages.len() > limit {
+                let skip_count = messages.len() - limit;
+                messages = messages.into_iter().skip(skip_count).collect();
+            }
+        }
+
+        // Apply prepend transform if set
+        if let Some(ref transform) = query.prepend_transform {
+            let ctx = crate::message_filter::FilterContext {
+                total_count: count_before_limit,
+                filtered_count: messages.len(),
+                excluded_count: count_before_limit.saturating_sub(messages.len()),
+            };
+            tracing::debug!(
+                total = count_before_limit,
+                filtered = messages.len(),
+                excluded = ctx.excluded_count,
+                "PrependTransform context"
+            );
+            if let Some(prepend_msg) = transform.transform(&ctx) {
+                tracing::info!(
+                    excluded = ctx.excluded_count,
+                    "Prepending excluded messages notice"
+                );
+                messages.insert(0, prepend_msg);
+            }
+        }
+
+        // Apply injections
+        if query.has_injections() {
+            query.apply_injections(&mut messages);
+        }
+
+        Ok(messages)
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {
