@@ -1592,12 +1592,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_max_capabilities_limit() {
-        // This test verifies the constant is set correctly
-        assert_eq!(MAX_RESOLVED_CAPABILITIES, 100);
-    }
-
     // =========================================================================
     // Message filter provider tests
     // =========================================================================

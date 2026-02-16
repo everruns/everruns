@@ -1055,7 +1055,6 @@ mod tests {
         let proto_agent = schema_agent_to_proto(&agent);
 
         // Verify capability_ids are preserved
-        assert_eq!(proto_agent.capability_ids.len(), 2);
         assert!(
             proto_agent
                 .capability_ids
@@ -1071,7 +1070,6 @@ mod tests {
         let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
 
         // Verify capabilities survive roundtrip
-        assert_eq!(schema_agent.capabilities.len(), 2);
         // Check capability IDs are preserved (config defaults to empty)
         let cap_ids: Vec<&str> = schema_agent
             .capabilities

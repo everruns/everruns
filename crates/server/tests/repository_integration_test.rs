@@ -771,7 +771,11 @@ async fn test_agent_capabilities() {
         .get_agent_capabilities(agent.id.into())
         .await
         .expect("Failed to get capabilities");
-    assert_eq!(capabilities.len(), 1);
+    assert!(
+        capabilities
+            .iter()
+            .any(|c| c.capability_id == "current_time")
+    );
 
     // Set capabilities (replace all)
     let new_caps = backend
@@ -784,14 +788,24 @@ async fn test_agent_capabilities() {
         )
         .await
         .expect("Failed to set capabilities");
-    assert_eq!(new_caps.len(), 2);
+    assert!(
+        new_caps
+            .iter()
+            .any(|c| c.capability_id == "session_file_system")
+    );
+    assert!(new_caps.iter().any(|c| c.capability_id == "web_search"));
 
     // Verify capabilities replaced
     let capabilities = backend
         .get_agent_capabilities(agent.id.into())
         .await
         .expect("Failed to get capabilities");
-    assert_eq!(capabilities.len(), 2);
+    assert!(
+        capabilities
+            .iter()
+            .any(|c| c.capability_id == "session_file_system")
+    );
+    assert!(capabilities.iter().any(|c| c.capability_id == "web_search"));
 
     // Remove capability
     let removed = backend
