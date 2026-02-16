@@ -23,7 +23,7 @@ done
 case "$cmd" in
   server)
     echo "🌐 Starting server..."
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
     cargo run -p everruns-server
     ;;
 
@@ -35,7 +35,7 @@ case "$cmd" in
   watch-server)
     echo "👀 Starting server with auto-reload..."
     require_command cargo-watch "Run: just init"
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
     cargo watch -w crates -x 'run -p everruns-server'
     ;;
 
@@ -53,6 +53,7 @@ case "$cmd" in
       require_command cargo-watch "Run: just init (or use --no-watch)"
     fi
     require_command npm "Install Node.js/npm to start the UI."
+    require_command caddy "Run: just init"
 
     # Track child PIDs for cleanup
     CHILD_PIDS=()
@@ -80,6 +81,7 @@ case "$cmd" in
       done
 
       # Kill by name (catches any child processes we didn't track directly)
+      pkill -TERM -f "caddy run" 2>/dev/null || true
       pkill -TERM -f "cargo-watch" 2>/dev/null || true
       pkill -TERM -f "everruns-server" 2>/dev/null || true
       pkill -TERM -f "next dev" 2>/dev/null || true
@@ -94,6 +96,7 @@ case "$cmd" in
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
+      pkill -KILL -f "caddy run" 2>/dev/null || true
       pkill -KILL -f "cargo-watch" 2>/dev/null || true
       pkill -KILL -f "everruns-server" 2>/dev/null || true
       pkill -KILL -f "next dev" 2>/dev/null || true
@@ -110,7 +113,7 @@ case "$cmd" in
     # Enable dev mode
     export DEV_MODE=true
     export DEPLOYMENT_GRADE=dev
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
     export RUST_LOG=${RUST_LOG:-info}
 
     # Set encryption key if not provided (standard dev key from .env.example)
@@ -185,18 +188,22 @@ case "$cmd" in
     sleep 5
     echo "   ✅ UI is starting (PID: $UI_PID)"
 
+    # Start Caddy reverse proxy
+    echo "6️⃣  Starting reverse proxy (Caddy)..."
+    caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
+    CADDY_PID=$!
+    CHILD_PIDS+=("$CADDY_PID")
+    sleep 1
+    echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
+
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
-    if [ "$NO_WATCH" = true ]; then
-      echo "   🌐 Server:        http://localhost:9000"
-    else
-      echo "   🌐 Server:        http://localhost:9000 (auto-reload)"
-    fi
-    echo "   📖 API Docs:      http://localhost:9000/swagger-ui/"
+    echo "   🌐 App:           http://localhost:9300"
+    echo "   📖 API Docs:      http://localhost:9300/swagger-ui/"
+    echo "   🔌 API:           http://localhost:9300/api/..."
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
-    echo "   🖥️  UI:            http://localhost:9100 (hot reload)"
     echo ""
     echo "⚠️  DEV MODE notes:"
     echo "   - Data is stored in memory (lost on restart)"
@@ -222,6 +229,7 @@ case "$cmd" in
     require_command sqlx "Run: just init"
     if [ "$NO_UI" = false ]; then
       require_command npm "Install Node.js/npm to start the UI (or use --no-ui)"
+      require_command caddy "Run: just init"
     fi
 
     CHILD_PIDS=()
@@ -250,6 +258,7 @@ case "$cmd" in
       done
 
       # Kill by name (catches any child processes we didn't track directly)
+      pkill -TERM -f "caddy run" 2>/dev/null || true
       pkill -TERM -f "cargo-watch" 2>/dev/null || true
       pkill -TERM -f "everruns-server" 2>/dev/null || true
       pkill -TERM -f "everruns-worker" 2>/dev/null || true
@@ -265,6 +274,7 @@ case "$cmd" in
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
+      pkill -KILL -f "caddy run" 2>/dev/null || true
       pkill -KILL -f "cargo-watch" 2>/dev/null || true
       pkill -KILL -f "everruns-server" 2>/dev/null || true
       pkill -KILL -f "everruns-worker" 2>/dev/null || true
@@ -370,7 +380,7 @@ case "$cmd" in
     fi
 
     # Start API
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then
@@ -460,6 +470,14 @@ case "$cmd" in
       cd "$PROJECT_ROOT"
       sleep 5
       echo "   ✅ UI is starting (PID: $UI_PID)"
+
+      # Start Caddy reverse proxy
+      echo "9️⃣  Starting reverse proxy (Caddy)..."
+      caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
+      CADDY_PID=$!
+      CHILD_PIDS+=("$CADDY_PID")
+      sleep 1
+      echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
     else
       echo "7️⃣  Skipping UI (--no-ui)"
     fi
@@ -472,17 +490,18 @@ case "$cmd" in
       echo "✅ All services started with auto-reload!"
     fi
     echo ""
-    if [ "$NO_WATCH" = true ]; then
+    if [ "$NO_UI" = false ]; then
+      echo "   🌐 App:         http://localhost:9300"
+      echo "   📖 API Docs:    http://localhost:9300/swagger-ui/"
+      echo "   🔌 API:         http://localhost:9300/api/..."
+    else
       echo "   🌐 API:         http://localhost:9000"
       echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-      echo "   ⚙️ Worker:      running"
-    else
-      echo "   🌐 API:         http://localhost:9000 (auto-reload)"
-      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-      echo "   ⚙️ Worker:      running (auto-reload)"
     fi
-    if [ "$NO_UI" = false ]; then
-      echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
+    if [ "$NO_WATCH" = false ]; then
+      echo "   ⚙️ Worker:      running (auto-reload)"
+    else
+      echo "   ⚙️ Worker:      running"
     fi
     if [ "$JAEGER_STARTED" = true ]; then
       echo "   🔍 Jaeger UI:   http://localhost:16686"
@@ -502,6 +521,7 @@ case "$cmd" in
   stop-all)
     echo "🛑 Stopping all Everruns services..."
 
+    pkill -f "caddy run" 2>/dev/null || true
     pkill -f "everruns-server" 2>/dev/null || true
     pkill -f "everruns-worker" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true

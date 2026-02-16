@@ -62,9 +62,9 @@ This starts:
 
 | Service | URL |
 |---------|-----|
-| **Web UI** | http://localhost:8080 |
-| **Swagger API Docs** | http://localhost:8080/swagger-ui/ |
-| **Health Check** | http://localhost:8080/health |
+| **Web UI** | http://localhost:9300 |
+| **Swagger API Docs** | http://localhost:9300/swagger-ui/ |
+| **Health Check** | http://localhost:9300/health |
 | **Jaeger Tracing** | http://localhost:16686 |
 
 ## Configuration
@@ -73,7 +73,7 @@ This starts:
 
 If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, or `DEFAULT_GEMINI_API_KEY`) in your `.env` file, configure via UI:
 
-1. Open http://localhost:8080
+1. Open http://localhost:9300
 2. Navigate to **Settings** > **Providers**
 3. Add your OpenAI or Anthropic API key
 4. Save and verify connection
@@ -90,12 +90,12 @@ If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API
 
 ```bash
 # Create a session (agent_id in request body)
-curl -X POST http://localhost:8080/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
 # Send a message
-curl -X POST http://localhost:8080/api/v1/sessions/{session_id}/messages \
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
 ```

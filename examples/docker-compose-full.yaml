@@ -21,10 +21,10 @@
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
 #
-#   4. Open UI at: http://localhost:8080
+#   4. Open UI at: http://localhost:9300
 #
 # Ports:
-#   - 8080: Web UI (Caddy)
+#   - 9300: Web UI (Caddy)
 #   - 16686: Jaeger UI (optional)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
@@ -136,7 +136,7 @@ services:
     image: caddy:2-alpine
     container_name: everruns-caddy
     ports:
-      - "8080:8080"
+      - "9300:9300"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
@@ -176,7 +176,7 @@ configs:
       #   /api-doc/*    -> API
       #   /health       -> API
       #   /*            -> UI
-      :8080 {
+      :9300 {
         handle_path /api/* {
           reverse_proxy server:9000 {
             # Disable response buffering for SSE streaming

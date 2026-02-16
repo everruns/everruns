@@ -42,8 +42,8 @@ docker compose up -d
 ```
 
 Access the platform:
-- **Web UI**: http://localhost:8080
-- **API Docs**: http://localhost:8080/swagger-ui/
+- **Web UI**: http://localhost:9300
+- **API Docs**: http://localhost:9300/swagger-ui/
 
 For detailed setup instructions, see the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/).
 
@@ -58,17 +58,17 @@ For detailed setup instructions, see the [Docker Compose Quickstart](https://doc
 
 ```bash
 # Create an agent
-curl -X POST http://localhost:8080/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{"name": "Assistant", "system_prompt": "You are a helpful assistant."}'
 
 # Create a session (agent_id in request body)
-curl -X POST http://localhost:8080/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
 # Send a message
-curl -X POST http://localhost:8080/api/v1/sessions/{session_id}/messages \
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
 ```

@@ -42,7 +42,7 @@ Use the take-screenshot script:
 Example:
 ```bash
 .claude/skills/ui-screenshots/scripts/take-screenshot.sh \
-  http://localhost:9100/dev/components \
+  http://localhost:9300/dev/components \
   screenshot.png
 ```
 
@@ -52,7 +52,7 @@ For more control, use agent-browser CLI commands:
 
 ```bash
 # Open a page
-agent-browser open http://localhost:9100/dev/components
+agent-browser open http://localhost:9300/dev/components
 
 # Take full-page screenshot
 agent-browser screenshot screenshot.png --full
@@ -127,7 +127,7 @@ sleep 10  # Wait for server
 agent-browser uses sessions to isolate browser instances:
 ```bash
 # Use a named session
-agent-browser --session screenshots open http://localhost:9100
+agent-browser --session screenshots open http://localhost:9300
 
 # List sessions
 agent-browser session list
@@ -152,7 +152,7 @@ Take a screenshot of a URL using agent-browser:
 Example:
 ```bash
 .claude/skills/ui-screenshots/scripts/take-screenshot.sh \
-  http://localhost:9100/dev/components \
+  http://localhost:9300/dev/components \
   /tmp/screenshot.png
 ```
 

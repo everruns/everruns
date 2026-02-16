@@ -6,13 +6,13 @@ set -euo pipefail
 # Usage: take-screenshot.sh <URL> <OUTPUT_PATH>
 #
 # Example:
-#   ./take-screenshot.sh http://localhost:9100/dev/components screenshot.png
+#   ./take-screenshot.sh http://localhost:9300/dev/components screenshot.png
 #
 # Requires: agent-browser >= 0.8.5 (npm install -g agent-browser && agent-browser install)
 #
 # Supports containerized environments via --args flag for sandbox-disabling.
 
-URL="${1:-http://localhost:9100/dev/components}"
+URL="${1:-http://localhost:9300/dev/components}"
 OUTPUT_PATH="${2:-screenshot.png}"
 
 # Check if agent-browser is installed
