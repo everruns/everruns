@@ -9,8 +9,9 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
-    ModelId, ProviderId, SessionId, SkillId,
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, AgentId, DEFAULT_ORG_ID,
+    DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId, ModelId, ProviderId,
+    SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -67,10 +68,41 @@ impl Default for InMemoryDatabase {
             },
         );
 
+        // Pre-create anonymous user (for auth=none mode)
+        let mut users = HashMap::new();
+        users.insert(
+            ANONYMOUS_USER_ID,
+            UserRow {
+                id: ANONYMOUS_USER_ID,
+                email: ANONYMOUS_USER_EMAIL.to_string(),
+                name: ANONYMOUS_USER_NAME.to_string(),
+                avatar_url: None,
+                roles: serde_json::json!(["admin"]),
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("none".to_string()),
+                auth_provider_id: None,
+                created_at: now,
+                updated_at: now,
+                external_id: None,
+            },
+        );
+
+        // Add anonymous user to default org
+        let mut organization_members = HashMap::new();
+        organization_members.insert(
+            (DEFAULT_ORG_ID, ANONYMOUS_USER_ID),
+            OrganizationMemberRow {
+                org_id: DEFAULT_ORG_ID,
+                user_id: ANONYMOUS_USER_ID,
+                created_at: now,
+            },
+        );
+
         Self {
             organizations: RwLock::new(organizations),
-            organization_members: RwLock::new(HashMap::new()),
-            users: RwLock::new(HashMap::new()),
+            organization_members: RwLock::new(organization_members),
+            users: RwLock::new(users),
             api_keys: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),
             agents: RwLock::new(HashMap::new()),

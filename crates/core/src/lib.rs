@@ -191,7 +191,8 @@ pub use mcp_server::{
     parse_mcp_tool_name,
 };
 pub use organization::{
-    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, Organization, generate_org_public_id,
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
+    DEFAULT_ORG_PUBLIC_ID, OrgMembership, Organization, generate_org_public_id,
     validate_org_public_id,
 };
 pub use session::{Session, SessionStatus};

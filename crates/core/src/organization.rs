@@ -11,6 +11,19 @@ pub const DEFAULT_ORG_ID: i64 = 1;
 /// Default organization public ID (external, for API)
 pub const DEFAULT_ORG_PUBLIC_ID: &str = "org_00000000000000000000000000000001";
 
+/// Well-known anonymous user UUID for auth=none mode.
+/// This is a real database user seeded at startup, so all code paths
+/// (org membership, API keys, etc.) work without special-casing.
+pub const ANONYMOUS_USER_ID: Uuid = Uuid::from_bytes([
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+]);
+
+/// Anonymous user email
+pub const ANONYMOUS_USER_EMAIL: &str = "anonymous@local";
+
+/// Anonymous user display name
+pub const ANONYMOUS_USER_NAME: &str = "Anonymous";
+
 /// Organization entity (domain type)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
