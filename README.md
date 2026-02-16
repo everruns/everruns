@@ -43,7 +43,7 @@ docker compose up -d
 
 Access the platform:
 - **Web UI**: http://localhost:9300
-- **API Docs**: http://localhost:9300/swagger-ui/
+- **API**: http://localhost:9300/api/...
 
 For detailed setup instructions, see the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/).
 

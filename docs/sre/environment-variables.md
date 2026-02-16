@@ -88,7 +88,7 @@ API_PREFIX=/api
 ```
 
 **Notes:**
-- `/health`, `/swagger-ui`, and `/api-doc/openapi.json` are not affected by this prefix
+- `/health` and `/api-doc/openapi.json` are not affected by this prefix
 - All API routes including auth (`/v1/auth/*`) are affected by this prefix
 - OAuth callback URLs automatically include this prefix when using defaults
 - Use when running behind a reverse proxy or API gateway that expects a path prefix
@@ -113,7 +113,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 ```
 
 **Notes:**
-- Not needed for local development (Next.js proxy handles `/api/*` requests)
+- Not needed for local development (Caddy reverse proxy handles `/api/*` requests)
 - Not needed in production if using a reverse proxy on the same domain
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
@@ -169,23 +169,19 @@ DEFAULT_GEMINI_API_KEY=AIza...
 
 ## UI API Proxy Architecture
 
-The UI makes all API requests to `/api/*` paths. These are handled differently in each environment:
+The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse proxy strips `/api` and forwards to the backend.
 
 **Local Development:**
-- Next.js rewrites proxy `/api/*` to `http://localhost:9000/*`
+- Caddy on `:9300` routes `/api/*` to backend at `:9000` (strips `/api` prefix)
 - Example: `/api/v1/agents` → `http://localhost:9000/v1/agents`
-- No CORS needed (same-origin)
+- SSE streaming works via `flush_interval -1` in Caddy config
+- No CORS needed (same-origin through Caddy)
 
-**Production (recommended):**
+**Production:**
 - Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*` to the API server
 - Strip the `/api` prefix when forwarding
-- Example nginx config:
-  ```nginx
-  location /api/ {
-    proxy_pass http://api-server:9000/;
-  }
-  ```
-- No CORS needed (same-origin)
+- Disable response buffering for SSE endpoints
+- Example Caddy config: see `local/Caddyfile`
 
 ## Worker Configuration
 

@@ -1,6 +1,6 @@
 // Durable Execution API functions
 
-import { api, getDirectBackendUrl } from "./client";
+import { api, getApiBaseUrl } from "./client";
 import type {
   WorkersResponse,
   WorkflowsResponse,
@@ -15,7 +15,7 @@ import type {
 } from "./types";
 
 // ============================================
-// SSE URLs (bypasses Next.js proxy buffering)
+// SSE URLs
 // ============================================
 
 /**
@@ -23,8 +23,7 @@ import type {
  * Returns health, workers, workflows, tasks, DLQ, and circuit breakers.
  */
 export function getDurableSseUrl(): string {
-  const baseUrl = getDirectBackendUrl();
-  return `${baseUrl}/v1/durable/sse`;
+  return `${getApiBaseUrl()}/v1/durable/sse`;
 }
 
 /**
@@ -32,8 +31,7 @@ export function getDurableSseUrl(): string {
  * Returns workflow details and events.
  */
 export function getWorkflowSseUrl(workflowId: string): string {
-  const baseUrl = getDirectBackendUrl();
-  return `${baseUrl}/v1/durable/workflows/${workflowId}/sse`;
+  return `${getApiBaseUrl()}/v1/durable/workflows/${workflowId}/sse`;
 }
 
 // ============================================

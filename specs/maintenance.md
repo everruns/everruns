@@ -71,10 +71,9 @@ Identify and fill gaps.
 ### 5. API Documentation
 
 1. Run `./scripts/export-openapi.sh` — must succeed
-2. Verify OpenAPI spec at `docs/api/openapi.json` matches running server
+2. Verify OpenAPI spec at `docs/api/openapi.json` is up to date
 3. Check all endpoints have descriptions and response types in utoipa annotations
-4. Verify Swagger UI loads without errors
-5. Cross-check `specs/apis.md` with actual routes
+4. Cross-check `specs/apis.md` with actual routes
 
 ### 6. Examples
 

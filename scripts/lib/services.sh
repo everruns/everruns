@@ -201,7 +201,6 @@ case "$cmd" in
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
     echo "   🌐 App:           http://localhost:9300"
-    echo "   📖 API Docs:      http://localhost:9300/swagger-ui/"
     echo "   🔌 API:           http://localhost:9300/api/..."
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
     echo ""
@@ -492,11 +491,9 @@ case "$cmd" in
     echo ""
     if [ "$NO_UI" = false ]; then
       echo "   🌐 App:         http://localhost:9300"
-      echo "   📖 API Docs:    http://localhost:9300/swagger-ui/"
       echo "   🔌 API:         http://localhost:9300/api/..."
     else
       echo "   🌐 API:         http://localhost:9000"
-      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
     fi
     if [ "$NO_WATCH" = false ]; then
       echo "   ⚙️ Worker:      running (auto-reload)"

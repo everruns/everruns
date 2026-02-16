@@ -401,7 +401,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 1. **RESTful**: Standard REST conventions for CRUD operations
 2. **Versioning**: API versioned under `/v1/` prefix
-3. **Documentation**: OpenAPI 3.0 with Swagger UI at `/swagger-ui/`
+3. **Documentation**: OpenAPI 3.0 spec generated via `./scripts/export-openapi.sh`
 
 ### Infrastructure
 

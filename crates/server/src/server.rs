@@ -27,7 +27,6 @@ use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 
 /// Server configuration loaded from environment
 pub struct ServerConfig {
@@ -322,10 +321,13 @@ pub async fn run(
     }
 
     // Build main router
-    let mut app = Router::new().route("/health", get(health).with_state(health_state));
-    app = app.merge(build_router_with_prefix(api_routes, &config.api_prefix));
-    let app =
-        app.merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
+    let app = Router::new()
+        .route("/health", get(health).with_state(health_state))
+        .route(
+            "/api-doc/openapi.json",
+            get(|| async { Json(ApiDoc::openapi()) }),
+        )
+        .merge(build_router_with_prefix(api_routes, &config.api_prefix));
 
     // CORS
     let app = if !config.cors_origins.is_empty() {

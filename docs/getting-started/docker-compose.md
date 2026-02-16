@@ -63,7 +63,7 @@ This starts:
 | Service | URL |
 |---------|-----|
 | **Web UI** | http://localhost:9300 |
-| **Swagger API Docs** | http://localhost:9300/swagger-ui/ |
+| **API** | http://localhost:9300/api/... |
 | **Health Check** | http://localhost:9300/health |
 | **Jaeger Tracing** | http://localhost:16686 |
 

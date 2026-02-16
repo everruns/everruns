@@ -68,7 +68,7 @@ curl -s -X POST "http://localhost:9300/api/v1/agents" \
 
 ## Full API Reference
 
-See http://localhost:9300/swagger-ui/ for complete API documentation.
+See https://docs.everruns.com for complete API documentation.
 
 ## Troubleshooting
 

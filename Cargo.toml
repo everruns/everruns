@@ -66,9 +66,8 @@ opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["http-proto", "reqwest-client"] }
 tracing-opentelemetry = "0.32"
 
-# OpenAPI documentation
+# OpenAPI documentation (used by export-openapi binary for spec generation)
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 
 # Encryption
 aes-gcm = "0.10"
