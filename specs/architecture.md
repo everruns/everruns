@@ -58,6 +58,7 @@ graph TB
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
    - `integrations/codesandbox/` → `everruns-integrations-codesandbox` - CodeSandbox cloud sandbox integration (auto-registered via `inventory` plugin system)
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
+   - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
@@ -80,7 +81,8 @@ everruns/
 │   └── anthropic/        # Anthropic provider
 ├── integrations/
 │   ├── codesandbox/      # CodeSandbox cloud sandbox (inventory plugin)
-│   └── docker/           # Docker container (inventory plugin)
+│   ├── docker/           # Docker container (inventory plugin)
+│   └── daytona/          # Daytona cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── specs/                # Feature specifications
 ├── test_cases/           # Manual test cases
@@ -108,6 +110,25 @@ graph TD
     core --> server
     worker -.->|gRPC| server
 ```
+
+### Integration Plugin Force-Linking
+
+Integration crates (`codesandbox`, `docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
+
+**Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate:**
+
+```rust
+extern crate everruns_integrations_codesandbox;
+extern crate everruns_integrations_daytona;
+extern crate everruns_integrations_docker;
+```
+
+Adding a new integration crate requires:
+1. Create the crate under `integrations/`
+2. Add it as a dependency in `crates/server/Cargo.toml` and `crates/worker/Cargo.toml`
+3. Add `extern crate` to both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs`
+
+Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error — the integration simply does not appear at runtime.
 
 ### Server Entrypoint
 

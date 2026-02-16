@@ -1,3 +1,8 @@
+// Force-link integration crates so inventory::submit! registrations are included
+extern crate everruns_integrations_codesandbox;
+extern crate everruns_integrations_daytona;
+extern crate everruns_integrations_docker;
+
 pub mod activities;
 pub mod adapters;
 pub mod durable_runner;

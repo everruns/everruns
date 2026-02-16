@@ -126,7 +126,11 @@ export default function ConnectionsPage() {
   const handleDisconnect = async (provider: string) => {
     const meta = providers[provider];
     const name = meta?.name ?? provider;
-    if (confirm(`Disconnect ${name}? New sessions will no longer have access to your ${name} account.`)) {
+    if (
+      confirm(
+        `Disconnect ${name}? New sessions will no longer have access to your ${name} account.`,
+      )
+    ) {
       await deleteConnection.mutateAsync(provider);
     }
   };
@@ -172,9 +176,7 @@ export default function ConnectionsPage() {
           <Card className="p-8 text-center">
             <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No connections available</h3>
-            <p className="text-muted-foreground">
-              No connection providers are configured.
-            </p>
+            <p className="text-muted-foreground">No connection providers are configured.</p>
           </Card>
         ) : (
           <div className="space-y-2">

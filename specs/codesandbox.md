@@ -244,6 +244,8 @@ The capability declares `session_storage` as a dependency because it needs both 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
 Core (`everruns-core`) has no compile-time knowledge of this crate.
 
+**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_codesandbox;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](architecture.md#integration-plugin-force-linking).
+
 ## Capability Registration
 
 - **ID**: `codesandbox`

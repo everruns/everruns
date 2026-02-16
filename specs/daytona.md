@@ -185,6 +185,8 @@ Files are managed through the Toolbox API proxy (`proxy.app.daytona.io`). Upload
 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
 
+**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](architecture.md#integration-plugin-force-linking).
+
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
