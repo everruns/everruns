@@ -142,14 +142,12 @@ impl AppState {
         encryption: Option<Arc<EncryptionService>>,
         auth: AuthState,
         base_url: String,
-        api_prefix: String,
     ) -> Self {
         let oauth_service = encryption.as_ref().map(|enc| {
             Arc::new(McpOAuthService::new(
                 db.clone(),
                 enc.clone(),
                 base_url.clone(),
-                api_prefix,
             ))
         });
 
