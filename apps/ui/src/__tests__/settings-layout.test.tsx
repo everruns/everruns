@@ -34,9 +34,23 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
+    expect(screen.getByText("General")).toBeInTheDocument();
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.getByText("Connections")).toBeInTheDocument();
+    expect(screen.getByText("API Keys")).toBeInTheDocument();
+  });
+
+  it("renders section labels for Organisation and Personal", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.getByText("Organisation")).toBeInTheDocument();
+    expect(screen.getByText("Personal")).toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {
@@ -46,13 +60,19 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
+    const generalLink = screen.getByRole("link", { name: /General/i });
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
-    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+    const mcpServersLink = screen.getByRole("link", { name: /MCP Servers/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
+    const connectionsLink = screen.getByRole("link", { name: /Connections/i });
+    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
 
+    expect(generalLink).toHaveAttribute("href", "/settings/organisation");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
-    expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
+    expect(mcpServersLink).toHaveAttribute("href", "/settings/mcp-servers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
+    expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
+    expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
   });
 
   it("highlights the active navigation item for providers", () => {
@@ -111,5 +131,105 @@ describe("SettingsLayout", () => {
 
     const navLinks = screen.getAllByRole("link");
     expect(navLinks).toHaveLength(6);
+  });
+
+  it("groups items under correct sections", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const orgLabel = screen.getByText("Organisation");
+    const personalLabel = screen.getByText("Personal");
+
+    // Organisation section contains its items
+    const orgSection = orgLabel.closest("div[class]")!.parentElement!;
+    expect(orgSection).toHaveTextContent("General");
+    expect(orgSection).toHaveTextContent("LLM Providers");
+    expect(orgSection).toHaveTextContent("MCP Servers");
+    expect(orgSection).toHaveTextContent("Members");
+    expect(orgSection).not.toHaveTextContent("Connections");
+    expect(orgSection).not.toHaveTextContent("API Keys");
+
+    // Personal section contains its items
+    const personalSection = personalLabel.closest("div[class]")!.parentElement!;
+    expect(personalSection).toHaveTextContent("Connections");
+    expect(personalSection).toHaveTextContent("API Keys");
+    expect(personalSection).not.toHaveTextContent("General");
+    expect(personalSection).not.toHaveTextContent("Members");
+  });
+
+  it("renders section labels with uppercase styling", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const orgLabel = screen.getByText("Organisation");
+    const personalLabel = screen.getByText("Personal");
+
+    expect(orgLabel).toHaveClass("uppercase");
+    expect(orgLabel).toHaveClass("tracking-wider");
+    expect(orgLabel).toHaveClass("text-xs");
+    expect(orgLabel).toHaveClass("font-semibold");
+
+    expect(personalLabel).toHaveClass("uppercase");
+    expect(personalLabel).toHaveClass("tracking-wider");
+  });
+
+  it("applies inactive styles to non-active items", () => {
+    mockPathname.mockReturnValue("/settings/providers");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const generalLink = screen.getByRole("link", { name: /General/i });
+    const membersLink = screen.getByRole("link", { name: /Members/i });
+    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+
+    expect(generalLink).toHaveClass("border-transparent");
+    expect(generalLink).not.toHaveClass("border-accent");
+    expect(membersLink).toHaveClass("border-transparent");
+    expect(apiKeysLink).toHaveClass("border-transparent");
+  });
+
+  it("highlights active item for General page", () => {
+    mockPathname.mockReturnValue("/settings/organisation");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const generalLink = screen.getByRole("link", { name: /General/i });
+    expect(generalLink).toHaveClass("border-accent");
+  });
+
+  it("highlights active item for MCP Servers page", () => {
+    mockPathname.mockReturnValue("/settings/mcp-servers");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const mcpLink = screen.getByRole("link", { name: /MCP Servers/i });
+    expect(mcpLink).toHaveClass("border-accent");
+  });
+
+  it("highlights active item for Connections page", () => {
+    mockPathname.mockReturnValue("/settings/connections");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const connectionsLink = screen.getByRole("link", { name: /Connections/i });
+    expect(connectionsLink).toHaveClass("border-accent");
   });
 });

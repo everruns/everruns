@@ -643,6 +643,22 @@ Two entry points for creating organisations:
 
 Both use the `useCreateOrganization` hook (`hooks/use-organizations.ts`) which calls `POST /v1/orgs`. On success, the new org is auto-selected as the current org via `setCurrentOrg()`.
 
+### UI Settings Navigation
+
+The settings sidebar (`/settings/*`) is organized into two labeled sections:
+
+**Organisation** (org-scoped settings):
+- **General** (`/settings/organisation`) — Org name, ID, "Your Organisations" list
+- **LLM Providers** (`/settings/providers`) — Provider configs and API keys
+- **MCP Servers** (`/settings/mcp-servers`) — MCP server connections
+- **Members** (`/settings/members`) — Team member list
+
+**Personal** (user-scoped settings):
+- **Connections** (`/settings/connections`) — External account links (GitHub, etc.)
+- **API Keys** (`/settings/api-keys`) — Personal API keys
+
+Section labels are rendered as uppercase headers (`text-xs font-semibold uppercase tracking-wider`). Active nav item highlighted with accent left border.
+
 ### UI Organisation Management
 The settings page (`/settings/organisation`) has two sections:
 1. **Current Organisation:** Edit name, view org ID (existing)
