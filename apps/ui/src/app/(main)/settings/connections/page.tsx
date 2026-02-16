@@ -8,18 +8,27 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserConnections, useDeleteUserConnection } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, LinkIcon, Trash2, Check } from "lucide-react";
+import { ExternalLink, Github, LinkIcon, Trash2, Check } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { UserConnection } from "@/lib/api/types";
-import Image from "next/image";
 
 /** Provider metadata for display */
-const providers: Record<string, { name: string; icon: string; description: string }> = {
+const providers: Record<string, { name: string; icon: LucideIcon; description: string }> = {
   github: {
     name: "GitHub",
-    icon: "/icons/github.svg",
+    icon: Github,
     description: "Access private repositories for agent sessions",
   },
 };
+
+function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
+  const meta = providers[provider];
+  if (meta) {
+    const Icon = meta.icon;
+    return <Icon className={className} />;
+  }
+  return <LinkIcon className={className} />;
+}
 
 function ConnectionRow({
   connection,
@@ -36,11 +45,7 @@ function ConnectionRow({
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-3">
-        {meta?.icon ? (
-          <Image src={meta.icon} alt={displayName} width={20} height={20} className="dark:invert" />
-        ) : (
-          <LinkIcon className="h-5 w-5 text-muted-foreground" />
-        )}
+        <ProviderIcon provider={connection.provider} className="h-5 w-5" />
         <div>
           <div className="font-medium flex items-center gap-2">
             {displayName}
@@ -75,7 +80,7 @@ function AvailableProviderRow({
   meta,
 }: {
   provider: string;
-  meta: { name: string; icon: string; description: string };
+  meta: { name: string; icon: LucideIcon; description: string };
 }) {
   const handleConnect = () => {
     // Navigate to OAuth authorize endpoint through the API proxy
@@ -85,7 +90,7 @@ function AvailableProviderRow({
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-3">
-        <Image src={meta.icon} alt={meta.name} width={20} height={20} className="dark:invert" />
+        <ProviderIcon provider={provider} className="h-5 w-5" />
         <div>
           <div className="font-medium">{meta.name}</div>
           <div className="text-sm text-muted-foreground">{meta.description}</div>
