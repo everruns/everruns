@@ -39,6 +39,8 @@ pub struct InMemoryDatabase {
     harness_capabilities: RwLock<HashMap<(HarnessId, String), HarnessCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
+    mcp_user_tokens: RwLock<HashMap<(Uuid, Uuid), McpUserTokenRow>>,
+    mcp_oauth_states: RwLock<HashMap<Uuid, McpOAuthStateRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
     skill_files: RwLock<Vec<SkillFileRow>>,
@@ -89,6 +91,8 @@ impl Default for InMemoryDatabase {
             event_sequences: RwLock::new(HashMap::new()),
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
+            mcp_user_tokens: RwLock::new(HashMap::new()),
+            mcp_oauth_states: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -2307,66 +2311,104 @@ impl InMemoryDatabase {
     }
 
     // ============================================
-    // MCP OAuth Tokens (stub implementations for dev mode)
+    // MCP OAuth Tokens
     // ============================================
 
     pub async fn upsert_mcp_user_token(
         &self,
-        _input: UpsertMcpUserToken,
+        input: UpsertMcpUserToken,
     ) -> Result<McpUserTokenRow> {
-        // OAuth tokens not supported in dev mode
-        Err(anyhow::anyhow!("OAuth tokens not supported in dev mode"))
+        let key = (input.mcp_server_id, input.user_id);
+        let now = Utc::now();
+        let mut tokens = self.mcp_user_tokens.write();
+        let row = McpUserTokenRow {
+            id: Uuid::now_v7(),
+            mcp_server_id: input.mcp_server_id,
+            user_id: input.user_id,
+            access_token_encrypted: input.access_token_encrypted,
+            refresh_token_encrypted: input.refresh_token_encrypted,
+            token_type: input.token_type,
+            scope: input.scope,
+            expires_at: input.expires_at,
+            created_at: now,
+            updated_at: now,
+        };
+        tokens.insert(key, row.clone());
+        Ok(row)
     }
 
     pub async fn get_mcp_user_token(
         &self,
-        _mcp_server_id: Uuid,
-        _user_id: Uuid,
+        mcp_server_id: Uuid,
+        user_id: Uuid,
     ) -> Result<Option<McpUserTokenRow>> {
-        // OAuth tokens not supported in dev mode
-        Ok(None)
+        let tokens = self.mcp_user_tokens.read();
+        Ok(tokens.get(&(mcp_server_id, user_id)).cloned())
     }
 
     pub async fn list_mcp_user_tokens_for_user(
         &self,
-        _user_id: Uuid,
+        user_id: Uuid,
     ) -> Result<Vec<McpUserTokenRow>> {
-        // OAuth tokens not supported in dev mode
-        Ok(vec![])
+        let tokens = self.mcp_user_tokens.read();
+        Ok(tokens
+            .values()
+            .filter(|t| t.user_id == user_id)
+            .cloned()
+            .collect())
     }
 
-    pub async fn delete_mcp_user_token(
-        &self,
-        _mcp_server_id: Uuid,
-        _user_id: Uuid,
-    ) -> Result<bool> {
-        // OAuth tokens not supported in dev mode
-        Ok(false)
+    pub async fn delete_mcp_user_token(&self, mcp_server_id: Uuid, user_id: Uuid) -> Result<bool> {
+        let mut tokens = self.mcp_user_tokens.write();
+        Ok(tokens.remove(&(mcp_server_id, user_id)).is_some())
     }
 
     // ============================================
-    // MCP OAuth States (stub implementations for dev mode)
+    // MCP OAuth States
     // ============================================
 
     pub async fn create_mcp_oauth_state(
         &self,
-        _input: CreateMcpOAuthState,
+        input: CreateMcpOAuthState,
     ) -> Result<McpOAuthStateRow> {
-        // OAuth not supported in dev mode
-        Err(anyhow::anyhow!("OAuth not supported in dev mode"))
+        let now = Utc::now();
+        let row = McpOAuthStateRow {
+            id: Uuid::now_v7(),
+            mcp_server_id: input.mcp_server_id,
+            org_id: input.org_id,
+            user_id: input.user_id,
+            code_verifier: input.code_verifier,
+            redirect_uri: input.redirect_uri,
+            return_url: input.return_url,
+            created_at: now,
+            expires_at: input.expires_at,
+        };
+        let mut states = self.mcp_oauth_states.write();
+        states.insert(row.id, row.clone());
+        Ok(row)
     }
 
     pub async fn consume_mcp_oauth_state(
         &self,
-        _state_id: Uuid,
+        state_id: Uuid,
     ) -> Result<Option<McpOAuthStateRow>> {
-        // OAuth not supported in dev mode
-        Ok(None)
+        let mut states = self.mcp_oauth_states.write();
+        let state = states.remove(&state_id);
+        // Check expiry
+        if let Some(ref s) = state
+            && s.expires_at <= Utc::now()
+        {
+            return Ok(None);
+        }
+        Ok(state)
     }
 
     pub async fn delete_expired_mcp_oauth_states(&self) -> Result<u64> {
-        // OAuth not supported in dev mode
-        Ok(0)
+        let mut states = self.mcp_oauth_states.write();
+        let now = Utc::now();
+        let before = states.len();
+        states.retain(|_, s| s.expires_at > now);
+        Ok((before - states.len()) as u64)
     }
 
     // ============================================

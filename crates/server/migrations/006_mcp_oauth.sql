@@ -65,6 +65,7 @@ COMMENT ON COLUMN mcp_user_tokens.expires_at IS 'Access token expiration time';
 CREATE TABLE mcp_oauth_states (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     mcp_server_id UUID NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     code_verifier TEXT NOT NULL,
     redirect_uri TEXT NOT NULL,

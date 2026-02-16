@@ -186,7 +186,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .route(
             "/v1/mcp-servers/{server_id}/oauth/authorize",
-            get(start_oauth_authorization),
+            get(start_oauth_authorization).post(start_oauth_authorization_json),
         )
         .route(
             "/v1/mcp-servers/{server_id}/oauth/callback",
@@ -416,11 +416,18 @@ pub async fn delete_mcp_server(
 // MCP OAuth Endpoints
 // ============================================
 
-/// Query parameters for OAuth authorization
-#[derive(Debug, Clone, Deserialize)]
+/// Query parameters / body for OAuth authorization
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct OAuthAuthorizeQuery {
     /// URL to return to after authorization
     pub return_url: Option<String>,
+}
+
+/// Response from POST /oauth/authorize with the authorization URL
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct McpOAuthAuthorizationResponse {
+    /// URL to redirect the user to for OAuth authorization
+    pub authorization_url: String,
 }
 
 /// Query parameters for OAuth callback
@@ -449,6 +456,7 @@ pub struct OAuthCallbackQuery {
 )]
 pub async fn get_oauth_status(
     user: AuthUser,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
 ) -> Result<Json<McpOAuthStatus>, (StatusCode, Json<ErrorResponse>)> {
@@ -458,7 +466,7 @@ pub async fn get_oauth_status(
     })?;
 
     let status = oauth_service
-        .get_oauth_status(server_id, user.id)
+        .get_oauth_status(server_id, org.org_id, user.id)
         .await
         .map_err(|e| {
             if e.to_string().contains("not found") {
@@ -491,6 +499,7 @@ pub async fn get_oauth_status(
 )]
 pub async fn start_oauth_authorization(
     user: AuthUser,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
     Query(query): Query<OAuthAuthorizeQuery>,
@@ -501,7 +510,7 @@ pub async fn start_oauth_authorization(
     })?;
 
     let auth_url = oauth_service
-        .start_authorization(server_id, user.id, query.return_url)
+        .start_authorization(server_id, org.org_id, user.id, query.return_url)
         .await
         .map_err(|e| {
             let msg = e.to_string();
@@ -519,6 +528,61 @@ pub async fn start_oauth_authorization(
         })?;
 
     Ok(Redirect::to(&auth_url))
+}
+
+/// POST /v1/mcp-servers/{server_id}/oauth/authorize - Start OAuth authorization (JSON response)
+///
+/// Returns a JSON body with the authorization URL instead of a redirect.
+/// Used by the UI to programmatically get the URL before navigating.
+#[utoipa::path(
+    post,
+    path = "/v1/mcp-servers/{server_id}/oauth/authorize",
+    params(
+        ("server_id" = Uuid, Path, description = "MCP server ID"),
+    ),
+    request_body(content = OAuthAuthorizeQuery, description = "Optional return URL"),
+    responses(
+        (status = 200, description = "Authorization URL", body = McpOAuthAuthorizationResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 400, description = "MCP server doesn't use OAuth"),
+        (status = 404, description = "MCP server not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "mcp-oauth"
+)]
+pub async fn start_oauth_authorization_json(
+    user: AuthUser,
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    Json(body): Json<OAuthAuthorizeQuery>,
+) -> Result<Json<McpOAuthAuthorizationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
+        ErrorResponse::new("OAuth not configured (encryption not enabled)")
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+
+    let auth_url = oauth_service
+        .start_authorization(server_id, org.org_id, user.id, body.return_url)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("not found") {
+                ErrorResponse::new("MCP server not found").into_response(StatusCode::NOT_FOUND)
+            } else if msg.contains("does not use OAuth") {
+                ErrorResponse::new("MCP server does not use OAuth authentication")
+                    .into_response(StatusCode::BAD_REQUEST)
+            } else if msg.contains("not configured") {
+                ErrorResponse::new(msg).into_response(StatusCode::BAD_REQUEST)
+            } else {
+                tracing::error!("Failed to start OAuth authorization: {}", e);
+                ErrorResponse::internal_error()
+            }
+        })?;
+
+    Ok(Json(McpOAuthAuthorizationResponse {
+        authorization_url: auth_url,
+    }))
 }
 
 /// GET /v1/mcp-servers/{server_id}/oauth/callback - OAuth callback handler

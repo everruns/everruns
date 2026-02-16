@@ -46,26 +46,24 @@ export async function deleteMcpServer(serverId: string): Promise<void> {
  * Get OAuth status for an MCP server
  */
 export async function getMcpServerOAuthStatus(
-  org: string,
   serverId: string
 ): Promise<McpOAuthStatus> {
   const response = await api.get<McpOAuthStatus>(
-    `/v1/orgs/${org}/mcp-servers/${serverId}/oauth/status`
+    `/v1/mcp-servers/${serverId}/oauth/status`
   );
   return response.data;
 }
 
 /**
- * Start OAuth authorization flow for an MCP server
- * Returns URL to redirect user to for authorization
+ * Start OAuth authorization flow for an MCP server.
+ * Returns JSON with authorization_url (POST handler).
  */
 export async function startMcpServerOAuth(
-  org: string,
   serverId: string,
   returnUrl?: string
 ): Promise<McpOAuthAuthorizationResponse> {
   const response = await api.post<McpOAuthAuthorizationResponse>(
-    `/v1/orgs/${org}/mcp-servers/${serverId}/oauth/authorize`,
+    `/v1/mcp-servers/${serverId}/oauth/authorize`,
     { return_url: returnUrl }
   );
   return response.data;
@@ -75,8 +73,7 @@ export async function startMcpServerOAuth(
  * Revoke OAuth token for an MCP server
  */
 export async function revokeMcpServerOAuth(
-  org: string,
   serverId: string
 ): Promise<void> {
-  await api.delete(`/v1/orgs/${org}/mcp-servers/${serverId}/oauth/token`);
+  await api.delete(`/v1/mcp-servers/${serverId}/oauth/token`);
 }

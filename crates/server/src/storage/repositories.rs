@@ -2888,14 +2888,15 @@ impl Database {
         let row = sqlx::query_as::<_, McpOAuthStateRow>(
             r#"
             INSERT INTO mcp_oauth_states (
-                mcp_server_id, user_id, code_verifier, redirect_uri, return_url, expires_at
+                mcp_server_id, org_id, user_id, code_verifier, redirect_uri, return_url, expires_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, mcp_server_id, user_id, code_verifier, redirect_uri, return_url,
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, mcp_server_id, org_id, user_id, code_verifier, redirect_uri, return_url,
                 created_at, expires_at
             "#,
         )
         .bind(input.mcp_server_id)
+        .bind(input.org_id)
         .bind(input.user_id)
         .bind(&input.code_verifier)
         .bind(&input.redirect_uri)
@@ -2916,7 +2917,7 @@ impl Database {
             r#"
             DELETE FROM mcp_oauth_states
             WHERE id = $1 AND expires_at > NOW()
-            RETURNING id, mcp_server_id, user_id, code_verifier, redirect_uri, return_url,
+            RETURNING id, mcp_server_id, org_id, user_id, code_verifier, redirect_uri, return_url,
                 created_at, expires_at
             "#,
         )

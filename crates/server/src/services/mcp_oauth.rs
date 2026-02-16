@@ -15,7 +15,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use everruns_core::{
     AuthorizationServerMetadata, McpOAuthStatus, McpServerAuthType, McpUserToken,
-    OAuthTokenResponse, ProtectedResourceMetadata, organization::DEFAULT_ORG_ID,
+    OAuthTokenResponse, ProtectedResourceMetadata,
 };
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -51,11 +51,12 @@ impl McpOAuthService {
     pub async fn get_oauth_status(
         &self,
         mcp_server_id: Uuid,
+        org_id: i64,
         user_id: Uuid,
     ) -> Result<McpOAuthStatus> {
         let server = self
             .db
-            .get_mcp_server(DEFAULT_ORG_ID, mcp_server_id)
+            .get_mcp_server(org_id, mcp_server_id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -110,12 +111,13 @@ impl McpOAuthService {
     pub async fn start_authorization(
         &self,
         mcp_server_id: Uuid,
+        org_id: i64,
         user_id: Uuid,
         return_url: Option<String>,
     ) -> Result<String> {
         let server = self
             .db
-            .get_mcp_server(DEFAULT_ORG_ID, mcp_server_id)
+            .get_mcp_server(org_id, mcp_server_id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -141,6 +143,7 @@ impl McpOAuthService {
             .db
             .create_mcp_oauth_state(CreateMcpOAuthState {
                 mcp_server_id,
+                org_id,
                 user_id,
                 code_verifier,
                 redirect_uri: redirect_uri.clone(),
@@ -219,7 +222,7 @@ impl McpOAuthService {
         // Get server config
         let server = self
             .db
-            .get_mcp_server(DEFAULT_ORG_ID, state.mcp_server_id)
+            .get_mcp_server(state.org_id, state.mcp_server_id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -282,6 +285,7 @@ impl McpOAuthService {
     pub async fn get_access_token(
         &self,
         mcp_server_id: Uuid,
+        org_id: i64,
         user_id: Uuid,
     ) -> Result<Option<String>> {
         let token = self.db.get_mcp_user_token(mcp_server_id, user_id).await?;
@@ -298,7 +302,10 @@ impl McpOAuthService {
 
         if is_expired && token.refresh_token_encrypted.is_some() {
             // Try to refresh the token
-            match self.refresh_token(mcp_server_id, user_id, &token).await {
+            match self
+                .refresh_token(mcp_server_id, org_id, user_id, &token)
+                .await
+            {
                 Ok(new_token) => {
                     return Ok(Some(new_token));
                 }
@@ -329,12 +336,13 @@ impl McpOAuthService {
     async fn refresh_token(
         &self,
         mcp_server_id: Uuid,
+        org_id: i64,
         user_id: Uuid,
         token: &McpUserTokenRow,
     ) -> Result<String> {
         let server = self
             .db
-            .get_mcp_server(DEFAULT_ORG_ID, mcp_server_id)
+            .get_mcp_server(org_id, mcp_server_id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 

@@ -66,12 +66,19 @@ impl McpToolExecutor {
         // Get MCP server info (from cache or gRPC)
         let server_info = self.get_server_info(&server_prefix).await?;
 
-        // Check if OAuth authorization is required but missing
+        // Check if OAuth authorization is required but missing.
+        // Return as a tool error (not an Err) so the LLM can inform the user.
         if server_info.oauth_required {
-            return Err(anyhow!(
-                "MCP server '{}' requires OAuth authorization. Please authorize access in the UI.",
-                server_info.name
-            ));
+            return Ok(ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!(
+                    "MCP server '{}' requires OAuth authorization. \
+                     The user must authorize access in Settings > MCP Servers before this tool can be used.",
+                    server_info.name
+                )),
+            });
         }
 
         // Call the MCP server

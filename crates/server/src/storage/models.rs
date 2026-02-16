@@ -880,6 +880,7 @@ pub struct UpsertMcpUserToken {
 pub struct McpOAuthStateRow {
     pub id: Uuid,
     pub mcp_server_id: Uuid,
+    pub org_id: i64,
     pub user_id: Uuid,
     pub code_verifier: String,
     pub redirect_uri: String,
@@ -892,6 +893,7 @@ pub struct McpOAuthStateRow {
 #[derive(Debug, Clone)]
 pub struct CreateMcpOAuthState {
     pub mcp_server_id: Uuid,
+    pub org_id: i64,
     pub user_id: Uuid,
     pub code_verifier: String,
     pub redirect_uri: String,

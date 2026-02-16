@@ -12,7 +12,7 @@ import {
   revokeMcpServerOAuth,
 } from "@/lib/api/mcp-servers";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
+import type { CreateMcpServerRequest, McpOAuthStatus, UpdateMcpServerRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 // MCP Server hooks
@@ -91,33 +91,36 @@ export function useDeleteMcpServer() {
 // MCP Server OAuth hooks
 
 export function useMcpServerOAuthStatus(serverId: string) {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
-  return useQuery({
-    queryKey: [...queryKeys.mcpServers.oauthStatus(serverId), org],
-    queryFn: () => getMcpServerOAuthStatus(org!, serverId),
-    enabled: !!org && !!serverId,
-    staleTime: 60000, // OAuth status can be cached for a minute
+  const { data: oauthStatus, ...rest } = useQuery({
+    queryKey: queryKeys.mcpServers.oauthStatus(serverId),
+    queryFn: () => getMcpServerOAuthStatus(serverId),
+    enabled: !!serverId,
+    // Use token expiry for smart refetch: poll more frequently near expiry
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as McpOAuthStatus | undefined;
+      if (!data?.authorized || !data?.expires_at) return false;
+      const expiresIn = new Date(data.expires_at).getTime() - Date.now();
+      // Poll every 30s when token expires within 5 minutes
+      if (expiresIn < 5 * 60 * 1000) return 30_000;
+      return false;
+    },
   });
+
+  return { data: oauthStatus, ...rest };
 }
 
 export function useStartMcpServerOAuth(serverId: string) {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
   return useMutation({
-    mutationFn: (returnUrl?: string) => startMcpServerOAuth(org!, serverId, returnUrl),
+    mutationFn: (returnUrl?: string) => startMcpServerOAuth(serverId, returnUrl),
   });
 }
 
 export function useRevokeMcpServerOAuth(serverId: string) {
   const queryClient = useQueryClient();
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: () => revokeMcpServerOAuth(org!, serverId),
+    mutationFn: () => revokeMcpServerOAuth(serverId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.oauthStatus(serverId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.detail(serverId) });
