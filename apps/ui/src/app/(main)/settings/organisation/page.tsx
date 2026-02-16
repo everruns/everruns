@@ -179,9 +179,7 @@ export default function OrganisationPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold">Your Organisations</h2>
-            <p className="text-sm text-muted-foreground">
-              All organisations you are a member of.
-            </p>
+            <p className="text-sm text-muted-foreground">All organisations you are a member of.</p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -198,9 +196,7 @@ export default function OrganisationPage() {
                 className={`p-4 flex items-center justify-between ${isCurrent ? "border-primary/50" : ""}`}
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}
-                  >
+                  <div className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
                     <Building2
                       className={`h-4 w-4 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}
                     />
@@ -254,17 +250,10 @@ export default function OrganisationPage() {
               </p>
             )}
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateDialogOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={createOrganization.isPending || !newOrgName.trim()}
-              >
+              <Button type="submit" disabled={createOrganization.isPending || !newOrgName.trim()}>
                 {createOrganization.isPending ? "Creating..." : "Create"}
               </Button>
             </DialogFooter>
