@@ -107,7 +107,7 @@ Initiate OAuth authorization flow. Redirects user to OAuth provider.
 
 **Response:** `302 Found` - Redirects to OAuth provider's authorization endpoint
 
-#### GET /v1/mcp-servers/{server_id}/oauth/callback
+#### GET /v1/oauth/callback
 
 OAuth callback handler. Exchanges authorization code for tokens.
 
@@ -188,7 +188,7 @@ code_challenge = BASE64URL(SHA256(code_verifier))
 ```
 https://github.com/login/oauth/authorize?
   client_id=<client_id>&
-  redirect_uri=https://api.everruns.com/v1/mcp-servers/{server_id}/oauth/callback&
+  redirect_uri=https://api.everruns.com/v1/oauth/callback&
   response_type=code&
   scope=repo%20user&
   state=<random_state>&
@@ -210,7 +210,7 @@ grant_type=authorization_code&
 client_id=<client_id>&
 client_secret=<client_secret>&
 code=<authorization_code>&
-redirect_uri=https://api.everruns.com/v1/mcp-servers/{server_id}/oauth/callback&
+redirect_uri=https://api.everruns.com/v1/oauth/callback&
 code_verifier=<code_verifier>&
 resource=https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F
 ```

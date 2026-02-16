@@ -355,6 +355,12 @@ case "$cmd" in
       export OTEL_SDK_DISABLED=true
     fi
 
+    # Set encryption key if not provided (standard dev key from .env.example)
+    if [ -z "${SECRETS_ENCRYPTION_KEY:-}" ]; then
+      export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
+      echo "   ✅ Using default encryption key"
+    fi
+
     print_doppler_secret_hint
 
     # Configure LLM API keys

@@ -124,6 +124,8 @@ pub struct WorkerServiceImpl {
     task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
     /// Storage backend for image resolution
     db: Arc<StorageBackend>,
+    /// Encryption service for decrypting secrets (API keys, OAuth tokens)
+    encryption: Option<Arc<EncryptionService>>,
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
 }
@@ -176,6 +178,7 @@ impl WorkerServiceImpl {
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
+            encryption,
             session_storage_store,
         }
     }
@@ -2137,19 +2140,46 @@ impl WorkerService for WorkerServiceImpl {
                             .get_mcp_user_token(server_with_tools.server.id.uuid(), user_id)
                             .await
                         {
-                            Ok(Some(_token_row)) => {
-                                // Decrypt the access token
-                                // Note: For now we can't decrypt without EncryptionService
-                                // This will need to be added when full encryption support is implemented
-                                // For now, mark as required since we can't decrypt
-                                tracing::debug!(
-                                    mcp_server = %server_with_tools.server.name,
-                                    user_id = %user_id,
-                                    "Found OAuth token for user"
-                                );
-                                // TODO: Decrypt access_token_encrypted using EncryptionService
-                                // For now, we'll mark as required since we can't return decrypted token
-                                (None, true)
+                            Ok(Some(token_row)) => {
+                                // Check if token is expired
+                                let is_expired = token_row
+                                    .expires_at
+                                    .map(|exp| exp <= chrono::Utc::now())
+                                    .unwrap_or(false);
+
+                                if is_expired {
+                                    tracing::debug!(
+                                        mcp_server = %server_with_tools.server.name,
+                                        user_id = %user_id,
+                                        "OAuth token expired for user"
+                                    );
+                                    (None, true)
+                                } else if let Some(ref enc) = self.encryption {
+                                    match enc.decrypt_to_string(&token_row.access_token_encrypted) {
+                                        Ok(access_token) => {
+                                            tracing::debug!(
+                                                mcp_server = %server_with_tools.server.name,
+                                                user_id = %user_id,
+                                                "Decrypted OAuth token for user"
+                                            );
+                                            (Some(access_token), false)
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                mcp_server = %server_with_tools.server.name,
+                                                error = %e,
+                                                "Failed to decrypt OAuth token"
+                                            );
+                                            (None, true)
+                                        }
+                                    }
+                                } else {
+                                    tracing::warn!(
+                                        mcp_server = %server_with_tools.server.name,
+                                        "EncryptionService not available, cannot decrypt OAuth token"
+                                    );
+                                    (None, true)
+                                }
                             }
                             Ok(None) => {
                                 tracing::debug!(

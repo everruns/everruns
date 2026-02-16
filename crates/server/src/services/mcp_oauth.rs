@@ -132,11 +132,8 @@ impl McpOAuthService {
         let code_verifier = generate_code_verifier();
         let code_challenge = generate_code_challenge(&code_verifier);
 
-        // Create redirect URI
-        let redirect_uri = format!(
-            "{}/v1/mcp-servers/{}/oauth/callback",
-            self.base_url, mcp_server_id
-        );
+        // Single stable callback URL (server ID recovered from state parameter)
+        let redirect_uri = format!("{}/v1/oauth/callback", self.base_url);
 
         // Store state in database
         let state = self

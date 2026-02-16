@@ -188,10 +188,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/mcp-servers/{server_id}/oauth/authorize",
             get(start_oauth_authorization).post(start_oauth_authorization_json),
         )
-        .route(
-            "/v1/mcp-servers/{server_id}/oauth/callback",
-            get(handle_oauth_callback),
-        )
+        .route("/v1/oauth/callback", get(handle_oauth_callback))
         .route(
             "/v1/mcp-servers/{server_id}/oauth/token",
             delete(revoke_oauth_token),
@@ -585,12 +582,15 @@ pub async fn start_oauth_authorization_json(
     }))
 }
 
-/// GET /v1/mcp-servers/{server_id}/oauth/callback - OAuth callback handler
+/// GET /v1/oauth/callback - OAuth callback handler
+///
+/// Single stable callback URL for all MCP servers. The MCP server ID is recovered
+/// from the `state` parameter (stored in mcp_oauth_states table). This avoids
+/// needing to register a separate redirect URI per MCP server with OAuth providers.
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers/{server_id}/oauth/callback",
+    path = "/v1/oauth/callback",
     params(
-        ("server_id" = Uuid, Path, description = "MCP server ID"),
         ("code" = String, Query, description = "Authorization code from OAuth provider"),
         ("state" = String, Query, description = "State parameter for CSRF protection")
     ),
@@ -603,7 +603,6 @@ pub async fn start_oauth_authorization_json(
 )]
 pub async fn handle_oauth_callback(
     State(state): State<AppState>,
-    Path(_server_id): Path<Uuid>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
