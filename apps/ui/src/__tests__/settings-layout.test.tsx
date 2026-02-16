@@ -34,9 +34,23 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
+    expect(screen.getByText("General")).toBeInTheDocument();
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.getByText("Connections")).toBeInTheDocument();
+    expect(screen.getByText("API Keys")).toBeInTheDocument();
+  });
+
+  it("renders section labels for Organisation and Personal", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.getByText("Organisation")).toBeInTheDocument();
+    expect(screen.getByText("Personal")).toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {
