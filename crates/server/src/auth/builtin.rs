@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::api_key::{ValidatedApiKey, hash_api_key, is_valid_api_key_format};
 use super::backend::AuthBackend;
-use super::config::{AuthConfig, AuthMode};
+use super::config::AuthConfig;
 use super::jwt::JwtService;
 use super::middleware::{AuthError, AuthMethod, AuthUser};
 use super::routes::{self, AuthConfigResponse};
@@ -50,19 +50,13 @@ impl AuthBackend for BuiltinAuthBackend {
         let organizations = fetch_user_organizations(&self.db, user_id).await?;
 
         // If user has no organizations, fall back to default organization
-        let organizations = if organizations.is_empty() {
+        if organizations.is_empty() {
             tracing::warn!(
                 user_id = %user_id,
                 "User has no organizations, falling back to default org"
             );
-            vec![OrgMembership {
-                org_id: DEFAULT_ORG_ID,
-                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-                name: "Default Organization".to_string(),
-            }]
-        } else {
-            organizations
-        };
+        }
+        let organizations = organizations_or_default(organizations);
 
         Ok(AuthUser {
             id: user_id,
@@ -165,24 +159,16 @@ impl AuthBackend for BuiltinAuthBackend {
         }
 
         AuthConfigResponse {
-            mode: match self.config.mode {
-                AuthMode::None => "none".to_string(),
-                AuthMode::Admin => "admin".to_string(),
-                AuthMode::Full => "full".to_string(),
-                AuthMode::External => "external".to_string(),
-            },
+            mode: self.config.mode.as_str().to_string(),
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
-            // External mode: signup is managed by the external provider
-            signup_enabled: self.config.mode != AuthMode::Admin
-                && self.config.mode != AuthMode::External
-                && !self.config.disable_signup,
+            signup_enabled: self.config.signup_enabled(),
         }
     }
 }
 
 /// Fetch organization memberships for a user
-async fn fetch_user_organizations(
+pub(super) async fn fetch_user_organizations(
     db: &StorageBackend,
     user_id: Uuid,
 ) -> Result<Vec<OrgMembership>, AuthError> {
@@ -199,4 +185,17 @@ async fn fetch_user_organizations(
             name: row.name,
         })
         .collect())
+}
+
+/// Return organizations as-is, or fall back to default org membership if empty
+pub(super) fn organizations_or_default(organizations: Vec<OrgMembership>) -> Vec<OrgMembership> {
+    if organizations.is_empty() {
+        vec![OrgMembership {
+            org_id: DEFAULT_ORG_ID,
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+        }]
+    } else {
+        organizations
+    }
 }

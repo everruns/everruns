@@ -11,7 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership};
+use everruns_core::DEFAULT_ORG_ID;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use super::{
     api_key::generate_api_key,
-    builtin::BuiltinAuthBackend,
+    builtin::{self, BuiltinAuthBackend},
     config::AuthMode,
     jwt::hash_token,
     middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME, ResolvedOrg},
@@ -182,19 +182,10 @@ pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<Au
     }
 
     Json(AuthConfigResponse {
-        mode: match state.config.mode {
-            AuthMode::None => "none".to_string(),
-            AuthMode::Admin => "admin".to_string(),
-            AuthMode::Full => "full".to_string(),
-            AuthMode::External => "external".to_string(),
-        },
+        mode: state.config.mode.as_str().to_string(),
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers,
-        // Admin mode has a single predefined user, no signup allowed
-        // External mode: signup is managed by the external provider
-        signup_enabled: state.config.mode != AuthMode::Admin
-            && state.config.mode != AuthMode::External
-            && !state.config.disable_signup,
+        signup_enabled: state.config.signup_enabled(),
     })
 }
 
@@ -253,29 +244,17 @@ pub async fn login(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id)
+    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
-
-    // Fallback to default org if empty (add_organization_member may have failed silently)
-    let organizations = if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
 
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
-        auth_method: super::middleware::AuthMethod::Jwt,
-        organizations,
+        auth_method: AuthMethod::Jwt,
+        organizations: builtin::organizations_or_default(organizations),
     };
 
     generate_token_response(&state, jar, &auth_user).await
@@ -343,29 +322,17 @@ pub async fn register(
             // Continue anyway - user is created, they just might not have org membership
         });
 
-    // Fetch organization memberships (should include default org now)
-    let organizations = fetch_user_organizations(&state.db, user.id)
+    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
-
-    // Fallback to default org if empty (add_organization_member may have failed silently)
-    let organizations = if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
 
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles: vec!["user".to_string()],
-        auth_method: super::middleware::AuthMethod::Jwt,
-        organizations,
+        auth_method: AuthMethod::Jwt,
+        organizations: builtin::organizations_or_default(organizations),
     };
 
     let (jar, json) = generate_token_response(&state, jar, &auth_user).await?;
@@ -420,29 +387,17 @@ pub async fn refresh_token(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id)
+    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
-
-    // Fallback to default org if empty (add_organization_member may have failed silently)
-    let organizations = if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
 
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
-        auth_method: super::middleware::AuthMethod::Jwt,
-        organizations,
+        auth_method: AuthMethod::Jwt,
+        organizations: builtin::organizations_or_default(organizations),
     };
 
     generate_token_response(&state, jar, &auth_user).await
@@ -648,29 +603,17 @@ pub async fn oauth_callback(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id)
+    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
-
-    // Fallback to default org if empty (add_organization_member may have failed silently)
-    let organizations = if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
 
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
-        auth_method: super::middleware::AuthMethod::Jwt,
-        organizations,
+        auth_method: AuthMethod::Jwt,
+        organizations: builtin::organizations_or_default(organizations),
     };
 
     // Generate tokens and set cookies
@@ -928,54 +871,24 @@ async fn get_or_create_admin_user(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Fetch organization memberships
-    let organizations = fetch_user_organizations(&state.db, user.id)
+    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
 
-    // Fallback to default org if empty (for existing admin users not in any org)
-    let organizations = if organizations.is_empty() {
-        // Try to add user to default org
+    // For existing admin users not in any org, try to add them
+    if organizations.is_empty() {
         let _ = state
             .db
             .add_organization_member(DEFAULT_ORG_ID, user.id)
             .await;
-
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-        }]
-    } else {
-        organizations
-    };
+    }
 
     Ok(AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
-        auth_method: super::middleware::AuthMethod::Jwt,
-        organizations,
+        auth_method: AuthMethod::Jwt,
+        organizations: builtin::organizations_or_default(organizations),
     })
-}
-
-/// Fetch organization memberships for a user
-async fn fetch_user_organizations(
-    db: &crate::storage::StorageBackend,
-    user_id: Uuid,
-) -> Result<Vec<OrgMembership>, AuthError> {
-    let org_rows = db.list_user_organizations(user_id).await.map_err(|e| {
-        tracing::error!("Failed to fetch user organizations: {}", e);
-        AuthError::unauthorized("Failed to fetch organizations")
-    })?;
-
-    Ok(org_rows
-        .into_iter()
-        .map(|row| OrgMembership {
-            org_id: row.org_id,
-            public_id: row.public_id,
-            name: row.name,
-        })
-        .collect())
 }
