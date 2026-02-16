@@ -44,7 +44,8 @@ mod seed_ids {
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
-    pub const CLOUD_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
+    pub const CODESANDBOX_CODER_AGENT: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
 
     // MCP Servers (0x500-0x5FF)
@@ -549,10 +550,10 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
         dev_only: false,
     },
     SeedAgent {
-        id: seed_ids::CLOUD_CODER_AGENT,
-        name: "Cloud Coder",
+        id: seed_ids::CODESANDBOX_CODER_AGENT,
+        name: "CodeSandbox Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by CodeSandbox",
-        system_prompt: r#"You are a Cloud Coder Agent. You run code in cloud sandbox VMs powered by CodeSandbox.
+        system_prompt: r#"You are a CodeSandbox Coder Agent. You run code in cloud sandbox VMs powered by CodeSandbox.
 
 Prerequisite: The session must have CSB_API_KEY set in secrets before you can use sandbox tools.
 If missing, tell the user to set it via the API or harness config.
