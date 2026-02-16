@@ -1,12 +1,13 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 import {
   ArrowLeft,
   Sparkles,
@@ -17,9 +18,13 @@ import {
   Database,
   Bot,
   GitBranch,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
+import { useUpdateSession } from "@/hooks/use-sessions";
 import { SessionProvider, useSessionContext } from "./session-context";
 
 // Helper function to format token counts in a compact way
@@ -51,6 +56,88 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 interface SessionLayoutContentProps {
   children: React.ReactNode;
   sessionId: string;
+}
+
+function EditableSessionTitle({
+  sessionId,
+  title,
+  fallback,
+}: {
+  sessionId: string;
+  title: string | null;
+  fallback: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const updateSession = useUpdateSession();
+
+  useEffect(() => {
+    if (editing) {
+      setValue(title ?? "");
+      // Wait for next frame so the input is mounted
+      requestAnimationFrame(() => inputRef.current?.select());
+    }
+  }, [editing, title]);
+
+  function save() {
+    const trimmed = value.trim();
+    // Skip if unchanged
+    if (trimmed === (title ?? "")) {
+      setEditing(false);
+      return;
+    }
+    updateSession.mutate(
+      { sessionId, request: { title: trimmed || undefined } },
+      { onSettled: () => setEditing(false) },
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          ref={inputRef}
+          value={value}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="h-8 text-xl font-bold w-64"
+          placeholder={fallback}
+        />
+        <button
+          onClick={save}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+          aria-label="Save title"
+        >
+          <Check className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+          aria-label="Cancel editing"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <h1 className="text-xl font-bold flex items-center gap-2">
+      {title || fallback}
+      <button
+        onClick={() => setEditing(true)}
+        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground opacity-0 group-hover/title:opacity-100 transition-opacity"
+        aria-label="Edit session title"
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+      <CopyButton value={sessionId} />
+    </h1>
+  );
 }
 
 function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
@@ -104,11 +191,12 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
         </Link>
 
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              {session.title || `Session ${shortenId(session.id)}`}
-              <CopyButton value={session.id} />
-            </h1>
+          <div className="group/title">
+            <EditableSessionTitle
+              sessionId={sessionId}
+              title={session.title}
+              fallback={`Session ${shortenId(session.id)}`}
+            />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {agent && (
                 <Link
