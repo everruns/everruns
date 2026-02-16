@@ -87,13 +87,13 @@ Enables fetching content from URLs and converting HTML to markdown or plain text
 
 ### Docker Container (Experimental)
 
-**Status**: Available (Development only)
+**Status**: Available (Development only, integration plugin)
 
 :::caution
 This capability is experimental and only available in development environments. It may change significantly or be removed.
 :::
 
-Provides tools to run commands and manage files in a Docker container tied to the session.
+Provides tools to run commands and manage files in a Docker container tied to the session. Registered as an external integration plugin via the `inventory` crate (`integrations/docker/`).
 
 - **Tools**:
   - `docker_exec` - Execute shell commands in the container

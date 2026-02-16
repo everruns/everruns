@@ -57,6 +57,7 @@ graph TB
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
    - `integrations/codesandbox/` → `everruns-integrations-codesandbox` - CodeSandbox cloud sandbox integration (auto-registered via `inventory` plugin system)
+   - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
@@ -78,7 +79,8 @@ everruns/
 │   ├── openai/           # OpenAI provider
 │   └── anthropic/        # Anthropic provider
 ├── integrations/
-│   └── codesandbox/      # CodeSandbox cloud sandbox (inventory plugin)
+│   ├── codesandbox/      # CodeSandbox cloud sandbox (inventory plugin)
+│   └── docker/           # Docker container (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── specs/                # Feature specifications
 ├── test_cases/           # Manual test cases

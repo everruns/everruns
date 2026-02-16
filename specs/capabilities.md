@@ -130,7 +130,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `web_fetch` | Web Fetch | Network | Available |
 | `stateless_todo_list` | Task Management | Productivity | Available |
 | `sample_data` | Sample Data | Data | Available |
-| `docker_container` | Docker Container | Development | Available (Dev only) |
+| `docker_container` | Docker Container | Development | Available (Dev only, integration plugin) |
 | `session_sql_database` | SQL Database | Data | Available |
 | `research` | Research | AI | Coming Soon |
 
@@ -1024,8 +1024,9 @@ Experimental capabilities are available in development environments only (`Deplo
 
 #### DockerContainer
 
-- **Status**: Available (Dev only)
+- **Status**: Available (Dev only, integration plugin)
 - **ID**: `docker_container`
+- **Crate**: `integrations/docker/` → `everruns-integrations-docker` (auto-registered via `inventory` plugin system)
 - **Purpose**: Run commands and manage files in a Docker container tied to the session
 - **System Prompt**: Guidance on using container tools, best practices for command execution
 - **Container Lifecycle**:
