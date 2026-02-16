@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs for the same PR/branch on new pushes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -14,9 +19,48 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Detect which parts of the codebase changed to skip irrelevant jobs
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      ui: ${{ steps.filter.outputs.ui }}
+      docs: ${{ steps.filter.outputs.docs }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'integrations/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+            ui:
+              - 'apps/ui/**'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'apps/docs/**'
+              - '.github/workflows/ci.yml'
+            docker:
+              - 'docker/**'
+              - 'crates/**'
+              - 'integrations/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+
   format:
     name: Format Check
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +75,8 @@ jobs:
   lockfile:
     name: Lockfile Check
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +89,8 @@ jobs:
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +116,8 @@ jobs:
   unit-test:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -97,6 +147,8 @@ jobs:
   integration-test:
     name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -169,10 +221,12 @@ jobs:
           cargo test -p everruns-core --test agent_run_basic --all-features
           cargo test -p everruns-core --test agent_run_with_thinking --all-features
 
-  # Build release binaries and upload as artifacts for E2E jobs
+  # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
     name: Build Release Binaries
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -210,6 +264,13 @@ jobs:
         with:
           name: everruns-cli
           path: target/release/everruns
+          retention-days: 1
+
+      - name: Upload export-openapi binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-openapi
+          path: target/release/export-openapi
           retention-days: 1
 
   workflow-test:
@@ -393,30 +454,46 @@ jobs:
         if: always()
         run: kill $SERVER_PID || true
 
-  build:
-    name: Build Check
+  # Reuses export-openapi binary from build-binaries instead of rebuilding
+  openapi-check:
+    name: OpenAPI Spec Freshness
     runs-on: ubuntu-latest
+    needs: build-binaries
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - name: Download export-openapi binary
+        uses: actions/download-artifact@v4
         with:
-          shared-key: "release"
+          name: export-openapi
+          path: ./bin
 
-      - name: Build
-        run: cargo build --all-features --release
+      - name: Make binary executable
+        run: chmod +x ./bin/export-openapi
+
+      - name: Generate fresh OpenAPI spec
+        run: ./bin/export-openapi > /tmp/openapi-fresh.json
+
+      - name: Compare with committed spec
+        run: |
+          if ! diff -q docs/api/openapi.json /tmp/openapi-fresh.json > /dev/null 2>&1; then
+            echo "❌ OpenAPI spec is out of date!"
+            echo ""
+            echo "The committed docs/api/openapi.json differs from the generated spec."
+            echo "Please run: ./scripts/export-openapi.sh"
+            echo ""
+            echo "Diff (first 50 lines):"
+            diff docs/api/openapi.json /tmp/openapi-fresh.json | head -50
+            exit 1
+          fi
+          echo "✅ OpenAPI spec is up to date"
 
   ui-build:
     name: UI Build, Lint & Test
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
 
     defaults:
       run:
@@ -459,6 +536,8 @@ jobs:
   docs-build:
     name: Docs Build & Check
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
 
     defaults:
       run:
@@ -483,45 +562,12 @@ jobs:
       - name: Build docs
         run: npm run build
 
-  openapi-check:
-    name: OpenAPI Spec Freshness
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "release"
-
-      - name: Generate fresh OpenAPI spec
-        run: cargo run --bin export-openapi --release > /tmp/openapi-fresh.json
-
-      - name: Compare with committed spec
-        run: |
-          if ! diff -q docs/api/openapi.json /tmp/openapi-fresh.json > /dev/null 2>&1; then
-            echo "❌ OpenAPI spec is out of date!"
-            echo ""
-            echo "The committed docs/api/openapi.json differs from the generated spec."
-            echo "Please run: ./scripts/export-openapi.sh"
-            echo ""
-            echo "Diff (first 50 lines):"
-            diff docs/api/openapi.json /tmp/openapi-fresh.json | head -50
-            exit 1
-          fi
-          echo "✅ OpenAPI spec is up to date"
-
   # Docker builds using matrix for parallel execution
   docker-build:
     name: Docker Build (${{ matrix.target }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -549,3 +595,33 @@ jobs:
           tags: ${{ matrix.image }}:ci
           cache-from: type=gha,scope=docker-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
+
+  # Single required check for branch protection.
+  # Succeeds when all relevant jobs pass; skipped jobs (from path filtering) are OK.
+  ci-success:
+    name: CI
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - changes
+      - format
+      - lockfile
+      - clippy
+      - unit-test
+      - integration-test
+      - build-binaries
+      - workflow-test
+      - cli-e2e-test
+      - openapi-check
+      - ui-build
+      - docs-build
+      - docker-build
+    steps:
+      - name: Verify all jobs passed
+        run: |
+          echo "Job results: ${{ toJson(needs.*.result) }}"
+          if echo "${{ toJson(needs.*.result) }}" | grep -qE '"failure"|"cancelled"'; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi
+          echo "All CI jobs passed (or were skipped due to path filtering)"
