@@ -14,6 +14,10 @@ import {
   Users,
   DollarSign,
   Package,
+  Terminal,
+  Database,
+  FileText,
+  Container,
   type LucideIcon,
 } from "lucide-react";
 
@@ -70,6 +74,10 @@ export const capabilityIconMap: Record<string, LucideIcon> = {
   "list-checks": ListChecks,
   "hard-drive": HardDrive,
   "cloud-sun": CloudSun,
+  terminal: Terminal,
+  database: Database,
+  "file-text": FileText,
+  container: Container,
   // Additional capability icons
   cloud: Cloud,
   users: Users,
