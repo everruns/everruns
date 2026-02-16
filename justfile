@@ -140,33 +140,33 @@ load-test profile="medium" *args:
             SESSIONS="${SESSIONS:-10}" \
             MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-10}" \
             MAX_CONCURRENT="${MAX_CONCURRENT:-10}" \
-            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
         medium)
             SESSIONS="${SESSIONS:-100}" \
             MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
             MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
-            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
         heavy)
             SESSIONS="${SESSIONS:-500}" \
             MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-100}" \
             MAX_CONCURRENT="${MAX_CONCURRENT:-100}" \
-            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
         realistic)
             MODEL_ID="${MODEL_ID:-llmsim-ttft-500}" \
             SESSIONS="${SESSIONS:-100}" \
             MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
             MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
-            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
         slow)
             MODEL_ID="${MODEL_ID:-llmsim-ttft-2000}" \
             SESSIONS="${SESSIONS:-50}" \
             MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-20}" \
             MAX_CONCURRENT="${MAX_CONCURRENT:-25}" \
-            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
         *)
             echo "Unknown profile: {{profile}}"
