@@ -186,11 +186,15 @@ pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<Au
             AuthMode::None => "none".to_string(),
             AuthMode::Admin => "admin".to_string(),
             AuthMode::Full => "full".to_string(),
+            AuthMode::External => "external".to_string(),
         },
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers,
         // Admin mode has a single predefined user, no signup allowed
-        signup_enabled: state.config.mode != AuthMode::Admin && !state.config.disable_signup,
+        // External mode: signup is managed by the external provider
+        signup_enabled: state.config.mode != AuthMode::Admin
+            && state.config.mode != AuthMode::External
+            && !state.config.disable_signup,
     })
 }
 

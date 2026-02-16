@@ -8,13 +8,15 @@ This document defines the authentication system for Everruns, supporting flexibl
 
 ### Authentication Modes
 
-Everruns supports three authentication modes:
+Everruns supports four authentication modes:
 
 1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, API keys, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. Suitable for local development.
 
 2. **Admin** (`AUTH_MODE=admin`): Single admin user via environment variables. Suitable for local development with basic access control.
 
 3. **Full** (`AUTH_MODE=full`): Complete authentication with user registration, OAuth, and API keys. Suitable for production deployments.
+
+4. **External** (`AUTH_MODE=external`): Authentication managed by a third-party provider (e.g., PropelAuth, Auth0, Clerk). The external provider handles login, registration, and user management. Built-in password auth, OAuth, and signup are disabled. API key authentication is supported. Suitable for SaaS deployments with external identity providers.
 
 ### Authentication Methods
 
@@ -66,7 +68,7 @@ Account linking by email is supported (same email = same account).
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AUTH_MODE` | Authentication mode: `none`, `admin`, `full` | `none` |
+| `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external` | `none` |
 | `AUTH_BASE_URL` | Base URL for OAuth callbacks | `http://localhost:9000` |
 | `AUTH_ADMIN_EMAIL` | Admin user email (admin mode) | - |
 | `AUTH_ADMIN_PASSWORD` | Admin user password (admin mode) | - |
@@ -164,7 +166,7 @@ The UI fetches authentication configuration from `GET /v1/auth/config` on startu
 
 ```typescript
 interface AuthConfigResponse {
-  mode: "none" | "admin" | "full";
+  mode: "none" | "admin" | "full" | "external";
   password_auth_enabled: boolean;
   oauth_providers: string[];  // ["google", "github"]
   signup_enabled: boolean;
@@ -177,6 +179,7 @@ Based on `mode`:
 
 - **none**: Skip authentication entirely, show app directly
 - **admin/full**: Require login before accessing protected routes
+- **external**: Auth required (like full), but login/signup managed by external provider
 
 ### UI Components
 

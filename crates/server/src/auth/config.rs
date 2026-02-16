@@ -14,6 +14,8 @@ pub enum AuthMode {
     Admin,
     /// Full authentication (password + OAuth + API keys)
     Full,
+    /// External authentication (third-party provider like PropelAuth, Auth0, Clerk)
+    External,
 }
 
 impl AuthMode {
@@ -21,6 +23,7 @@ impl AuthMode {
         match s.to_lowercase().as_str() {
             "admin" => AuthMode::Admin,
             "full" => AuthMode::Full,
+            "external" => AuthMode::External,
             _ => AuthMode::None,
         }
     }
@@ -257,6 +260,7 @@ impl AuthConfig {
     pub fn password_auth_enabled(&self) -> bool {
         // Admin mode always has password auth (that's how you log in with admin credentials)
         // Full mode has password auth unless explicitly disabled
+        // External mode: password auth is managed by the external provider, not us
         self.mode == AuthMode::Admin || (self.mode == AuthMode::Full && !self.disable_password_auth)
     }
 
@@ -268,7 +272,9 @@ impl AuthConfig {
     /// Check if API key authentication is available
     #[allow(dead_code)]
     pub fn api_key_auth_enabled(&self) -> bool {
-        self.mode == AuthMode::Full || self.mode == AuthMode::Admin
+        self.mode == AuthMode::Full
+            || self.mode == AuthMode::Admin
+            || self.mode == AuthMode::External
     }
 }
 
@@ -284,6 +290,8 @@ mod tests {
         assert_eq!(AuthMode::parse("ADMIN"), AuthMode::Admin);
         assert_eq!(AuthMode::parse("full"), AuthMode::Full);
         assert_eq!(AuthMode::parse("FULL"), AuthMode::Full);
+        assert_eq!(AuthMode::parse("external"), AuthMode::External);
+        assert_eq!(AuthMode::parse("EXTERNAL"), AuthMode::External);
         assert_eq!(AuthMode::parse("invalid"), AuthMode::None);
     }
 
@@ -407,6 +415,27 @@ mod tests {
         let admin = config_with_admin.admin.unwrap();
         assert_eq!(admin.email, "admin@example.com");
         assert_eq!(admin.password, "changeme");
+    }
+
+    #[test]
+    fn test_external_mode() {
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            ..Default::default()
+        };
+        assert!(config.is_enabled());
+        assert!(
+            !config.password_auth_enabled(),
+            "External mode should not have password auth (managed by external provider)"
+        );
+        assert!(
+            !config.oauth_enabled(),
+            "External mode should not have built-in OAuth"
+        );
+        assert!(
+            config.api_key_auth_enabled(),
+            "External mode should support API keys"
+        );
     }
 
     #[test]
