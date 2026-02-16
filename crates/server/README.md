@@ -23,10 +23,9 @@ Migrations are applied automatically on server startup.
 
 The API will be available at `http://localhost:9000`
 
-### 3. View API Documentation
+### 3. Access the API
 
-Open your browser to:
-- **Swagger UI**: http://localhost:9000/swagger-ui/
+- **API**: http://localhost:9000/v1/...
 - **OpenAPI Spec**: http://localhost:9000/api-doc/openapi.json
 
 ## Examples
@@ -105,7 +104,6 @@ See [specs/apis.md](../../specs/apis.md) for the complete API reference.
 ### System
 
 - `GET /health` - Health check (includes version and runner mode)
-- `GET /swagger-ui/` - Interactive API documentation
 - `GET /api-doc/openapi.json` - OpenAPI specification
 
 Organization context is derived from authentication (API key or session cookie).

@@ -53,17 +53,16 @@ See [Capabilities](/features/capabilities) for more details.
 
 ### API Access
 
-The API is available at your deployment URL with full OpenAPI documentation:
+The API is available at your deployment URL:
 
-- **API Base**: `https://your-domain.com/v1/`
-- **Swagger UI**: `https://your-domain.com/swagger-ui/`
+- **API Base**: `https://your-domain.com/api/v1/`
 - **OpenAPI Spec**: `https://your-domain.com/api-doc/openapi.json`
 
 ## Architecture
 
 Everruns uses a layered architecture:
 
-- **API Layer**: HTTP endpoints (axum), SSE streaming, Swagger UI
+- **API Layer**: HTTP endpoints (axum), SSE streaming
 - **Core Layer**: Agent abstractions, capabilities, tools
 - **Worker Layer**: Durable workflows for reliable execution
 - **Storage Layer**: PostgreSQL with encrypted secrets and durable execution state

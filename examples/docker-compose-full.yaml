@@ -171,20 +171,16 @@ configs:
   caddyfile:
     content: |
       # Reverse proxy routes:
-      #   /api/*        -> API (strips prefix)
-      #   /swagger-ui/* -> API
-      #   /api-doc/*    -> API
-      #   /health       -> API
-      #   /*            -> UI
+      #   /api/*     -> API (strips prefix)
+      #   /api-doc/* -> API
+      #   /health    -> API
+      #   /*         -> UI
       :9300 {
         handle_path /api/* {
           reverse_proxy server:9000 {
             # Disable response buffering for SSE streaming
             flush_interval -1
           }
-        }
-        handle /swagger-ui/* {
-          reverse_proxy server:9000
         }
         handle /api-doc/* {
           reverse_proxy server:9000

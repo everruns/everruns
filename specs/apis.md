@@ -362,7 +362,6 @@ GET /v1/agents/{agent_id}
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/swagger-ui/` | Swagger UI for OpenAPI docs |
 | GET | `/api-doc/openapi.json` | OpenAPI specification |
 
 ### OpenAPI Spec Generation
