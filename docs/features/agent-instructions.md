@@ -21,7 +21,7 @@ Everruns implements `AGENTS.md` as a built-in capability. When enabled:
 1. **Enable the capability** on your agent:
 
 ```bash
-curl -X PATCH http://localhost:9000/v1/agents/{agent_id} \
+curl -X PATCH http://localhost:9300/api/v1/agents/{agent_id} \
   -H "Content-Type: application/json" \
   -d '{ "capabilities": [{ "ref": "agent_instructions" }] }'
 ```
@@ -112,7 +112,7 @@ Then write an `AGENTS.md` file to the session workspace using the file tools or 
 Enable the capability:
 
 ```bash
-curl -X PATCH http://localhost:9000/v1/agents/{agent_id} \
+curl -X PATCH http://localhost:9300/api/v1/agents/{agent_id} \
   -H "Content-Type: application/json" \
   -d '{
     "capabilities": [

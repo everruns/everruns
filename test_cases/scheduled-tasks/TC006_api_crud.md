@@ -13,7 +13,7 @@ Verify all CRUD operations work correctly via the REST API.
 
 | Field | Value |
 |-------|-------|
-| API Base URL | http://localhost:9000 |
+| API Base URL | http://localhost:9300/api |
 | Schedule Name | api-test-schedule |
 
 ## Steps

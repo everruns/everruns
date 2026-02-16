@@ -35,10 +35,10 @@ For local development, configure the API URL:
 
 ```bash
 # Via command-line flag
-everruns --api-url http://localhost:9000 agents list
+everruns --api-url http://localhost:9300/api agents list
 
 # Via environment variable
-export EVERRUNS_API_URL=http://localhost:9000
+export EVERRUNS_API_URL=http://localhost:9300/api
 everruns agents list
 ```
 

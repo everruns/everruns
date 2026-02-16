@@ -112,13 +112,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 ```bash
 # Check auth config endpoint
-curl http://localhost:9000/v1/auth/config
+curl http://localhost:9300/api/v1/auth/config
 
 # Should return:
 # {"mode":"none","password_auth_enabled":false,"oauth_providers":[],"signup_enabled":false}
 
 # For admin mode:
-curl -X POST http://localhost:9000/v1/auth/login \
+curl -X POST http://localhost:9300/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"your-password"}'
 ```
@@ -127,12 +127,12 @@ curl -X POST http://localhost:9000/v1/auth/login \
 
 ```bash
 # Login first to get access token
-TOKEN=$(curl -s -X POST http://localhost:9000/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:9300/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password"}' | jq -r '.access_token')
 
 # Create API key
-curl -X POST http://localhost:9000/v1/auth/api-keys \
+curl -X POST http://localhost:9300/api/v1/auth/api-keys \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-api-key"}'
@@ -143,7 +143,7 @@ curl -X POST http://localhost:9000/v1/auth/api-keys \
 ### Revoke API Key
 
 ```bash
-curl -X DELETE http://localhost:9000/v1/auth/api-keys/{key_id} \
+curl -X DELETE http://localhost:9300/api/v1/auth/api-keys/{key_id} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -197,7 +197,7 @@ docker run --rm -e DATABASE_URL="$DATABASE_URL" everruns-admin migrate-info
 The `/health` endpoint shows current auth mode:
 
 ```bash
-curl http://localhost:9000/health
+curl http://localhost:9300/health
 # {"status":"ok","version":"0.2.0","auth_mode":"None"}
 ```
 

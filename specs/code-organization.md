@@ -205,7 +205,7 @@ just test-llm  # Run against real LLM APIs
 - Capabilities listing
 
 **Requirements:**
-- Server running at `localhost:9000` (use `just start-dev --no-watch` or DEV_MODE in CI)
+- Server running at `localhost:9300` (use `just start-dev --no-watch` or DEV_MODE in CI)
 - `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY` for chat tests
 - Use `--skip-chat` flag to skip chat tests when no LLM keys available
 
