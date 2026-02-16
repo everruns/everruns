@@ -1,31 +1,34 @@
-//! CodeSandbox Capability (Experimental)
+//! CodeSandbox Integration (Experimental)
 //!
 //! Cloud-based sandboxed code execution via CodeSandbox REST API.
 //! Supports multiple sandboxes per session, each identified by sandbox_id.
 //!
+//! Decision: External integration crate, auto-registered via inventory plugin system
 //! Decision: Use secrets store for all state (API key + per-sandbox pitcher tokens)
 //! Decision: Two-tier API: Management API for lifecycle, Pint API for in-sandbox ops
 //! Decision: Sync+async exec modes via `wait` parameter
 //! Decision: session_storage dependency for API key and state persistence
-//!
-//! Tools provided:
-//! - `csb_create_sandbox`: Create a new sandbox VM
-//! - `csb_exec`: Execute a command in a sandbox
-//! - `csb_exec_status`: Check execution status and get output
-//! - `csb_read_file`: Read a file from sandbox
-//! - `csb_write_file`: Write a file to sandbox
-//! - `csb_download_workspace`: Download entire workspace to session storage
-//! - `csb_list_sandboxes`: List session sandboxes
-//! - `csb_manage_sandbox`: Shutdown/hibernate/delete sandbox
 
-use super::{Capability, CapabilityStatus};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::time::Duration;
 use tracing::{debug, error, warn};
+
+// ============================================================================
+// Integration Plugin Registration
+// ============================================================================
+
+inventory::submit! {
+    IntegrationPlugin {
+        experimental_only: true,
+        factory: || Box::new(CodeSandboxCapability),
+    }
+}
 
 // ============================================================================
 // Constants

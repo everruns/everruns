@@ -70,6 +70,9 @@ sqlx = { workspace = true, optional = true }
 reqwest = { version = "0.13", features = ["json", "stream", "rustls-native-certs", "blocking"] }
 eventsource-stream = "0.2"
 
+# Plugin system for external integrations
+inventory.workspace = true
+
 # LLM simulation for testing
 llmsim = "0.2.1"
 

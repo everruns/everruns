@@ -1213,6 +1213,7 @@ dependencies = [
  "fetchkit",
  "futures",
  "insta",
+ "inventory",
  "llmsim",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1289,6 +1290,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-codesandbox"
+version = "0.7.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-internal-protocol"
 version = "0.7.0"
 dependencies = [
@@ -1361,6 +1378,7 @@ dependencies = [
  "dotenvy",
  "everruns-core",
  "everruns-durable",
+ "everruns-integrations-codesandbox",
  "everruns-internal-protocol",
  "everruns-session-sqldb",
  "everruns-worker",
@@ -1424,6 +1442,7 @@ dependencies = [
  "everruns-core",
  "everruns-durable",
  "everruns-gemini",
+ "everruns-integrations-codesandbox",
  "everruns-internal-protocol",
  "everruns-openai",
  "futures",
@@ -2323,6 +2342,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.115",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc61209c082fbeb19919bee74b176221b27223e27b65d781eb91af24eb1fb46e"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]

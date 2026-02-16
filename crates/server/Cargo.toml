@@ -55,6 +55,7 @@ cron = "0.15"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
+everruns-integrations-codesandbox = { path = "../../integrations/codesandbox" }
 everruns-session-sqldb = { path = "../session-sqldb" }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-internal-protocol = { path = "../internal-protocol" }

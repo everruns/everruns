@@ -26,6 +26,37 @@ use crate::tools::{Tool, ToolRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// ============================================================================
+// Integration Plugin System
+// ============================================================================
+
+/// Plugin registration point for external integration crates.
+///
+/// Integration crates use `inventory::submit!` to register their capabilities
+/// without requiring `everruns-core` to know about them at compile time.
+/// The `CapabilityRegistry::with_builtins_for_grade()` method iterates all
+/// registered plugins and includes those matching the current deployment grade.
+///
+/// # Example
+///
+/// ```ignore
+/// // In integrations/codesandbox/src/lib.rs:
+/// inventory::submit! {
+///     everruns_core::capabilities::IntegrationPlugin {
+///         experimental_only: true,
+///         factory: || Box::new(CodeSandboxCapability),
+///     }
+/// }
+/// ```
+pub struct IntegrationPlugin {
+    /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
+    pub experimental_only: bool,
+    /// Factory function that creates the capability instance.
+    pub factory: fn() -> Box<dyn Capability>,
+}
+
+inventory::collect!(IntegrationPlugin);
+
 // Re-export capability types from capability_types module
 pub use crate::capability_types::{
     AgentCapabilityConfig, CapabilityId, CapabilityStatus, MountAccess, MountDirectoryBuilder,
@@ -37,7 +68,6 @@ pub use crate::capability_types::{
 // ============================================================================
 
 mod agent_instructions;
-mod codesandbox;
 mod current_time;
 mod docker_container;
 mod fake_aws;
@@ -61,11 +91,6 @@ mod web_fetch;
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     MAX_AGENTS_MD_SIZE, format_agents_md_content,
-};
-pub use codesandbox::{
-    CodeSandboxCapability, CodeSandboxClient, CsbCreateSandboxTool, CsbDownloadWorkspaceTool,
-    CsbExecStatusTool, CsbExecTool, CsbListSandboxesTool, CsbManageSandboxTool, CsbReadFileTool,
-    CsbWriteFileTool, SandboxState,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use docker_container::{
@@ -316,10 +341,16 @@ impl CapabilityRegistry {
         registry.register(FakeCrmCapability);
         registry.register(FakeFinancialCapability);
 
-        // Experimental capabilities (dev only)
+        // Experimental capabilities (dev only) — built-in
         if grade.experimental_features_enabled() {
-            registry.register(CodeSandboxCapability);
             registry.register(DockerContainerCapability);
+        }
+
+        // External integration plugins (registered via inventory::submit! in integration crates)
+        for plugin in inventory::iter::<IntegrationPlugin>() {
+            if !plugin.experimental_only || grade.experimental_features_enabled() {
+                registry.register_boxed((plugin.factory)());
+            }
         }
 
         registry
@@ -875,9 +906,14 @@ mod tests {
     // CapabilityRegistry tests
     // =========================================================================
 
+    // Note: Integration plugins (codesandbox, etc.) are registered via inventory::submit!
+    // in external crates. They only appear in the registry when the integration crate is
+    // linked into the final binary. Core tests verify only built-in capabilities.
+    // Integration crates have their own tests for plugin registration.
+
     #[test]
     fn test_capability_registry_with_builtins_dev() {
-        // Dev mode includes all capabilities including experimental
+        // Dev mode includes all built-in capabilities including experimental
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
         assert!(registry.has("agent_instructions"));
@@ -897,10 +933,11 @@ mod tests {
         assert!(registry.has("fake_aws"));
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
-        // Experimental capabilities included in dev
-        assert!(registry.has("codesandbox"));
+        // Built-in experimental capabilities included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 19);
+        // 17 core + 1 docker_container = 18 built-in
+        // (integration plugins add more when linked into the binary)
+        assert!(registry.len() >= 18);
     }
 
     #[test]
@@ -926,7 +963,6 @@ mod tests {
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
         // Experimental capabilities NOT included in prod
-        assert!(!registry.has("codesandbox"));
         assert!(!registry.has("docker_container"));
         assert_eq!(registry.len(), 17);
     }
