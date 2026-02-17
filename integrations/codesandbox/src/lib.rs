@@ -81,7 +81,10 @@ Tools:
 - `csb_manage_sandbox` - Shutdown, hibernate, or delete a sandbox
 - `csb_git_clone` - Clone a git repository into a sandbox (auto-uses connected GitHub credentials)
 
-Git cloning: Use `csb_git_clone` to clone repositories. If the user has connected their GitHub account (Settings > Connections), private repos are automatically authenticated. For public repos, no credentials are needed. Supports "user/repo" shorthand.
+Git cloning: Use `csb_git_clone` to clone repositories into `/sandbox/owner/repo`.
+If the user has connected their GitHub account (Settings > Connections), private repos
+are automatically authenticated. For public repos, no credentials are needed.
+Supports "user/repo" shorthand. Working directory is `/sandbox`.
 
 All tools except `csb_create_sandbox` and `csb_list_sandboxes` require a `sandbox_id`.
 Sandboxes auto-hibernate after 5 minutes of inactivity.

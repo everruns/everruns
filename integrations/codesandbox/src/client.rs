@@ -393,7 +393,7 @@ mod tests {
             pint_url: pint_url.to_string(),
             pitcher_token: "tok_test".to_string(),
             preview_token: "prv_test".to_string(),
-            workspace_path: "/project".to_string(),
+            workspace_path: "/sandbox".to_string(),
             started_at: "2026-01-01T00:00:00Z".to_string(),
         }
     }

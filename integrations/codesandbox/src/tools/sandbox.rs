@@ -2,6 +2,7 @@
 
 use crate::client::CodeSandboxClient;
 use crate::state::*;
+use crate::tools::exec::poll_exec_completion;
 use crate::types::*;
 
 use async_trait::async_trait;
@@ -98,9 +99,8 @@ impl Tool for CsbCreateSandboxTool {
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
 
-        let workspace_path = vm_info
-            .workspace_path
-            .unwrap_or_else(|| "/project".to_string());
+        // Use /sandbox as consistent working directory across all sandbox providers
+        let workspace_path = "/sandbox".to_string();
 
         // Create preview token (required for Pint API port proxy auth)
         debug!("Creating preview token for sandbox: {sandbox_id}");
@@ -127,7 +127,7 @@ impl Tool for CsbCreateSandboxTool {
             // Continue anyway — the sandbox was created, agent can retry later
         }
 
-        // Save state
+        // Save state (needed before mkdir so exec can look up the sandbox)
         let state = SandboxState {
             sandbox_id: sandbox_id.clone(),
             pint_url: pint_url.clone(),
@@ -138,6 +138,18 @@ impl Tool for CsbCreateSandboxTool {
         };
         if let Err(e) = save_sandbox_state(context, &state).await {
             return e;
+        }
+
+        // Ensure /sandbox directory exists
+        if let Ok(exec_info) = client
+            .exec_create(
+                &state,
+                "bash",
+                vec!["-c".to_string(), "mkdir -p /sandbox".to_string()],
+            )
+            .await
+        {
+            let _ = poll_exec_completion(&client, &state, &exec_info.id).await;
         }
 
         // Optionally upload files

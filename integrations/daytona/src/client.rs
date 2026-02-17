@@ -562,7 +562,7 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.file_list("sb_test", "/home/daytona").await;
+        let result = client.file_list("sb_test", "/sandbox").await;
         assert!(result.is_ok());
         let entries = result.unwrap();
         assert_eq!(entries.len(), 2);
@@ -656,8 +656,8 @@ mod tests {
     #[test]
     fn test_encode_path_with_slashes() {
         assert_eq!(
-            urlencoding::encode("/home/daytona/main.py"),
-            "%2Fhome%2Fdaytona%2Fmain.py"
+            urlencoding::encode("/sandbox/main.py"),
+            "%2Fsandbox%2Fmain.py"
         );
     }
 
@@ -790,7 +790,7 @@ mod tests {
             mock_server.uri(),
         );
         let result = client
-            .file_upload("sb_test", "/home/daytona/test.py", b"print('hello')")
+            .file_upload("sb_test", "/sandbox/test.py", b"print('hello')")
             .await;
         assert!(result.is_ok());
     }
@@ -1001,7 +1001,7 @@ mod tests {
             .git_clone(
                 "sb_test",
                 "https://github.com/user/repo.git",
-                "/home/daytona/repo",
+                "/sandbox/user/repo",
                 Some("main"),
                 None,
                 None,
@@ -1028,7 +1028,7 @@ mod tests {
             .git_clone(
                 "sb_test",
                 "https://github.com/user/private-repo.git",
-                "/home/daytona/private-repo",
+                "/sandbox/user/private-repo",
                 None,
                 Some("oauth2"),
                 Some("ghp_token123"),
@@ -1055,7 +1055,7 @@ mod tests {
             .git_clone(
                 "sb_test",
                 "https://github.com/user/nonexistent.git",
-                "/home/daytona/nonexistent",
+                "/sandbox/user/nonexistent",
                 None,
                 None,
                 None,

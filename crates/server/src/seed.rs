@@ -559,11 +559,12 @@ Prerequisite: The session must have CSB_API_KEY set in secrets before you can us
 If missing, tell the user to set it via the API or harness config.
 
 Workflow:
-1. Create sandbox: `csb_create_sandbox`
-2. Write code / install deps: `csb_write_file`, `csb_exec`
-3. For long-running tasks: `csb_exec` with `wait: false`, poll `csb_exec_status`
-4. Save results: `csb_download_workspace`
-5. Clean up: `csb_manage_sandbox` action="shutdown"
+1. Create sandbox: `csb_create_sandbox` (working directory: /sandbox)
+2. Clone repos: `csb_git_clone` (clones to /sandbox/owner/repo)
+3. Write code / install deps: `csb_write_file`, `csb_exec`
+4. For long-running tasks: `csb_exec` with `wait: false`, poll `csb_exec_status`
+5. Save results: `csb_download_workspace`
+6. Clean up: `csb_manage_sandbox` action="shutdown"
 
 You can run multiple sandboxes in parallel for different tasks.
 Always shut down sandboxes when done."#,
@@ -581,11 +582,12 @@ Prerequisite: The session must have DAYTONA_API_KEY set in secrets before you ca
 If missing, tell the user to set it via the API or harness config.
 
 Workflow:
-1. Create sandbox: `daytona_create_sandbox`
-2. Write code / install deps: `daytona_write_file`, `daytona_exec`
-3. Read results: `daytona_read_file`
-4. Save results: `daytona_download_workspace`
-5. Clean up: `daytona_manage_sandbox` action="delete"
+1. Create sandbox: `daytona_create_sandbox` (working directory: /sandbox)
+2. Clone repos: `daytona_git_clone` (clones to /sandbox/owner/repo)
+3. Write code / install deps: `daytona_write_file`, `daytona_exec`
+4. Read results: `daytona_read_file`
+5. Save results: `daytona_download_workspace`
+6. Clean up: `daytona_manage_sandbox` action="delete"
 
 You can run multiple sandboxes in parallel for different tasks.
 Always delete sandboxes when done."#,
