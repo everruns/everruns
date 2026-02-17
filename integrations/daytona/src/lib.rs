@@ -102,9 +102,10 @@ All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a
 Sandboxes auto-stop after 5 minutes of inactivity.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
 
-Git cloning: Use `daytona_git_clone` to clone repositories. If the user has connected
-their GitHub account (Settings > Connections), private repos are automatically
-authenticated. For public repos, no credentials are needed. Supports "user/repo" shorthand."#,
+Git cloning: Use `daytona_git_clone` to clone repositories into `/sandbox/owner/repo`.
+If the user has connected their GitHub account (Settings > Connections), private repos
+are automatically authenticated. For public repos, no credentials are needed.
+Supports "user/repo" shorthand. Working directory is `/sandbox`."#,
         )
     }
 

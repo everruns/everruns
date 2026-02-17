@@ -131,7 +131,7 @@ mod tests {
             pint_url: "https://sb_123-57468.csb.app".to_string(),
             pitcher_token: "tok_abc".to_string(),
             preview_token: "prv_v1_test123".to_string(),
-            workspace_path: "/project".to_string(),
+            workspace_path: "/sandbox".to_string(),
             started_at: "2026-02-13T10:00:00Z".to_string(),
         };
         let json = serde_json::to_string(&state).unwrap();
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(deserialized.pint_url, "https://sb_123-57468.csb.app");
         assert_eq!(deserialized.pitcher_token, "tok_abc");
         assert_eq!(deserialized.preview_token, "prv_v1_test123");
-        assert_eq!(deserialized.workspace_path, "/project");
+        assert_eq!(deserialized.workspace_path, "/sandbox");
     }
 
     #[test]

@@ -46,7 +46,7 @@ impl Tool for CsbGitCloneTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Clone destination path inside sandbox (optional, defaults to /project/workspace/<repo_name>)"
+                    "description": "Clone destination path inside sandbox (optional, defaults to /sandbox/<owner>/<repo>)"
                 }
             },
             "required": ["sandbox_id", "repo_url"],
@@ -88,13 +88,17 @@ impl Tool for CsbGitCloneTool {
         // Normalize repo URL: "user/repo" → "https://github.com/user/repo.git"
         let repo_url = normalize_repo_url(repo_url_raw);
 
-        // Extract repo name for default clone path
-        let repo_name = repo_url
-            .rsplit('/')
-            .next()
-            .unwrap_or("repo")
-            .trim_end_matches(".git");
-        let default_path = format!("/project/workspace/{}", repo_name);
+        // Build default clone path: /sandbox/owner/repo (preserves user/repo structure)
+        let default_path = if let Some(owner_repo) = extract_owner_repo(repo_url_raw) {
+            format!("{}/{}", state.workspace_path, owner_repo)
+        } else {
+            let repo_name = repo_url
+                .rsplit('/')
+                .next()
+                .unwrap_or("repo")
+                .trim_end_matches(".git");
+            format!("{}/{}", state.workspace_path, repo_name)
+        };
         let target_path = clone_path.unwrap_or(&default_path);
 
         // Try to get GITHUB_TOKEN from session secrets for authentication
@@ -259,6 +263,51 @@ pub fn normalize_repo_url(url: &str) -> String {
     }
 }
 
+/// Extract "owner/repo" from a git URL. Returns `Some("owner/repo")` for:
+/// - `"owner/repo"` shorthand
+/// - `"https://github.com/owner/repo"` or `"https://github.com/owner/repo.git"`
+/// - `"git@github.com:owner/repo.git"`
+///
+/// Returns `None` if the URL doesn't match any recognized pattern.
+fn extract_owner_repo(url: &str) -> Option<String> {
+    // Shorthand: "owner/repo" (no protocol, no spaces, exactly one slash)
+    if !url.contains("://") && !url.starts_with("git@") && url.contains('/') && !url.contains(' ') {
+        let trimmed = url.trim_end_matches(".git");
+        let parts: Vec<&str> = trimmed.splitn(3, '/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    // HTTPS: "https://github.com/owner/repo" or "https://github.com/owner/repo.git"
+    if let Some(rest) = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+    {
+        // Skip the host (e.g. "github.com/owner/repo.git" → "owner/repo.git")
+        if let Some(path) = rest.split_once('/').map(|(_, p)| p) {
+            let path = path.trim_end_matches(".git").trim_end_matches('/');
+            let parts: Vec<&str> = path.splitn(3, '/').collect();
+            if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+                return Some(path.to_string());
+            }
+        }
+    }
+
+    // SSH: "git@github.com:owner/repo.git"
+    if let Some(rest) = url.strip_prefix("git@")
+        && let Some(path) = rest.split_once(':').map(|(_, p)| p)
+    {
+        let path = path.trim_end_matches(".git").trim_end_matches('/');
+        let parts: Vec<&str> = path.splitn(3, '/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some(path.to_string());
+        }
+    }
+
+    None
+}
+
 /// Resolve GitHub token lazily from user connections, with session secret fallback.
 async fn get_github_token(context: &ToolContext) -> Option<String> {
     // Try lazy resolution from user connections (preferred: always fresh)
@@ -334,6 +383,50 @@ mod tests {
             normalize_repo_url("org/sub-repo"),
             "https://github.com/org/sub-repo.git"
         );
+    }
+
+    // --- extract_owner_repo tests ---
+
+    #[test]
+    fn test_extract_owner_repo_shorthand() {
+        assert_eq!(
+            extract_owner_repo("user/repo"),
+            Some("user/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_owner_repo_https() {
+        assert_eq!(
+            extract_owner_repo("https://github.com/user/repo"),
+            Some("user/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_owner_repo_https_git_suffix() {
+        assert_eq!(
+            extract_owner_repo("https://github.com/user/repo.git"),
+            Some("user/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_owner_repo_ssh() {
+        assert_eq!(
+            extract_owner_repo("git@github.com:user/repo.git"),
+            Some("user/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_owner_repo_bare_word() {
+        assert_eq!(extract_owner_repo("something"), None);
+    }
+
+    #[test]
+    fn test_extract_owner_repo_with_spaces() {
+        assert_eq!(extract_owner_repo("user /repo"), None);
     }
 
     #[test]
