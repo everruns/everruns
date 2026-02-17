@@ -1540,7 +1540,31 @@ export interface TriggerResponse {
 
 export interface UserConnection {
   provider: string;
+  connection_type: string;
   provider_username?: string;
   scopes?: string;
   connected_at: string;
+}
+
+export interface ConnectionProvider {
+  provider_id: string;
+  display_name: string;
+  description: string;
+  icon: string;
+  connection_type: "oauth" | "api_key";
+  form_schema?: ConnectionFormSchema;
+}
+
+export interface ConnectionFormSchema {
+  fields: ConnectionFormField[];
+  instructions_markdown: string;
+}
+
+export interface ConnectionFormField {
+  name: string;
+  label: string;
+  field_type: "password" | "text" | "url";
+  required: boolean;
+  placeholder?: string;
+  help_text?: string;
 }

@@ -3600,13 +3600,14 @@ impl Database {
 
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            INSERT INTO user_connections (user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            INSERT INTO user_connections (user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             "#,
         )
         .bind(input.user_id)
         .bind(&input.provider)
+        .bind(&input.connection_type)
         .bind(&input.provider_user_id)
         .bind(&input.provider_username)
         .bind(&input.access_token_encrypted)
@@ -3628,7 +3629,7 @@ impl Database {
     ) -> Result<Option<UserConnectionRow>> {
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1 AND provider = $2
             ORDER BY created_at DESC
@@ -3647,7 +3648,7 @@ impl Database {
     pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         let rows = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1
             ORDER BY provider ASC

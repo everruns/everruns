@@ -40,6 +40,7 @@ pub mod typed_id;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod capability_dto;
+pub mod connection_provider;
 pub mod events;
 pub mod harness;
 pub mod llm_model_profiles;
@@ -134,6 +135,12 @@ pub use tools::{
 };
 
 // Capability re-exports
+// Connection provider plugin system (API key connections like Daytona)
+pub use connection_provider::{
+    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionType,
+    ConnectionValidation, FieldType, FormField,
+};
+
 pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,

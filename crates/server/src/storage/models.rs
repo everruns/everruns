@@ -847,6 +847,7 @@ pub struct UserConnectionRow {
     pub id: Uuid,
     pub user_id: Uuid,
     pub provider: String,
+    pub connection_type: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
     /// Encrypted OAuth token (NULL for GitHub App connections)
@@ -865,6 +866,7 @@ pub struct UserConnectionRow {
 pub struct CreateUserConnectionRow {
     pub user_id: Uuid,
     pub provider: String,
+    pub connection_type: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
     /// Encrypted OAuth token (None for GitHub App connections)
