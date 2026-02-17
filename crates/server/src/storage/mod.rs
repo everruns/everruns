@@ -29,7 +29,7 @@ mod event_tests;
 
 pub use agent_store::{DbAgentStore, create_db_agent_store};
 pub use backend::StorageBackend;
-pub use connection_resolver::DbConnectionResolver;
+pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter};
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
     generate_encryption_key,

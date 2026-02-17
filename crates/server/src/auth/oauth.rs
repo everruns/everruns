@@ -288,97 +288,178 @@ struct GitHubEmail {
     verified: bool,
 }
 
-/// Result of GitHub connection OAuth exchange (repo access, not login)
+/// Result of GitHub App installation verification
 #[derive(Debug, Clone)]
-pub struct GitHubConnectionResult {
-    /// GitHub access token (with repo scope)
-    pub access_token: String,
-    /// GitHub user ID
-    pub user_id: String,
-    /// GitHub username (login)
-    pub username: String,
-    /// Scopes granted
-    pub scopes: String,
+pub struct GitHubInstallationResult {
+    /// GitHub App installation ID
+    pub installation_id: i64,
+    /// Account (user/org) that installed the app
+    pub account_id: String,
+    /// Account login (username or org name)
+    pub account_login: String,
+    /// Permissions granted to the installation (e.g. "contents: read")
+    pub permissions: String,
 }
 
-/// GitHub Connection OAuth service (separate OAuth App for repo access)
-pub struct GitHubConnectionService {
-    client_id: String,
-    client_secret: String,
-    redirect_uri: String,
+/// GitHub App service for installation-based repo access.
+///
+/// Unlike OAuth Apps, GitHub Apps use:
+/// 1. App installation flow (user installs app on repos, not OAuth consent)
+/// 2. Short-lived installation access tokens (1h TTL, minted on demand)
+/// 3. Granular per-repo permissions instead of broad OAuth scopes
+pub struct GitHubAppService {
+    app_id: String,
+    private_key: String,
+    app_slug: String,
 }
 
-impl GitHubConnectionService {
+impl GitHubAppService {
     pub fn new(config: &GitHubConnectionConfig) -> Self {
         Self {
-            client_id: config.client_id.clone(),
-            client_secret: config.client_secret.clone(),
-            redirect_uri: config.redirect_uri.clone(),
+            app_id: config.app_id.clone(),
+            private_key: config.private_key.clone(),
+            app_slug: config.app_slug.clone(),
         }
     }
 
-    /// Generate authorization URL with repo scope
-    pub fn authorization_url(&self, state: &str) -> OAuthAuthorizationUrl {
-        let params = [
-            ("client_id", self.client_id.as_str()),
-            ("redirect_uri", self.redirect_uri.as_str()),
-            ("scope", "repo read:user"),
-            ("state", state),
-        ];
-
-        let query = params
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
-            .collect::<Vec<_>>()
-            .join("&");
-
+    /// Generate URL for GitHub App installation.
+    /// User clicks this to install the app on their repos.
+    pub fn installation_url(&self, state: &str) -> OAuthAuthorizationUrl {
+        let url = format!(
+            "https://github.com/apps/{}/installations/new?state={}",
+            self.app_slug,
+            urlencoding::encode(state)
+        );
         OAuthAuthorizationUrl {
-            url: format!("https://github.com/login/oauth/authorize?{}", query),
+            url,
             state: state.to_string(),
         }
     }
 
-    /// Exchange code for access token + user info
-    pub async fn exchange_code(&self, code: &str) -> Result<GitHubConnectionResult> {
+    /// Create a JWT for authenticating as the GitHub App.
+    /// Valid for up to 10 minutes. Used to call GitHub API as the App.
+    pub fn create_app_jwt(&self) -> Result<String> {
+        use jsonwebtoken::{Algorithm, EncodingKey, Header};
+
+        let now = chrono::Utc::now().timestamp();
+        let claims = serde_json::json!({
+            "iat": now - 60,          // 60s in past for clock drift
+            "exp": now + (10 * 60),   // 10 minute max
+            "iss": self.app_id,
+        });
+
+        let key = EncodingKey::from_rsa_pem(self.private_key.as_bytes())
+            .context("Invalid GitHub App private key (must be PEM-encoded RSA)")?;
+        let header = Header::new(Algorithm::RS256);
+        let token = jsonwebtoken::encode(&header, &claims, &key)
+            .context("Failed to sign GitHub App JWT")?;
+        Ok(token)
+    }
+
+    /// Verify an installation exists and return its details.
+    /// Called during the installation callback to validate the installation_id.
+    pub async fn verify_installation(
+        &self,
+        installation_id: i64,
+    ) -> Result<GitHubInstallationResult> {
+        let jwt = self.create_app_jwt()?;
         let client = reqwest::Client::new();
 
-        let token_response: GitHubTokenResponse = client
-            .post("https://github.com/login/oauth/access_token")
-            .header("Accept", "application/json")
-            .form(&[
-                ("client_id", self.client_id.as_str()),
-                ("client_secret", self.client_secret.as_str()),
-                ("code", code),
-                ("redirect_uri", self.redirect_uri.as_str()),
-            ])
-            .send()
-            .await
-            .context("Failed to exchange code")?
-            .json()
-            .await
-            .context("Failed to parse token response")?;
-
-        let access_token = &token_response.access_token;
-
-        // Fetch user info to get username
-        let user_info: GitHubUserInfo = client
-            .get("https://api.github.com/user")
+        let response = client
+            .get(format!(
+                "https://api.github.com/app/installations/{installation_id}"
+            ))
+            .header("Authorization", format!("Bearer {jwt}"))
+            .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "Everruns")
-            .bearer_auth(access_token)
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await
-            .context("Failed to fetch user info")?
+            .context("Failed to verify GitHub App installation")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "GitHub API returned {status} verifying installation {installation_id}: {body}"
+            );
+        }
+
+        let installation: GitHubInstallation = response
             .json()
             .await
-            .context("Failed to parse user info")?;
+            .context("Failed to parse installation response")?;
 
-        Ok(GitHubConnectionResult {
-            access_token: token_response.access_token,
-            user_id: user_info.id.to_string(),
-            username: user_info.login,
-            scopes: token_response.scope.unwrap_or_default(),
+        // Format permissions as human-readable string
+        let permissions = installation
+            .permissions
+            .as_object()
+            .map(|obj| {
+                obj.iter()
+                    .map(|(k, v)| format!("{k}: {}", v.as_str().unwrap_or("unknown")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+
+        Ok(GitHubInstallationResult {
+            installation_id,
+            account_id: installation.account.id.to_string(),
+            account_login: installation.account.login,
+            permissions,
         })
     }
+
+    /// Mint a short-lived installation access token (1h TTL).
+    /// Called at tool execution time to get a fresh token for git operations.
+    pub async fn mint_installation_token(&self, installation_id: i64) -> Result<String> {
+        let jwt = self.create_app_jwt()?;
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(format!(
+                "https://api.github.com/app/installations/{installation_id}/access_tokens"
+            ))
+            .header("Authorization", format!("Bearer {jwt}"))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Everruns")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .await
+            .context("Failed to mint GitHub installation token")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "GitHub API returned {status} minting installation token for {installation_id}: {body}"
+            );
+        }
+
+        let token_response: GitHubInstallationTokenResponse = response
+            .json()
+            .await
+            .context("Failed to parse installation token response")?;
+
+        Ok(token_response.token)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubInstallation {
+    account: GitHubInstallationAccount,
+    permissions: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubInstallationAccount {
+    id: i64,
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubInstallationTokenResponse {
+    token: String,
 }
 
 /// URL encoding helper

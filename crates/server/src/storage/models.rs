@@ -824,10 +824,13 @@ pub struct UserConnectionRow {
     pub provider: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
-    pub access_token_encrypted: Vec<u8>,
+    /// Encrypted OAuth token (NULL for GitHub App connections)
+    pub access_token_encrypted: Option<Vec<u8>>,
     pub refresh_token_encrypted: Option<Vec<u8>>,
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    /// GitHub App installation ID (tokens minted on demand)
+    pub installation_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -839,8 +842,11 @@ pub struct CreateUserConnectionRow {
     pub provider: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
-    pub access_token_encrypted: Vec<u8>,
+    /// Encrypted OAuth token (None for GitHub App connections)
+    pub access_token_encrypted: Option<Vec<u8>>,
     pub refresh_token_encrypted: Option<Vec<u8>>,
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    /// GitHub App installation ID (tokens minted on demand)
+    pub installation_id: Option<i64>,
 }

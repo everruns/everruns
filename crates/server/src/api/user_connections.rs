@@ -1,10 +1,10 @@
 // User Connections API routes
 // Decision: User-scoped (not org-scoped) — token represents user's GitHub identity
-// Decision: Separate GitHub OAuth App from login (different scopes: repo vs profile)
+// Decision: GitHub App installation flow replaces OAuth App for repo access
 
 use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
-use crate::auth::oauth::GitHubConnectionService;
+use crate::auth::oauth::GitHubAppService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -49,12 +49,14 @@ pub struct ConnectionResponse {
     pub connected_at: DateTime<Utc>,
 }
 
-/// OAuth callback query params
+/// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
-pub struct OAuthCallbackQuery {
-    pub code: String,
+pub struct GitHubInstallationCallbackQuery {
+    pub installation_id: i64,
     #[allow(dead_code)]
-    pub state: String,
+    pub setup_action: Option<String>,
+    #[allow(dead_code)]
+    pub state: Option<String>,
 }
 
 /// Create user connections routes
@@ -115,11 +117,11 @@ pub async fn delete_connection(
     }
 }
 
-/// GET /v1/user/connections/github/authorize — Start GitHub OAuth flow
+/// GET /v1/user/connections/github/authorize — Redirect to GitHub App installation
 pub async fn github_authorize(
     State(state): State<AppState>,
     _auth: AuthUser,
-    Query(params): Query<std::collections::HashMap<String, String>>,
+    Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let config = state
         .auth_config
@@ -128,30 +130,30 @@ pub async fn github_authorize(
         .ok_or_else(|| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "GitHub connection not configured".to_string(),
+                "GitHub App not configured".to_string(),
             )
         })?;
 
-    let service = GitHubConnectionService::new(config);
+    let service = GitHubAppService::new(config);
 
     // Generate state for CSRF protection
     let mut rng = rand::rng();
     let bytes: [u8; 16] = rng.random();
-    let oauth_state = hex::encode(bytes);
+    let install_state = hex::encode(bytes);
 
     // TODO: Store state in session/cookie for validation in callback
-    // For now, include redirect_uri in state param
-    let _redirect_after = params.get("redirect_uri").cloned();
-
-    let auth_url = service.authorization_url(&oauth_state);
+    let auth_url = service.installation_url(&install_state);
     Ok(Redirect::to(&auth_url.url))
 }
 
-/// GET /v1/user/connections/github/callback — GitHub OAuth callback
+/// GET /v1/user/connections/github/callback — GitHub App installation callback
+///
+/// After user installs the GitHub App on their repos, GitHub redirects here
+/// with the installation_id. We verify the installation and store the ID.
 pub async fn github_callback(
     State(state): State<AppState>,
     auth: AuthUser,
-    Query(query): Query<OAuthCallbackQuery>,
+    Query(query): Query<GitHubInstallationCallbackQuery>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let config = state
         .auth_config
@@ -160,62 +162,48 @@ pub async fn github_callback(
         .ok_or_else(|| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "GitHub connection not configured".to_string(),
+                "GitHub App not configured".to_string(),
             )
         })?;
 
-    let encryption = state.encryption.as_ref().ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Encryption not configured".to_string(),
-        )
-    })?;
+    let service = GitHubAppService::new(config);
 
-    let service = GitHubConnectionService::new(config);
-
-    // Exchange code for token + user info
-    let result = service.exchange_code(&query.code).await.map_err(|e| {
-        tracing::error!("GitHub connection OAuth exchange failed: {}", e);
-        (
-            StatusCode::BAD_REQUEST,
-            "GitHub authentication failed".to_string(),
-        )
-    })?;
-
-    // Encrypt token
-    let access_token_encrypted = encryption
-        .encrypt_string(&result.access_token)
+    // Verify the installation exists and get account details
+    let result = service
+        .verify_installation(query.installation_id)
+        .await
         .map_err(|e| {
-            tracing::error!("Failed to encrypt token: {}", e);
+            tracing::error!("GitHub App installation verification failed: {}", e);
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to store connection".to_string(),
+                StatusCode::BAD_REQUEST,
+                "GitHub App installation verification failed".to_string(),
             )
         })?;
 
-    // Upsert connection
+    // Store installation_id (no OAuth token needed — tokens minted on demand)
     state
         .db
         .upsert_user_connection(CreateUserConnectionRow {
             user_id: auth.id,
             provider: "github".to_string(),
-            provider_user_id: Some(result.user_id),
-            provider_username: Some(result.username),
-            access_token_encrypted,
+            provider_user_id: Some(result.account_id),
+            provider_username: Some(result.account_login),
+            access_token_encrypted: None,
             refresh_token_encrypted: None,
-            scopes: Some(result.scopes),
+            scopes: Some(result.permissions),
             expires_at: None,
+            installation_id: Some(result.installation_id),
         })
         .await
         .map_err(|e| {
-            tracing::error!("Failed to store GitHub connection: {}", e);
+            tracing::error!("Failed to store GitHub App installation: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to store connection".to_string(),
             )
         })?;
 
-    // Redirect back to settings page (frontend may be on a different origin in dev)
+    // Redirect back to settings page
     let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
     Ok(Redirect::to(&format!(
         "{}/settings/connections?connected=github",

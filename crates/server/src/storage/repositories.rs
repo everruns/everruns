@@ -3466,9 +3466,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            INSERT INTO user_connections (user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, created_at, updated_at
+            INSERT INTO user_connections (user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             "#,
         )
         .bind(input.user_id)
@@ -3479,6 +3479,7 @@ impl Database {
         .bind(&input.refresh_token_encrypted)
         .bind(&input.scopes)
         .bind(input.expires_at)
+        .bind(input.installation_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -3493,7 +3494,7 @@ impl Database {
     ) -> Result<Option<UserConnectionRow>> {
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, created_at, updated_at
+            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1 AND provider = $2
             ORDER BY created_at DESC
@@ -3512,7 +3513,7 @@ impl Database {
     pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         let rows = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, created_at, updated_at
+            SELECT id, user_id, provider, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1
             ORDER BY provider ASC
@@ -3527,18 +3528,20 @@ impl Database {
 
     /// Get the encrypted connection token for a session's org member.
     /// Joins session → org_members → user_connections to resolve lazily.
+    /// Returns None for GitHub App connections (use get_installation_id_for_session instead).
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Vec<u8>>> {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
+        let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
             r#"
             SELECT uc.access_token_encrypted
             FROM sessions s
             JOIN organization_members om ON om.org_id = s.org_id
             JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
             WHERE s.id = $1
+              AND uc.access_token_encrypted IS NOT NULL
             LIMIT 1
             "#,
         )
@@ -3547,7 +3550,33 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(blob,)| blob))
+        Ok(row.and_then(|(blob,)| blob))
+    }
+
+    /// Get the GitHub App installation ID for a session's org member.
+    /// Used by the connection resolver to mint fresh installation tokens.
+    pub async fn get_installation_id_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<i64>> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT uc.installation_id
+            FROM sessions s
+            JOIN organization_members om ON om.org_id = s.org_id
+            JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+            WHERE s.id = $1
+              AND uc.installation_id IS NOT NULL
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(id,)| id))
     }
 
     /// Delete a user's connection for a specific provider
