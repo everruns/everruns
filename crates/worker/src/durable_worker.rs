@@ -1026,6 +1026,7 @@ impl DurableWorker {
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,
                         act_input: ActInput {
+                            org_id: Some(input.org_id),
                             context: AtomContext {
                                 session_id: input.session_id,
                                 turn_id,

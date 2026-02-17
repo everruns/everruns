@@ -651,6 +651,7 @@ impl InMemoryAgenticLoop {
                     );
                     self.act_atom
                         .execute(ActInput {
+                            org_id: Some(0),
                             context: base_context.next_exec(),
                             harness_id: self.harness_id,
                             agent_id: Some(self.agent_id),

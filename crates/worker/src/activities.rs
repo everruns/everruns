@@ -416,6 +416,7 @@ mod tests {
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         let input = ActInput {
+            org_id: Some(1),
             context: context.clone(),
             agent_id: Some(AgentId::new()),
             harness_id: HarnessId::new(),

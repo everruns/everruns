@@ -36,7 +36,10 @@ use crate::events::{
 };
 use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
+use crate::traits::{
+    AgentStore, EventEmitter, SessionFileStore, SessionMutator, SessionStore, ToolContext,
+    ToolExecutor,
+};
 use crate::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
 
@@ -47,6 +50,9 @@ use uuid::Uuid;
 /// Input for ActAtom
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActInput {
+    /// Organization ID for scoped data access.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<i64>,
     /// Atom execution context
     pub context: AtomContext,
     /// Harness ID (needed for scheduling follow-up reason activity)
@@ -116,6 +122,12 @@ where
     storage_store: Option<Arc<dyn crate::traits::SessionStorageStore>>,
     /// Optional resolver for user connection tokens
     connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
+    /// Optional session store for session metadata reads
+    session_store: Option<Arc<dyn SessionStore>>,
+    /// Optional session mutator for session metadata updates
+    session_mutator: Option<Arc<dyn SessionMutator>>,
+    /// Optional agent store for agent metadata reads
+    agent_store: Option<Arc<dyn AgentStore>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -132,6 +144,9 @@ where
             sqldb_store: None,
             storage_store: None,
             connection_resolver: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
         }
     }
 
@@ -148,6 +163,9 @@ where
             sqldb_store: None,
             storage_store: None,
             connection_resolver: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
         }
     }
 
@@ -174,6 +192,24 @@ where
         self.connection_resolver = Some(resolver);
         self
     }
+
+    /// Set session store for context-aware tools.
+    pub fn with_session_store(mut self, store: Arc<dyn SessionStore>) -> Self {
+        self.session_store = Some(store);
+        self
+    }
+
+    /// Set session mutator for context-aware tools.
+    pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
+        self.session_mutator = Some(mutator);
+        self
+    }
+
+    /// Set agent store for context-aware tools.
+    pub fn with_agent_store(mut self, store: Arc<dyn AgentStore>) -> Self {
+        self.agent_store = Some(store);
+        self
+    }
 }
 
 #[async_trait]
@@ -194,7 +230,7 @@ where
             context,
             tool_calls,
             tool_definitions,
-            .. // agent_id not needed here, just passed through workflow
+            .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
         if tool_calls.is_empty() {
@@ -435,6 +471,9 @@ where
             || self.sqldb_store.is_some()
             || self.storage_store.is_some()
             || self.connection_resolver.is_some()
+            || self.session_store.is_some()
+            || self.session_mutator.is_some()
+            || self.agent_store.is_some()
         {
             let mut tool_context = if let Some(ref store) = self.file_store {
                 ToolContext::with_file_store(context.session_id, store.clone())
@@ -449,6 +488,15 @@ where
             }
             if let Some(ref resolver) = self.connection_resolver {
                 tool_context.connection_resolver = Some(resolver.clone());
+            }
+            if let Some(ref store) = self.session_store {
+                tool_context.session_store = Some(store.clone());
+            }
+            if let Some(ref mutator) = self.session_mutator {
+                tool_context.session_mutator = Some(mutator.clone());
+            }
+            if let Some(ref store) = self.agent_store {
+                tool_context.agent_store = Some(store.clone());
             }
             self.tool_executor
                 .execute_with_context(&tool_call, tool_def, &tool_context)
@@ -602,6 +650,7 @@ mod tests {
 
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
+            org_id: Some(1),
             context,
             harness_id: HarnessId::from_seed(1),
             agent_id: Some(AgentId::new()),
@@ -625,6 +674,7 @@ mod tests {
 
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
+            org_id: Some(1),
             context,
             harness_id: HarnessId::from_seed(1),
             agent_id: Some(AgentId::new()),

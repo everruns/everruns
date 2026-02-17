@@ -295,6 +295,7 @@ async fn main() -> anyhow::Result<()> {
 
         let act_result = act_atom
             .execute(ActInput {
+                org_id: Some(0),
                 context: act_context,
                 harness_id,
                 agent_id: Some(AgentId::from_uuid(agent_id)),

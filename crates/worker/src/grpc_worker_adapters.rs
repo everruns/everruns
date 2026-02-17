@@ -90,6 +90,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
+    async fn set_session_title(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        title: String,
+    ) -> Result<Session> {
+        self.client
+            .set_session_title(org_id, SessionId::from_uuid(session_id), &title)
+            .await
+    }
+
     // =========================================================================
     // Message Operations
     // =========================================================================

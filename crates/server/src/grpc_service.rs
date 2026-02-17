@@ -52,9 +52,9 @@ use everruns_internal_protocol::proto::{
     SessionStorageListSecretsRequest, SessionStorageListSecretsResponse,
     SessionStorageSetSecretRequest, SessionStorageSetSecretResponse, SessionStorageSetValueRequest,
     SessionStorageSetValueResponse, SessionWriteFileRequest, SessionWriteFileResponse,
-    SetSessionStatusRequest, SetSessionStatusResponse, SubscribeTaskNotificationsRequest,
-    TaskNotification, TaskNotificationType, UpdateDurableWorkflowStatusRequest,
-    UpdateDurableWorkflowStatusResponse,
+    SetSessionStatusRequest, SetSessionStatusResponse, SetSessionTitleRequest,
+    SetSessionTitleResponse, SubscribeTaskNotificationsRequest, TaskNotification,
+    TaskNotificationType, UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
@@ -719,6 +719,56 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         Ok(Response::new(SetSessionStatusResponse {
+            session: Some(proto_session),
+        }))
+    }
+
+    async fn set_session_title(
+        &self,
+        request: Request<SetSessionTitleRequest>,
+    ) -> Result<Response<SetSessionTitleResponse>, Status> {
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
+
+        let session = self
+            .session_service
+            .update(
+                req.org_id,
+                &org_public_id,
+                session_id,
+                crate::api::sessions::UpdateSessionRequest {
+                    title: Some(req.title),
+                    tags: None,
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update session title: {}", e);
+                Status::internal("Failed to update session title")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        let proto_session = proto::Session {
+            id: Some(uuid_to_proto_uuid(session.id.uuid())),
+            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
+            title: session.title.clone().unwrap_or_default(),
+            status: session.status.to_string(),
+            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
+            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            organization_id: session.organization_id.clone(),
+            capabilities: session
+                .capabilities
+                .iter()
+                .filter_map(|c| serde_json::to_string(c).ok())
+                .collect(),
+        };
+
+        Ok(Response::new(SetSessionTitleResponse {
             session: Some(proto_session),
         }))
     }

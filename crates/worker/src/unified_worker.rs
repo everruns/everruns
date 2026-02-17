@@ -31,8 +31,8 @@ use uuid::Uuid;
 use crate::durable_runner::DurableTurnInput;
 use crate::worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
-    AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
-    WorkerAdapters,
+    AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
+    AdapterSessionMutator, AdapterSessionStore, WorkerAdapters,
 };
 
 // Re-export atom types
@@ -768,8 +768,15 @@ async fn execute_act_activity<A: WorkerAdapters>(
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
+    let org_id = input.org_id.unwrap_or(1);
+    let session_store = Arc::new(AdapterSessionStore::new(adapters.clone(), org_id));
+    let session_mutator = Arc::new(AdapterSessionMutator::new(adapters.clone(), org_id));
+    let agent_store = Arc::new(AdapterAgentStore::new(adapters.clone(), org_id));
 
-    let mut atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store);
+    let mut atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store)
+        .with_session_store(session_store)
+        .with_session_mutator(session_mutator)
+        .with_agent_store(agent_store);
     if let Some(sqldb_store) = adapters.sqldb_store() {
         atom = atom.with_sqldb_store(sqldb_store);
     }
@@ -869,6 +876,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                     // Schedule act activity for server-side tools
                     // Client-side tools will be handled after act completes
                     let act_input = ActInput {
+                        org_id: Some(input.org_id),
                         context: AtomContext {
                             session_id: input.session_id,
                             turn_id,

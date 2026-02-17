@@ -97,8 +97,9 @@ pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider,
-    NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
+    NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionMutator,
+    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
+    UserConnectionResolver,
 };
 
 // Event listener re-exports
@@ -137,15 +138,15 @@ pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
     CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool, FileSystemCapability,
-    GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool, IntegrationPlugin,
-    ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
-    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
-    NoopCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
-    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
-    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
-    WriteFileTool, WriteTodosTool, apply_capabilities, collect_capabilities_with_configs,
-    get_dependencies, is_mcp_capability, mcp_capability_id, parse_mcp_capability_id,
-    resolve_dependencies,
+    GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool, GrepFilesTool,
+    IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
+    McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
+    MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities,
+    SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability, SqlExecuteTool,
+    SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool,
+    TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
+    WriteTodosTool, apply_capabilities, collect_capabilities_with_configs, get_dependencies,
+    is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
 };
 
 // Atoms re-exports (stateless atomic operations)

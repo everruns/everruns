@@ -127,6 +127,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `session_file_system` | File System | File Operations | Available |
 | `virtual_bash` | Virtual Bash | Execution | Available |
 | `session_storage` | Session Storage | Storage | Available |
+| `session` | Session | Session | Available |
 | `web_fetch` | Web Fetch | Network | Available |
 | `stateless_todo_list` | Task Management | Productivity | Available |
 | `sample_data` | Sample Data | Data | Available |
