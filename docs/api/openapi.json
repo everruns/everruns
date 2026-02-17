@@ -3307,6 +3307,78 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/pin": {
+      "put": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "PUT /v1/sessions/{session_id}/pin - Pin session for current user",
+        "operationId": "pin_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session pinned successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/pin - Unpin session for current user",
+        "operationId": "unpin_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session unpinned successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sse": {
       "get": {
         "tags": [
@@ -7680,6 +7752,13 @@
                   "description": "Unique identifier for the session (format: session_{32-hex}).",
                   "example": "session_01933b5a00007000800000000000001"
                 },
+                "is_pinned": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+                },
                 "model_id": {
                   "type": [
                     "string",
@@ -8403,6 +8482,13 @@
             "type": "string",
             "description": "Unique identifier for the session (format: session_{32-hex}).",
             "example": "session_01933b5a00007000800000000000001"
+          },
+          "is_pinned": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
           },
           "model_id": {
             "type": [
