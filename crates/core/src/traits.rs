@@ -71,6 +71,13 @@ pub trait SessionStore: Send + Sync {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
 }
 
+/// Trait for updating mutable session metadata.
+#[async_trait]
+pub trait SessionMutator: Send + Sync {
+    /// Update a session's human-readable title.
+    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
+}
+
 // ============================================================================
 // LlmProviderStore - For retrieving LLM provider configurations
 // ============================================================================
@@ -352,6 +359,15 @@ pub struct ToolContext {
     /// Optional message retriever for tools that need conversation history access
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
 
+    /// Optional session store for tools that need session metadata access.
+    pub session_store: Option<Arc<dyn SessionStore>>,
+
+    /// Optional session mutator for tools that need to update session metadata.
+    pub session_mutator: Option<Arc<dyn SessionMutator>>,
+
+    /// Optional agent store for tools that need agent metadata access.
+    pub agent_store: Option<Arc<dyn AgentStore>>,
+
     /// Optional resolver for user connection tokens (lazy GitHub token lookup, etc.)
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
 }
@@ -365,6 +381,9 @@ impl ToolContext {
             storage_store: None,
             sqldb_store: None,
             message_retriever: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
             connection_resolver: None,
         }
     }
@@ -377,6 +396,9 @@ impl ToolContext {
             storage_store: None,
             sqldb_store: None,
             message_retriever: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
             connection_resolver: None,
         }
     }
@@ -392,6 +414,9 @@ impl ToolContext {
             storage_store: Some(storage_store),
             sqldb_store: None,
             message_retriever: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
             connection_resolver: None,
         }
     }
@@ -408,6 +433,9 @@ impl ToolContext {
             storage_store: Some(storage_store),
             sqldb_store: None,
             message_retriever: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
             connection_resolver: None,
         }
     }
@@ -427,6 +455,24 @@ impl ToolContext {
         self
     }
 
+    /// Add a session store to this context.
+    pub fn with_session_store(mut self, store: Arc<dyn SessionStore>) -> Self {
+        self.session_store = Some(store);
+        self
+    }
+
+    /// Add a session mutator to this context.
+    pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
+        self.session_mutator = Some(mutator);
+        self
+    }
+
+    /// Add an agent store to this context.
+    pub fn with_agent_store(mut self, store: Arc<dyn AgentStore>) -> Self {
+        self.agent_store = Some(store);
+        self
+    }
+
     /// Add a connection resolver to this context
     pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
         self.connection_resolver = Some(resolver);
@@ -442,6 +488,9 @@ impl std::fmt::Debug for ToolContext {
             .field("storage_store", &self.storage_store.is_some())
             .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
+            .field("session_store", &self.session_store.is_some())
+            .field("session_mutator", &self.session_mutator.is_some())
+            .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
             .finish()
     }

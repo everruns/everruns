@@ -286,6 +286,31 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .ok_or_else(|| store_error("Session not found after update"))
     }
 
+    async fn set_session_title(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        title: String,
+    ) -> Result<Session> {
+        let session_id_typed = SessionId::from_uuid(session_id);
+        let update = UpdateSession {
+            title: Some(title),
+            ..Default::default()
+        };
+
+        self.db
+            .update_session(org_id, session_id_typed, update)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update session title: {}", e);
+                store_error("Failed to update session title")
+            })?;
+
+        self.get_session(org_id, session_id)
+            .await?
+            .ok_or_else(|| store_error("Session not found after update"))
+    }
+
     // =========================================================================
     // Message Operations
     // =========================================================================

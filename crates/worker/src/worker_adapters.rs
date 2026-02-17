@@ -58,6 +58,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         status: &str,
     ) -> Result<Session>;
 
+    /// Set a session title.
+    async fn set_session_title(
+        &self,
+        _org_id: i64,
+        _session_id: Uuid,
+        _title: String,
+    ) -> Result<Session> {
+        Err(everruns_core::AgentLoopError::store(
+            "set_session_title not supported by this adapter",
+        ))
+    }
+
     // =========================================================================
     // Message Operations
     // =========================================================================
@@ -263,6 +275,27 @@ impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for AdapterHarnessSt
 pub struct AdapterSessionStore<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
+}
+
+/// Adapter-based SessionMutator implementation.
+pub struct AdapterSessionMutator<A: WorkerAdapters> {
+    adapters: A,
+    org_id: i64,
+}
+
+impl<A: WorkerAdapters> AdapterSessionMutator<A> {
+    pub fn new(adapters: A, org_id: i64) -> Self {
+        Self { adapters, org_id }
+    }
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for AdapterSessionMutator<A> {
+    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+        self.adapters
+            .set_session_title(self.org_id, session_id.uuid(), title)
+            .await
+    }
 }
 
 impl<A: WorkerAdapters> AdapterSessionStore<A> {

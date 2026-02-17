@@ -109,6 +109,33 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    /// Set session title.
+    pub async fn set_session_title(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        title: &str,
+    ) -> Result<Session> {
+        let request = proto::SetSessionTitleRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            title: title.to_string(),
+            org_id,
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .set_session_title(request)
+            .await
+            .map_err(|e| grpc_error(format!("Failed to set session title: {}", e)))?;
+
+        let proto_session = response
+            .into_inner()
+            .session
+            .ok_or_else(|| grpc_error("No session in response"))?;
+
+        proto_session_to_session(proto_session)
+    }
+
     /// Get MCP server info by name prefix (for MCP tool execution)
     pub async fn get_mcp_server_by_prefix(
         &self,

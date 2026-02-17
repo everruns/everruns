@@ -32,6 +32,7 @@ service WorkerService {
     // Session operations
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
     rpc SetSessionStatus(SetSessionStatusRequest) returns (SetSessionStatusResponse);
+    rpc SetSessionTitle(SetSessionTitleRequest) returns (SetSessionTitleResponse);
 
     // Message operations
     rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
@@ -290,6 +291,17 @@ message SetSessionStatusRequest {
 }
 
 message SetSessionStatusResponse {
+    Session session = 1;
+}
+
+message SetSessionTitleRequest {
+    Uuid session_id = 1;
+    string title = 2;
+    // Organization ID for resource validation
+    int64 org_id = 3;
+}
+
+message SetSessionTitleResponse {
     Session session = 1;
 }
 
