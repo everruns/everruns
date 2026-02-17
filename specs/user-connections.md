@@ -148,6 +148,19 @@ Create a GitHub App:
    - Note the **slug** from the URL → `GITHUB_APP_SLUG`
    - Generate a **private key** (.pem file) → `GITHUB_APP_PRIVATE_KEY`
 
+#### Dev App: Everruns (Dev)
+
+Pre-configured for local development: <https://github.com/settings/apps/everruns-dev>
+
+| Field | Value |
+|-------|-------|
+| **GitHub App name** | `Everruns (Dev)` |
+| **Homepage URL** | `http://localhost:9300` |
+| **Callback URL** | _(leave blank)_ |
+| **Setup URL** | `http://localhost:9300/api/v1/user/connections/github/callback` |
+| **Redirect on update** | Checked |
+| **Webhook → Active** | Unchecked |
+
 ### Security
 
 - No long-lived tokens stored for GitHub (only `installation_id`, which is not a secret)
