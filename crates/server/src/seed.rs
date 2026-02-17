@@ -134,6 +134,7 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
     let input = CreateOrganizationRow {
         public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
         name: "Default Organization".to_string(),
+        created_by: None,
     };
 
     match db
@@ -194,8 +195,8 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
         }
     }
 
-    // Ensure anonymous user is member of default org
-    db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
+    // Ensure anonymous user is owner of default org
+    db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID, "owner")
         .await?;
 
     Ok(result)

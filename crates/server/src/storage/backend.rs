@@ -974,8 +974,9 @@ impl StorageBackend {
         &self,
         org_id: i64,
         user_id: Uuid,
+        role: &str,
     ) -> Result<OrganizationMemberRow> {
-        dispatch!(self, add_organization_member, org_id, user_id)
+        dispatch!(self, add_organization_member, org_id, user_id, role)
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -989,7 +990,38 @@ impl StorageBackend {
         dispatch!(self, list_organization_members, org_id)
     }
 
-    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+    pub async fn list_organization_members_with_users(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberWithUserRow>> {
+        dispatch!(self, list_organization_members_with_users, org_id)
+    }
+
+    pub async fn get_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Option<OrganizationMemberWithUserRow>> {
+        dispatch!(self, get_organization_member, org_id, user_id)
+    }
+
+    pub async fn update_organization_member_role(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+    ) -> Result<Option<OrganizationMemberRow>> {
+        dispatch!(self, update_organization_member_role, org_id, user_id, role)
+    }
+
+    pub async fn count_organization_owners(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_organization_owners, org_id)
+    }
+
+    pub async fn list_user_organizations(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<OrganizationWithRoleRow>> {
         dispatch!(self, list_user_organizations, user_id)
     }
 
@@ -1027,8 +1059,8 @@ impl StorageBackend {
         )
     }
 
-    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
-        dispatch!(self, ensure_membership, user_id, org_id)
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
+        dispatch!(self, ensure_membership, user_id, org_id, role)
     }
 
     // ============================================

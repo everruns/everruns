@@ -1,15 +1,24 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/providers/auth-provider";
-import { useUsers } from "@/hooks/use-users";
-import { Users, Search, ShieldAlert, Mail, Calendar, Shield } from "lucide-react";
-import type { User } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
+import { useMembers, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-members";
+import { Users, Shield, ShieldCheck, Crown, UserMinus, Loader2 } from "lucide-react";
+import type { OrgMember } from "@/lib/api/members";
+import type { OrgRole } from "@/lib/api/types";
 
 function getInitials(name: string): string {
   return name
@@ -28,60 +37,132 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function getAuthProviderLabel(provider?: string): string {
-  if (!provider) return "Local";
-  switch (provider) {
-    case "google":
-      return "Google";
-    case "github":
-      return "GitHub";
-    case "local":
-      return "Local";
-    default:
-      return provider;
-  }
-}
+const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+};
 
-function UserCard({ user }: { user: User }) {
-  const isAdmin = user.roles.includes("admin");
+const ROLE_ICONS: Record<OrgRole, typeof Crown> = {
+  owner: Crown,
+  admin: ShieldCheck,
+  member: Shield,
+};
+
+const ROLE_BADGE_VARIANT: Record<OrgRole, "default" | "secondary" | "outline"> = {
+  owner: "default",
+  admin: "secondary",
+  member: "outline",
+};
+
+function MemberCard({
+  member,
+  currentUserId,
+  canManage,
+  isOwner,
+}: {
+  member: OrgMember;
+  currentUserId: string;
+  canManage: boolean;
+  isOwner: boolean;
+}) {
+  const updateRole = useUpdateMemberRole();
+  const removeMember = useRemoveMember();
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
+  const isSelf = member.user_id === currentUserId;
+  const RoleIcon = ROLE_ICONS[member.role];
+
+  const handleRoleChange = async (newRole: string) => {
+    setPendingRole(newRole);
+    try {
+      await updateRole.mutateAsync({ userId: member.user_id, role: newRole as OrgRole });
+    } catch {
+      // Error handled by mutation
+    } finally {
+      setPendingRole(null);
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!confirm(`Remove ${member.name} from this organization?`)) return;
+    try {
+      await removeMember.mutateAsync(member.user_id);
+    } catch {
+      // Error handled by mutation
+    }
+  };
 
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-4">
         <Avatar className="h-10 w-10">
-          {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
-          <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+          {member.avatar_url && <AvatarImage src={member.avatar_url} alt={member.name} />}
+          <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
         </Avatar>
         <div>
           <div className="font-medium flex items-center gap-2">
-            {user.name}
-            {isAdmin && (
-              <Badge variant="secondary" className="text-xs">
-                <Shield className="h-3 w-3 mr-1" />
-                Admin
+            {member.name}
+            {isSelf && (
+              <Badge variant="outline" className="text-xs">
+                You
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Mail className="h-3 w-3" />
-              {user.email}
-            </span>
-          </div>
+          <div className="text-sm text-muted-foreground">{member.email}</div>
         </div>
       </div>
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        <Badge variant="outline">{getAuthProviderLabel(user.auth_provider)}</Badge>
-        <span className="flex items-center gap-1">
-          <Calendar className="h-3 w-3" />
-          Joined {formatDate(user.created_at)}
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Joined {formatDate(member.joined_at)}
         </span>
+
+        {canManage && !isSelf ? (
+          <Select
+            value={pendingRole ?? member.role}
+            onValueChange={handleRoleChange}
+            disabled={updateRole.isPending}
+          >
+            <SelectTrigger className="w-[120px]">
+              {updateRole.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SelectValue />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              {isOwner && <SelectItem value="owner">Owner</SelectItem>}
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="member">Member</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant={ROLE_BADGE_VARIANT[member.role]} className="gap-1">
+            <RoleIcon className="h-3 w-3" />
+            {ROLE_LABELS[member.role]}
+          </Badge>
+        )}
+
+        {canManage && !isSelf && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRemove}
+            disabled={removeMember.isPending}
+            title="Remove member"
+          >
+            {removeMember.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <UserMinus className="h-4 w-4 text-muted-foreground" />
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function UserCardSkeleton() {
+function MemberCardSkeleton() {
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-4">
@@ -91,56 +172,22 @@ function UserCardSkeleton() {
           <Skeleton className="h-3 w-48" />
         </div>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-8 w-[120px]" />
       </div>
     </div>
   );
 }
 
 export default function MembersPage() {
-  const { requiresAuth } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { user } = useAuth();
+  const { currentOrg, hasRole } = useOrg();
+  const { data: members = [], isLoading, error } = useMembers();
 
-  // Debounce the search query for API calls
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  // Simple debounce effect
-  useMemo(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const {
-    data: users = [],
-    isLoading,
-    error,
-  } = useUsers(debouncedSearch ? { search: debouncedSearch } : undefined);
-
-  // If auth is not required, show a message
-  if (!requiresAuth) {
-    return (
-      <div className="space-y-8">
-        <section>
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold">Members</h2>
-            <p className="text-sm text-muted-foreground">View and manage team members.</p>
-          </div>
-          <Card className="p-8 text-center">
-            <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
-            <p className="text-muted-foreground">
-              Member management is only available when authentication is enabled. Contact your
-              administrator to enable authentication.
-            </p>
-          </Card>
-        </section>
-      </div>
-    );
-  }
+  const canManage = hasRole("admin");
+  const isOwner = hasRole("owner");
+  const currentUserId = user?.id ?? "";
 
   return (
     <div className="space-y-8">
@@ -148,19 +195,11 @@ export default function MembersPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold">Members</h2>
-            <p className="text-sm text-muted-foreground">View and manage team members.</p>
+            <p className="text-sm text-muted-foreground">
+              Manage members of{" "}
+              <span className="font-medium">{currentOrg?.name ?? "your organization"}</span>.
+            </p>
           </div>
-        </div>
-
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
         </div>
 
         {error && (
@@ -172,29 +211,30 @@ export default function MembersPage() {
         {isLoading ? (
           <div className="space-y-2">
             {[...Array(3)].map((_, i) => (
-              <UserCardSkeleton key={i} />
+              <MemberCardSkeleton key={i} />
             ))}
           </div>
-        ) : users.length === 0 ? (
+        ) : members.length === 0 ? (
           <Card className="p-8 text-center">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">
-              {searchQuery ? "No members found" : "No members"}
-            </h3>
+            <h3 className="text-lg font-medium mb-2">No members</h3>
             <p className="text-muted-foreground">
-              {searchQuery
-                ? `No members match "${searchQuery}". Try a different search.`
-                : "No team members have been added yet."}
+              No members have been added to this organization yet.
             </p>
           </Card>
         ) : (
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground mb-2">
-              {users.length} member{users.length !== 1 ? "s" : ""}
-              {searchQuery && ` matching "${searchQuery}"`}
+              {members.length} member{members.length !== 1 ? "s" : ""}
             </div>
-            {users.map((user) => (
-              <UserCard key={user.id} user={user} />
+            {members.map((member) => (
+              <MemberCard
+                key={member.user_id}
+                member={member}
+                currentUserId={currentUserId}
+                canManage={canManage}
+                isOwner={isOwner}
+              />
             ))}
           </div>
         )}

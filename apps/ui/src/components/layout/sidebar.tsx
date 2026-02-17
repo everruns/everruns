@@ -100,7 +100,7 @@ function CreateOrganizationDialog({
 
     const org = await createOrg.mutateAsync({ name: name.trim() });
     // Switch to the newly created org
-    setCurrentOrg({ public_id: org.id, name: org.name });
+    setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setName("");
     onOpenChange(false);
   };

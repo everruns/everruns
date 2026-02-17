@@ -23,6 +23,7 @@ async fn test_create_organization_assigns_public_id() {
         .create_organization(CreateOrganizationRow {
             public_id: "org_aaaabbbbccccddddeeee111122223333".to_string(),
             name: "Test Org".to_string(),
+            created_by: None,
         })
         .await
         .expect("create should succeed");
@@ -40,6 +41,7 @@ async fn test_create_organization_multiple() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Org A".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -48,6 +50,7 @@ async fn test_create_organization_multiple() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Org B".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -71,6 +74,7 @@ async fn test_add_member_and_check() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Members Test".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -84,7 +88,7 @@ async fn test_add_member_and_check() {
 
     // Add member
     let member = db
-        .add_organization_member(org.org_id, user_id)
+        .add_organization_member(org.org_id, user_id, "member")
         .await
         .unwrap();
     assert_eq!(member.org_id, org.org_id);
@@ -108,6 +112,7 @@ async fn test_list_user_organizations() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "User Org 1".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -116,14 +121,15 @@ async fn test_list_user_organizations() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "User Org 2".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
 
-    db.add_organization_member(org1.org_id, user_id)
+    db.add_organization_member(org1.org_id, user_id, "member")
         .await
         .unwrap();
-    db.add_organization_member(org2.org_id, user_id)
+    db.add_organization_member(org2.org_id, user_id, "member")
         .await
         .unwrap();
 
@@ -145,11 +151,12 @@ async fn test_list_user_organizations_excludes_non_member() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Exclusive Org".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
 
-    db.add_organization_member(org.org_id, user_id)
+    db.add_organization_member(org.org_id, user_id, "member")
         .await
         .unwrap();
 
@@ -171,11 +178,12 @@ async fn test_remove_member() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Remove Test".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
 
-    db.add_organization_member(org.org_id, user_id)
+    db.add_organization_member(org.org_id, user_id, "member")
         .await
         .unwrap();
     assert!(
@@ -217,6 +225,7 @@ async fn test_get_organization_by_public_id() {
     db.create_organization(CreateOrganizationRow {
         public_id: public_id.clone(),
         name: "Lookup Test".to_string(),
+        created_by: None,
     })
     .await
     .unwrap();
@@ -258,6 +267,7 @@ async fn test_update_organization_name() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Original Name".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -284,6 +294,7 @@ async fn test_delete_organization() {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Delete Me".to_string(),
+            created_by: None,
         })
         .await
         .unwrap();

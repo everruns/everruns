@@ -686,10 +686,14 @@ export interface TokenResponse {
   refresh_token?: string;
 }
 
+/** Organization role */
+export type OrgRole = "owner" | "admin" | "member";
+
 /** Organization membership info */
 export interface OrganizationMembership {
   public_id: string;
   name: string;
+  role: OrgRole;
 }
 
 /** Full organization details (from API) */

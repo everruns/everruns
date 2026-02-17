@@ -11,7 +11,7 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, OrgMembership, validate_org_public_id,
+    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, validate_org_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -87,6 +87,7 @@ impl AuthUser {
                 org_id: DEFAULT_ORG_ID,
                 public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                 name: "Default Organization".to_string(),
+                role: OrgRole::Owner,
             }],
         }
     }
@@ -282,6 +283,8 @@ pub struct OrgContext {
     pub public_id: String,
     /// Organization name
     pub name: String,
+    /// User's role in this organization
+    pub role: OrgRole,
 }
 
 /// Extract org from URI path directly (doesn't consume Path extractor)
@@ -331,7 +334,52 @@ where
             org_id: org.org_id,
             public_id: org.public_id.clone(),
             name: org.name.clone(),
+            role: org.role,
         })
+    }
+}
+
+// ============================================================================
+// Role-based extractors
+// ============================================================================
+
+/// Require Admin+ role in the organization (from URL path)
+#[derive(Debug, Clone)]
+pub struct OrgAdmin(pub OrgContext);
+
+impl<S> FromRequestParts<S> for OrgAdmin
+where
+    S: Send + Sync,
+    AuthState: FromRef<S>,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let org = OrgContext::from_request_parts(parts, state).await?;
+        if !org.role.has_permission(OrgRole::Admin) {
+            return Err(AuthError::forbidden("Admin access required"));
+        }
+        Ok(OrgAdmin(org))
+    }
+}
+
+/// Require Owner role in the organization (from URL path)
+#[derive(Debug, Clone)]
+pub struct OrgOwner(pub OrgContext);
+
+impl<S> FromRequestParts<S> for OrgOwner
+where
+    S: Send + Sync,
+    AuthState: FromRef<S>,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let org = OrgContext::from_request_parts(parts, state).await?;
+        if !org.role.has_permission(OrgRole::Owner) {
+            return Err(AuthError::forbidden("Owner access required"));
+        }
+        Ok(OrgOwner(org))
     }
 }
 
@@ -371,6 +419,8 @@ pub struct ResolvedOrg {
     pub name: String,
     /// Authenticated user ID (for user-scoped operations like connections)
     pub user_id: Option<Uuid>,
+    /// User's role in this organization
+    pub role: OrgRole,
 }
 
 impl<S> FromRequestParts<S> for ResolvedOrg
@@ -403,6 +453,7 @@ where
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
                     user_id,
+                    role: org.role,
                 })
             }
             AuthMethod::Jwt => {
@@ -439,6 +490,7 @@ where
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
                     user_id: Some(user.id),
+                    role: org.role,
                 })
             }
         }
@@ -457,10 +509,11 @@ mod tests {
         assert!(user.is_admin());
         assert!(user.has_role("admin"));
         assert_eq!(user.auth_method, AuthMethod::None);
-        // Anonymous user should belong to default org
+        // Anonymous user should belong to default org with Owner role
         assert_eq!(user.organizations.len(), 1);
         assert_eq!(user.organizations[0].org_id, DEFAULT_ORG_ID);
         assert_eq!(user.organizations[0].public_id, DEFAULT_ORG_PUBLIC_ID);
+        assert_eq!(user.organizations[0].role, OrgRole::Owner);
     }
 
     #[test]
@@ -509,11 +562,13 @@ mod tests {
                     org_id: 1,
                     public_id: "org_00000000000000000000000000000001".to_string(),
                     name: "Org 1".to_string(),
+                    role: OrgRole::Owner,
                 },
                 OrgMembership {
                     org_id: 2,
                     public_id: "org_00000000000000000000000000000002".to_string(),
                     name: "Org 2".to_string(),
+                    role: OrgRole::Member,
                 },
             ],
         };
@@ -539,5 +594,18 @@ mod tests {
 
         let forbidden = AuthError::forbidden("Forbidden");
         assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_org_role_hierarchy() {
+        assert!(OrgRole::Owner.has_permission(OrgRole::Owner));
+        assert!(OrgRole::Owner.has_permission(OrgRole::Admin));
+        assert!(OrgRole::Owner.has_permission(OrgRole::Member));
+        assert!(OrgRole::Admin.has_permission(OrgRole::Admin));
+        assert!(OrgRole::Admin.has_permission(OrgRole::Member));
+        assert!(!OrgRole::Admin.has_permission(OrgRole::Owner));
+        assert!(OrgRole::Member.has_permission(OrgRole::Member));
+        assert!(!OrgRole::Member.has_permission(OrgRole::Admin));
+        assert!(!OrgRole::Member.has_permission(OrgRole::Owner));
     }
 }

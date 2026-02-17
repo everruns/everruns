@@ -22,6 +22,9 @@ pub struct OrganizationRow {
     /// External identity provider ID (e.g., PropelAuth org ID). NULL for OSS.
     #[sqlx(default)]
     pub external_id: Option<String>,
+    /// User who created this organization. NULL for seeded/external orgs.
+    #[sqlx(default)]
+    pub created_by: Option<Uuid>,
 }
 
 /// Organization member row from database
@@ -29,7 +32,28 @@ pub struct OrganizationRow {
 pub struct OrganizationMemberRow {
     pub org_id: i64,
     pub user_id: Uuid,
+    pub role: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Organization member with user info (for API responses)
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationMemberWithUserRow {
+    pub user_id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+}
+
+/// Organization with role (for user's org list)
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationWithRoleRow {
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub role: String,
 }
 
 /// Input for creating an organization
@@ -37,6 +61,7 @@ pub struct OrganizationMemberRow {
 pub struct CreateOrganizationRow {
     pub public_id: String,
     pub name: String,
+    pub created_by: Option<Uuid>,
 }
 
 /// Input for updating an organization

@@ -76,6 +76,7 @@ pub struct TokenResponse {
 pub struct OrgMembershipResponse {
     pub public_id: String,
     pub name: String,
+    pub role: String,
 }
 
 /// User info response
@@ -315,7 +316,7 @@ pub async fn register(
     // Add user to default organization
     let _ = state
         .db
-        .add_organization_member(DEFAULT_ORG_ID, user.id)
+        .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
         .await
         .map_err(|e| {
             tracing::error!("Failed to add user to default org: {}", e);
@@ -422,6 +423,7 @@ pub async fn get_current_user(
             .map(|o| OrgMembershipResponse {
                 public_id: o.public_id.clone(),
                 name: o.name.clone(),
+                role: o.role.as_str().to_string(),
             })
             .collect(),
     );
@@ -591,7 +593,7 @@ pub async fn oauth_callback(
         // Add newly created user to default organization
         let _ = state
             .db
-            .add_organization_member(DEFAULT_ORG_ID, created_user.id)
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
             .await
             .map_err(|e| {
                 tracing::error!("Failed to add OAuth user to default org: {}", e);
@@ -860,7 +862,7 @@ async fn get_or_create_admin_user(
         // Add admin user to default organization
         let _ = state
             .db
-            .add_organization_member(DEFAULT_ORG_ID, created_user.id)
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
             .await
             .map_err(|e| {
                 tracing::error!("Failed to add admin user to default org: {}", e);
@@ -880,7 +882,7 @@ async fn get_or_create_admin_user(
     if organizations.is_empty() {
         let _ = state
             .db
-            .add_organization_member(DEFAULT_ORG_ID, user.id)
+            .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
             .await;
     }
 

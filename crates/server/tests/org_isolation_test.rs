@@ -22,6 +22,7 @@ async fn create_second_org(db: &InMemoryDatabase) -> i64 {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "Second Org".to_string(),
+            created_by: None,
         })
         .await
         .expect("Failed to create second org");

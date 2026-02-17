@@ -17,11 +17,18 @@ import {
 } from "react";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
-import type { OrganizationMembership } from "@/lib/api/types";
+import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 const STORAGE_KEY = "everruns_current_org";
+
+/** Check if a role has permission for a required role level */
+const ROLE_HIERARCHY: Record<OrgRole, number> = { owner: 3, admin: 2, member: 1 };
+
+export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): boolean {
+  return ROLE_HIERARCHY[currentRole] >= ROLE_HIERARCHY[requiredRole];
+}
 
 export interface OrgContextValue {
   /** Currently selected organization */
@@ -30,6 +37,8 @@ export interface OrgContextValue {
   organizations: OrganizationMembership[];
   /** Set the current organization */
   setCurrentOrg: (org: OrganizationMembership) => void;
+  /** Check if current user has at least the given role in the current org */
+  hasRole: (role: OrgRole) => boolean;
   /** Loading state */
   isLoading: boolean;
 }
@@ -113,10 +122,19 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
   }, [currentOrg, isInitialized, syncOrgCookie]);
 
+  const hasRole = useCallback(
+    (role: OrgRole) => {
+      if (!currentOrg) return false;
+      return hasPermission(currentOrg.role, role);
+    },
+    [currentOrg],
+  );
+
   const value: OrgContextValue = {
     currentOrg,
     organizations,
     setCurrentOrg,
+    hasRole,
     isLoading: authLoading || !isInitialized,
   };
 

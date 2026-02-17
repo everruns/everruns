@@ -113,6 +113,7 @@ export const queryKeys = {
   organizations: {
     all: ["organizations"] as const,
     detail: (orgId: string) => ["organization", orgId] as const,
+    members: (orgId: string) => ["organization", orgId, "members"] as const,
   },
 
   // User Connection queries
