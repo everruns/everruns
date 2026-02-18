@@ -1465,6 +1465,16 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{
+        UpdateAgent, UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
+    };
+
+    fn make_db() -> StorageBackend {
+        StorageBackend::in_memory()
+    }
+
+    // --- Harness seed data ---
 
     #[test]
     fn test_seed_harness_ids_are_unique() {
@@ -1540,5 +1550,257 @@ mod tests {
                 cap_id
             );
         }
+    }
+
+    // --- seed_all ---
+
+    #[tokio::test]
+    async fn test_seed_all_first_run_creates_everything() {
+        let db = make_db();
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        assert!(result.created > 0, "first run should create items");
+        assert_eq!(result.updated, 0, "first run should not update anything");
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_second_run_all_unchanged() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert_eq!(result.created, 0, "second run should create nothing");
+        assert_eq!(result.updated, 0, "second run should update nothing");
+        assert!(result.unchanged > 0, "everything should be unchanged");
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_has_changes() {
+        let db = make_db();
+        let first = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(first.has_changes());
+
+        let second = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(!second.has_changes());
+    }
+
+    // --- Agent upsert ---
+
+    #[tokio::test]
+    async fn test_agent_seed_detects_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate agent name via public API to simulate DB drift
+        let agent_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
+        db.update_agent(
+            DEFAULT_ORG_ID,
+            agent_id,
+            UpdateAgent {
+                name: Some("STALE NAME".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect agent name change");
+    }
+
+    #[tokio::test]
+    async fn test_agent_seed_detects_capability_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Remove capabilities to simulate drift
+        db.set_agent_capabilities(seed_ids::DAD_JOKES_AGENT, vec![])
+            .await
+            .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect capability change");
+    }
+
+    // --- Model upsert ---
+
+    #[tokio::test]
+    async fn test_model_seed_detects_display_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate model display_name via public API
+        db.update_llm_model(
+            DEFAULT_ORG_ID,
+            seed_ids::GPT_5_2,
+            UpdateLlmModel {
+                display_name: Some("STALE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(
+            result.updated >= 1,
+            "should detect model display_name change"
+        );
+    }
+
+    // --- Provider upsert ---
+
+    #[tokio::test]
+    async fn test_provider_seed_detects_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate provider name via public API
+        db.update_llm_provider(
+            DEFAULT_ORG_ID,
+            seed_ids::OPENAI_PROVIDER,
+            UpdateLlmProvider {
+                name: Some("STALE".to_string()),
+                provider_type: None,
+                base_url: None,
+                api_key_encrypted: None,
+                status: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect provider name change");
+    }
+
+    // --- MCP Server upsert ---
+
+    #[tokio::test]
+    async fn test_mcp_server_seed_detects_url_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate MCP server URL via public API
+        db.update_mcp_server(
+            DEFAULT_ORG_ID,
+            seed_ids::MS_LEARN_MCP,
+            UpdateMcpServer {
+                url: Some("https://old.example.com".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect MCP server URL change");
+    }
+
+    // --- Harness upsert ---
+
+    #[tokio::test]
+    async fn test_harness_seed_detects_description_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate harness description via public API
+        let harness_id = everruns_core::HarnessId::from_uuid(seed_ids::BASE_HARNESS);
+        db.update_harness(
+            DEFAULT_ORG_ID,
+            harness_id,
+            UpdateHarness {
+                description: Some("STALE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(
+            result.updated >= 1,
+            "should detect harness description change"
+        );
+    }
+
+    // --- Dev-only filtering ---
+
+    #[tokio::test]
+    async fn test_seed_prod_skips_dev_only_agents() {
+        let db = make_db();
+        let result = seed_all(&db, DeploymentGrade::Prod).await.unwrap();
+
+        // Python Coder is dev_only — should not be created in prod
+        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
+        assert!(agent.is_none(), "dev-only agent should not exist in prod");
+
+        // But non-dev agents should exist
+        let dad_jokes_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, dad_jokes_id).await.unwrap();
+        assert!(agent.is_some(), "non-dev agent should exist");
+
+        assert!(result.created > 0);
+    }
+
+    #[tokio::test]
+    async fn test_seed_dev_includes_dev_only_agents() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
+        assert!(agent.is_some(), "dev-only agent should exist in dev mode");
+    }
+
+    // --- SeedResult ---
+
+    #[test]
+    fn test_seed_result_merge() {
+        let mut a = SeedResult {
+            created: 1,
+            updated: 2,
+            unchanged: 3,
+        };
+        let b = SeedResult {
+            created: 10,
+            updated: 20,
+            unchanged: 30,
+        };
+        a.merge(b);
+        assert_eq!(a.created, 11);
+        assert_eq!(a.updated, 22);
+        assert_eq!(a.unchanged, 33);
+    }
+
+    #[test]
+    fn test_seed_result_has_changes() {
+        assert!(!SeedResult::default().has_changes());
+        assert!(
+            SeedResult {
+                created: 1,
+                updated: 0,
+                unchanged: 0
+            }
+            .has_changes()
+        );
+        assert!(
+            SeedResult {
+                created: 0,
+                updated: 1,
+                unchanged: 0
+            }
+            .has_changes()
+        );
+        assert!(
+            !SeedResult {
+                created: 0,
+                updated: 0,
+                unchanged: 5
+            }
+            .has_changes()
+        );
     }
 }
