@@ -101,7 +101,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 - `smoke-test/` - API and UI smoke testing
 - `no-docker-setup/` - PostgreSQL setup for cloud agents
-- `ui-screenshots/` - agent-browser screenshots for PR comments
+- `ui-screenshots/` - agent-browser UI screenshots
 
 ### Test Cases
 
@@ -138,7 +138,7 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 8. Docs build: `npm run build` in `apps/docs/`
 9. Rebase on main: `git fetch origin main && git rebase origin/main`
 10. Smoke test new functionality
-11. UI screenshots for UI changes (use `.claude/skills/ui-screenshots/`)
+11. UI screenshots for UI changes
 12. Test coverage: tests must reproduce issue + verify fix, cover touched code paths
 13. CI green before merge
 14. Resolve all PR comments
