@@ -57,13 +57,19 @@ import {
 
 const isDev = process.env.NODE_ENV === "development";
 
-const navigation = [
+const topNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Sessions", href: "/sessions", icon: MessageSquare },
+];
+
+const buildingBlocksNavigation = [
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
-  { name: "Sessions", href: "/sessions", icon: MessageSquare },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
+];
+
+const bottomNavigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -210,7 +216,50 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 py-4">
-        {navigation.map((item) => {
+        {topNavigation.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              {item.name}
+            </Link>
+          );
+        })}
+
+        {/* Building Blocks section */}
+        <div className="my-3 border-t" />
+        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Building Blocks</p>
+        {buildingBlocksNavigation.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              {item.name}
+            </Link>
+          );
+        })}
+
+        {/* Settings */}
+        <div className="my-3 border-t" />
+        {bottomNavigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
