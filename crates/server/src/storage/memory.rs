@@ -397,6 +397,8 @@ impl InMemoryDatabase {
     }
 
     /// Create agent with a specific ID, idempotent (returns None if exists)
+    /// Create or update agent with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_agent_with_id(
         &self,
         org_id: i64,
@@ -404,10 +406,32 @@ impl InMemoryDatabase {
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
-        if agents.contains_key(&id) {
-            return Ok(None); // Already exists
-        }
         let now = Self::now();
+
+        if let Some(existing) = agents.get(&id) {
+            // Check if seed-controlled fields differ
+            if existing.name == input.name
+                && existing.description == input.description
+                && existing.system_prompt == input.system_prompt
+                && existing.tags == input.tags
+                && existing.tools == input.tools
+            {
+                return Ok(None); // Unchanged
+            }
+            // Update changed fields
+            let row = AgentRow {
+                name: input.name,
+                description: input.description,
+                system_prompt: input.system_prompt,
+                tags: input.tags,
+                tools: input.tools,
+                updated_at: now,
+                ..existing.clone()
+            };
+            agents.insert(id, row.clone());
+            return Ok(Some(row));
+        }
+
         let row = AgentRow {
             id,
             public_id: input.public_id,
@@ -604,6 +628,8 @@ impl InMemoryDatabase {
     }
 
     /// Create harness with a specific ID, idempotent (returns None if exists)
+    /// Create or update harness with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_harness_with_id(
         &self,
         org_id: i64,
@@ -611,10 +637,28 @@ impl InMemoryDatabase {
         input: CreateHarnessRow,
     ) -> Result<Option<HarnessRow>> {
         let mut harnesses = self.harnesses.write();
-        if harnesses.contains_key(&id) {
-            return Ok(None); // Already exists
-        }
         let now = Self::now();
+
+        if let Some(existing) = harnesses.get(&id) {
+            if existing.name == input.name
+                && existing.description == input.description
+                && existing.system_prompt == input.system_prompt
+                && existing.tags == input.tags
+            {
+                return Ok(None); // Unchanged
+            }
+            let row = HarnessRow {
+                name: input.name,
+                description: input.description,
+                system_prompt: input.system_prompt,
+                tags: input.tags,
+                updated_at: now,
+                ..existing.clone()
+            };
+            harnesses.insert(id, row.clone());
+            return Ok(Some(row));
+        }
+
         let row = HarnessRow {
             id,
             org_id,
@@ -1194,6 +1238,8 @@ impl InMemoryDatabase {
 
     /// Create a provider with a specific ID (for seeding)
     /// Returns None if provider already exists (idempotent)
+    /// Create or update LLM provider with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_llm_provider_with_id(
         &self,
         org_id: i64,
@@ -1202,10 +1248,22 @@ impl InMemoryDatabase {
     ) -> Result<Option<LlmProviderRow>> {
         let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
-        if providers.contains_key(&id) {
-            return Ok(None); // Already exists
-        }
         let now = Self::now();
+
+        if let Some(existing) = providers.get(&id) {
+            if existing.name == input.name && existing.provider_type == input.provider_type {
+                return Ok(None); // Unchanged
+            }
+            let row = LlmProviderRow {
+                name: input.name,
+                provider_type: input.provider_type,
+                updated_at: now,
+                ..existing.clone()
+            };
+            providers.insert(id, row.clone());
+            return Ok(Some(row));
+        }
+
         let api_key_set = input.api_key_encrypted.is_some();
         let row = LlmProviderRow {
             id,
@@ -1428,6 +1486,8 @@ impl InMemoryDatabase {
 
     /// Create or update a model with a specific ID (for seeding)
     /// Uses upsert to update display_name, is_default, is_favorite if model exists
+    /// Create or update LLM model with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_llm_model_with_id(
         &self,
         org_id: i64,
@@ -1438,44 +1498,41 @@ impl InMemoryDatabase {
         let mut models = self.llm_models.write();
         let now = Self::now();
 
-        let row = if let Some(existing) = models.get(&id) {
-            // Update existing model
-            LlmModelRow {
-                id,
-                org_id: existing.org_id,
-                provider_id: existing.provider_id,
-                model_id: existing.model_id.clone(),
+        if let Some(existing) = models.get(&id) {
+            // Check if seed-controlled fields differ
+            if existing.display_name == input.display_name
+                && existing.is_default == input.is_default
+                && existing.is_favorite == input.is_favorite
+            {
+                return Ok(None); // Unchanged
+            }
+            let row = LlmModelRow {
                 display_name: input.display_name,
-                capabilities: existing.capabilities.clone(),
                 is_default: input.is_default,
                 is_favorite: input.is_favorite,
-                status: existing.status.clone(),
-                source: existing.source.clone(),
-                last_seen_at: existing.last_seen_at,
-                provider_metadata: existing.provider_metadata.clone(),
-                created_at: existing.created_at,
                 updated_at: now,
-            }
-        } else {
-            // Create new model
-            LlmModelRow {
-                id,
-                org_id,
-                provider_id: input.provider_id,
-                model_id: input.model_id,
-                display_name: input.display_name,
-                capabilities: serde_json::to_value(&input.capabilities)?,
-                is_default: input.is_default,
-                is_favorite: input.is_favorite,
-                status: "active".to_string(),
-                source: input.source,
-                last_seen_at: None,
-                provider_metadata: input.provider_metadata,
-                created_at: now,
-                updated_at: now,
-            }
-        };
+                ..existing.clone()
+            };
+            models.insert(id, row.clone());
+            return Ok(Some(row));
+        }
 
+        let row = LlmModelRow {
+            id,
+            org_id,
+            provider_id: input.provider_id,
+            model_id: input.model_id,
+            display_name: input.display_name,
+            capabilities: serde_json::to_value(&input.capabilities)?,
+            is_default: input.is_default,
+            is_favorite: input.is_favorite,
+            status: "active".to_string(),
+            source: input.source,
+            last_seen_at: None,
+            provider_metadata: input.provider_metadata,
+            created_at: now,
+            updated_at: now,
+        };
         models.insert(id, row.clone());
         Ok(Some(row))
     }
@@ -2145,6 +2202,8 @@ impl InMemoryDatabase {
 
     /// Create MCP server with a specific ID (for seeding)
     /// Returns None if server already exists with this ID
+    /// Create or update MCP server with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_mcp_server_with_id(
         &self,
         org_id: i64,
@@ -2152,14 +2211,30 @@ impl InMemoryDatabase {
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
         let id = McpServerId::from_uuid(id);
-        // Check if already exists
-        if self.mcp_servers.read().contains_key(&id) {
-            return Ok(None);
+        let mut servers = self.mcp_servers.write();
+        let now = Self::now();
+
+        if let Some(existing) = servers.get(&id) {
+            if existing.name == input.name
+                && existing.description == input.description
+                && existing.url == input.url
+                && existing.transport_type == input.transport_type
+            {
+                return Ok(None); // Unchanged
+            }
+            let row = McpServerRow {
+                name: input.name,
+                description: input.description,
+                url: input.url,
+                transport_type: input.transport_type,
+                updated_at: now,
+                ..existing.clone()
+            };
+            servers.insert(id, row.clone());
+            return Ok(Some(row));
         }
 
-        let now = Self::now();
         let api_key_set = input.api_key_encrypted.is_some();
-
         let row = McpServerRow {
             id,
             org_id,
@@ -2178,7 +2253,7 @@ impl InMemoryDatabase {
             updated_at: now,
         };
 
-        self.mcp_servers.write().insert(id, row.clone());
+        servers.insert(id, row.clone());
         Ok(Some(row))
     }
 
