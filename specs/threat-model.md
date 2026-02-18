@@ -658,6 +658,43 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 
+## 16. Daytona Cloud Sandbox (TM-DAYTONA)
+
+Daytona sandboxes are remote Linux environments managed via REST API. The agent can create, exec commands, and manage files in these sandboxes. The `daytona_git_credentials` tool writes a GitHub token to disk inside the sandbox to enable git push/pull/fetch operations.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-DAYTONA-001 | Git token persisted on sandbox disk | Medium | Token written to `/tmp/.git-credentials`; lost on sandbox stop/delete; same trust boundary as `daytona_exec` (anyone who can exec can already read the file) | **ACCEPTED** |
+| TM-DAYTONA-002 | Git token expiry — stale credentials | Low | GitHub App installation tokens expire in ~1 hour; tool hint tells agent to call `daytona_git_credentials` again to refresh | MITIGATED |
+| TM-DAYTONA-003 | Git token scope — over-privileged access | Medium | Token scoped by GitHub App installation permissions; user controls repo access via GitHub App settings | **CALLER RISK** |
+| TM-DAYTONA-004 | Daytona API key compromise | High | Stored as encrypted session secret (`DAYTONA_API_KEY`); envelope encryption (AES-256-GCM) at rest | MITIGATED |
+| TM-DAYTONA-005 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`daytona_sandbox:{id}`); session isolation enforced by storage store | MITIGATED |
+| TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop after 5 min inactivity; system prompt instructs agent to delete when done | MITIGATED |
+| TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |
+
+### Mitigation Details
+
+**TM-DAYTONA-001 — Git Token on Disk (ACCEPTED):**
+The `daytona_git_credentials` tool writes `https://oauth2:<token>@github.com\n` to `/tmp/.git-credentials` and configures `git config --global credential.helper 'store --file=/tmp/.git-credentials'`. This is the same pattern used by GitHub Actions and other CI systems.
+
+Accepted because:
+- The sandbox is an isolated environment — same trust boundary as exec access
+- Any agent that can call `daytona_exec` can already run arbitrary commands
+- Token is in `/tmp`, lost on sandbox stop/delete
+- Token is short-lived (~1 hour GitHub App installation token)
+- Alternative (API-proxied credential helper) deferred as future improvement
+
+**TM-DAYTONA-003 — Token Scope (CALLER RISK):**
+The GitHub token's scope depends on the GitHub App installation permissions. Users must review which repositories the GitHub App has access to in their GitHub settings. Everruns does not enforce per-repo restrictions at the application level.
+
+**TM-DAYTONA-005 — Cross-Session Isolation:**
+```
+Session A stores: daytona_sandbox:sb_abc → {sandbox_id, workspace_path, started_at}
+Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, started_at}
+
+Session A cannot access sb_xyz (different session_id in storage query)
+```
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -696,6 +733,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-AGENT-003 | MCP tool description poisoning | MCP servers org-configured; descriptions used as schemas only |
 | TM-AGENT-013 | Data exfiltration via web_fetch | Opt-in capability; org members trusted; intended functionality |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
+| TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
 
 ### Caller Responsibilities
 
@@ -712,6 +750,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
 | Block cloud metadata | TM-API-009 | Defense-in-depth: enable IMDSv2 (AWS), metadata concealment (GCP), or equivalent; fetchkit v0.1.2 blocks 169.254.0.0/16 at application level |
 | Worker network isolation | TM-API-008, TM-API-010, TM-API-011 | Defense-in-depth: restrict worker container egress; fetchkit v0.1.2 blocks private IPs at application level |
+| Review GitHub App permissions | TM-DAYTONA-003 | Audit which repositories the GitHub App installation can access; Everruns does not enforce per-repo restrictions |
 
 ## Security Controls Matrix
 
@@ -732,6 +771,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing |
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
+| Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
 
 ## References
 
@@ -750,4 +790,5 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
+- `specs/daytona.md` — Daytona cloud sandbox integration
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry

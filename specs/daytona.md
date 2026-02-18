@@ -164,12 +164,30 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
 3. If token found: passes `username=oauth2`, `password=<token>` to the git clone API
 4. If no token: public repos only; private repos fail with hint to connect GitHub
 
+### daytona_git_credentials
+
+Configure git credentials in a sandbox so that all git operations (push, pull, fetch, rebase, etc.) work transparently via `daytona_exec`. Call once after creating a sandbox; call again to refresh if the token expires (~1 hour).
+
+- **Parameters**:
+  - `sandbox_id`: string (required)
+- **Returns**: `{ sandbox_id, authenticated, provider, hint }`
+
+**Implementation:** Writes a `git credential store` file (`/tmp/.git-credentials`) containing `https://oauth2:<token>@github.com`, then configures `git config --global credential.helper 'store --file=/tmp/.git-credentials'`. After this, any git command via `daytona_exec` authenticates automatically.
+
+**Authentication flow:** Same token resolution as `daytona_git_clone` (connection_resolver → GITHUB_TOKEN fallback). Fails with actionable error if no credentials found.
+
+**Design:** Avoids per-verb tools (git_push, git_fetch, etc.). Instead, configures standard git credential store once, then agent uses `daytona_exec` for all git operations naturally. Token in `/tmp` — lost on sandbox stop, same trust boundary as sandbox exec access.
+
 ## Security
 
-- **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest
+- **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
-- **Sandbox Isolation**: Each sandbox is an isolated environment
+- **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
+- **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
+- **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
+
+See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 
 ## Error Handling
 
@@ -199,6 +217,16 @@ Daytona uses a single API key for both management and toolbox APIs. No per-sandb
 
 Files are managed through the Toolbox API proxy (`proxy.app.daytona.io`). Upload uses multipart/form-data, download returns raw bytes.
 
+### Git credentials via credential store file
+
+Git credentials for push/pull/fetch are configured by writing a `git credential store` file (`/tmp/.git-credentials`) inside the sandbox. This is the same mechanism used by CI systems (GitHub Actions, etc.).
+
+**Considered and dismissed: per-verb git tools.** Creating `daytona_git_push`, `daytona_git_fetch`, `daytona_git_pull`, etc. would duplicate `daytona_exec` with credential injection. Doesn't scale — every new git operation needs a new tool.
+
+**Considered and dismissed: magic git detection in `daytona_exec`.** Auto-detecting git commands and injecting credentials transparently. Fragile heuristic, surprising behavior, hard to debug.
+
+**Future improvement: API-proxied credential helper.** Instead of writing a token file, configure git in the sandbox to call back to an Everruns API endpoint (e.g. `GET /api/sessions/{id}/git-credential`) that mints a fresh token on each request. Benefits: no token on disk, always fresh (no expiry), multi-provider (GitHub/GitLab) via query param, per-session ACLs. Deferred because the credential store approach is simpler, works now, and the sandbox is already an isolated trust boundary.
+
 ## Crate Structure
 
 `integrations/daytona/` → `everruns-integrations-daytona`
@@ -212,7 +240,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
-| `src/tools.rs` | 8 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `src/tools.rs` | 9 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 
 ## Capability Registration
