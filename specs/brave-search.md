@@ -129,6 +129,8 @@ BRAVE_SEARCH_API_KEY=<key> cargo test -p everruns-integrations-brave-search --fe
 
 Tests: `smoke_basic_search`, `smoke_freshness_filter`, `smoke_pagination` in `tests/smoke_real_api.rs`.
 
+Tests use a `require_api_key!` macro that gracefully skips (returns early with a message) when `BRAVE_SEARCH_API_KEY` is unset or empty. This prevents CI failures when the secret is not yet configured while still compiling the test code.
+
 ### CI
 
 Dedicated workflow `.github/workflows/brave-search-integration.yml`:
@@ -136,8 +138,9 @@ Dedicated workflow `.github/workflows/brave-search-integration.yml`:
 - **Path-filtered**: only triggers when `integrations/brave-search/**` changes.
 - Reads `BRAVE_SEARCH_API_KEY` from GitHub Actions secrets.
 - Passes `--features integration` to compile and run the real-API tests.
+- If the secret is missing, tests compile and pass (skipped), ensuring CI stays green.
 
-Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, add a path-filtered workflow, store the key in GitHub secrets.
+Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, use a skip macro for missing keys, add a path-filtered workflow, store the key in GitHub secrets.
 
 ## Crate Structure
 
