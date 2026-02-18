@@ -30,7 +30,7 @@ use tools::{
 
 inventory::submit! {
     IntegrationPlugin {
-        experimental_only: true,
+        experimental_only: false,
         factory: || Box::new(DaytonaCapability),
     }
 }
@@ -61,7 +61,7 @@ impl Capability for DaytonaCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] Daytona"
+        "Daytona"
     }
 
     fn description(&self) -> &str {
@@ -84,7 +84,7 @@ impl Capability for DaytonaCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"## Daytona (Experimental)
+            r#"## Daytona
 
 Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with full Linux and network access.
 
@@ -147,7 +147,7 @@ mod tests {
     fn test_capability_metadata() {
         let cap = DaytonaCapability;
         assert_eq!(cap.id(), "daytona");
-        assert_eq!(cap.name(), "[Experimental] Daytona");
+        assert_eq!(cap.name(), "Daytona");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("cloud"));
         assert_eq!(cap.category(), Some("Execution"));
@@ -179,7 +179,7 @@ mod tests {
         assert!(prompt.contains("daytona_git_clone"));
         assert!(prompt.contains("daytona_git_credentials"));
         assert!(prompt.contains("DAYTONA_API_KEY"));
-        assert!(prompt.contains("Experimental"));
+        assert!(prompt.contains("Daytona"));
     }
 
     #[test]

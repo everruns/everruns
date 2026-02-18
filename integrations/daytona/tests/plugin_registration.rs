@@ -1,4 +1,4 @@
-//! Integration test: verify Daytona plugin registers via inventory.
+//! Integration tests for Daytona plugin registration and capability.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
@@ -19,7 +19,7 @@ fn test_daytona_plugin_is_submitted() {
 }
 
 #[test]
-fn test_daytona_plugin_is_experimental() {
+fn test_daytona_plugin_is_not_experimental() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
     let daytona = plugins
         .iter()
@@ -30,8 +30,8 @@ fn test_daytona_plugin_is_experimental() {
         .expect("Daytona plugin not found");
 
     assert!(
-        daytona.experimental_only,
-        "Daytona should be marked experimental_only"
+        !daytona.experimental_only,
+        "Daytona should NOT be marked experimental_only"
     );
 }
 
@@ -42,11 +42,11 @@ fn test_daytona_registered_in_dev_registry() {
 }
 
 #[test]
-fn test_daytona_not_registered_in_prod_registry() {
+fn test_daytona_registered_in_prod_registry() {
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
     assert!(
-        !registry.has("daytona"),
-        "Daytona should NOT be in prod registry"
+        registry.has("daytona"),
+        "Daytona should be in prod registry"
     );
 }
 
@@ -58,7 +58,7 @@ fn test_daytona_capability_metadata() {
         .expect("Daytona capability not found");
 
     assert_eq!(cap.id(), "daytona");
-    assert_eq!(cap.name(), "[Experimental] Daytona");
+    assert_eq!(cap.name(), "Daytona");
     assert_eq!(cap.icon(), Some("cloud"));
     assert_eq!(cap.category(), Some("Execution"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);

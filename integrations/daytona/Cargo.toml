@@ -1,6 +1,5 @@
 # Daytona Integration
 # Decision: External integration crate, auto-registered via inventory plugin system
-# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
 
 [package]
 name = "everruns-integrations-daytona"

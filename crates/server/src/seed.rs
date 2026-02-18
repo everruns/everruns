@@ -593,7 +593,7 @@ You can run multiple sandboxes in parallel for different tasks.
 Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
         capabilities: &["daytona", "session_storage", "session_file_system"],
-        dev_only: true,
+        dev_only: false,
     },
 ];
 
