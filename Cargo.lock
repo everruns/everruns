@@ -1290,6 +1290,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-brave-search"
+version = "0.7.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-codesandbox"
 version = "0.7.0"
 dependencies = [
@@ -1409,6 +1425,7 @@ dependencies = [
  "dotenvy",
  "everruns-core",
  "everruns-durable",
+ "everruns-integrations-brave-search",
  "everruns-integrations-codesandbox",
  "everruns-integrations-daytona",
  "everruns-integrations-docker",
@@ -1474,6 +1491,7 @@ dependencies = [
  "everruns-core",
  "everruns-durable",
  "everruns-gemini",
+ "everruns-integrations-brave-search",
  "everruns-integrations-codesandbox",
  "everruns-integrations-daytona",
  "everruns-integrations-docker",

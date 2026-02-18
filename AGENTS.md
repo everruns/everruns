@@ -92,6 +92,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/linear-issues.md` - Linear issue processing workflow
 - `specs/daytona.md` - Daytona cloud sandbox integration
+- `specs/brave-search.md` - Brave Search web search integration
 
 ### Skills
 

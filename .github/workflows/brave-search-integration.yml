@@ -1,0 +1,49 @@
+name: Brave Search Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/brave-search/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'integrations/brave-search/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  integration-test:
+    name: Brave Search API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "brave-search-integration"
+
+      - name: Run integration tests
+        run: cargo test -p everruns-integrations-brave-search --features integration
