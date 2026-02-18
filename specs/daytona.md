@@ -213,6 +213,16 @@ Daytona uses a single API key for both management and toolbox APIs. No per-sandb
 
 Files are managed through the Toolbox API proxy (`proxy.app.daytona.io`). Upload uses multipart/form-data, download returns raw bytes.
 
+### Git credentials via credential store file
+
+Git credentials for push/pull/fetch are configured by writing a `git credential store` file (`/tmp/.git-credentials`) inside the sandbox. This is the same mechanism used by CI systems (GitHub Actions, etc.).
+
+**Considered and dismissed: per-verb git tools.** Creating `daytona_git_push`, `daytona_git_fetch`, `daytona_git_pull`, etc. would duplicate `daytona_exec` with credential injection. Doesn't scale — every new git operation needs a new tool.
+
+**Considered and dismissed: magic git detection in `daytona_exec`.** Auto-detecting git commands and injecting credentials transparently. Fragile heuristic, surprising behavior, hard to debug.
+
+**Future improvement: API-proxied credential helper.** Instead of writing a token file, configure git in the sandbox to call back to an Everruns API endpoint (e.g. `GET /api/sessions/{id}/git-credential`) that mints a fresh token on each request. Benefits: no token on disk, always fresh (no expiry), multi-provider (GitHub/GitLab) via query param, per-session ACLs. Deferred because the credential store approach is simpler, works now, and the sandbox is already an isolated trust boundary.
+
 ## Crate Structure
 
 `integrations/daytona/` → `everruns-integrations-daytona`
