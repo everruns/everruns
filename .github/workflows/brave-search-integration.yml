@@ -2,9 +2,7 @@ name: Brave Search Integration
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'integrations/brave-search/**'
+    branches: [main, claude/brave-search-integration-rcVfC]
   pull_request:
     branches: [main]
     paths:
