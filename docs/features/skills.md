@@ -89,9 +89,9 @@ csv-analyzer/
 └── references/REFERENCE.md
 ```
 
-### Filesystem Discovery
+### Filesystem Discovery (Built-in `skills` Capability)
 
-Skills placed in the session filesystem at `/.agents/skills/` are automatically discovered:
+Skills placed in the session filesystem at `/.agents/skills/` are automatically discovered when the built-in `skills` capability is enabled on an agent. This capability provides `list_skills` and `activate_skill` tools for VFS-based discovery.
 
 ```
 /.agents/skills/

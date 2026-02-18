@@ -85,6 +85,25 @@ Enables fetching content from URLs and converting HTML to markdown or plain text
   - Returns metadata for binary content (images, PDFs) instead of failing
 - **Use cases**: Agents that need to retrieve information from the web
 
+### Agent Skills (Built-in Discovery)
+
+**Status**: Available
+
+Enables agents to discover and activate skills from the session filesystem. Skills are instruction packages (SKILL.md files) uploaded to `/.agents/skills/{name}/SKILL.md` in the session VFS.
+
+- **Tools**:
+  - `list_skills` - Scan `/.agents/skills/` for available skills
+  - `activate_skill` - Load a skill's full instructions by name
+- **Dependencies**: Automatically includes File System Access
+- **Features**:
+  - Progressive disclosure (names first, full instructions on activation)
+  - Path traversal protection on skill names
+  - Bundled file listing for skills with extra assets
+  - Invalid SKILL.md files reported but don't block discovery
+- **Use cases**: Project-specific skills uploaded to the session workspace, per-session skill discovery
+
+See [Agent Skills](/features/skills/) for the full skills system including the registry API.
+
 ### Docker Container (Experimental)
 
 **Status**: Available (Development only, integration plugin)
