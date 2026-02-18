@@ -690,6 +690,11 @@ impl StorageBackend {
         dispatch!(self, session_directory_has_children, session_id, path)
     }
 
+    /// Get session file storage stats (file count and total size in bytes).
+    pub async fn session_file_stats(&self, session_id: Uuid) -> Result<(i64, i64)> {
+        dispatch!(self, session_file_stats, session_id)
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

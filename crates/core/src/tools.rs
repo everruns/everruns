@@ -130,17 +130,20 @@ impl ToolExecutionResult {
     /// contains the payload, and the agent loop continues the same way for all outcomes.
     ///
     /// Internal errors are logged but replaced with a generic message when returned.
+    ///
+    /// THREAT[TM-AGENT-012]: Tool results are truncated if they exceed
+    /// `TOOL_RESULT_MAX_BYTES` to prevent context window exhaustion.
     pub fn into_tool_result(self, tool_call_id: &str, tool_name: &str) -> ToolResult {
         match self {
             ToolExecutionResult::Success(value) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
-                result: Some(value),
+                result: Some(truncate_tool_result(value, tool_name)),
                 images: None,
                 error: None,
             },
             ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
-                result: Some(result),
+                result: Some(truncate_tool_result(result, tool_name)),
                 images: if images.is_empty() {
                     None
                 } else {
@@ -175,6 +178,57 @@ impl ToolExecutionResult {
             }
         }
     }
+}
+
+// ============================================================================
+// Tool Result Size Limit (TM-AGENT-012)
+// ============================================================================
+
+/// Maximum serialized size of a tool result value in bytes (100 KB).
+///
+/// THREAT[TM-AGENT-012]: Large tool results consume context window and increase
+/// cost without bound. Results exceeding this limit are truncated with a notice.
+/// Configurable via `TOOL_RESULT_MAX_BYTES` environment variable.
+pub const DEFAULT_TOOL_RESULT_MAX_BYTES: usize = 100 * 1024;
+
+fn tool_result_max_bytes() -> usize {
+    std::env::var("TOOL_RESULT_MAX_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_TOOL_RESULT_MAX_BYTES)
+}
+
+/// Truncate a tool result value if its serialized form exceeds the size limit.
+///
+/// When truncated, the value is replaced with a JSON object indicating the
+/// truncation and including the first portion of the original output as a string.
+fn truncate_tool_result(value: Value, tool_name: &str) -> Value {
+    let max_bytes = tool_result_max_bytes();
+    let serialized = match serde_json::to_string(&value) {
+        Ok(s) => s,
+        Err(_) => return value,
+    };
+
+    if serialized.len() <= max_bytes {
+        return value;
+    }
+
+    tracing::warn!(
+        tool_name = %tool_name,
+        original_bytes = serialized.len(),
+        max_bytes = max_bytes,
+        "Tool result truncated (TM-AGENT-012)"
+    );
+
+    // Keep the first max_bytes of the serialized output as a string preview
+    let preview = &serialized[..max_bytes.min(serialized.len())];
+    serde_json::json!({
+        "truncated": true,
+        "original_bytes": serialized.len(),
+        "max_bytes": max_bytes,
+        "preview": preview,
+        "notice": "Tool result was truncated because it exceeded the size limit."
+    })
 }
 
 /// Internal error details (logged but not exposed to LLM)

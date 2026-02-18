@@ -2094,6 +2094,16 @@ impl InMemoryDatabase {
             .any(|f| f.session_id == session_id && f.path.starts_with(&prefix)))
     }
 
+    pub async fn session_file_stats(&self, session_id: Uuid) -> Result<(i64, i64)> {
+        let session_id = SessionId::from_uuid(session_id);
+        let files = self.session_files.read();
+        let (count, total_size) = files
+            .values()
+            .filter(|f| f.session_id == session_id && !f.is_directory)
+            .fold((0i64, 0i64), |(c, s), f| (c + 1, s + f.size_bytes));
+        Ok((count, total_size))
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

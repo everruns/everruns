@@ -25,8 +25,92 @@
 use async_trait::async_trait;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::time::Instant;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use crate::typed_id::SessionId;
+
+// ============================================================================
+// Per-iteration Tool Call Limit (TM-AGENT-007)
+// ============================================================================
+
+/// Default maximum number of tool calls allowed per single LLM response.
+///
+/// THREAT[TM-AGENT-007]: An agent can invoke many tools in a single LLM response,
+/// leading to cost runaway and resource exhaustion. Excess tool calls beyond this
+/// limit are returned as errors so the LLM can adjust.
+/// Configurable via `MAX_TOOL_CALLS_PER_ITERATION` environment variable.
+const DEFAULT_MAX_TOOL_CALLS_PER_ITERATION: usize = 20;
+
+fn max_tool_calls_per_iteration() -> usize {
+    std::env::var("MAX_TOOL_CALLS_PER_ITERATION")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_TOOL_CALLS_PER_ITERATION)
+}
+
+// ============================================================================
+// Per-session Tool Execution Rate Limiting (TM-TOOL-009)
+// ============================================================================
+
+/// Default maximum tool executions per session per minute.
+///
+/// THREAT[TM-TOOL-009]: Prevents a single session from executing an unbounded
+/// number of tools over time (cost and resource exhaustion).
+/// Configurable via `TOOL_RATE_LIMIT_PER_MINUTE` environment variable.
+const DEFAULT_TOOL_RATE_LIMIT_PER_MINUTE: usize = 120;
+
+fn tool_rate_limit_per_minute() -> usize {
+    std::env::var("TOOL_RATE_LIMIT_PER_MINUTE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_TOOL_RATE_LIMIT_PER_MINUTE)
+}
+
+/// Per-session tool execution rate limiter (sliding window, 1-minute window).
+#[derive(Debug, Clone)]
+pub struct ToolRateLimiter {
+    state: Arc<Mutex<HashMap<SessionId, Vec<Instant>>>>,
+}
+
+impl Default for ToolRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolRateLimiter {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Check if `count` more tool calls are allowed for this session.
+    /// Returns the number of calls allowed (may be less than requested).
+    fn check_and_record(&self, session_id: SessionId, count: usize) -> usize {
+        let limit = tool_rate_limit_per_minute();
+        let now = Instant::now();
+        let cutoff = now - Duration::from_secs(60);
+
+        let mut state = self.state.lock().unwrap();
+        let timestamps = state.entry(session_id).or_default();
+
+        // Evict expired
+        timestamps.retain(|t| *t > cutoff);
+
+        let remaining = limit.saturating_sub(timestamps.len());
+        let allowed = count.min(remaining);
+
+        // Record the allowed calls
+        for _ in 0..allowed {
+            timestamps.push(now);
+        }
+
+        allowed
+    }
+}
 
 use super::{Atom, AtomContext};
 use crate::error::Result;
@@ -128,6 +212,8 @@ where
     session_mutator: Option<Arc<dyn SessionMutator>>,
     /// Optional agent store for agent metadata reads
     agent_store: Option<Arc<dyn AgentStore>>,
+    /// Per-session tool execution rate limiter (TM-TOOL-009)
+    tool_rate_limiter: ToolRateLimiter,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -147,6 +233,7 @@ where
             session_store: None,
             session_mutator: None,
             agent_store: None,
+            tool_rate_limiter: ToolRateLimiter::new(),
         }
     }
 
@@ -166,7 +253,14 @@ where
             session_store: None,
             session_mutator: None,
             agent_store: None,
+            tool_rate_limiter: ToolRateLimiter::new(),
         }
+    }
+
+    /// Set the tool rate limiter (allows sharing across atom instances for the same session).
+    pub fn with_tool_rate_limiter(mut self, limiter: ToolRateLimiter) -> Self {
+        self.tool_rate_limiter = limiter;
+        self
     }
 
     /// Set the SQL database store on this atom
@@ -242,6 +336,41 @@ where
             });
         }
 
+        // THREAT[TM-AGENT-007]: Cap tool calls per iteration to prevent resource exhaustion.
+        let limit = max_tool_calls_per_iteration();
+        let (tool_calls, excess_calls) = if tool_calls.len() > limit {
+            tracing::warn!(
+                session_id = %context.session_id,
+                turn_id = %context.turn_id,
+                requested = tool_calls.len(),
+                limit = limit,
+                "ActAtom: tool call limit exceeded, rejecting excess calls (TM-AGENT-007)"
+            );
+            let (accepted, excess) = tool_calls.split_at(limit);
+            (accepted.to_vec(), excess.to_vec())
+        } else {
+            (tool_calls, vec![])
+        };
+
+        // THREAT[TM-TOOL-009]: Per-session tool execution rate limiting.
+        let allowed_count = self
+            .tool_rate_limiter
+            .check_and_record(context.session_id, tool_calls.len());
+        let (tool_calls, excess_calls) = if allowed_count < tool_calls.len() {
+            tracing::warn!(
+                session_id = %context.session_id,
+                turn_id = %context.turn_id,
+                requested = tool_calls.len(),
+                allowed = allowed_count,
+                "ActAtom: session tool rate limit exceeded (TM-TOOL-009)"
+            );
+            let mut rate_limited: Vec<ToolCall> = tool_calls[allowed_count..].to_vec();
+            rate_limited.extend(excess_calls);
+            (tool_calls[..allowed_count].to_vec(), rate_limited)
+        } else {
+            (tool_calls, excess_calls)
+        };
+
         tracing::info!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -312,7 +441,27 @@ where
             })
             .collect();
 
-        let results = join_all(futures).await;
+        let mut results = join_all(futures).await;
+
+        // Add error results for excess tool calls that were rejected
+        for excess_call in &excess_calls {
+            results.push(ToolCallResult {
+                tool_call: excess_call.clone(),
+                result: ToolResult {
+                    tool_call_id: excess_call.id.clone(),
+                    result: Some(serde_json::json!({
+                        "error": format!(
+                            "Tool call rejected: exceeded limit. \
+                             Please reduce the number of parallel tool calls.",
+                        )
+                    })),
+                    images: None,
+                    error: None,
+                },
+                success: false,
+                status: "rate_limited".to_string(),
+            });
+        }
 
         // Count successes and errors
         let success_count = results.iter().filter(|r| r.success).count() as u32;

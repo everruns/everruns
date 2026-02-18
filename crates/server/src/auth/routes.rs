@@ -3,9 +3,10 @@
 // Decision: Support both JSON and cookie-based sessions
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{FromRef, Path, Query, State},
     http::StatusCode,
+    middleware as axum_middleware,
     response::Redirect,
     routing::{delete, get, post},
 };
@@ -149,24 +150,41 @@ pub struct AuthConfigResponse {
 }
 
 /// Create auth routes
+///
+/// THREAT[TM-AUTH-001]: Rate-limited auth endpoints prevent brute-force attacks.
 pub fn routes(state: BuiltinAuthBackend) -> Router {
-    Router::new()
-        // Public routes
-        .route("/v1/auth/config", get(get_auth_config))
+    let rate_limiter =
+        super::rate_limit::AuthRateLimiter::new(super::rate_limit::AuthRateLimitConfig::from_env());
+
+    // Rate-limited routes (login, register, refresh)
+    let rate_limited = Router::new()
         .route("/v1/auth/login", post(login))
         .route("/v1/auth/register", post(register))
         .route("/v1/auth/refresh", post(refresh_token))
+        .layer(axum_middleware::from_fn(
+            super::rate_limit::auth_rate_limit_middleware,
+        ))
+        .layer(Extension(rate_limiter));
+
+    // Non-rate-limited routes
+    let public = Router::new()
+        .route("/v1/auth/config", get(get_auth_config))
         .route("/v1/auth/logout", post(logout))
-        // OAuth routes
         .route("/v1/auth/oauth/{provider}", get(oauth_redirect))
-        .route("/v1/auth/callback/{provider}", get(oauth_callback))
-        // Protected routes
+        .route("/v1/auth/callback/{provider}", get(oauth_callback));
+
+    // Protected routes
+    let protected = Router::new()
         .route("/v1/auth/me", get(get_current_user))
         .route(
             "/v1/auth/api-keys",
             get(list_api_keys).post(create_api_key_route),
         )
-        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route))
+        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route));
+
+    rate_limited
+        .merge(public)
+        .merge(protected)
         .with_state(state)
 }
 

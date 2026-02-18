@@ -10,10 +10,12 @@ pub mod config;
 pub mod jwt;
 pub mod middleware;
 pub mod oauth;
+pub mod rate_limit;
 pub mod routes;
 
 pub use backend::AuthBackend;
 pub use builtin::BuiltinAuthBackend;
 pub use config::AuthConfig;
 pub use middleware::{AuthError, AuthMethod, AuthState, AuthUser, OrgContext, ResolvedOrg};
+pub use rate_limit::{AuthRateLimitConfig, AuthRateLimiter};
 pub use routes::routes;

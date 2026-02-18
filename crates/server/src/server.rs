@@ -13,6 +13,7 @@ use crate::{api, seed, services};
 
 use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
+use axum::middleware::{self as axum_middleware, Next};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::CapabilityRegistry;
 use everruns_core::{BraintrustListener, EventListener, OtelEventListener};
@@ -362,6 +363,9 @@ pub async fn run(
         app
     };
 
+    // THREAT[TM-WEB-004, TM-WEB-005]: Security response headers
+    let app = app.layer(axum_middleware::from_fn(security_headers));
+
     let app = app.layer(TraceLayer::new_for_http());
 
     // Start gRPC server and background tasks (production) or in-process worker (dev)
@@ -617,6 +621,31 @@ pub async fn run(
     Ok(())
 }
 
+/// Middleware that adds security response headers to every response.
+///
+/// THREAT[TM-WEB-004]: X-Frame-Options prevents clickjacking.
+/// THREAT[TM-WEB-005]: Standard security headers for defense-in-depth.
+async fn security_headers(request: axum::extract::Request, next: Next) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+        ),
+    );
+    response
+}
+
 /// Build router with optional API prefix
 fn build_router_with_prefix<S: Clone + Send + Sync + 'static>(
     api_routes: Router<S>,
@@ -687,5 +716,40 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn test_security_headers_added() {
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(axum_middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.headers().get(header::X_FRAME_OPTIONS).unwrap(),
+            "DENY"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::X_CONTENT_TYPE_OPTIONS)
+                .unwrap(),
+            "nosniff"
+        );
+        assert_eq!(
+            response.headers().get(header::REFERRER_POLICY).unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        assert!(
+            response
+                .headers()
+                .get(header::CONTENT_SECURITY_POLICY)
+                .is_some()
+        );
     }
 }

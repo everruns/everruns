@@ -2371,6 +2371,21 @@ impl Database {
         Ok(result.is_some())
     }
 
+    /// Get session file storage stats (file count and total size).
+    ///
+    /// THREAT[TM-FS-008]: Used by quota enforcement to check storage limits.
+    pub async fn session_file_stats(&self, session_id: Uuid) -> Result<(i64, i64)> {
+        let result: (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE(COUNT(*), 0), COALESCE(SUM(size_bytes), 0) \
+             FROM session_files WHERE session_id = $1 AND NOT is_directory",
+        )
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

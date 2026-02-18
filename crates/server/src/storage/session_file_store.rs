@@ -2,6 +2,9 @@
 //
 // This module implements the core SessionFileStore trait for persisting
 // session files to the database.
+//
+// THREAT[TM-FS-008]: Per-session storage quotas enforced before writes.
+// Limits configurable via SESSION_FILE_MAX_COUNT and SESSION_FILE_MAX_TOTAL_BYTES.
 
 use async_trait::async_trait;
 use everruns_core::{
@@ -12,6 +15,29 @@ use regex::Regex;
 
 use super::models::{CreateSessionFileRow, UpdateSessionFile};
 use super::repositories::Database;
+
+// ============================================================================
+// Session Storage Quota (TM-FS-008)
+// ============================================================================
+
+/// Default maximum files per session (1000).
+const DEFAULT_SESSION_FILE_MAX_COUNT: i64 = 1_000;
+/// Default maximum total storage per session in bytes (100 MB).
+const DEFAULT_SESSION_FILE_MAX_TOTAL_BYTES: i64 = 100 * 1024 * 1024;
+
+fn session_file_max_count() -> i64 {
+    std::env::var("SESSION_FILE_MAX_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_SESSION_FILE_MAX_COUNT)
+}
+
+fn session_file_max_total_bytes() -> i64 {
+    std::env::var("SESSION_FILE_MAX_TOTAL_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_SESSION_FILE_MAX_TOTAL_BYTES)
+}
 
 // ============================================================================
 // DbSessionFileStore - Stores session files in database
@@ -148,6 +174,31 @@ impl SessionFileStore for DbSessionFileStore {
             .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        // THREAT[TM-FS-008]: Enforce per-session storage quotas
+        let new_size = bytes.len() as i64;
+        if let Ok((file_count, total_size)) = self.db.session_file_stats(session_id.uuid()).await {
+            let max_count = session_file_max_count();
+            let max_bytes = session_file_max_total_bytes();
+
+            // For new files, check file count limit
+            if existing.is_none() && file_count >= max_count {
+                return Err(AgentLoopError::store(format!(
+                    "Session storage quota exceeded: maximum {} files per session",
+                    max_count
+                )));
+            }
+
+            // Check total size limit (subtract old file size if updating)
+            let old_size = existing.as_ref().map(|f| f.size_bytes).unwrap_or(0);
+            let projected_total = total_size - old_size + new_size;
+            if projected_total > max_bytes {
+                return Err(AgentLoopError::store(format!(
+                    "Session storage quota exceeded: maximum {} MB per session",
+                    max_bytes / (1024 * 1024)
+                )));
+            }
+        }
 
         let row = if let Some(existing) = existing {
             // Update existing file

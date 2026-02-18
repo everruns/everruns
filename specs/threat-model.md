@@ -86,7 +86,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-AUTH-001 | Brute force login | High | No rate limiting on `/v1/auth/login` | **OPEN** |
+| TM-AUTH-001 | Brute force login | High | Per-IP rate limiting (10 req/min, configurable via AUTH_RATE_LIMIT_MAX) on login/register/refresh endpoints | MITIGATED |
 | TM-AUTH-002 | JWT secret compromise | Critical | Stored in env var `AUTH_JWT_SECRET`; min 32 bytes recommended; never logged | MITIGATED |
 | TM-AUTH-003 | Token replay after logout | Medium | Refresh tokens stored in DB, revocable via DELETE; access tokens short-lived (15 min) | MITIGATED |
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
@@ -102,10 +102,8 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 ### Mitigation Details
 
-**TM-AUTH-001 — Rate Limiting (OPEN):**
-No rate limiting is currently implemented on authentication endpoints. An attacker can attempt unlimited logins.
-- **Recommendation:** Implement per-IP rate limiting: 5 attempts/min on `/v1/auth/login`, exponential backoff on failures.
-- **Priority:** High
+**TM-AUTH-001 — Rate Limiting (MITIGATED):**
+Per-IP rate limiting (10 req/min, configurable via `AUTH_RATE_LIMIT_MAX`) on login/register/refresh endpoints.
 
 **TM-AUTH-002 — JWT Secret:**
 ```
@@ -283,7 +281,7 @@ Fetchkit v0.1.2 implements DNS pinning: the hostname is resolved once, all resol
 | TM-FS-005 | Readonly file modification | Medium | `is_readonly` flag enforced; readonly files cannot have content updated | MITIGATED |
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
-| TM-FS-008 | Large file storage abuse | Medium | No per-session storage quota enforced at application level | **OPEN** |
+| TM-FS-008 | Large file storage abuse | Medium | Per-session file count (1000) and total size (100MB) limits enforced | MITIGATED |
 
 ### Mitigation Details
 
@@ -293,10 +291,8 @@ Path validated at three layers:
 2. **Database constraint:** `session_files_path_check` CHECK constraint
 3. **Unique constraint:** `(session_id, path)` prevents collision
 
-**TM-FS-008 — Storage Quota (OPEN):**
-No per-session or per-org storage limit on session files. An agent could create many large files.
-- **Recommendation:** Enforce per-session file count and total size limits.
-- **Priority:** Medium
+**TM-FS-008 — Storage Quota (MITIGATED):**
+Per-session file count (1000) and total size (100MB) limits enforced.
 
 ## 6. Session SQL Database (TM-SQL)
 
@@ -356,7 +352,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-006 | Disabled MCP server still callable | Medium | Server `status` flag checked before execution; disabled servers rejected | MITIGATED |
 | TM-TOOL-007 | MCP API key exposure | High | API keys encrypted at rest via envelope encryption; decrypted only at runtime | MITIGATED |
 | TM-TOOL-008 | Tool policy bypass | Low | `requires_approval` policy planned but not yet enforced (all tools auto-execute) | **OPEN** |
-| TM-TOOL-009 | No per-agent tool rate limiting | Medium | All tools execute without rate limits | **OPEN** |
+| TM-TOOL-009 | No per-agent tool rate limiting | Medium | Per-session tool execution rate limiting (120/min, configurable via TOOL_RATE_LIMIT_PER_MINUTE) | MITIGATED |
 
 ### Mitigation Details
 
@@ -478,22 +474,21 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-001 | XSS via stored content | Medium | React UI auto-escapes; file preview uses Shiki (no raw HTML injection) | MITIGATED |
 | TM-WEB-002 | CSRF on state-changing requests | Medium | SameSite=Lax cookies; JSON content type required; no GET side effects | MITIGATED |
 | TM-WEB-003 | Cookie theft via XSS | High | Refresh token cookie: HTTP-only; access token cookie: HTTP-only | MITIGATED |
-| TM-WEB-004 | Clickjacking | Medium | No X-Frame-Options or CSP frame-ancestors header set | **OPEN** |
-| TM-WEB-005 | Missing security headers | Low | No Content-Security-Policy, X-Content-Type-Options, Referrer-Policy headers | **OPEN** |
+| TM-WEB-004 | Clickjacking | Medium | X-Frame-Options: DENY via security_headers middleware | MITIGATED |
+| TM-WEB-005 | Missing security headers | Low | Security headers middleware: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, CSP | MITIGATED |
 | TM-WEB-006 | Open redirect in OAuth flow | Medium | OAuth callbacks validated against configured redirect URIs | MITIGATED |
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
 
 ### Mitigation Details
 
-**TM-WEB-004 / TM-WEB-005 — Security Headers (OPEN):**
-- **Recommendation:** Add the following response headers:
-  ```
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
-  ```
-- **Priority:** Medium
+**TM-WEB-004 / TM-WEB-005 — Security Headers (MITIGATED):**
+Security headers middleware adds the following response headers:
+```
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
+```
 
 ## 13. AI Agent Behavior (TM-AGENT)
 
@@ -507,12 +502,12 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
 | TM-AGENT-005 | Capability escalation via agent creation | High | Agent creator chooses capabilities; no approval workflow for dangerous capabilities (virtual_bash, docker) | **OPEN** |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
-| TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
+| TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | Per-iteration tool call limit of 20 (configurable via MAX_TOOL_CALLS_PER_ITERATION) | MITIGATED |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
 | TM-AGENT-009 | Agent self-modification | Low | No tools for agent/session CRUD; system prompt immutable within a session | MITIGATED |
 | TM-AGENT-010 | Agent spawning agent chains | Low | No agent-creation tools; agents cannot spawn child agents or sessions | MITIGATED |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts stored plaintext in DB; not encrypted at rest | **OPEN** (see TM-CRYPTO-007) |
-| TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
+| TM-AGENT-012 | Tool result size amplification | Medium | Tool results truncated at 100KB (configurable via TOOL_RESULT_MAX_BYTES) | MITIGATED |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
@@ -591,7 +586,7 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.1.2) as a sandb
 | TM-BASH-013 | eval/bash re-invocation escape | Medium | `eval` and `bash`/`sh` commands re-invoke the sandboxed interpreter, not real shell | MITIGATED |
 | TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
 | TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values | MITIGATED |
-| TM-BASH-016 | Write amplification via bash | Medium | No per-session storage quota on files written by bash (see TM-FS-008) | **OPEN** (see TM-FS-008) |
+| TM-BASH-016 | Write amplification via bash | Medium | Per-session file count (1000) and total size (100MB) limits enforced (see TM-FS-008) | MITIGATED |
 
 ### Mitigation Details
 
@@ -652,9 +647,9 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 |----|--------|----------|------------|--------|
 | TM-DOS-001 | Large API request body | High | Input size limits on all fields; multipart upload capped at 101 MB | MITIGATED |
 | TM-DOS-002 | Agent loop infinite iteration | High | Max 10 iterations per turn; configurable | MITIGATED |
-| TM-DOS-003 | SSE connection exhaustion | Medium | SSE connections tied to session; no global connection limit | **OPEN** |
+| TM-DOS-003 | SSE connection exhaustion | Medium | SseConnectionTracker with global/per-session/per-org limits | MITIGATED |
 | TM-DOS-004 | Database connection pool exhaustion | Medium | sqlx connection pool with max_connections; timeouts on acquisition | MITIGATED |
-| TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
+| TM-DOS-005 | Session file storage abuse | Medium | Per-session file count (1000) and total size (100MB) limits enforced (see TM-FS-008) | MITIGATED |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 
@@ -669,17 +664,17 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | ~~TM-API-010~~ | ~~WebFetch internal DNS probing~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 resolve-then-check blocks private IP resolution |
 | ~~TM-API-011~~ | ~~WebFetch internal port scanning~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 blocks private IP ranges |
 | ~~TM-API-012~~ | ~~WebFetch DNS rebinding~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 DNS pinning prevents rebinding |
-| TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
+| ~~TM-AUTH-001~~ | ~~No rate limiting on login~~ | ~~High~~ | Mitigated: Per-IP rate limiting (10 req/min, configurable via AUTH_RATE_LIMIT_MAX) on login/register/refresh endpoints |
 | TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
-| TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
-| TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
+| ~~TM-AGENT-007~~ | ~~No per-iteration tool call limit~~ | ~~Medium~~ | Mitigated: Per-iteration tool call limit of 20 (configurable via MAX_TOOL_CALLS_PER_ITERATION) |
+| ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: Tool results truncated at 100KB (configurable via TOOL_RESULT_MAX_BYTES) |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
-| TM-WEB-004 | Missing clickjacking protection | Medium | Add X-Frame-Options: DENY |
-| TM-WEB-005 | Missing security headers | Low | Add CSP, X-Content-Type-Options, Referrer-Policy |
-| TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
+| ~~TM-WEB-004~~ | ~~Missing clickjacking protection~~ | ~~Medium~~ | Mitigated: X-Frame-Options: DENY via security_headers middleware |
+| ~~TM-WEB-005~~ | ~~Missing security headers~~ | ~~Low~~ | Mitigated: Security headers middleware: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, CSP |
+| ~~TM-FS-008~~ | ~~No session storage quota~~ | ~~Medium~~ | Mitigated: Per-session file count (1000) and total size (100MB) limits enforced |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
-| TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
-| TM-DOS-003 | SSE connection exhaustion | Medium | Global SSE connection limit with per-user cap |
+| ~~TM-TOOL-009~~ | ~~No tool rate limiting~~ | ~~Medium~~ | Mitigated: Per-session tool execution rate limiting (120/min, configurable via TOOL_RATE_LIMIT_PER_MINUTE) |
+| ~~TM-DOS-003~~ | ~~SSE connection exhaustion~~ | ~~Medium~~ | Mitigated: SseConnectionTracker with global/per-session/per-org limits |
 
 ### Accepted Risks
 
