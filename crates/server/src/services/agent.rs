@@ -182,6 +182,29 @@ impl AgentService {
         }
     }
 
+    /// Copy an agent by public_id. Creates a new agent with "{name} (copy)" and
+    /// duplicates description, system_prompt, default_model_id, tags, capabilities, tools.
+    pub async fn copy(&self, org_id: i64, public_id: &str) -> Result<Option<Agent>> {
+        let source = self.get_by_public_id(org_id, public_id).await?;
+        let Some(source) = source else {
+            return Ok(None);
+        };
+
+        let req = CreateAgentRequest {
+            id: None,
+            name: format!("{} (copy)", source.name),
+            description: source.description,
+            system_prompt: source.system_prompt,
+            default_model_id: source.default_model_id,
+            tags: source.tags,
+            capabilities: source.capabilities,
+            tools: source.tools,
+        };
+
+        let agent = self.create(org_id, None, req).await?;
+        Ok(Some(agent))
+    }
+
     pub async fn delete(&self, org_id: i64, public_id: &str) -> Result<bool> {
         // Resolve public_id -> internal AgentId
         let row = self.db.get_agent_by_public_id(org_id, public_id).await?;

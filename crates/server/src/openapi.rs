@@ -92,6 +92,7 @@ use utoipa::OpenApi;
         // Agents - additional
         api::agents::preview_agent,
         api::agents::upsert_agent,
+        api::agents::copy_agent,
         // LLM Providers - additional
         api::llm_providers::sync_models,
         // Users - additional

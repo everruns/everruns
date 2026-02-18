@@ -9,6 +9,7 @@ import {
   useCapabilities,
   useLlmModels,
   useExportAgent,
+  useCopyAgent,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -22,7 +23,7 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
-import { ArrowLeft, Plus, Pencil, Download, Zap, Eye, LayoutDashboard } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Download, Copy, Zap, Eye, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -59,6 +60,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
   const exportAgent = useExportAgent();
+  const copyAgent = useCopyAgent();
   const { data: harnesses } = useHarnesses();
 
   // Create a map of model_id -> model for quick lookups
@@ -101,6 +103,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       console.error("Failed to export agent:", error);
     }
   }, [agent, agentId, exportAgent]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      const copied = await copyAgent.mutateAsync(agentId);
+      router.push(`/agents/${copied.id}`);
+    } catch (error) {
+      console.error("Failed to copy agent:", error);
+    }
+  }, [agentId, copyAgent, router]);
 
   const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
@@ -150,6 +161,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           </h1>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
+            <Copy className="w-4 h-4 mr-2" />
+            {copyAgent.isPending ? "Copying..." : "Copy"}
+          </Button>
           <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
             <Download className="w-4 h-4 mr-2" />
             {exportAgent.isPending ? "Exporting..." : "Export"}

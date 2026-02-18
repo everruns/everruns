@@ -65,6 +65,11 @@ export async function importAgent(markdown: string): Promise<Agent> {
   return response.json();
 }
 
+export async function copyAgent(agentId: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/copy`, {});
+  return response.data;
+}
+
 export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
   const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
   return response.data;
