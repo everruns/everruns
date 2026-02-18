@@ -136,17 +136,25 @@ Create a GitHub App:
 
 1. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
 2. Configure:
-   - **GitHub App name:** `Everruns`
-   - **Homepage URL:** `https://everruns.com`
-   - **Setup URL:** `https://<domain>/v1/user/connections/github/callback` (or `http://localhost:9300/api/v1/user/connections/github/callback` for local dev)
-   - **Redirect on update:** checked
-   - **Webhook:** uncheck "Active" (not needed)
-   - **Repository permissions:** `Contents: Read & write` (or `Read-only` for clone-only)
-   - **Where can this GitHub App be installed?** `Any account`
+
+   | Field | Value |
+   |-------|-------|
+   | **GitHub App name** | `Everruns` (or `Everruns (Dev)` for local) |
+   | **Homepage URL** | `https://everruns.com` |
+   | **Callback URL** | _(leave blank — not used, we use installation flow, not OAuth)_ |
+   | **Setup URL** (Post installation) | `https://<domain>/api/v1/user/connections/github/callback` |
+   | **Redirect on update** | Checked |
+   | **Webhook → Active** | Unchecked |
+   | **Repository permissions** | `Contents: Read & write` (or `Read-only` for clone-only) |
+   | **Where can this be installed?** | `Any account` |
+
+   > **Setup URL vs Callback URL:** The Callback URL is for OAuth user-authorization flow — we don't use it. The Setup URL is where GitHub redirects after a user **installs** the app on their repos. The server receives the `installation_id` there, verifies it, stores it, then redirects to the UI.
+
 3. After creation:
    - Copy **App ID** → `GITHUB_APP_ID`
    - Note the **slug** from the URL → `GITHUB_APP_SLUG`
    - Generate a **private key** (.pem file) → `GITHUB_APP_PRIVATE_KEY`
+   - `GITHUB_APP_PRIVATE_KEY` supports literal `\n` in env vars (auto-converted at startup)
 
 #### Dev App: Everruns (Dev)
 
@@ -157,7 +165,7 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 | **GitHub App name** | `Everruns (Dev)` |
 | **Homepage URL** | `http://localhost:9300` |
 | **Callback URL** | _(leave blank)_ |
-| **Setup URL** | `http://localhost:9300/api/v1/user/connections/github/callback` |
+| **Setup URL** (Post installation) | `http://localhost:9300/api/v1/user/connections/github/callback` |
 | **Redirect on update** | Checked |
 | **Webhook → Active** | Unchecked |
 
