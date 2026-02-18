@@ -148,6 +148,11 @@ pub use capabilities::{
     WriteTodosTool, apply_capabilities, collect_capabilities_with_configs, get_dependencies,
     is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
 };
+pub use capabilities::{
+    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapability, SkillInstructions, SkillMeta,
+    SkillSource, discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
+    skill_capability_id,
+};
 
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{

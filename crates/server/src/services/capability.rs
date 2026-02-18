@@ -6,15 +6,20 @@
 // MCP servers are integrated as "virtual capabilities" that appear alongside
 // built-in capabilities. Their tools are prefixed with "mcp_{server_name}_".
 //
+// Skills from the database registry are integrated as virtual capabilities,
+// following the same pattern as MCP servers.
+//
 // Note: Agent-specific capability management is handled by AgentService.
 
 use crate::services::mcp_server::McpServerService;
+use crate::services::skill::SkillService;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
     CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition,
-    mcp_capability_id,
+    SkillCapability, SkillInstructions, SkillMeta, SkillSource, mcp_capability_id,
+    skill_capability_id,
 };
 use std::sync::Arc;
 
@@ -22,6 +27,7 @@ pub struct CapabilityService {
     db: Arc<StorageBackend>,
     registry: CapabilityRegistry,
     mcp_service: McpServerService,
+    skill_service: Arc<SkillService>,
 }
 
 impl CapabilityService {
@@ -29,11 +35,12 @@ impl CapabilityService {
         Self {
             db: db.clone(),
             registry: CapabilityRegistry::with_builtins(),
-            mcp_service: McpServerService::new(db, encryption),
+            mcp_service: McpServerService::new(db.clone(), encryption),
+            skill_service: Arc::new(SkillService::new(db)),
         }
     }
 
-    /// List all available capabilities including MCP servers (public info only)
+    /// List all available capabilities including MCP servers and skills (public info only)
     pub async fn list_all(&self, org_id: i64) -> Result<Vec<CapabilityInfo>> {
         // Get built-in capabilities
         let mut capabilities: Vec<CapabilityInfo> = self
@@ -71,7 +78,38 @@ impl CapabilityService {
                 system_prompt: None,
                 tool_definitions: mcp_cap.tool_definitions(),
                 is_mcp: true,
+                is_skill: false,
                 dependencies: vec![], // MCP capabilities have no dependencies
+            });
+        }
+
+        // Get skill capabilities from the registry
+        let skills = self.skill_service.list(org_id).await?;
+        for skill in &skills {
+            if skill.status != everruns_core::SkillStatus::Active {
+                continue;
+            }
+
+            let skill_cap = SkillCapability::from_registry(
+                skill.id.uuid(),
+                skill.name.clone(),
+                skill.description.clone(),
+                String::new(), // Instructions not needed for listing
+                vec![],
+            );
+
+            capabilities.push(CapabilityInfo {
+                id: CapabilityId::new(skill_capability_id(skill.id.uuid())),
+                name: skill.name.clone(),
+                description: skill.description.clone(),
+                status: CapabilityStatus::Available,
+                icon: Some("wand".to_string()),
+                category: Some("Skills".to_string()),
+                system_prompt: skill_cap.system_prompt_preview(),
+                tool_definitions: skill_cap.tool_definitions(),
+                is_mcp: false,
+                is_skill: true,
+                dependencies: vec!["session_file_system".to_string()],
             });
         }
 
@@ -114,7 +152,49 @@ impl CapabilityService {
                     system_prompt: None,
                     tool_definitions: mcp_cap.tool_definitions(),
                     is_mcp: true,
+                    is_skill: false,
                     dependencies: vec![], // MCP capabilities have no dependencies
+                }));
+            }
+            return Ok(None);
+        }
+
+        // Check if it's a skill capability
+        if let Some(skill_uuid) = id.skill_id() {
+            let skill = self.skill_service.get(org_id, skill_uuid).await?;
+            if let Some(skill) = skill {
+                let content = self.skill_service.get_content(org_id, skill_uuid).await?;
+
+                let files: Vec<(String, String)> = content
+                    .as_ref()
+                    .map(|c| {
+                        c.files
+                            .iter()
+                            .map(|f| (f.path.clone(), f.content.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let skill_cap = SkillCapability::from_registry(
+                    skill.id.uuid(),
+                    skill.name.clone(),
+                    skill.description.clone(),
+                    content.map(|c| c.skill_md).unwrap_or_default(),
+                    files,
+                );
+
+                return Ok(Some(CapabilityInfo {
+                    id: CapabilityId::new(skill_capability_id(skill.id.uuid())),
+                    name: skill.name.clone(),
+                    description: skill.description.clone(),
+                    status: CapabilityStatus::Available,
+                    icon: Some("wand".to_string()),
+                    category: Some("Skills".to_string()),
+                    system_prompt: skill_cap.system_prompt_preview(),
+                    tool_definitions: skill_cap.tool_definitions(),
+                    is_mcp: false,
+                    is_skill: true,
+                    dependencies: vec!["session_file_system".to_string()],
                 }));
             }
             return Ok(None);
@@ -191,14 +271,17 @@ impl CapabilityService {
         let mut system_prompt_parts: Vec<String> = Vec::new();
         let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
 
-        // Separate built-in capabilities from MCP capabilities
+        // Separate built-in capabilities from MCP and skill capabilities
         let mut builtin_cap_ids: Vec<String> = Vec::new();
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
+        let mut skill_cap_ids: Vec<uuid::Uuid> = Vec::new();
 
         for cap_config in capability_configs {
             let cap_ref = &cap_config.capability_ref;
             if let Some(server_id) = cap_ref.mcp_server_id() {
                 mcp_cap_ids.push(server_id);
+            } else if let Some(skill_id) = cap_ref.skill_id() {
+                skill_cap_ids.push(skill_id);
             } else {
                 builtin_cap_ids.push(cap_ref.to_string());
             }
@@ -230,6 +313,52 @@ impl CapabilityService {
                 );
                 tool_definitions.extend(mcp_cap.tool_definitions());
             }
+        }
+
+        // Collect from skill capabilities
+        let mut skill_metas: Vec<SkillMeta> = Vec::new();
+        for skill_uuid in &skill_cap_ids {
+            if let Some(skill) = self.skill_service.get(org_id, *skill_uuid).await? {
+                skill_metas.push(SkillMeta {
+                    name: skill.name,
+                    description: skill.description,
+                    source: SkillSource::Registry {
+                        skill_id: skill_uuid.to_string(),
+                    },
+                });
+            }
+        }
+
+        if !skill_metas.is_empty() {
+            let skill_cap = SkillCapability::from_discovered(skill_metas);
+
+            // Load instructions for each skill
+            for skill_uuid in &skill_cap_ids {
+                if let Some(content) = self.skill_service.get_content(org_id, *skill_uuid).await?
+                    && let Ok(parsed) = everruns_core::parse_skill_md(&content.skill_md)
+                {
+                    let files: Vec<(String, String)> = content
+                        .files
+                        .into_iter()
+                        .map(|f| (f.path, f.content))
+                        .collect();
+                    skill_cap.register_instructions(
+                        &parsed.name,
+                        SkillInstructions {
+                            instructions: parsed.instructions,
+                            files,
+                        },
+                    );
+                }
+            }
+
+            if let Some(prompt) = skill_cap.system_prompt_addition() {
+                system_prompt_parts.push(format!(
+                    "<capability id=\"skills\">\n{}\n</capability>",
+                    prompt
+                ));
+            }
+            tool_definitions.extend(skill_cap.tool_definitions());
         }
 
         // Build final system prompt (XML-wrapped when capabilities contribute prompts)

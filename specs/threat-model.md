@@ -357,6 +357,11 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-007 | MCP API key exposure | High | API keys encrypted at rest via envelope encryption; decrypted only at runtime | MITIGATED |
 | TM-TOOL-008 | Tool policy bypass | Low | `requires_approval` policy planned but not yet enforced (all tools auto-execute) | **OPEN** |
 | TM-TOOL-009 | No per-agent tool rate limiting | Medium | All tools execute without rate limits | **OPEN** |
+| TM-TOOL-010 | Skill SKILL.md prompt injection | Medium | Skill instructions returned as `tool_result` role (not system prompt); `<skill>` XML wrapper provides clear boundary | MITIGATED |
+| TM-TOOL-011 | Skill archive path traversal | High | ZIP extraction validates all paths; rejects `../`, absolute paths, symlinks; max 100 files, 1 MB each, 10 MB total | MITIGATED |
+| TM-TOOL-012 | Skill archive zip bomb | High | Decompressed size capped at 10 MB; file count capped at 100; individual file size capped at 1 MB | MITIGATED |
+| TM-TOOL-013 | Skill name collision across orgs | Medium | Skill names are unique per organization; capability IDs include UUID for global uniqueness | MITIGATED |
+| TM-TOOL-014 | Disabled skill still activatable | Medium | `CapabilityService.list_all()` filters out disabled skills; disabled skills not included in `<available_skills>` | MITIGATED |
 
 ### Mitigation Details
 
@@ -371,6 +376,17 @@ MCP tool execution flow:
 
 **TM-TOOL-005 — Prompt Injection Boundary:**
 Tool results occupy the `tool_result` message role in the conversation. They are not concatenated into the system prompt. The LLM processes them as structured tool outputs, not instructions. However, LLMs may still be influenced by adversarial content in tool results (inherent limitation of current LLM architecture).
+
+**TM-TOOL-010 — Skill Instruction Injection Boundary:**
+When `activate_skill` is called, the full SKILL.md body is returned as a tool result wrapped in `<skill name="...">` XML tags. This maintains the tool_result role boundary. Only skill names and descriptions appear in the system prompt (via `<available_skills>` XML block), limiting the injection surface to metadata validated during upload.
+
+**TM-TOOL-011/012 — Skill Archive Validation:**
+ZIP archive extraction in `SkillService::create_from_archive()` enforces:
+1. No path traversal: paths checked for `../`, absolute paths, and symlinks
+2. File count limit: max 100 files per archive
+3. Per-file size limit: 1 MB per individual file
+4. Total decompressed size limit: 10 MB
+5. Files extracted into `skill_files` table as individual rows (no runtime ZIP extraction)
 
 ## 8. LLM Integration (TM-LLM)
 
@@ -768,7 +784,7 @@ Session A cannot access sb_xyz (different session_id in storage query)
 | Agent loop controls | TM-AGENT | Max iterations, tool registry, session-scoped tools, no self-modification |
 | Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only |
 | Cookie security | TM-WEB | HTTP-only, SameSite=Lax, Secure flag in production |
-| Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing |
+| Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing, skill archive validation |
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
