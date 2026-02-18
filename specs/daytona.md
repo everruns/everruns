@@ -180,10 +180,14 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
 
 ## Security
 
-- **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest
+- **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
-- **Sandbox Isolation**: Each sandbox is an isolated environment
+- **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
+- **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
+- **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
+
+See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 
 ## Error Handling
 

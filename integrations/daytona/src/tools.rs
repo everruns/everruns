@@ -1005,7 +1005,8 @@ impl Tool for DaytonaGitCredentialsTool {
 
         let client = DaytonaClient::new(api_key);
 
-        // Write git-credentials file: https://oauth2:<token>@github.com
+        // THREAT[TM-DAYTONA-001]: Git token persisted on sandbox disk
+        // Mitigation: Written to /tmp (cleared on stop), short-lived (~1h), same trust boundary as exec
         let credentials_content = format!("https://oauth2:{github_token}@github.com\n");
         if let Err(e) = client
             .file_upload(
@@ -1148,6 +1149,94 @@ async fn get_github_token(context: &ToolContext) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // ========================================================================
+    // Mock SessionStorageStore for integration tests
+    // ========================================================================
+
+    use everruns_core::error::Result;
+    use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, UserConnectionResolver};
+    use everruns_core::typed_id::SessionId;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// In-memory mock of SessionStorageStore for testing.
+    struct MockStorageStore {
+        secrets: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockStorageStore {
+        fn new() -> Self {
+            Self {
+                secrets: Mutex::new(HashMap::new()),
+            }
+        }
+
+        /// Pre-seed a secret for a given session.
+        async fn seed_secret(&self, session_id: SessionId, name: &str, value: &str) {
+            let key = format!("{}:{}", session_id, name);
+            self.secrets.lock().await.insert(key, value.to_string());
+        }
+    }
+
+    #[async_trait]
+    impl SessionStorageStore for MockStorageStore {
+        async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+            Ok(vec![])
+        }
+        async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
+            let key = format!("{session_id}:{name}");
+            self.secrets.lock().await.insert(key, value.to_string());
+            Ok(())
+        }
+        async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
+            let key = format!("{session_id}:{name}");
+            Ok(self.secrets.lock().await.get(&key).cloned())
+        }
+        async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
+            let key = format!("{session_id}:{name}");
+            Ok(self.secrets.lock().await.remove(&key).is_some())
+        }
+        async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
+            let prefix = format!("{session_id}:");
+            let secrets = self.secrets.lock().await;
+            Ok(secrets
+                .keys()
+                .filter(|k| k.starts_with(&prefix))
+                .map(|k| SecretInfo {
+                    name: k.strip_prefix(&prefix).unwrap_or(k).to_string(),
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                })
+                .collect())
+        }
+    }
+
+    /// Mock connection resolver that returns a fixed token.
+    struct MockConnectionResolver {
+        token: Option<String>,
+    }
+
+    #[async_trait]
+    impl UserConnectionResolver for MockConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            _provider: &str,
+        ) -> Result<Option<String>> {
+            Ok(self.token.clone())
+        }
+    }
 
     #[tokio::test]
     async fn test_create_sandbox_without_context() {
@@ -1530,5 +1619,325 @@ mod tests {
         let strs: Vec<&str> = item_required.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(strs.contains(&"session_path"));
         assert!(strs.contains(&"sandbox_path"));
+    }
+
+    // ========================================================================
+    // Git credentials tool - context-aware integration tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_git_credentials_missing_sandbox_id() {
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool.execute_with_context(json!({}), &context).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("Missing required parameter"),
+                    "Expected missing param error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing sandbox_id"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_no_api_key() {
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        // No DAYTONA_API_KEY secret seeded
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("DAYTONA_API_KEY"),
+                    "Expected API key error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing API key"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_no_sandbox_state() {
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        // Seed API key but no sandbox state
+        store
+            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
+            .await;
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("not found"),
+                    "Expected sandbox not found error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing sandbox state"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_no_github_token() {
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
+            .await;
+        // Seed sandbox state
+        let state = SandboxState {
+            sandbox_id: "sb_test".to_string(),
+            workspace_path: "/sandbox".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        store
+            .seed_secret(
+                session_id,
+                "daytona_sandbox:sb_test",
+                &serde_json::to_string(&state).unwrap(),
+            )
+            .await;
+        // No GitHub token — neither connection resolver nor GITHUB_TOKEN secret
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("No GitHub credentials"),
+                    "Expected no credentials error, got: {msg}"
+                );
+                // Should suggest Settings > Connections
+                assert!(
+                    msg.contains("Settings > Connections"),
+                    "Expected connection hint, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing GitHub token"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_with_github_token_secret() {
+        // When GITHUB_TOKEN session secret is set (but no connection resolver),
+        // the tool should attempt to upload credentials. It will fail because
+        // the Daytona API is not reachable, but the token resolution should succeed.
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
+            .await;
+        let state = SandboxState {
+            sandbox_id: "sb_test".to_string(),
+            workspace_path: "/sandbox".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        store
+            .seed_secret(
+                session_id,
+                "daytona_sandbox:sb_test",
+                &serde_json::to_string(&state).unwrap(),
+            )
+            .await;
+        store
+            .seed_secret(session_id, "GITHUB_TOKEN", "ghp_test_token_123")
+            .await;
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        // Should fail at HTTP call (no real Daytona API), not at token resolution
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(
+                !msg.contains("No GitHub credentials"),
+                "Token should have been resolved from GITHUB_TOKEN secret, got: {msg}"
+            );
+            // Should fail with connection/upload error (not auth error)
+            assert!(
+                msg.contains("Failed to write credentials file"),
+                "Expected HTTP failure, got: {msg}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_with_connection_resolver() {
+        // When connection resolver provides a token, it should be preferred
+        // over GITHUB_TOKEN session secret.
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
+            .await;
+        let state = SandboxState {
+            sandbox_id: "sb_test".to_string(),
+            workspace_path: "/sandbox".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        store
+            .seed_secret(
+                session_id,
+                "daytona_sandbox:sb_test",
+                &serde_json::to_string(&state).unwrap(),
+            )
+            .await;
+        let resolver = Arc::new(MockConnectionResolver {
+            token: Some("ghs_connection_token_456".to_string()),
+        });
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        // Should fail at HTTP call, not at token resolution
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(
+                !msg.contains("No GitHub credentials"),
+                "Token should have been resolved from connection resolver, got: {msg}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_credentials_no_storage_store() {
+        let tool = DaytonaGitCredentialsTool;
+        let session_id = SessionId::new();
+        // No storage store at all
+        let context = ToolContext::new(session_id);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("not available") || msg.contains("DAYTONA_API_KEY"),
+                    "Expected storage error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing storage store"),
+        }
+    }
+
+    // ========================================================================
+    // Git clone tool - context-aware integration tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_git_clone_missing_repo_url() {
+        let tool = DaytonaGitCloneTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("Missing required parameter"),
+                    "Expected missing param error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing repo_url"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_git_clone_no_api_key() {
+        let tool = DaytonaGitCloneTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(
+                json!({"sandbox_id": "sb_test", "repo_url": "user/repo"}),
+                &context,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(
+                    msg.contains("DAYTONA_API_KEY"),
+                    "Expected API key error, got: {msg}"
+                );
+            }
+            _ => panic!("Expected ToolError for missing API key"),
+        }
+    }
+
+    // ========================================================================
+    // get_github_token helper tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_github_token_prefers_connection_resolver() {
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "GITHUB_TOKEN", "fallback_token")
+            .await;
+        let resolver = Arc::new(MockConnectionResolver {
+            token: Some("preferred_token".to_string()),
+        });
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let token = get_github_token(&context).await;
+        assert_eq!(token, Some("preferred_token".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_github_token_falls_back_to_secret() {
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "GITHUB_TOKEN", "secret_token")
+            .await;
+        // No connection resolver
+        let context = ToolContext::with_storage_store(session_id, store);
+        let token = get_github_token(&context).await;
+        assert_eq!(token, Some("secret_token".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_github_token_returns_none_when_empty() {
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let resolver = Arc::new(MockConnectionResolver { token: None });
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let token = get_github_token(&context).await;
+        assert_eq!(token, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_github_token_skips_empty_connection_token() {
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        store
+            .seed_secret(session_id, "GITHUB_TOKEN", "fallback")
+            .await;
+        // Resolver returns empty string — should fall through
+        let resolver = Arc::new(MockConnectionResolver {
+            token: Some("".to_string()),
+        });
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let token = get_github_token(&context).await;
+        assert_eq!(token, Some("fallback".to_string()));
     }
 }
