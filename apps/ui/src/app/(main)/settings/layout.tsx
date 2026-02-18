@@ -75,9 +75,9 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const pathname = usePathname();
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <Header title="Settings" />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Settings Sidebar */}
         <nav className="w-64 border-r bg-card p-4 overflow-y-auto">
           <div className="space-y-6">
@@ -116,6 +116,6 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         {/* Settings Content */}
         <div className="flex-1 overflow-y-auto p-6">{children}</div>
       </div>
-    </>
+    </div>
   );
 }

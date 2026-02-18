@@ -1,11 +1,11 @@
 ---
 name: ui-screenshots
-description: Take UI screenshots using agent-browser and attach them as PR comments. Use this skill to capture visual state of UI components for code review, visual regression testing, or documentation.
+description: Take UI screenshots using agent-browser. Use this skill to capture visual state of UI components for code review, visual regression testing, or documentation.
 ---
 
 # UI Screenshots Skill
 
-Capture UI screenshots and attach them to pull requests for visual verification.
+Capture UI screenshots for visual verification.
 
 Uses [agent-browser](https://github.com/vercel-labs/agent-browser) for screenshots (fast Rust CLI with Node.js fallback).
 
