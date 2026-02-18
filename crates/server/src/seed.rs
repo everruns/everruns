@@ -2,7 +2,8 @@
 // Decision: Always seed on startup (no flag needed)
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)
-// Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
+// Decision: Use fixed UUIDs for idempotency
+// Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
 
 use crate::storage::{
@@ -114,21 +115,76 @@ mod seed_ids {
 #[derive(Debug, Default)]
 pub struct SeedResult {
     created: usize,
-    skipped: usize,
+    updated: usize,
+    unchanged: usize,
 }
 
 impl SeedResult {
     fn merge(&mut self, other: SeedResult) {
         self.created += other.created;
-        self.skipped += other.skipped;
+        self.updated += other.updated;
+        self.unchanged += other.unchanged;
     }
+
+    fn has_changes(&self) -> bool {
+        self.created > 0 || self.updated > 0
+    }
+}
+
+/// Sync capabilities for an agent, only writing if the set actually changed.
+/// Returns true if capabilities were updated.
+async fn sync_agent_capabilities(
+    db: &StorageBackend,
+    agent_id: Uuid,
+    desired: &[&str],
+) -> anyhow::Result<bool> {
+    let current = db.get_agent_capabilities(agent_id).await?;
+    let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
+    let desired_ids: Vec<&str> = desired.to_vec();
+
+    if current_ids == desired_ids {
+        return Ok(false);
+    }
+
+    let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
+        .iter()
+        .enumerate()
+        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+        .collect();
+    db.set_agent_capabilities(agent_id, cap_tuples).await?;
+    Ok(true)
+}
+
+/// Sync capabilities for a harness, only writing if the set actually changed.
+/// Returns true if capabilities were updated.
+async fn sync_harness_capabilities(
+    db: &StorageBackend,
+    harness_id: Uuid,
+    desired: &[&str],
+) -> anyhow::Result<bool> {
+    let current = db.get_harness_capabilities(harness_id).await?;
+    let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
+    let desired_ids: Vec<&str> = desired.to_vec();
+
+    if current_ids == desired_ids {
+        return Ok(false);
+    }
+
+    let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
+        .iter()
+        .enumerate()
+        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+        .collect();
+    db.set_harness_capabilities(harness_id, cap_tuples).await?;
+    Ok(true)
 }
 
 // ============================================
 // Default Organization Seeder
 // ============================================
 
-/// Seed the default organization (must run first)
+/// Seed the default organization (must run first).
+/// Orgs use DO NOTHING since their seed data is static.
 async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -154,9 +210,9 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
             tracing::debug!(
                 org_id = DEFAULT_ORG_ID,
                 public_id = DEFAULT_ORG_PUBLIC_ID,
-                "Default organization already exists, skipping"
+                "Default organization up to date"
             );
-            result.skipped += 1;
+            result.unchanged += 1;
         }
     }
 
@@ -191,8 +247,8 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
             result.created += 1;
         }
         None => {
-            tracing::debug!("Anonymous user already exists, skipping");
-            result.skipped += 1;
+            tracing::debug!("Anonymous user up to date");
+            result.unchanged += 1;
         }
     }
 
@@ -242,7 +298,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
     },
 ];
 
-/// Seed harnesses into the database
+/// Seed harnesses into the database (upserts, only when changed)
 async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -260,23 +316,27 @@ async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             .await?
         {
             Some(row) => {
-                // Set capabilities if any
-                if !seed.capabilities.is_empty() {
-                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
-                        .capabilities
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
-                        .collect();
-                    db.set_harness_capabilities(row.id.uuid(), cap_tuples)
-                        .await?;
+                // Row was created or updated — sync capabilities
+                sync_harness_capabilities(db, row.id.uuid(), seed.capabilities).await?;
+                if row.created_at == row.updated_at {
+                    tracing::info!(name = seed.name, id = %seed.id, "Created seed harness");
+                    result.created += 1;
+                } else {
+                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed harness");
+                    result.updated += 1;
                 }
-                tracing::info!(name = seed.name, id = %seed.id, "Created seed harness");
-                result.created += 1;
             }
             None => {
-                tracing::debug!(name = seed.name, id = %seed.id, "Harness already exists, skipping");
-                result.skipped += 1;
+                // Row unchanged — check if capabilities need syncing
+                let caps_changed =
+                    sync_harness_capabilities(db, seed.id, seed.capabilities).await?;
+                if caps_changed {
+                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed harness capabilities");
+                    result.updated += 1;
+                } else {
+                    tracing::debug!(name = seed.name, id = %seed.id, "Harness up to date");
+                    result.unchanged += 1;
+                }
             }
         }
     }
@@ -614,7 +674,7 @@ Always delete sandboxes when done."#,
     },
 ];
 
-/// Seed agents into the database
+/// Seed agents into the database (upserts, only when changed).
 ///
 /// Filters out dev-only agents when not in dev environment.
 async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
@@ -647,38 +707,26 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
             .await?
         {
             Some(row) => {
-                // Set capabilities if any (with empty config)
-                if !seed.capabilities.is_empty() {
-                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
-                        .capabilities
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, cap)| {
-                            (
-                                cap.to_string(),
-                                idx as i32,
-                                serde_json::json!({}), // Empty config for seed data
-                            )
-                        })
-                        .collect();
-                    db.set_agent_capabilities(row.id.uuid(), cap_tuples).await?;
+                // Row was created or updated — sync capabilities
+                sync_agent_capabilities(db, row.id.uuid(), seed.capabilities).await?;
+                if row.created_at == row.updated_at {
+                    tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
+                    result.created += 1;
+                } else {
+                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed agent");
+                    result.updated += 1;
                 }
-                tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
-                result.created += 1;
             }
             None => {
-                // Agent exists — ensure capabilities stay in sync with seed definition
-                if !seed.capabilities.is_empty() {
-                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
-                        .capabilities
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
-                        .collect();
-                    db.set_agent_capabilities(seed.id, cap_tuples).await?;
+                // Row unchanged — check if capabilities need syncing
+                let caps_changed = sync_agent_capabilities(db, seed.id, seed.capabilities).await?;
+                if caps_changed {
+                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed agent capabilities");
+                    result.updated += 1;
+                } else {
+                    tracing::debug!(name = seed.name, id = %seed.id, "Agent up to date");
+                    result.unchanged += 1;
                 }
-                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, updated capabilities");
-                result.skipped += 1;
             }
         }
     }
@@ -721,7 +769,7 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
     },
 ];
 
-/// Seed LLM providers into the database
+/// Seed LLM providers into the database (upserts, only when changed)
 async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -738,13 +786,18 @@ async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             .create_llm_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
-            Some(_) => {
-                tracing::info!(name = seed.name, id = %seed.id, "Created seed provider");
-                result.created += 1;
+            Some(row) => {
+                if row.created_at == row.updated_at {
+                    tracing::info!(name = seed.name, id = %seed.id, "Created seed provider");
+                    result.created += 1;
+                } else {
+                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed provider");
+                    result.updated += 1;
+                }
             }
             None => {
-                tracing::debug!(name = seed.name, id = %seed.id, "Provider already exists, skipping");
-                result.skipped += 1;
+                tracing::debug!(name = seed.name, id = %seed.id, "Provider up to date");
+                result.unchanged += 1;
             }
         }
     }
@@ -1118,7 +1171,7 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Seed LLM models into the database (upserts to update existing models)
+/// Seed LLM models into the database (upserts, only when changed)
 async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -1134,15 +1187,24 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             provider_metadata: None,
         };
 
-        db.create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
-            .await?;
-
-        tracing::debug!(
-            model_id = seed.model_id,
-            id = %seed.id,
-            "Seeded model"
-        );
-        result.created += 1;
+        match db
+            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?
+        {
+            Some(row) => {
+                if row.created_at == row.updated_at {
+                    tracing::debug!(model_id = seed.model_id, id = %seed.id, "Created seed model");
+                    result.created += 1;
+                } else {
+                    tracing::info!(model_id = seed.model_id, id = %seed.id, "Updated seed model");
+                    result.updated += 1;
+                }
+            }
+            None => {
+                tracing::debug!(model_id = seed.model_id, id = %seed.id, "Model up to date");
+                result.unchanged += 1;
+            }
+        }
     }
 
     Ok(result)
@@ -1168,7 +1230,7 @@ const SEED_MCP_SERVERS: &[SeedMcpServer] = &[SeedMcpServer {
     url: "https://learn.microsoft.com/api/mcp",
 }];
 
-/// Seed MCP servers into the database
+/// Seed MCP servers into the database (upserts, only when changed)
 async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -1187,22 +1249,32 @@ async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             .create_mcp_server_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
-            Some(_) => {
-                tracing::info!(
-                    name = seed.name,
-                    id = %seed.id,
-                    url = seed.url,
-                    "Created seed MCP server"
-                );
-                result.created += 1;
+            Some(row) => {
+                if row.created_at == row.updated_at {
+                    tracing::info!(
+                        name = seed.name,
+                        id = %seed.id,
+                        url = seed.url,
+                        "Created seed MCP server"
+                    );
+                    result.created += 1;
+                } else {
+                    tracing::info!(
+                        name = seed.name,
+                        id = %seed.id,
+                        url = seed.url,
+                        "Updated seed MCP server"
+                    );
+                    result.updated += 1;
+                }
             }
             None => {
                 tracing::debug!(
                     name = seed.name,
                     id = %seed.id,
-                    "MCP server already exists, skipping"
+                    "MCP server up to date"
                 );
-                result.skipped += 1;
+                result.unchanged += 1;
             }
         }
     }
@@ -1235,18 +1307,19 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
 
         match run_seed_with_retry(&db, grade).await {
             Ok(result) => {
-                if result.created > 0 {
+                if result.has_changes() {
                     tracing::info!(
                         created = result.created,
-                        skipped = result.skipped,
+                        updated = result.updated,
+                        unchanged = result.unchanged,
                         deployment_grade = %grade,
                         "Seeding complete"
                     );
                 } else {
                     tracing::debug!(
-                        skipped = result.skipped,
+                        unchanged = result.unchanged,
                         deployment_grade = %grade,
-                        "Seeding complete (all items exist)"
+                        "Seeding complete (all items up to date)"
                     );
                 }
             }
@@ -1320,7 +1393,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let org_result = seed_default_organization(db).await?;
     tracing::debug!(
         created = org_result.created,
-        skipped = org_result.skipped,
+        updated = org_result.updated,
+        unchanged = org_result.unchanged,
         "Default organization seeded"
     );
     result.merge(org_result);
@@ -1329,7 +1403,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let anon_result = seed_anonymous_user(db).await?;
     tracing::debug!(
         created = anon_result.created,
-        skipped = anon_result.skipped,
+        updated = anon_result.updated,
+        unchanged = anon_result.unchanged,
         "Anonymous user seeded"
     );
     result.merge(anon_result);
@@ -1338,7 +1413,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let provider_result = seed_providers(db).await?;
     tracing::debug!(
         created = provider_result.created,
-        skipped = provider_result.skipped,
+        updated = provider_result.updated,
+        unchanged = provider_result.unchanged,
         "Providers seeded"
     );
     result.merge(provider_result);
@@ -1347,7 +1423,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let model_result = seed_models(db).await?;
     tracing::debug!(
         created = model_result.created,
-        skipped = model_result.skipped,
+        updated = model_result.updated,
+        unchanged = model_result.unchanged,
         "Models seeded"
     );
     result.merge(model_result);
@@ -1356,7 +1433,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let mcp_result = seed_mcp_servers(db).await?;
     tracing::debug!(
         created = mcp_result.created,
-        skipped = mcp_result.skipped,
+        updated = mcp_result.updated,
+        unchanged = mcp_result.unchanged,
         "MCP servers seeded"
     );
     result.merge(mcp_result);
@@ -1365,7 +1443,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let harness_result = seed_harnesses(db).await?;
     tracing::debug!(
         created = harness_result.created,
-        skipped = harness_result.skipped,
+        updated = harness_result.updated,
+        unchanged = harness_result.unchanged,
         "Harnesses seeded"
     );
     result.merge(harness_result);
@@ -1374,7 +1453,8 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     let agent_result = seed_agents(db, grade).await?;
     tracing::debug!(
         created = agent_result.created,
-        skipped = agent_result.skipped,
+        updated = agent_result.updated,
+        unchanged = agent_result.unchanged,
         "Agents seeded"
     );
     result.merge(agent_result);
@@ -1385,6 +1465,16 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{
+        UpdateAgent, UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
+    };
+
+    fn make_db() -> StorageBackend {
+        StorageBackend::in_memory()
+    }
+
+    // --- Harness seed data ---
 
     #[test]
     fn test_seed_harness_ids_are_unique() {
@@ -1460,5 +1550,257 @@ mod tests {
                 cap_id
             );
         }
+    }
+
+    // --- seed_all ---
+
+    #[tokio::test]
+    async fn test_seed_all_first_run_creates_everything() {
+        let db = make_db();
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        assert!(result.created > 0, "first run should create items");
+        assert_eq!(result.updated, 0, "first run should not update anything");
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_second_run_all_unchanged() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert_eq!(result.created, 0, "second run should create nothing");
+        assert_eq!(result.updated, 0, "second run should update nothing");
+        assert!(result.unchanged > 0, "everything should be unchanged");
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_has_changes() {
+        let db = make_db();
+        let first = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(first.has_changes());
+
+        let second = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(!second.has_changes());
+    }
+
+    // --- Agent upsert ---
+
+    #[tokio::test]
+    async fn test_agent_seed_detects_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate agent name via public API to simulate DB drift
+        let agent_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
+        db.update_agent(
+            DEFAULT_ORG_ID,
+            agent_id,
+            UpdateAgent {
+                name: Some("STALE NAME".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect agent name change");
+    }
+
+    #[tokio::test]
+    async fn test_agent_seed_detects_capability_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Remove capabilities to simulate drift
+        db.set_agent_capabilities(seed_ids::DAD_JOKES_AGENT, vec![])
+            .await
+            .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect capability change");
+    }
+
+    // --- Model upsert ---
+
+    #[tokio::test]
+    async fn test_model_seed_detects_display_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate model display_name via public API
+        db.update_llm_model(
+            DEFAULT_ORG_ID,
+            seed_ids::GPT_5_2,
+            UpdateLlmModel {
+                display_name: Some("STALE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(
+            result.updated >= 1,
+            "should detect model display_name change"
+        );
+    }
+
+    // --- Provider upsert ---
+
+    #[tokio::test]
+    async fn test_provider_seed_detects_name_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate provider name via public API
+        db.update_llm_provider(
+            DEFAULT_ORG_ID,
+            seed_ids::OPENAI_PROVIDER,
+            UpdateLlmProvider {
+                name: Some("STALE".to_string()),
+                provider_type: None,
+                base_url: None,
+                api_key_encrypted: None,
+                status: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect provider name change");
+    }
+
+    // --- MCP Server upsert ---
+
+    #[tokio::test]
+    async fn test_mcp_server_seed_detects_url_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate MCP server URL via public API
+        db.update_mcp_server(
+            DEFAULT_ORG_ID,
+            seed_ids::MS_LEARN_MCP,
+            UpdateMcpServer {
+                url: Some("https://old.example.com".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(result.updated >= 1, "should detect MCP server URL change");
+    }
+
+    // --- Harness upsert ---
+
+    #[tokio::test]
+    async fn test_harness_seed_detects_description_change() {
+        let db = make_db();
+        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        // Mutate harness description via public API
+        let harness_id = everruns_core::HarnessId::from_uuid(seed_ids::BASE_HARNESS);
+        db.update_harness(
+            DEFAULT_ORG_ID,
+            harness_id,
+            UpdateHarness {
+                description: Some("STALE".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        assert!(
+            result.updated >= 1,
+            "should detect harness description change"
+        );
+    }
+
+    // --- Dev-only filtering ---
+
+    #[tokio::test]
+    async fn test_seed_prod_skips_dev_only_agents() {
+        let db = make_db();
+        let result = seed_all(&db, DeploymentGrade::Prod).await.unwrap();
+
+        // Python Coder is dev_only — should not be created in prod
+        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
+        assert!(agent.is_none(), "dev-only agent should not exist in prod");
+
+        // But non-dev agents should exist
+        let dad_jokes_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, dad_jokes_id).await.unwrap();
+        assert!(agent.is_some(), "non-dev agent should exist");
+
+        assert!(result.created > 0);
+    }
+
+    #[tokio::test]
+    async fn test_seed_dev_includes_dev_only_agents() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+
+        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
+        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
+        assert!(agent.is_some(), "dev-only agent should exist in dev mode");
+    }
+
+    // --- SeedResult ---
+
+    #[test]
+    fn test_seed_result_merge() {
+        let mut a = SeedResult {
+            created: 1,
+            updated: 2,
+            unchanged: 3,
+        };
+        let b = SeedResult {
+            created: 10,
+            updated: 20,
+            unchanged: 30,
+        };
+        a.merge(b);
+        assert_eq!(a.created, 11);
+        assert_eq!(a.updated, 22);
+        assert_eq!(a.unchanged, 33);
+    }
+
+    #[test]
+    fn test_seed_result_has_changes() {
+        assert!(!SeedResult::default().has_changes());
+        assert!(
+            SeedResult {
+                created: 1,
+                updated: 0,
+                unchanged: 0
+            }
+            .has_changes()
+        );
+        assert!(
+            SeedResult {
+                created: 0,
+                updated: 1,
+                unchanged: 0
+            }
+            .has_changes()
+        );
+        assert!(
+            !SeedResult {
+                created: 0,
+                updated: 0,
+                unchanged: 5
+            }
+            .has_changes()
+        );
     }
 }

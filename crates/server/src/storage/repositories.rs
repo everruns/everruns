@@ -441,8 +441,8 @@ impl Database {
         Ok(row)
     }
 
-    /// Create agent with a specific internal ID, idempotent (ON CONFLICT DO NOTHING)
-    /// Returns None if agent already exists with this ID
+    /// Create or update agent with a specific internal ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_agent_with_id(
         &self,
         org_id: i64,
@@ -453,7 +453,19 @@ impl Database {
             r#"
             INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, tools, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                system_prompt = EXCLUDED.system_prompt,
+                tags = EXCLUDED.tags,
+                tools = EXCLUDED.tools,
+                updated_at = NOW()
+            WHERE
+                agents.name IS DISTINCT FROM EXCLUDED.name
+                OR agents.description IS DISTINCT FROM EXCLUDED.description
+                OR agents.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
+                OR agents.tags IS DISTINCT FROM EXCLUDED.tags
+                OR agents.tools IS DISTINCT FROM EXCLUDED.tools
             RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
@@ -681,6 +693,8 @@ impl Database {
 
     /// Create harness with a specific ID, idempotent (ON CONFLICT DO NOTHING)
     /// Returns None if harness already exists with this ID
+    /// Create or update harness with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_harness_with_id(
         &self,
         org_id: i64,
@@ -691,7 +705,17 @@ impl Database {
             r#"
             INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                system_prompt = EXCLUDED.system_prompt,
+                tags = EXCLUDED.tags,
+                updated_at = NOW()
+            WHERE
+                harnesses.name IS DISTINCT FROM EXCLUDED.name
+                OR harnesses.description IS DISTINCT FROM EXCLUDED.description
+                OR harnesses.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
+                OR harnesses.tags IS DISTINCT FROM EXCLUDED.tags
             RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             "#,
         )
@@ -1446,6 +1470,8 @@ impl Database {
     /// Create a provider with a specific ID (for seeding)
     /// Uses ON CONFLICT DO NOTHING for idempotency
     /// Returns None if provider already exists
+    /// Create or update LLM provider with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_llm_provider_with_id(
         &self,
         org_id: i64,
@@ -1459,7 +1485,13 @@ impl Database {
             r#"
             INSERT INTO llm_providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                provider_type = EXCLUDED.provider_type,
+                updated_at = NOW()
+            WHERE
+                llm_providers.name IS DISTINCT FROM EXCLUDED.name
+                OR llm_providers.provider_type IS DISTINCT FROM EXCLUDED.provider_type
             RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             "#,
         )
@@ -1675,8 +1707,8 @@ impl Database {
         Ok(row)
     }
 
-    /// Create or update a model with a specific ID (for seeding)
-    /// Uses upsert to update display_name, is_default, is_favorite if model exists
+    /// Create or update a model with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_llm_model_with_id(
         &self,
         org_id: i64,
@@ -1694,6 +1726,10 @@ impl Database {
                 is_default = EXCLUDED.is_default,
                 is_favorite = EXCLUDED.is_favorite,
                 updated_at = NOW()
+            WHERE
+                llm_models.display_name IS DISTINCT FROM EXCLUDED.display_name
+                OR llm_models.is_default IS DISTINCT FROM EXCLUDED.is_default
+                OR llm_models.is_favorite IS DISTINCT FROM EXCLUDED.is_favorite
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
@@ -2408,6 +2444,8 @@ impl Database {
 
     /// Create MCP server with a specific ID (for seeding)
     /// Returns None if server already exists with this ID
+    /// Create or update MCP server with a specific ID (for seeding).
+    /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_mcp_server_with_id(
         &self,
         org_id: i64,
@@ -2422,7 +2460,17 @@ impl Database {
             r#"
             INSERT INTO mcp_servers (id, org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                url = EXCLUDED.url,
+                transport_type = EXCLUDED.transport_type,
+                updated_at = NOW()
+            WHERE
+                mcp_servers.name IS DISTINCT FROM EXCLUDED.name
+                OR mcp_servers.description IS DISTINCT FROM EXCLUDED.description
+                OR mcp_servers.url IS DISTINCT FROM EXCLUDED.url
+                OR mcp_servers.transport_type IS DISTINCT FROM EXCLUDED.transport_type
             RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
