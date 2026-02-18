@@ -576,9 +576,17 @@ pub async fn run(
 
             // Wire lazy connection resolver (requires encryption for token decryption)
             if let Some(ref enc) = encryption {
+                // Build GitHub App token minter if configured
+                let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
+                    crate::storage::GitHubAppTokenMinter::new(
+                        config.app_id.clone(),
+                        config.private_key.clone(),
+                    )
+                });
                 let resolver = Arc::new(crate::storage::DbConnectionResolver::new(
                     db.as_ref().clone(),
                     enc.as_ref().clone(),
+                    github_app_minter,
                 ));
                 adapters = adapters.with_connection_resolver(resolver);
             }

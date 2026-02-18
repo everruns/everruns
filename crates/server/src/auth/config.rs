@@ -60,12 +60,17 @@ pub struct GitHubOAuthConfig {
     pub base: OAuthProviderConfig,
 }
 
-/// GitHub Connection OAuth configuration (for repo access, separate OAuth App)
+/// GitHub App configuration (for repo access via GitHub App installation tokens)
 #[derive(Debug, Clone)]
 pub struct GitHubConnectionConfig {
-    pub client_id: String,
-    pub client_secret: String,
-    pub redirect_uri: String,
+    /// GitHub App ID (numeric, from App settings page)
+    pub app_id: String,
+    /// PEM-encoded RSA private key for JWT signing
+    pub private_key: String,
+    /// App slug for constructing installation URLs (e.g. "everruns")
+    pub app_slug: String,
+    /// Callback URL after user installs the GitHub App
+    pub setup_url: String,
 }
 
 /// Admin user configuration (for admin-only mode or initial setup)
@@ -250,25 +255,27 @@ impl AuthConfig {
             _ => None,
         };
 
-        // GitHub Connection OAuth (separate app for repo access)
+        // GitHub App for repo access (installation-based tokens)
         let github_connection = match (
-            std::env::var("GITHUB_CONNECTION_CLIENT_ID"),
-            std::env::var("GITHUB_CONNECTION_CLIENT_SECRET"),
+            std::env::var("GITHUB_APP_ID"),
+            std::env::var("GITHUB_APP_PRIVATE_KEY"),
         ) {
-            (Ok(client_id), Ok(client_secret))
-                if !client_id.is_empty() && !client_secret.is_empty() =>
-            {
-                let redirect_uri =
-                    std::env::var("GITHUB_CONNECTION_REDIRECT_URI").unwrap_or_else(|_| {
-                        format!(
-                            "{}{}/v1/user/connections/github/callback",
-                            base_url, api_prefix
-                        )
-                    });
+            (Ok(app_id), Ok(private_key)) if !app_id.is_empty() && !private_key.is_empty() => {
+                // Support escaped newlines in env vars (common in Docker/CI)
+                let private_key = private_key.replace("\\n", "\n");
+                let app_slug =
+                    std::env::var("GITHUB_APP_SLUG").unwrap_or_else(|_| "everruns".to_string());
+                let setup_url = std::env::var("GITHUB_APP_SETUP_URL").unwrap_or_else(|_| {
+                    format!(
+                        "{}{}/v1/user/connections/github/callback",
+                        base_url, api_prefix
+                    )
+                });
                 Some(GitHubConnectionConfig {
-                    client_id,
-                    client_secret,
-                    redirect_uri,
+                    app_id,
+                    private_key,
+                    app_slug,
+                    setup_url,
                 })
             }
             _ => None,

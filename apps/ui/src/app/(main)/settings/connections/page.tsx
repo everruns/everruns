@@ -17,7 +17,7 @@ const providers: Record<string, { name: string; icon: LucideIcon; description: s
   github: {
     name: "GitHub",
     icon: Github,
-    description: "Access private repositories for agent sessions",
+    description: "Install the GitHub App to grant access to selected repositories",
   },
 };
 
@@ -83,7 +83,7 @@ function AvailableProviderRow({
   meta: { name: string; icon: LucideIcon; description: string };
 }) {
   const handleConnect = () => {
-    // Navigate to OAuth authorize endpoint through the API proxy
+    // Navigate to GitHub App installation flow through the API proxy
     window.location.href = `${getBackendUrl()}/v1/user/connections/${provider}/authorize`;
   };
 
@@ -98,7 +98,7 @@ function AvailableProviderRow({
       </div>
       <Button variant="outline" size="sm" onClick={handleConnect}>
         <ExternalLink className="h-4 w-4 mr-1" />
-        Connect
+        Install
       </Button>
     </div>
   );

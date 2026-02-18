@@ -3123,6 +3123,7 @@ impl InMemoryDatabase {
             refresh_token_encrypted: input.refresh_token_encrypted,
             scopes: input.scopes,
             expires_at: input.expires_at,
+            installation_id: input.installation_id,
             created_at: now,
             updated_at: now,
         };
@@ -3179,12 +3180,52 @@ impl InMemoryDatabase {
             .collect();
         drop(members);
 
-        // Find first matching connection
+        // Find first matching connection with an encrypted token
+        let connections = self.user_connections.read();
+        for uid in user_ids.clone() {
+            for conn in connections.values() {
+                if conn.user_id == uid
+                    && conn.provider == provider
+                    && conn.access_token_encrypted.is_some()
+                {
+                    return Ok(conn.access_token_encrypted.clone());
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub async fn get_installation_id_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<i64>> {
+        // Look up session → org → members → connections (same join as token lookup)
+        let sessions = self.sessions.read();
+        let session = match sessions.get(&session_id) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let org_id = session.org_id;
+        drop(sessions);
+
+        let members = self.organization_members.read();
+        let user_ids: Vec<Uuid> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), _)| *uid)
+            .collect();
+        drop(members);
+
         let connections = self.user_connections.read();
         for uid in user_ids {
             for conn in connections.values() {
-                if conn.user_id == uid && conn.provider == provider {
-                    return Ok(Some(conn.access_token_encrypted.clone()));
+                if conn.user_id == uid
+                    && conn.provider == provider
+                    && conn.installation_id.is_some()
+                {
+                    return Ok(conn.installation_id);
                 }
             }
         }

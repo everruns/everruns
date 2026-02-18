@@ -1095,4 +1095,12 @@ impl StorageBackend {
     ) -> Result<Option<Vec<u8>>> {
         dispatch!(self, get_connection_token_for_session, session_id, provider)
     }
+
+    pub async fn get_installation_id_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<i64>> {
+        dispatch!(self, get_installation_id_for_session, session_id, provider)
+    }
 }
