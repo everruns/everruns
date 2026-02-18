@@ -52,7 +52,8 @@ mod seed_ids {
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
 
     // Harnesses (0x600-0x6FF)
-    pub const DEFAULT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
+    pub const BASE_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
+    pub const GENERIC_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -217,14 +218,29 @@ struct SeedHarness {
 }
 
 /// Built-in seed harnesses
-const SEED_HARNESSES: &[SeedHarness] = &[SeedHarness {
-    id: seed_ids::DEFAULT_HARNESS,
-    name: "Default",
-    description: "Default harness with no special configuration. Provides a blank canvas for sessions.",
-    system_prompt: "You are a helpful assistant.",
-    tags: &["default", "seed"],
-    capabilities: &[],
-}];
+const SEED_HARNESSES: &[SeedHarness] = &[
+    SeedHarness {
+        id: seed_ids::BASE_HARNESS,
+        name: "Base",
+        description: "Empty harness with no capabilities. Provides a blank canvas for custom configurations.",
+        system_prompt: "You are a helpful assistant.",
+        tags: &["base", "seed"],
+        capabilities: &[],
+    },
+    SeedHarness {
+        id: seed_ids::GENERIC_HARNESS,
+        name: "Generic",
+        description: "General-purpose harness with file system, bash, secrets, and session management. Recommended default for most use cases.",
+        system_prompt: "You are a helpful assistant.",
+        tags: &["generic", "default", "seed"],
+        capabilities: &[
+            "session_file_system",
+            "virtual_bash",
+            "session_storage",
+            "session",
+        ],
+    },
+];
 
 /// Seed harnesses into the database
 async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -1364,4 +1380,85 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     result.merge(agent_result);
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_seed_harness_ids_are_unique() {
+        let ids: Vec<Uuid> = SEED_HARNESSES.iter().map(|h| h.id).collect();
+        let mut unique_ids = ids.clone();
+        unique_ids.sort();
+        unique_ids.dedup();
+        assert_eq!(
+            ids.len(),
+            unique_ids.len(),
+            "Seed harness IDs must be unique"
+        );
+    }
+
+    #[test]
+    fn test_seed_harness_names_are_unique() {
+        let names: Vec<&str> = SEED_HARNESSES.iter().map(|h| h.name).collect();
+        let mut unique_names = names.clone();
+        unique_names.sort();
+        unique_names.dedup();
+        assert_eq!(
+            names.len(),
+            unique_names.len(),
+            "Seed harness names must be unique"
+        );
+    }
+
+    #[test]
+    fn test_base_harness_has_no_capabilities() {
+        let base = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Base")
+            .expect("Base harness should exist");
+        assert!(
+            base.capabilities.is_empty(),
+            "Base harness must have no capabilities"
+        );
+        assert!(base.tags.contains(&"base"));
+    }
+
+    #[test]
+    fn test_generic_harness_has_expected_capabilities() {
+        let generic = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("Generic harness should exist");
+
+        assert_eq!(generic.capabilities.len(), 4);
+        assert!(generic.capabilities.contains(&"session_file_system"));
+        assert!(generic.capabilities.contains(&"virtual_bash"));
+        assert!(generic.capabilities.contains(&"session_storage"));
+        assert!(generic.capabilities.contains(&"session"));
+        assert!(generic.tags.contains(&"generic"));
+        assert!(generic.tags.contains(&"default"));
+    }
+
+    #[test]
+    fn test_generic_harness_capabilities_are_registered() {
+        // Verify all capability IDs referenced by Generic harness exist in the registry
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let generic = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("Generic harness should exist");
+
+        for cap_id in generic.capabilities {
+            assert!(
+                registry.has(cap_id),
+                "Capability '{}' referenced by Generic harness must be registered",
+                cap_id
+            );
+        }
+    }
 }

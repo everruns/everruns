@@ -17,10 +17,12 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
-use everruns_core::{Agent, LlmModel, Session, SessionFile};
+use everruns_core::{Agent, Harness, LlmModel, Session, SessionFile};
 
-/// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
-const SEED_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
+/// Seed harness ID from seed.rs (BASE_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
+const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
+/// Seed harness ID from seed.rs (GENERIC_HARNESS = 0x01933b5a_0000_7000_8000_000000000602)
+const SEED_GENERIC_HARNESS_ID: &str = "harness_01933b5a000070008000000000000602";
 
 // ============================================
 // Health Endpoint Tests
@@ -214,7 +216,7 @@ async fn test_create_session() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Test Session"
             }),
@@ -248,7 +250,7 @@ async fn test_get_session() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Get Test Session"
             }),
@@ -290,7 +292,7 @@ async fn test_sessions_pagination() {
             .post(
                 "/v1/sessions",
                 json!({
-                    "harness_id": SEED_HARNESS_ID,
+                    "harness_id": SEED_BASE_HARNESS_ID,
                     "agent_id": agent.public_id,
                     "title": format!("Session {}", i)
                 }),
@@ -358,7 +360,7 @@ async fn test_create_user_message() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -405,7 +407,7 @@ async fn test_list_messages() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -464,7 +466,7 @@ async fn test_list_events() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -642,7 +644,7 @@ async fn test_session_inherits_agent_default_model() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id,
                 "title": "Inheritance Test"
             }),
@@ -694,7 +696,7 @@ async fn test_session_filesystem() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id
             }),
         )
@@ -767,6 +769,130 @@ async fn test_session_filesystem() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(result["deleted"], true);
+}
+
+// ============================================
+// Harness Tests
+// ============================================
+
+#[tokio::test]
+async fn test_list_harnesses_includes_base_and_generic() {
+    let server = TestServer::new().await;
+
+    let data: Value = server
+        .get("/v1/harnesses")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let harnesses = data["data"].as_array().expect("Expected array");
+    assert!(
+        harnesses.len() >= 2,
+        "Should have at least Base and Generic harnesses"
+    );
+
+    let names: Vec<&str> = harnesses
+        .iter()
+        .filter_map(|h| h["name"].as_str())
+        .collect();
+    assert!(names.contains(&"Base"), "Should have Base harness");
+    assert!(names.contains(&"Generic"), "Should have Generic harness");
+}
+
+#[tokio::test]
+async fn test_get_base_harness() {
+    let server = TestServer::new().await;
+
+    let harness: Harness = server
+        .get(&format!("/v1/harnesses/{}", SEED_BASE_HARNESS_ID))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(harness.name, "Base");
+    assert!(
+        harness.capabilities.is_empty(),
+        "Base harness should have no capabilities"
+    );
+    assert!(harness.tags.contains(&"base".to_string()));
+    assert!(harness.tags.contains(&"seed".to_string()));
+}
+
+#[tokio::test]
+async fn test_get_generic_harness() {
+    let server = TestServer::new().await;
+
+    let harness: Harness = server
+        .get(&format!("/v1/harnesses/{}", SEED_GENERIC_HARNESS_ID))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(harness.name, "Generic");
+    assert!(harness.tags.contains(&"generic".to_string()));
+    assert!(harness.tags.contains(&"default".to_string()));
+
+    // Verify Generic harness has the expected 4 capabilities
+    let cap_ids: Vec<&str> = harness
+        .capabilities
+        .iter()
+        .map(|c| c.capability_id())
+        .collect();
+    assert_eq!(
+        cap_ids.len(),
+        4,
+        "Generic harness should have 4 capabilities"
+    );
+    assert!(
+        cap_ids.contains(&"session_file_system"),
+        "Should have file system"
+    );
+    assert!(
+        cap_ids.contains(&"virtual_bash"),
+        "Should have virtual bash"
+    );
+    assert!(
+        cap_ids.contains(&"session_storage"),
+        "Should have session storage"
+    );
+    assert!(
+        cap_ids.contains(&"session"),
+        "Should have session capability"
+    );
+}
+
+#[tokio::test]
+async fn test_create_session_with_generic_harness() {
+    let server = TestServer::new().await;
+
+    // Create an agent
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Generic Harness Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Create session with Generic harness
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent.public_id,
+                "title": "Generic Harness Session"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(session.title.as_deref(), Some("Generic Harness Session"));
 }
 
 // ============================================
@@ -845,7 +971,7 @@ async fn test_session_databases_crud() {
         .post(
             "/v1/sessions",
             json!({
-                "harness_id": SEED_HARNESS_ID,
+                "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id.to_string()
             }),
         )
@@ -948,7 +1074,7 @@ async fn test_session_databases_schema() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
+            json!({"harness_id": SEED_BASE_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -1002,7 +1128,7 @@ async fn test_session_databases_invalid_name() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"harness_id": SEED_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
+            json!({"harness_id": SEED_BASE_HARNESS_ID, "agent_id": agent.public_id.to_string()}),
         )
         .await
         .assert_status(StatusCode::CREATED)
