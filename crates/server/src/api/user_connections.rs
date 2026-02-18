@@ -1,6 +1,7 @@
 // User Connections API routes
 // Decision: User-scoped (not org-scoped) — token represents user's GitHub identity
 // Decision: GitHub App installation flow replaces OAuth App for repo access
+// Decision: API-key providers (brave_search) use PUT with encrypted token storage
 
 use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
@@ -11,7 +12,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Redirect,
-    routing::{delete, get},
+    routing::{delete, get, put},
 };
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -49,6 +50,15 @@ pub struct ConnectionResponse {
     pub connected_at: DateTime<Utc>,
 }
 
+/// Request body for API-key-based connections (e.g., Brave Search)
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ApiKeyConnectionRequest {
+    pub api_key: String,
+}
+
+/// Providers that support API-key-based connections.
+const API_KEY_PROVIDERS: &[&str] = &["brave_search"];
+
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
 pub struct GitHubInstallationCallbackQuery {
@@ -69,6 +79,10 @@ pub fn routes(state: AppState) -> Router {
             get(github_authorize),
         )
         .route("/v1/user/connections/github/callback", get(github_callback))
+        .route(
+            "/v1/user/connections/api-key/{provider}",
+            put(put_api_key_connection),
+        )
         .with_state(state)
 }
 
@@ -209,4 +223,76 @@ pub async fn github_callback(
         "{}/settings/connections?connected=github",
         frontend_url
     )))
+}
+
+/// PUT /v1/user/connections/api-key/:provider — Store an API-key-based connection
+///
+/// For providers that authenticate with a simple API key (e.g., brave_search).
+/// The API key is encrypted at rest using envelope encryption.
+pub async fn put_api_key_connection(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(provider): Path<String>,
+    Json(body): Json<ApiKeyConnectionRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Validate provider
+    if !API_KEY_PROVIDERS.contains(&provider.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Provider '{}' does not support API key connections. Supported: {}",
+                provider,
+                API_KEY_PROVIDERS.join(", ")
+            ),
+        ));
+    }
+
+    if body.api_key.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "API key cannot be empty".to_string(),
+        ));
+    }
+
+    // Encrypt the API key
+    let encryption = state.encryption.as_ref().ok_or_else(|| {
+        tracing::error!("Encryption service not available for API key storage");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Encryption not configured".to_string(),
+        )
+    })?;
+
+    let encrypted = encryption.encrypt_string(&body.api_key).map_err(|e| {
+        tracing::error!("Failed to encrypt API key: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to encrypt API key".to_string(),
+        )
+    })?;
+
+    // Upsert connection
+    state
+        .db
+        .upsert_user_connection(CreateUserConnectionRow {
+            user_id: auth.id,
+            provider: provider.clone(),
+            provider_user_id: None,
+            provider_username: None,
+            access_token_encrypted: Some(encrypted),
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id: None,
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store {} connection: {}", provider, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store connection".to_string(),
+            )
+        })?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

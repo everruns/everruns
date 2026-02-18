@@ -4,6 +4,7 @@
 // Decision: Server entrypoint extracted into run() for SaaS binary reuse
 
 // Force-link integration crates so inventory::submit! registrations are included
+extern crate everruns_integrations_brave_search;
 extern crate everruns_integrations_codesandbox;
 extern crate everruns_integrations_daytona;
 extern crate everruns_integrations_docker;

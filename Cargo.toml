@@ -15,6 +15,7 @@ members = [
     "integrations/codesandbox",
     "integrations/docker",
     "integrations/daytona",
+    "integrations/brave-search",
 ]
 
 exclude = [
