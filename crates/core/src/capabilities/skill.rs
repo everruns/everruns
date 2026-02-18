@@ -276,6 +276,7 @@ impl Capability for SkillCapability {
 
         vec![ToolDefinition::Builtin(BuiltinTool {
             name: "activate_skill".to_string(),
+            display_name: Some("Activate Skill".to_string()),
             description: format!(
                 "Activate an agent skill by name to load its full instructions. \
                 Available skills: {names_list}"
@@ -318,6 +319,10 @@ impl std::fmt::Debug for ActivateSkillTool {
 impl Tool for ActivateSkillTool {
     fn name(&self) -> &str {
         "activate_skill"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Activate Skill")
     }
 
     fn description(&self) -> &str {

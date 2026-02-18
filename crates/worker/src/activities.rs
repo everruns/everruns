@@ -427,6 +427,7 @@ mod tests {
             }],
             tool_definitions: vec![ToolDefinition::Builtin(BuiltinTool {
                 name: "get_weather".to_string(),
+                display_name: None,
                 description: "Get weather".to_string(),
                 parameters: json!({}),
                 policy: ToolPolicy::Auto,

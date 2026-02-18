@@ -1040,6 +1040,7 @@ mod tests {
     fn test_partition_all_server_tools() {
         let tool_definitions = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "get_weather".to_string(),
+            display_name: None,
             description: "Get weather".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             policy: ToolPolicy::Auto,
@@ -1061,6 +1062,7 @@ mod tests {
     fn test_partition_all_client_tools() {
         let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
             name: "browser_click".to_string(),
+            display_name: None,
             description: "Click element".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         })];
@@ -1082,22 +1084,26 @@ mod tests {
         let tool_definitions = vec![
             ToolDefinition::Builtin(BuiltinTool {
                 name: "get_time".to_string(),
+                display_name: None,
                 description: "Get current time".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_click".to_string(),
+                display_name: None,
                 description: "Click element".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_type".to_string(),
+                display_name: None,
                 description: "Type text".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
             }),
             ToolDefinition::Builtin(BuiltinTool {
                 name: "read_file".to_string(),
+                display_name: None,
                 description: "Read a file".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
@@ -1146,6 +1152,7 @@ mod tests {
         // Unknown tools (not in definitions) default to server-side
         let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
             name: "known_client".to_string(),
+            display_name: None,
             description: "Known client tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         })];
@@ -1175,6 +1182,7 @@ mod tests {
     fn test_partition_empty_tool_calls() {
         let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
             name: "some_tool".to_string(),
+            display_name: None,
             description: "A tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         })];
@@ -1207,12 +1215,14 @@ mod tests {
             tool_definitions: vec![
                 ToolDefinition::Builtin(BuiltinTool {
                     name: "get_current_time".to_string(),
+                    display_name: None,
                     description: "Get current time".to_string(),
                     parameters: serde_json::json!({"type": "object"}),
                     policy: ToolPolicy::Auto,
                 }),
                 ToolDefinition::ClientSide(ClientSideTool {
                     name: "deploy_app".to_string(),
+                    display_name: None,
                     description: "Deploy application".to_string(),
                     parameters: serde_json::json!({"type": "object"}),
                 }),
@@ -1245,12 +1255,14 @@ mod tests {
         let tool_definitions = vec![
             ToolDefinition::Builtin(BuiltinTool {
                 name: "delete_file".to_string(),
+                display_name: None,
                 description: "Delete a file".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::RequiresApproval,
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_click".to_string(),
+                display_name: None,
                 description: "Click element".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
             }),

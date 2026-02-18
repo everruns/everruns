@@ -891,6 +891,7 @@ mod tests {
 
         let tool_def = ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
             name: "get_weather".to_string(),
+            display_name: None,
             description: "Get weather".to_string(),
             parameters: serde_json::json!({}),
             policy: crate::tool_types::ToolPolicy::Auto,

@@ -45,6 +45,9 @@ pub enum ToolDefinition {
 pub struct BuiltinTool {
     /// Tool name (used by LLM and for registry lookup)
     pub name: String,
+    /// Human-readable display name for UI rendering (e.g., "Get Current Time" for `get_current_time`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// Tool description for LLM
     pub description: String,
     /// JSON schema for tool parameters
@@ -61,6 +64,9 @@ pub struct BuiltinTool {
 pub struct ClientSideTool {
     /// Tool name (used by LLM and for correlation)
     pub name: String,
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// Tool description for LLM
     pub description: String,
     /// JSON schema for tool parameters
@@ -73,6 +79,14 @@ impl ToolDefinition {
         match self {
             ToolDefinition::Builtin(b) => &b.name,
             ToolDefinition::ClientSide(c) => &c.name,
+        }
+    }
+
+    /// Get the tool display name regardless of variant
+    pub fn display_name(&self) -> Option<&str> {
+        match self {
+            ToolDefinition::Builtin(b) => b.display_name.as_deref(),
+            ToolDefinition::ClientSide(c) => c.display_name.as_deref(),
         }
     }
 
@@ -223,15 +237,60 @@ mod tests {
     fn test_tool_definition_accessor_methods() {
         let tool = ToolDefinition::Builtin(BuiltinTool {
             name: "test_tool".to_string(),
+            display_name: None,
             description: "A test tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             policy: ToolPolicy::RequiresApproval,
         });
 
         assert_eq!(tool.name(), "test_tool");
+        assert_eq!(tool.display_name(), None);
         assert_eq!(tool.description(), "A test tool");
         assert_eq!(tool.parameters(), &serde_json::json!({"type": "object"}));
         assert_eq!(tool.policy(), &ToolPolicy::RequiresApproval);
+    }
+
+    #[test]
+    fn test_tool_definition_display_name_accessor() {
+        let builtin = ToolDefinition::Builtin(BuiltinTool {
+            name: "get_weather".to_string(),
+            display_name: Some("Get Weather".to_string()),
+            description: "Gets weather".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+        });
+        assert_eq!(builtin.display_name(), Some("Get Weather"));
+
+        let client = ToolDefinition::ClientSide(ClientSideTool {
+            name: "deploy".to_string(),
+            display_name: Some("Deploy".to_string()),
+            description: "Deploys".to_string(),
+            parameters: serde_json::json!({}),
+        });
+        assert_eq!(client.display_name(), Some("Deploy"));
+    }
+
+    #[test]
+    fn test_display_name_serialization_skip_none() {
+        let tool = BuiltinTool {
+            name: "test".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(!json.contains("display_name"));
+
+        let tool_with = BuiltinTool {
+            name: "test".to_string(),
+            display_name: Some("Test".to_string()),
+            description: "test".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+        };
+        let json = serde_json::to_string(&tool_with).unwrap();
+        assert!(json.contains("\"display_name\":\"Test\""));
     }
 
     #[test]
@@ -295,6 +354,7 @@ mod tests {
     fn test_client_side_tool_roundtrip() {
         let tool = ToolDefinition::ClientSide(ClientSideTool {
             name: "run_test".to_string(),
+            display_name: None,
             description: "Run a test suite".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         });
@@ -311,6 +371,7 @@ mod tests {
     fn test_client_side_tool_accessor_methods() {
         let tool = ToolDefinition::ClientSide(ClientSideTool {
             name: "deploy_app".to_string(),
+            display_name: None,
             description: "Deploy application to staging".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -332,6 +393,7 @@ mod tests {
         // ClientSide variant always returns ClientSide policy regardless of content
         let tool = ToolDefinition::ClientSide(ClientSideTool {
             name: "any_tool".to_string(),
+            display_name: None,
             description: "".to_string(),
             parameters: serde_json::json!({}),
         });
@@ -359,12 +421,14 @@ mod tests {
         let tools = vec![
             ToolDefinition::Builtin(BuiltinTool {
                 name: "server_tool".to_string(),
+                display_name: None,
                 description: "A server tool".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "client_tool".to_string(),
+                display_name: None,
                 description: "A client tool".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
             }),

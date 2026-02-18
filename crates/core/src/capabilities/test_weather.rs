@@ -57,6 +57,10 @@ impl Tool for GetWeatherTool {
         "get_weather"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Weather")
+    }
+
     fn description(&self) -> &str {
         "Get the current weather for a location. Returns temperature, conditions, humidity, and wind speed."
     }
@@ -136,6 +140,10 @@ pub struct GetForecastTool;
 impl Tool for GetForecastTool {
     fn name(&self) -> &str {
         "get_forecast"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Forecast")
     }
 
     fn description(&self) -> &str {

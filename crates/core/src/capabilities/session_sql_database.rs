@@ -91,6 +91,10 @@ impl Tool for SqlExecuteTool {
         "sql_execute"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("SQL Execute")
+    }
+
     fn description(&self) -> &str {
         "Execute DDL/DML SQL (CREATE TABLE, INSERT, UPDATE, DELETE). Auto-creates database if it doesn't exist."
     }
@@ -172,6 +176,10 @@ pub struct SqlQueryTool;
 impl Tool for SqlQueryTool {
     fn name(&self) -> &str {
         "sql_query"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("SQL Query")
     }
 
     fn description(&self) -> &str {
@@ -262,6 +270,10 @@ pub struct SqlSchemaTool;
 impl Tool for SqlSchemaTool {
     fn name(&self) -> &str {
         "sql_schema"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("SQL Schema")
     }
 
     fn description(&self) -> &str {

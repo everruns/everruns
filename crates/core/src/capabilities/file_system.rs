@@ -157,6 +157,10 @@ impl Tool for ReadFileTool {
         "read_file"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Read File")
+    }
+
     fn description(&self) -> &str {
         "Read the content of a file. Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually."
     }
@@ -269,6 +273,10 @@ impl Tool for WriteFileTool {
         "write_file"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Write File")
+    }
+
     fn description(&self) -> &str {
         "Create a new file or update an existing file's content. Parent directories are created automatically."
     }
@@ -375,6 +383,10 @@ impl Tool for ListDirectoryTool {
         "list_directory"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Directory")
+    }
+
     fn description(&self) -> &str {
         "List files and directories at a given path. Returns file metadata including size and type."
     }
@@ -473,6 +485,10 @@ pub struct GrepFilesTool;
 impl Tool for GrepFilesTool {
     fn name(&self) -> &str {
         "grep_files"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Grep Files")
     }
 
     fn description(&self) -> &str {
@@ -575,6 +591,10 @@ impl Tool for DeleteFileTool {
         "delete_file"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Delete File")
+    }
+
     fn description(&self) -> &str {
         "Delete a file or directory. Use recursive=true to delete non-empty directories."
     }
@@ -673,6 +693,10 @@ pub struct StatFileTool;
 impl Tool for StatFileTool {
     fn name(&self) -> &str {
         "stat_file"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("File Info")
     }
 
     fn description(&self) -> &str {

@@ -481,7 +481,7 @@ ActAtom lifecycle - tool batch execution.
   "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_calls": [
-      { "id": "call_123", "name": "get_weather" }
+      { "id": "call_123", "name": "get_weather", "display_name": "Get Weather" }
     ]
   }
 }
@@ -514,7 +514,8 @@ Individual tool execution within ActAtom.
       "id": "call_123",
       "name": "get_weather",
       "arguments": { "city": "Tokyo" }
-    }
+    },
+    "display_name": "Get Weather"
   }
 }
 ```
@@ -527,6 +528,7 @@ Individual tool execution within ActAtom.
   "data": {
     "tool_call_id": "call_123",
     "tool_name": "get_weather",
+    "display_name": "Get Weather",
     "success": true,
     "status": "success",
     "result": [
@@ -546,6 +548,7 @@ For failed tool calls:
   "data": {
     "tool_call_id": "call_456",
     "tool_name": "search_db",
+    "display_name": "Search Database",
     "success": false,
     "status": "error",
     "error": "Connection timeout"

@@ -1169,6 +1169,7 @@ mod tests {
                 name: "calculate".to_string(),
                 arguments: json!({"x": 42}),
             },
+            display_name: None,
         };
         listener
             .on_event(&Event::new(
@@ -1182,6 +1183,7 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "call_abc".to_string(),
             tool_name: "calculate".to_string(),
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: None,
@@ -1205,6 +1207,7 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "orphan_call".to_string(),
             tool_name: "unknown_tool".to_string(),
+            display_name: None,
             success: false,
             status: "error".to_string(),
             result: None,
@@ -1234,6 +1237,7 @@ mod tests {
                     name: format!("tool_{}", i),
                     arguments: json!({}),
                 },
+                display_name: None,
             };
             listener
                 .on_event(&Event::new(
@@ -1250,6 +1254,7 @@ mod tests {
             let completed = ToolCompletedData {
                 tool_call_id: format!("call_{}", i),
                 tool_name: format!("tool_{}", i),
+                display_name: None,
                 success: true,
                 status: "success".to_string(),
                 result: None,
@@ -1549,6 +1554,7 @@ mod tests {
                 name: "search".to_string(),
                 arguments: json!({"query": "rust programming", "limit": 10}),
             },
+            display_name: None,
         };
         listener
             .on_event(&Event::new(
@@ -1561,6 +1567,7 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "call_with_args".to_string(),
             tool_name: "search".to_string(),
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: None,
@@ -1940,6 +1947,7 @@ mod tests {
                         name: "web_search".to_string(),
                         arguments: json!({"query": "rust documentation"}),
                     },
+                    display_name: None,
                 }),
             ))
             .await;
@@ -1954,6 +1962,7 @@ mod tests {
                 EventData::ToolCompleted(ToolCompletedData {
                     tool_call_id: "call_search".to_string(),
                     tool_name: "web_search".to_string(),
+                    display_name: None,
                     success: true,
                     status: "success".to_string(),
                     result: None,

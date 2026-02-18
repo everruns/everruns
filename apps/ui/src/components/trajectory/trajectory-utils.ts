@@ -56,6 +56,8 @@ export interface ToolGroupNodeData {
   tools: Array<{
     id: string;
     name: string;
+    /** Human-readable display name for UI rendering */
+    displayName?: string;
     success: boolean;
     status: string;
     durationMs?: number;
@@ -254,6 +256,7 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
             return {
               id: tc.id,
               name: tc.name,
+              displayName: tc.display_name ?? result?.display_name,
               success: result?.success ?? true,
               status: result?.status ?? "pending",
               durationMs: result?.duration_ms,

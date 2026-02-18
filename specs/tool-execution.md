@@ -16,12 +16,20 @@ System-provided tools implemented via the `Tool` trait in `everruns-core`.
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
+    fn display_name(&self) -> Option<&str> { None }
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
     async fn execute(&self, arguments: Value) -> ToolExecutionResult;
     fn policy(&self) -> ToolPolicy { ToolPolicy::Auto }
 }
 ```
+
+**Display Names:**
+All tools should provide a human-readable `display_name` for UI rendering (e.g., "Get Current Time" for `get_current_time`). The display name is:
+- Returned by `fn display_name(&self) -> Option<&str>` on the `Tool` trait
+- Included in `BuiltinTool` and `ClientSideTool` as `display_name: Option<String>`
+- Propagated through events (`act.started`, `tool.started`, `tool.completed`) so the UI can render it
+- The UI falls back to the technical `name` if `display_name` is absent
 
 **Error Handling Contract:**
 - `ToolExecutionResult::Success(Value)` - Successful result returned to LLM as `result` field
@@ -80,6 +88,7 @@ let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
 {
   "type": "builtin",
   "name": "tool_name",
+  "display_name": "Tool Name",
   "description": "What the tool does",
   "parameters": {
     "type": "object",
@@ -91,7 +100,6 @@ let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
     },
     "required": ["param1"]
   },
-  "kind": "current_time",
   "policy": "auto"
 }
 ```

@@ -146,6 +146,10 @@ impl Tool for WriteTodosTool {
         "write_todos"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Write Todos")
+    }
+
     fn description(&self) -> &str {
         "Create or update a task list for tracking multi-step work. Each task must have 'content' (imperative form like 'Run tests'), 'activeForm' (present continuous like 'Running tests'), and 'status' (pending/in_progress/completed). Exactly one task should be 'in_progress' at a time."
     }

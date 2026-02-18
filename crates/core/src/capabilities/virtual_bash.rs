@@ -123,6 +123,10 @@ impl Tool for BashTool {
         "bash"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Bash")
+    }
+
     fn description(&self) -> &str {
         &TOOL_DESCRIPTION
     }

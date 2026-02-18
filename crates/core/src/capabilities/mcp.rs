@@ -83,6 +83,7 @@ impl McpCapability {
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,
+            display_name: None,
             description: mcp_tool
                 .description
                 .clone()

@@ -88,6 +88,10 @@ impl Tool for KvStoreTool {
         "kv_store"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Key-Value Store")
+    }
+
     fn description(&self) -> &str {
         "Key/value storage operations: set, get, delete, or list keys."
     }
@@ -259,6 +263,10 @@ pub struct SecretStoreTool;
 impl Tool for SecretStoreTool {
     fn name(&self) -> &str {
         "secret_store"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Secret Store")
     }
 
     fn description(&self) -> &str {

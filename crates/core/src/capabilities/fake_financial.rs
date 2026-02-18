@@ -122,6 +122,10 @@ impl Tool for FinanceListTransactionsTool {
         "finance_list_transactions"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Transactions")
+    }
+
     fn description(&self) -> &str {
         "List financial transactions. Filter by type (income/expense) or category."
     }
@@ -248,6 +252,10 @@ pub struct FinanceCreateTransactionTool;
 impl Tool for FinanceCreateTransactionTool {
     fn name(&self) -> &str {
         "finance_create_transaction"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Transaction")
     }
 
     fn description(&self) -> &str {
@@ -382,6 +390,10 @@ impl Tool for FinanceGetBalanceTool {
         "finance_get_balance"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Balance")
+    }
+
     fn description(&self) -> &str {
         "Get current account balances."
     }
@@ -460,6 +472,10 @@ impl Tool for FinanceListBudgetsTool {
         "finance_list_budgets"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Budgets")
+    }
+
     fn description(&self) -> &str {
         "List all budgets by category."
     }
@@ -506,6 +522,10 @@ pub struct FinanceCreateBudgetTool;
 impl Tool for FinanceCreateBudgetTool {
     fn name(&self) -> &str {
         "finance_create_budget"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Budget")
     }
 
     fn description(&self) -> &str {
@@ -560,6 +580,10 @@ pub struct FinanceGetExpenseReportTool;
 impl Tool for FinanceGetExpenseReportTool {
     fn name(&self) -> &str {
         "finance_get_expense_report"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Expense Report")
     }
 
     fn description(&self) -> &str {
@@ -622,6 +646,10 @@ impl Tool for FinanceGetRevenueReportTool {
         "finance_get_revenue_report"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Revenue Report")
+    }
+
     fn description(&self) -> &str {
         "Generate revenue report for a time period."
     }
@@ -679,6 +707,10 @@ pub struct FinanceForecastCashFlowTool;
 impl Tool for FinanceForecastCashFlowTool {
     fn name(&self) -> &str {
         "finance_forecast_cash_flow"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Forecast Cash Flow")
     }
 
     fn description(&self) -> &str {

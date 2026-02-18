@@ -180,7 +180,7 @@ export const ToolGroupNode = memo(function ToolGroupNode({
             ) : (
               <XCircle className="w-2.5 h-2.5" />
             )}
-            {tool.name}
+            {tool.displayName ?? tool.name}
           </span>
         ))}
       </div>

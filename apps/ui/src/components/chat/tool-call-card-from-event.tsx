@@ -68,7 +68,9 @@ export function ToolCallCardFromEvent({
       {/* Tool name with status icon */}
       <div className="flex items-center gap-1">
         {statusIcon}
-        <span className="font-mono">{toolCall.name}</span>
+        <span className="font-mono">
+          {toolResult?.display_name ?? toolCall.display_name ?? toolCall.name}
+        </span>
         {argsPreview && <span className="opacity-60">{argsPreview}</span>}
       </div>
 

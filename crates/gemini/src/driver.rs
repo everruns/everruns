@@ -1045,6 +1045,7 @@ mod tests {
         use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "get_weather".to_string(),
+            display_name: None,
             description: "Get the weather for a city".to_string(),
             parameters: json!({
                 "type": "object",
@@ -1069,6 +1070,7 @@ mod tests {
         use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "search".to_string(),
+            display_name: None,
             description: "Search".to_string(),
             parameters: json!({
                 "type": "object",

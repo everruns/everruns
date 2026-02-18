@@ -138,6 +138,10 @@ impl Tool for WarehouseGetInventoryTool {
         "warehouse_get_inventory"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Inventory")
+    }
+
     fn description(&self) -> &str {
         "Get current inventory levels. Optionally filter by SKU or show only low stock items."
     }
@@ -289,6 +293,10 @@ impl Tool for WarehouseUpdateInventoryTool {
         "warehouse_update_inventory"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Update Inventory")
+    }
+
     fn description(&self) -> &str {
         "Update inventory quantity for a product. Use positive numbers to add stock, negative to remove."
     }
@@ -415,6 +423,10 @@ impl Tool for WarehouseCreateShipmentTool {
         "warehouse_create_shipment"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Shipment")
+    }
+
     fn description(&self) -> &str {
         "Create a new shipment. Automatically updates inventory levels."
     }
@@ -539,6 +551,10 @@ impl Tool for WarehouseListShipmentsTool {
         "warehouse_list_shipments"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Shipments")
+    }
+
     fn description(&self) -> &str {
         "List all shipments. Optionally filter by status."
     }
@@ -615,6 +631,10 @@ pub struct WarehouseUpdateShipmentStatusTool;
 impl Tool for WarehouseUpdateShipmentStatusTool {
     fn name(&self) -> &str {
         "warehouse_update_shipment_status"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Update Shipment Status")
     }
 
     fn description(&self) -> &str {
@@ -731,6 +751,10 @@ impl Tool for WarehouseCreateOrderTool {
         "warehouse_create_order"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Order")
+    }
+
     fn description(&self) -> &str {
         "Create a new customer order."
     }
@@ -827,6 +851,10 @@ impl Tool for WarehouseListOrdersTool {
         "warehouse_list_orders"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Orders")
+    }
+
     fn description(&self) -> &str {
         "List all customer orders."
     }
@@ -873,6 +901,10 @@ pub struct WarehouseCreateInvoiceTool;
 impl Tool for WarehouseCreateInvoiceTool {
     fn name(&self) -> &str {
         "warehouse_create_invoice"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Invoice")
     }
 
     fn description(&self) -> &str {
@@ -924,6 +956,10 @@ pub struct WarehouseProcessReturnTool;
 impl Tool for WarehouseProcessReturnTool {
     fn name(&self) -> &str {
         "warehouse_process_return"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Process Return")
     }
 
     fn description(&self) -> &str {
@@ -978,6 +1014,10 @@ pub struct WarehouseInventoryReportTool;
 impl Tool for WarehouseInventoryReportTool {
     fn name(&self) -> &str {
         "warehouse_inventory_report"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Inventory Report")
     }
 
     fn description(&self) -> &str {

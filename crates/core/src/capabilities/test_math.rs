@@ -62,6 +62,10 @@ impl Tool for AddTool {
         "add"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Add")
+    }
+
     fn description(&self) -> &str {
         "Add two numbers together and return the result."
     }
@@ -109,6 +113,10 @@ pub struct SubtractTool;
 impl Tool for SubtractTool {
     fn name(&self) -> &str {
         "subtract"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Subtract")
     }
 
     fn description(&self) -> &str {
@@ -160,6 +168,10 @@ impl Tool for MultiplyTool {
         "multiply"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Multiply")
+    }
+
     fn description(&self) -> &str {
         "Multiply two numbers together and return the result."
     }
@@ -207,6 +219,10 @@ pub struct DivideTool;
 impl Tool for DivideTool {
     fn name(&self) -> &str {
         "divide"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Divide")
     }
 
     fn description(&self) -> &str {
