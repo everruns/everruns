@@ -148,6 +148,7 @@ const mockUseCreateSession = jest.fn();
 const mockUseCapabilities = jest.fn();
 const mockUseLlmModels = jest.fn();
 const mockUseExportAgent = jest.fn();
+const mockUseCopyAgent = jest.fn();
 const mockUseHarnesses = jest.fn();
 
 jest.mock("@/hooks", () => ({
@@ -157,6 +158,7 @@ jest.mock("@/hooks", () => ({
   useCapabilities: () => mockUseCapabilities(),
   useLlmModels: () => mockUseLlmModels(),
   useExportAgent: () => mockUseExportAgent(),
+  useCopyAgent: () => mockUseCopyAgent(),
   useHarnesses: () => mockUseHarnesses(),
 }));
 
@@ -186,6 +188,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
   });
 
@@ -196,6 +199,20 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     expect(screen.getByText("Test Agent")).toBeInTheDocument();
     // Sessions section header should be visible
     expect(screen.getByText("Sessions")).toBeInTheDocument();
+  });
+
+  it("renders copy button", async () => {
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.getByText("Copy")).toBeInTheDocument();
+  });
+
+  it("shows copying state when copy is pending", async () => {
+    mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: true });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.getByText("Copying...")).toBeInTheDocument();
   });
 
   it("renders agent details correctly", async () => {
@@ -280,6 +297,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
   });
 

@@ -47,6 +47,7 @@ See [authentication.md](authentication.md) for full authentication specification
 | POST | `/v1/agents/import` | Import agent from file content |
 | GET | `/v1/agents/{id}/export` | Export agent as Markdown |
 | POST | `/v1/agents/preview` | Preview final agent shape |
+| POST | `/v1/agents/{id}/copy` | Copy agent (new ID, "{name} (copy)") |
 
 #### Agent Preview
 
@@ -85,6 +86,19 @@ The response shows:
 **Input Validation:**
 
 All agent create/update/import endpoints enforce input size limits as last-resort protection against abuse. See [models.md](models.md#agent) for limit details. Validation failures return `400 Bad Request` with generic message "Input exceeds allowed limits".
+
+### Harnesses
+
+Harnesses define the base environment and capabilities for sessions. See [harness-types.md](harness-types.md) for built-in types.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/harnesses` | Create harness |
+| GET | `/v1/harnesses` | List harnesses |
+| GET | `/v1/harnesses/{id}` | Get harness |
+| PATCH | `/v1/harnesses/{id}` | Update harness |
+| DELETE | `/v1/harnesses/{id}` | Delete harness |
+| POST | `/v1/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
 
 ### Sessions
 

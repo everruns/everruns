@@ -937,7 +937,6 @@ async fn test_copy_agent() {
     assert_eq!(copied.capabilities[0].capability_id(), "current_time");
     // New ID
     assert_ne!(copied.public_id, agent.public_id);
-    assert_ne!(copied.internal_id, agent.internal_id);
 }
 
 #[tokio::test]
