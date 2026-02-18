@@ -12,6 +12,8 @@ import {
   sendUserMessage,
   pinSession,
   unpinSession,
+  listSessionSchedules,
+  getSessionScheduleSummary,
 } from "@/lib/api/sessions";
 import { getSseUrl, listEvents } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -347,4 +349,29 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     isLoading,
     error,
   };
+}
+
+/**
+ * Fetch all schedules for a session.
+ */
+export function useSessionSchedules(sessionId: string) {
+  return useQuery({
+    queryKey: queryKeys.sessionSchedules.list(sessionId),
+    queryFn: () => listSessionSchedules(sessionId),
+    enabled: !!sessionId,
+    refetchInterval: 5000, // Poll every 5s for status updates
+  });
+}
+
+/**
+ * Fetch schedule summary (pending count) for a session.
+ * Useful for showing a badge/indicator in the session card or tab.
+ */
+export function useSessionScheduleSummary(sessionId: string) {
+  return useQuery({
+    queryKey: queryKeys.sessionSchedules.summary(sessionId),
+    queryFn: () => getSessionScheduleSummary(sessionId),
+    enabled: !!sessionId,
+    refetchInterval: 10000, // Poll every 10s
+  });
 }

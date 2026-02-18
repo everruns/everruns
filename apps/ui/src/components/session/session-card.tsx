@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2, Zap, Pin, PinOff } from "lucide-react";
+import { Info, MessageSquare, Loader2, Zap, Pin, PinOff, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
+import { useSessionScheduleSummary } from "@/hooks/use-sessions";
 import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 
 /**
@@ -122,6 +123,8 @@ function SessionInfoIcon({ session }: { session: Session }) {
  */
 export function SessionCard({ session, agentName, model, summary, onTogglePin }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
+  const { data: scheduleSummary } = useSessionScheduleSummary(session.id);
+  const pendingSchedules = scheduleSummary?.pending_count ?? 0;
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
   const inputPreview = summary ?? session.preview;
@@ -151,6 +154,19 @@ export function SessionCard({ session, agentName, model, summary, onTogglePin }:
             <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
               {statusInfo.label}
             </Badge>
+            {pendingSchedules > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="flex-shrink-0 text-xs gap-1">
+                    <Clock className="w-3 h-3" />
+                    {pendingSchedules}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {pendingSchedules} scheduled task{pendingSchedules > 1 ? "s" : ""} pending
+                </TooltipContent>
+              </Tooltip>
+            )}
             {agentName && (
               <Badge variant="outline" className="flex-shrink-0 text-xs">
                 {agentName}

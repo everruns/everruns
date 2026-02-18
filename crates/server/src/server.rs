@@ -157,6 +157,17 @@ pub async fn run(
     );
     tracing::info!("Session SQL database store initialized (in-memory)");
 
+    // Create session schedule store (used by both API routes and worker)
+    let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> = match db.as_ref() {
+        crate::storage::StorageBackend::Postgres(database) => Arc::new(
+            services::session_schedule::DbSessionScheduleStore::new(database.pool().clone()),
+        ),
+        crate::storage::StorageBackend::InMemory(_) => {
+            Arc::new(services::session_schedule::InMemorySessionScheduleStore::new())
+        }
+    };
+    tracing::info!("Session schedule store initialized");
+
     // Initialize encryption service
     let encryption = match EncryptionService::from_env() {
         Ok(svc) => {
@@ -255,6 +266,8 @@ pub async fn run(
     let session_storage_state = api::session_storage::AppState::new(db.clone(), auth_state.clone());
     let session_databases_state =
         api::session_databases::AppState::new(sqldb_store.clone(), auth_state.clone());
+    let session_schedules_state =
+        api::session_schedules::AppState::new(Some(schedule_store.clone()), auth_state.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),
         auth: auth_state.clone(),
@@ -309,6 +322,7 @@ pub async fn run(
         .merge(api::session_files::routes(session_files_state))
         .merge(api::session_storage::routes(session_storage_state))
         .merge(api::session_databases::routes(session_databases_state))
+        .merge(api::session_schedules::routes(session_schedules_state))
         .merge(api::users::routes(users_state))
         .merge(api::durable::routes(durable_state))
         .merge(api::schedules::routes(schedules_state))
@@ -532,13 +546,10 @@ pub async fn run(
         }
 
         // Session schedule poller (production)
-        if let Some(pool) = db.pool() {
-            let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> = Arc::new(
-                services::session_schedule::DbSessionScheduleStore::new(pool.clone()),
-            );
+        {
             let (_poller_shutdown_tx, poller_shutdown_rx) = tokio::sync::watch::channel(false);
             let poller = services::session_schedule::SessionSchedulePoller::new(
-                schedule_store,
+                schedule_store.clone(),
                 (*event_service).clone(),
                 runner.clone(),
             );
@@ -580,20 +591,6 @@ pub async fn run(
                     }
                     crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
-
-            // Create session schedule store
-            let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
-                match db.as_ref() {
-                    crate::storage::StorageBackend::Postgres(database) => {
-                        Arc::new(services::session_schedule::DbSessionScheduleStore::new(
-                            database.pool().clone(),
-                        ))
-                    }
-                    crate::storage::StorageBackend::InMemory(_) => {
-                        Arc::new(services::session_schedule::InMemorySessionScheduleStore::new())
-                    }
-                };
-            tracing::info!("Session schedule store initialized");
 
             let mut adapters = DirectWorkerAdapters::new(
                 db.clone(),

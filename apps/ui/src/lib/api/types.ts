@@ -1544,3 +1544,31 @@ export interface UserConnection {
   scopes?: string;
   connected_at: string;
 }
+
+// ============================================
+// Session Schedule types
+// ============================================
+
+export type SessionScheduleStatus = "pending" | "triggered" | "cancelled" | "failed";
+
+/** A scheduled task within a session */
+export interface SessionScheduleItem {
+  id: string;
+  session_id: string;
+  description: string;
+  scheduled_at: string;
+  status: SessionScheduleStatus;
+  triggered_at?: string;
+  error?: string;
+  created_at: string;
+}
+
+/** Summary of pending schedules for a session */
+export interface SessionScheduleSummary {
+  pending_count: number;
+}
+
+/** Session schedules list response */
+export interface SessionSchedulesResponse {
+  data: SessionScheduleItem[];
+}

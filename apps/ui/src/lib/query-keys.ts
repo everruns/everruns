@@ -122,6 +122,13 @@ export const queryKeys = {
     list: () => ["user-connections"] as const,
   },
 
+  // Session schedule queries
+  sessionSchedules: {
+    all: ["session-schedules"] as const,
+    list: (sessionId: string) => ["session-schedules", sessionId] as const,
+    summary: (sessionId: string) => ["session-schedules", sessionId, "summary"] as const,
+  },
+
   // Skill queries
   skills: {
     all: ["skills"] as const,

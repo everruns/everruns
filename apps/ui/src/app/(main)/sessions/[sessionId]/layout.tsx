@@ -18,6 +18,7 @@ import {
   Database,
   Bot,
   GitBranch,
+  Clock,
   Pencil,
   Check,
   X,
@@ -151,6 +152,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
     if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/storage")) return "storage";
+    if (pathname.endsWith("/schedules")) return "schedules";
     return "chat"; // Default to chat (includes /chat and base path)
   };
   const activeTab = getActiveTab();
@@ -301,6 +303,19 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
           >
             <Database className="h-4 w-4" />
             Storage
+          </Link>
+          <Link
+            href={`${basePath}/schedules`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "schedules" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2",
+            )}
+          >
+            <Clock className="h-4 w-4" />
+            Schedules
           </Link>
           <Link
             href={`${basePath}/events`}

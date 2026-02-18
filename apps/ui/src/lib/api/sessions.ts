@@ -8,6 +8,8 @@ import type {
   UpdateSessionRequest,
   PaginatedResponse,
   PaginationParams,
+  SessionSchedulesResponse,
+  SessionScheduleSummary,
 } from "./types";
 
 // Re-export message and event functions for convenience
@@ -94,4 +96,24 @@ export async function pinSession(sessionId: string): Promise<void> {
 /** Unpin a session for the current user */
 export async function unpinSession(sessionId: string): Promise<void> {
   await api.delete(`/v1/sessions/${sessionId}/pin`);
+}
+
+// ============================================
+// Session Schedules
+// ============================================
+
+/** List all schedules for a session */
+export async function listSessionSchedules(sessionId: string): Promise<SessionSchedulesResponse> {
+  const response = await api.get<SessionSchedulesResponse>(`/v1/sessions/${sessionId}/schedules`);
+  return response.data;
+}
+
+/** Get schedule summary (pending count) for a session */
+export async function getSessionScheduleSummary(
+  sessionId: string,
+): Promise<SessionScheduleSummary> {
+  const response = await api.get<SessionScheduleSummary>(
+    `/v1/sessions/${sessionId}/schedules/summary`,
+  );
+  return response.data;
 }
