@@ -23,7 +23,7 @@ const API_BASE_URL: &str = "http://localhost:9000";
 // Note: With AUTH_MODE=none, org is derived from the anonymous user's default org.
 // No cookie or header needed for integration tests.
 
-/// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
+/// Seed harness ID from seed.rs (BASE_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
 const SEED_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
 
 #[tokio::test]

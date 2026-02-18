@@ -93,6 +93,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/linear-issues.md` - Linear issue processing workflow
 - `specs/daytona.md` - Daytona cloud sandbox integration
 - `specs/brave-search.md` - Brave Search web search integration
+- `specs/harness-types.md` - Built-in harness types (Base, Generic)
 
 ### Skills
 
