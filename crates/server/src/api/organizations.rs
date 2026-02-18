@@ -3,7 +3,7 @@
 // Note: Organization routes are NOT org-scoped (they are at the root level)
 // because they manage organizations themselves.
 
-use crate::auth::middleware::{AuthState, AuthUser};
+use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -12,7 +12,9 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{DEFAULT_ORG_ID, Organization, generate_org_public_id, validate_org_public_id};
+use everruns_core::{
+    DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id, validate_org_public_id,
+};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
@@ -89,6 +91,12 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/orgs/{org}",
             get(get_organization).patch(update_organization),
+        )
+        // Organization members
+        .route("/v1/orgs/{org}/members", get(list_members).post(add_member))
+        .route(
+            "/v1/orgs/{org}/members/{user_id}",
+            axum::routing::patch(update_member_role).delete(remove_member),
         )
         .with_state(state)
 }
@@ -174,14 +182,15 @@ pub async fn create_organization(
         .create_organization(CreateOrganizationRow {
             public_id: public_id.clone(),
             name: req.name,
+            created_by: Some(user.id),
         })
         .await
         .log_internal_error_json("create organization")?;
 
-    // Add creator as organization member
+    // Add creator as organization owner
     state
         .db
-        .add_organization_member(row.org_id, user.id)
+        .add_organization_member(row.org_id, user.id, "owner")
         .await
         .log_internal_error_json("add organization member")?;
 
@@ -333,6 +342,299 @@ pub async fn update_organization(
     };
 
     Ok(Json(OrganizationResponse::from(org)))
+}
+
+// ============================================================================
+// Organization Members
+// ============================================================================
+
+/// Response for organization member
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MemberResponse {
+    pub user_id: String,
+    pub email: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub role: String,
+    pub joined_at: String,
+}
+
+/// Request to add a member
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddMemberRequest {
+    pub user_id: String,
+    #[serde(default = "default_member_role")]
+    pub role: String,
+}
+
+fn default_member_role() -> String {
+    "member".to_string()
+}
+
+/// Request to update member role
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateMemberRoleRequest {
+    pub role: String,
+}
+
+/// GET /v1/orgs/:org/members - List organization members
+pub async fn list_members(
+    State(state): State<AppState>,
+    org: OrgContext,
+) -> Result<Json<ListResponse<MemberResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let members = state
+        .db
+        .list_organization_members_with_users(org.org_id)
+        .await
+        .log_internal_error_json("list organization members")?;
+
+    let items: Vec<MemberResponse> = members
+        .into_iter()
+        .map(|m| MemberResponse {
+            user_id: m.user_id.to_string(),
+            email: m.email,
+            name: m.name,
+            avatar_url: m.avatar_url,
+            role: m.role,
+            joined_at: m.joined_at.to_rfc3339(),
+        })
+        .collect();
+
+    Ok(Json(ListResponse::new(items)))
+}
+
+/// POST /v1/orgs/:org/members - Add a member (Admin+)
+pub async fn add_member(
+    State(state): State<AppState>,
+    OrgAdmin(org): OrgAdmin,
+    user: AuthUser,
+    Json(req): Json<AddMemberRequest>,
+) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, Json<ErrorResponse>)> {
+    // Parse and validate role
+    let role: OrgRole = req.role.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Invalid role. Must be 'owner', 'admin', or 'member'",
+            )),
+        )
+    })?;
+
+    // Only owners can add owners
+    if role == OrgRole::Owner && !org.role.has_permission(OrgRole::Owner) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new("Only owners can add owners")),
+        ));
+    }
+
+    let target_user_id: uuid::Uuid = req.user_id.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new("Invalid user_id")),
+        )
+    })?;
+
+    // Verify user exists
+    let target_user = state
+        .db
+        .get_user(target_user_id)
+        .await
+        .log_internal_error_json("get user")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("User not found")),
+            )
+        })?;
+
+    // Check if already a member
+    let existing = state
+        .db
+        .get_organization_member(org.org_id, target_user_id)
+        .await
+        .log_internal_error_json("check membership")?;
+
+    if existing.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse::new("User is already a member")),
+        ));
+    }
+
+    // Add member
+    let member_row = state
+        .db
+        .add_organization_member(org.org_id, target_user_id, role.as_str())
+        .await
+        .log_internal_error_json("add organization member")?;
+
+    let _ = user; // Silence unused warning
+
+    Ok((
+        StatusCode::CREATED,
+        Json(MemberResponse {
+            user_id: target_user_id.to_string(),
+            email: target_user.email,
+            name: target_user.name,
+            avatar_url: target_user.avatar_url,
+            role: member_row.role,
+            joined_at: member_row.created_at.to_rfc3339(),
+        }),
+    ))
+}
+
+/// PATCH /v1/orgs/:org/members/:user_id - Update member role
+pub async fn update_member_role(
+    State(state): State<AppState>,
+    OrgAdmin(org): OrgAdmin,
+    Path((_org_public_id, user_id_str)): Path<(String, String)>,
+    Json(req): Json<UpdateMemberRoleRequest>,
+) -> Result<Json<MemberResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let new_role: OrgRole = req.role.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Invalid role. Must be 'owner', 'admin', or 'member'",
+            )),
+        )
+    })?;
+
+    let target_user_id: uuid::Uuid = user_id_str.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new("Invalid user_id")),
+        )
+    })?;
+
+    // Get current member info
+    let current = state
+        .db
+        .get_organization_member(org.org_id, target_user_id)
+        .await
+        .log_internal_error_json("get member")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("Member not found")),
+            )
+        })?;
+
+    let current_role: OrgRole = current.role.parse().unwrap_or(OrgRole::Member);
+
+    // Only owners can change owner roles
+    if (current_role == OrgRole::Owner || new_role == OrgRole::Owner)
+        && !org.role.has_permission(OrgRole::Owner)
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new("Only owners can change owner roles")),
+        ));
+    }
+
+    // Cannot demote last owner
+    if current_role == OrgRole::Owner && new_role != OrgRole::Owner {
+        let owner_count = state
+            .db
+            .count_organization_owners(org.org_id)
+            .await
+            .log_internal_error_json("count owners")?;
+        if owner_count <= 1 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new("Cannot remove the last owner")),
+            ));
+        }
+    }
+
+    // Update role
+    let updated = state
+        .db
+        .update_organization_member_role(org.org_id, target_user_id, new_role.as_str())
+        .await
+        .log_internal_error_json("update member role")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("Member not found")),
+            )
+        })?;
+
+    Ok(Json(MemberResponse {
+        user_id: target_user_id.to_string(),
+        email: current.email,
+        name: current.name,
+        avatar_url: current.avatar_url,
+        role: updated.role,
+        joined_at: current.joined_at.to_rfc3339(),
+    }))
+}
+
+/// DELETE /v1/orgs/:org/members/:user_id - Remove member (Owner or self)
+pub async fn remove_member(
+    State(state): State<AppState>,
+    org: OrgContext,
+    user: AuthUser,
+    Path((_org_public_id, user_id_str)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let target_user_id: uuid::Uuid = user_id_str.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new("Invalid user_id")),
+        )
+    })?;
+
+    let is_self = target_user_id == user.id;
+
+    // Must be owner to remove others (self-removal always allowed)
+    if !is_self && !org.role.has_permission(OrgRole::Owner) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new("Only owners can remove members")),
+        ));
+    }
+
+    // Check if target is owner — cannot remove last owner
+    let member = state
+        .db
+        .get_organization_member(org.org_id, target_user_id)
+        .await
+        .log_internal_error_json("get member")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("Member not found")),
+            )
+        })?;
+
+    if member.role == "owner" {
+        let owner_count = state
+            .db
+            .count_organization_owners(org.org_id)
+            .await
+            .log_internal_error_json("count owners")?;
+        if owner_count <= 1 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new("Cannot remove the last owner")),
+            ));
+        }
+    }
+
+    let removed = state
+        .db
+        .remove_organization_member(org.org_id, target_user_id)
+        .await
+        .log_internal_error_json("remove organization member")?;
+
+    if removed {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse::new("Member not found")),
+        ))
+    }
 }
 
 #[cfg(test)]

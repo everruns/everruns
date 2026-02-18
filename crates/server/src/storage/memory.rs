@@ -71,6 +71,7 @@ impl Default for InMemoryDatabase {
                 created_at: now,
                 updated_at: now,
                 external_id: None,
+                created_by: None,
             },
         );
 
@@ -2676,6 +2677,7 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
             external_id: None,
+            created_by: input.created_by,
         };
         orgs.insert(org_id, row.clone());
         Ok(row)
@@ -2700,6 +2702,7 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
             external_id: None,
+            created_by: input.created_by,
         };
         orgs.insert(org_id, row.clone());
         Ok(Some(row))
@@ -2756,11 +2759,13 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         user_id: Uuid,
+        role: &str,
     ) -> Result<OrganizationMemberRow> {
         let now = Self::now();
         let row = OrganizationMemberRow {
             org_id,
             user_id,
+            role: role.to_string(),
             created_at: now,
         };
         self.organization_members
@@ -2791,18 +2796,93 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+    pub async fn list_organization_members_with_users(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberWithUserRow>> {
+        let members = self.organization_members.read();
+        let users = self.users.read();
+        let mut result: Vec<_> = members
+            .values()
+            .filter(|m| m.org_id == org_id)
+            .filter_map(|m| {
+                users
+                    .get(&m.user_id)
+                    .map(|u| OrganizationMemberWithUserRow {
+                        user_id: u.id,
+                        email: u.email.clone(),
+                        name: u.name.clone(),
+                        avatar_url: u.avatar_url.clone(),
+                        role: m.role.clone(),
+                        joined_at: m.created_at,
+                    })
+            })
+            .collect();
+        result.sort_by(|a, b| a.joined_at.cmp(&b.joined_at));
+        Ok(result)
+    }
+
+    pub async fn get_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Option<OrganizationMemberWithUserRow>> {
+        let members = self.organization_members.read();
+        let users = self.users.read();
+        Ok(members.get(&(org_id, user_id)).and_then(|m| {
+            users
+                .get(&m.user_id)
+                .map(|u| OrganizationMemberWithUserRow {
+                    user_id: u.id,
+                    email: u.email.clone(),
+                    name: u.name.clone(),
+                    avatar_url: u.avatar_url.clone(),
+                    role: m.role.clone(),
+                    joined_at: m.created_at,
+                })
+        }))
+    }
+
+    pub async fn update_organization_member_role(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+    ) -> Result<Option<OrganizationMemberRow>> {
+        let mut members = self.organization_members.write();
+        if let Some(member) = members.get_mut(&(org_id, user_id)) {
+            member.role = role.to_string();
+            return Ok(Some(member.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn count_organization_owners(&self, org_id: i64) -> Result<i64> {
+        let members = self.organization_members.read();
+        let count = members
+            .values()
+            .filter(|m| m.org_id == org_id && m.role == "owner")
+            .count();
+        Ok(count as i64)
+    }
+
+    pub async fn list_user_organizations(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<OrganizationWithRoleRow>> {
         let members = self.organization_members.read();
         let orgs = self.organizations.read();
-        let org_ids: Vec<i64> = members
+        let mut result: Vec<_> = members
             .values()
             .filter(|m| m.user_id == user_id)
-            .map(|m| m.org_id)
-            .collect();
-        let mut result: Vec<_> = orgs
-            .values()
-            .filter(|o| org_ids.contains(&o.org_id))
-            .cloned()
+            .filter_map(|m| {
+                orgs.get(&m.org_id).map(|o| OrganizationWithRoleRow {
+                    org_id: o.org_id,
+                    public_id: o.public_id.clone(),
+                    name: o.name.clone(),
+                    role: m.role.clone(),
+                })
+            })
             .collect();
         result.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(result)
@@ -2867,18 +2947,20 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
             external_id: Some(external_id.to_string()),
+            created_by: None,
         };
         orgs.insert(org_id, row.clone());
         Ok(row)
     }
 
     /// Ensure user is a member of organization (idempotent)
-    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
         let key = (org_id, user_id);
         let mut members = self.organization_members.write();
         members.entry(key).or_insert_with(|| OrganizationMemberRow {
             org_id,
             user_id,
+            role: role.to_string(),
             created_at: Self::now(),
         });
         Ok(())

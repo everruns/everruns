@@ -3006,13 +3006,14 @@ impl Database {
     ) -> Result<OrganizationRow> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            INSERT INTO organizations (public_id, name)
-            VALUES ($1, $2)
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id
+            INSERT INTO organizations (public_id, name, created_by)
+            VALUES ($1, $2, $3)
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by
             "#,
         )
         .bind(&input.public_id)
         .bind(&input.name)
+        .bind(input.created_by)
         .fetch_one(&self.pool)
         .await?;
 
@@ -3028,15 +3029,16 @@ impl Database {
     ) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            INSERT INTO organizations (org_id, public_id, name)
-            VALUES ($1, $2, $3)
+            INSERT INTO organizations (org_id, public_id, name, created_by)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (org_id) DO NOTHING
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
+        .bind(input.created_by)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -3130,17 +3132,19 @@ impl Database {
         &self,
         org_id: i64,
         user_id: Uuid,
+        role: &str,
     ) -> Result<OrganizationMemberRow> {
         let row = sqlx::query_as::<_, OrganizationMemberRow>(
             r#"
-            INSERT INTO organization_members (org_id, user_id)
-            VALUES ($1, $2)
-            ON CONFLICT (org_id, user_id) DO UPDATE SET org_id = EXCLUDED.org_id
-            RETURNING org_id, user_id, created_at
+            INSERT INTO organization_members (org_id, user_id, role)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
+            RETURNING org_id, user_id, role, created_at
             "#,
         )
         .bind(org_id)
         .bind(user_id)
+        .bind(role)
         .fetch_one(&self.pool)
         .await?;
 
@@ -3164,7 +3168,7 @@ impl Database {
     ) -> Result<Vec<OrganizationMemberRow>> {
         let rows = sqlx::query_as::<_, OrganizationMemberRow>(
             r#"
-            SELECT org_id, user_id, created_at
+            SELECT org_id, user_id, role, created_at
             FROM organization_members
             WHERE org_id = $1
             ORDER BY created_at DESC
@@ -3177,10 +3181,91 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
-        let rows = sqlx::query_as::<_, OrganizationRow>(
+    /// List members with user info (for API responses)
+    pub async fn list_organization_members_with_users(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberWithUserRow>> {
+        let rows = sqlx::query_as::<_, OrganizationMemberWithUserRow>(
             r#"
-            SELECT o.org_id, o.public_id, o.name, o.created_at, o.updated_at, o.external_id
+            SELECT u.id as user_id, u.email, u.name, u.avatar_url, om.role, om.created_at as joined_at
+            FROM organization_members om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.org_id = $1
+            ORDER BY om.created_at
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Get a specific organization member with user info
+    pub async fn get_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Option<OrganizationMemberWithUserRow>> {
+        let row = sqlx::query_as::<_, OrganizationMemberWithUserRow>(
+            r#"
+            SELECT u.id as user_id, u.email, u.name, u.avatar_url, om.role, om.created_at as joined_at
+            FROM organization_members om
+            JOIN users u ON u.id = om.user_id
+            WHERE om.org_id = $1 AND om.user_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Update a member's role
+    pub async fn update_organization_member_role(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+    ) -> Result<Option<OrganizationMemberRow>> {
+        let row = sqlx::query_as::<_, OrganizationMemberRow>(
+            r#"
+            UPDATE organization_members SET role = $3
+            WHERE org_id = $1 AND user_id = $2
+            RETURNING org_id, user_id, role, created_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .bind(role)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Count owners in an organization (for preventing last owner removal)
+    pub async fn count_organization_owners(&self, org_id: i64) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM organization_members WHERE org_id = $1 AND role = 'owner'",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0)
+    }
+
+    pub async fn list_user_organizations(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<OrganizationWithRoleRow>> {
+        let rows = sqlx::query_as::<_, OrganizationWithRoleRow>(
+            r#"
+            SELECT o.org_id, o.public_id, o.name, om.role
             FROM organizations o
             JOIN organization_members om ON o.org_id = om.org_id
             WHERE om.user_id = $1
@@ -3270,12 +3355,13 @@ impl Database {
     }
 
     /// Ensure user is a member of organization (idempotent)
-    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64) -> Result<()> {
+    pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
         sqlx::query(
-            "INSERT INTO organization_members (org_id, user_id) VALUES ($1, $2) ON CONFLICT (org_id, user_id) DO NOTHING"
+            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING"
         )
         .bind(org_id)
         .bind(user_id)
+        .bind(role)
         .execute(&self.pool)
         .await?;
 

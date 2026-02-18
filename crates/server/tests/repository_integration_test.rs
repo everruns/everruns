@@ -833,6 +833,7 @@ async fn test_organization_crud() {
         .create_organization(CreateOrganizationRow {
             public_id: public_id.clone(),
             name: format!("Test Org {}", Uuid::now_v7()),
+            created_by: None,
         })
         .await
         .expect("Failed to create organization");
@@ -1130,6 +1131,7 @@ async fn create_test_org(backend: &StorageBackend, name: &str) -> i64 {
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: name.to_string(),
+            created_by: None,
         })
         .await
         .expect("Failed to create org");

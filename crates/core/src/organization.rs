@@ -1,8 +1,13 @@
 // Organization types for multitenancy
 // See specs/multitenancy.md
+//
+// Decision: Hierarchical org roles (Owner > Admin > Member) using PartialOrd.
+// External auth providers map their roles to OrgRole via AuthBackend trait.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 
 /// Default organization ID (internal, for DB queries)
@@ -36,6 +41,61 @@ pub struct Organization {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Organization-level role with hierarchical permissions.
+/// Owner > Admin > Member — checked via `has_permission()`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum OrgRole {
+    #[default]
+    Member,
+    Admin,
+    Owner,
+}
+
+impl OrgRole {
+    /// Check if this role has at least the `required` permission level.
+    pub fn has_permission(self, required: OrgRole) -> bool {
+        self.level() >= required.level()
+    }
+
+    /// String representation for DB storage.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OrgRole::Member => "member",
+            OrgRole::Admin => "admin",
+            OrgRole::Owner => "owner",
+        }
+    }
+
+    fn level(self) -> u8 {
+        match self {
+            OrgRole::Member => 0,
+            OrgRole::Admin => 1,
+            OrgRole::Owner => 2,
+        }
+    }
+}
+
+impl fmt::Display for OrgRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for OrgRole {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "member" => Ok(OrgRole::Member),
+            "admin" => Ok(OrgRole::Admin),
+            "owner" => Ok(OrgRole::Owner),
+            _ => Err(format!("invalid org role: {s}")),
+        }
+    }
+}
+
 /// Organization membership info (for user context)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -47,6 +107,9 @@ pub struct OrgMembership {
     pub public_id: String,
     /// Display name
     pub name: String,
+    /// User's role in this organization
+    #[serde(default)]
+    pub role: OrgRole,
 }
 
 /// Generate a new organization public ID
@@ -118,5 +181,34 @@ mod tests {
     #[test]
     fn test_default_org_public_id_valid() {
         assert!(validate_org_public_id(DEFAULT_ORG_PUBLIC_ID));
+    }
+
+    #[test]
+    fn test_org_role_hierarchy() {
+        assert!(OrgRole::Owner.has_permission(OrgRole::Owner));
+        assert!(OrgRole::Owner.has_permission(OrgRole::Admin));
+        assert!(OrgRole::Owner.has_permission(OrgRole::Member));
+
+        assert!(!OrgRole::Admin.has_permission(OrgRole::Owner));
+        assert!(OrgRole::Admin.has_permission(OrgRole::Admin));
+        assert!(OrgRole::Admin.has_permission(OrgRole::Member));
+
+        assert!(!OrgRole::Member.has_permission(OrgRole::Owner));
+        assert!(!OrgRole::Member.has_permission(OrgRole::Admin));
+        assert!(OrgRole::Member.has_permission(OrgRole::Member));
+    }
+
+    #[test]
+    fn test_org_role_str_roundtrip() {
+        for role in [OrgRole::Member, OrgRole::Admin, OrgRole::Owner] {
+            let s = role.as_str();
+            let parsed: OrgRole = s.parse().unwrap();
+            assert_eq!(parsed, role);
+        }
+    }
+
+    #[test]
+    fn test_org_role_default() {
+        assert_eq!(OrgRole::default(), OrgRole::Member);
     }
 }

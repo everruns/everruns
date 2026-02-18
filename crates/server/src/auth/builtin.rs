@@ -3,7 +3,7 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership};
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -130,6 +130,17 @@ impl AuthBackend for BuiltinAuthBackend {
             })?
             .ok_or_else(|| AuthError::unauthorized("Organization not found for API key"))?;
 
+        // Get the user's role in this org (default to member for API key auth)
+        let member_row = self
+            .db
+            .get_organization_member(org.org_id, user.id)
+            .await
+            .ok()
+            .flatten();
+        let role = member_row
+            .and_then(|m| m.role.parse::<OrgRole>().ok())
+            .unwrap_or(OrgRole::Member);
+
         Ok(AuthUser {
             id: user.id,
             email: user.email,
@@ -140,6 +151,7 @@ impl AuthBackend for BuiltinAuthBackend {
                 org_id: org.org_id,
                 public_id: org.public_id,
                 name: org.name,
+                role,
             }],
         })
     }
@@ -183,6 +195,7 @@ pub(super) async fn fetch_user_organizations(
             org_id: row.org_id,
             public_id: row.public_id,
             name: row.name,
+            role: row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         })
         .collect())
 }
@@ -194,6 +207,7 @@ pub(super) fn organizations_or_default(organizations: Vec<OrgMembership>) -> Vec
             org_id: DEFAULT_ORG_ID,
             public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
             name: "Default Organization".to_string(),
+            role: OrgRole::Member,
         }]
     } else {
         organizations

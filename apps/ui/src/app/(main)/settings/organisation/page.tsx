@@ -65,7 +65,7 @@ export default function OrganisationPage() {
     if (!newOrgName.trim()) return;
 
     const org = await createOrganization.mutateAsync({ name: newOrgName.trim() });
-    setCurrentOrg({ public_id: org.id, name: org.name });
+    setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setNewOrgName("");
     setCreateDialogOpen(false);
   };
