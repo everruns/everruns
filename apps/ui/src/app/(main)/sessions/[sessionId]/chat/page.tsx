@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
+import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle, Clock } from "lucide-react";
 import type {
   Controls,
   InputMessageData,
@@ -270,10 +270,12 @@ export default function ChatPage() {
               );
             }
 
-            const isUser = event.type === "input.message";
             const data = event.data as InputMessageData | OutputMessageCompletedData;
+            const isApp = event.type === "input.message" && data.message?.role === "app";
+            const isUser = event.type === "input.message" && !isApp;
             const textContent = getMessageText(data);
-            const toolCalls = isUser ? [] : getToolCalls(data as OutputMessageCompletedData);
+            const toolCalls =
+              isUser || isApp ? [] : getToolCalls(data as OutputMessageCompletedData);
             const images = data.message?.content ? getMessageImages(data.message.content) : [];
 
             return (
@@ -281,7 +283,15 @@ export default function ChatPage() {
                 {/* Render text content and images */}
                 {(textContent || images.length > 0) && (
                   <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                    {isUser ? (
+                    {isApp ? (
+                      /* App message - scheduled task notification, centered with clock icon */
+                      <div className="w-full flex items-center justify-center gap-2 py-1">
+                        <div className="flex items-center gap-2 rounded-full border border-border/40 bg-muted/50 px-3 py-1.5">
+                          <Clock className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">{textContent}</p>
+                        </div>
+                      </div>
+                    ) : isUser ? (
                       /* User message - subtle border, rounded */
                       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
                         <div className="flex items-start gap-2">
