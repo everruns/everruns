@@ -4252,6 +4252,10 @@
             "type": "boolean",
             "description": "Whether this is an MCP server capability (for UI badge)"
           },
+          "is_skill": {
+            "type": "boolean",
+            "description": "Whether this is an Agent Skill capability (for UI badge)"
+          },
           "name": {
             "type": "string",
             "description": "Display name"
@@ -5789,6 +5793,10 @@
                 "is_mcp": {
                   "type": "boolean",
                   "description": "Whether this is an MCP server capability (for UI badge)"
+                },
+                "is_skill": {
+                  "type": "boolean",
+                  "description": "Whether this is an Agent Skill capability (for UI badge)"
                 },
                 "name": {
                   "type": "string",

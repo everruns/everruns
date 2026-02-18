@@ -81,6 +81,7 @@ mod sample_data;
 mod session;
 mod session_sql_database;
 mod session_storage;
+pub mod skill;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
@@ -131,6 +132,11 @@ pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
+pub use skill::{
+    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapability, SkillInstructions, SkillMeta,
+    SkillSource, discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
+    skill_capability_id,
+};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};

@@ -43,6 +43,9 @@ pub struct CapabilityInfo {
     /// Whether this is an MCP server capability (for UI badge)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_mcp: bool,
+    /// Whether this is an Agent Skill capability (for UI badge)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_skill: bool,
     /// IDs of capabilities that this capability depends on.
     /// When this capability is selected, its dependencies are automatically included.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -52,9 +55,11 @@ pub struct CapabilityInfo {
 impl CapabilityInfo {
     /// Create a CapabilityInfo DTO from a core Capability trait object
     pub fn from_core(cap: &dyn crate::capabilities::Capability) -> Self {
-        // Check if this is an MCP capability by checking the ID prefix
+        // Check if this is an MCP or skill capability by checking the ID prefix
         let id_str = cap.id();
         let is_mcp = id_str.starts_with("mcp:");
+        let is_skill =
+            id_str.starts_with("skill:") || id_str == "skills" || cap.category() == Some("Skills");
 
         Self {
             id: CapabilityId::new(id_str),
@@ -66,6 +71,7 @@ impl CapabilityInfo {
             system_prompt: cap.system_prompt_preview(),
             tool_definitions: cap.tool_definitions(),
             is_mcp,
+            is_skill,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -98,6 +104,7 @@ mod tests {
             system_prompt: Some("You have research capabilities.".to_string()),
             tool_definitions: vec![],
             is_mcp: false,
+            is_skill: false,
             dependencies: vec![],
         };
 
@@ -107,6 +114,8 @@ mod tests {
         assert!(json.contains("\"system_prompt\":\"You have research capabilities.\""));
         // is_mcp: false should be skipped in serialization
         assert!(!json.contains("\"is_mcp\""));
+        // is_skill: false should be skipped in serialization
+        assert!(!json.contains("\"is_skill\""));
         // Empty dependencies should be skipped in serialization
         assert!(!json.contains("\"dependencies\""));
     }
@@ -123,6 +132,7 @@ mod tests {
             system_prompt: None,
             tool_definitions: vec![],
             is_mcp: true,
+            is_skill: false,
             dependencies: vec![],
         };
 
@@ -142,6 +152,7 @@ mod tests {
             system_prompt: None,
             tool_definitions: vec![],
             is_mcp: false,
+            is_skill: false,
             dependencies: vec!["session_file_system".to_string()],
         };
 
