@@ -3,6 +3,8 @@
 // Decision: No direct database access from workers - all operations go through gRPC
 // Decision: Supports push-based task notifications with polling fallback
 
+use std::time::Duration;
+
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
     self, CheckCircuitBreakerRequest, ClaimDurableTasksRequest, CompleteDurableTaskRequest,
@@ -60,16 +62,18 @@ pub struct GrpcDurableStore {
 
 impl GrpcDurableStore {
     /// Connect to the control-plane gRPC service with retry logic.
-    /// Retries with exponential backoff for up to 5 seconds total.
-    /// Fails fast to allow orchestrator/script-level restarts.
+    /// Retries with exponential backoff for up to `connect_timeout` (default 30s).
     pub async fn connect(address: &str) -> Result<Self> {
-        use std::time::Duration;
+        Self::connect_with_timeout(address, Duration::from_secs(30)).await
+    }
+
+    /// Connect with explicit timeout. Used by tests to avoid long waits.
+    pub async fn connect_with_timeout(address: &str, max_duration: Duration) -> Result<Self> {
         use tokio::time::sleep;
 
         let endpoint = format!("http://{}", address);
-        let max_duration = Duration::from_secs(5);
         let initial_backoff = Duration::from_millis(100);
-        let max_backoff = Duration::from_secs(1);
+        let max_backoff = Duration::from_secs(2);
 
         let start = std::time::Instant::now();
         let mut backoff = initial_backoff;
@@ -621,8 +625,9 @@ mod tests {
     async fn test_connect_fails_after_timeout_on_unavailable_server() {
         // Verify connection fails with clear error after retry timeout
         // when control-plane is unavailable
+        let timeout = Duration::from_secs(5);
         let start = std::time::Instant::now();
-        let result = GrpcDurableStore::connect("127.0.0.1:19999").await;
+        let result = GrpcDurableStore::connect_with_timeout("127.0.0.1:19999", timeout).await;
 
         assert!(result.is_err());
         let elapsed = start.elapsed();
