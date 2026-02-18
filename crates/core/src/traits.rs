@@ -370,6 +370,9 @@ pub struct ToolContext {
 
     /// Optional resolver for user connection tokens (lazy GitHub token lookup, etc.)
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+
+    /// Optional session schedule store for scheduling future tasks
+    pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
 }
 
 impl ToolContext {
@@ -385,6 +388,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -400,6 +404,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -418,6 +423,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -437,6 +443,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -478,6 +485,12 @@ impl ToolContext {
         self.connection_resolver = Some(resolver);
         self
     }
+
+    /// Add a session schedule store to this context
+    pub fn with_schedule_store(mut self, store: Arc<dyn SessionScheduleStore>) -> Self {
+        self.schedule_store = Some(store);
+        self
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -492,6 +505,7 @@ impl std::fmt::Debug for ToolContext {
             .field("session_mutator", &self.session_mutator.is_some())
             .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
+            .field("schedule_store", &self.schedule_store.is_some())
             .finish()
     }
 }
@@ -610,6 +624,46 @@ pub trait ImageResolver: Send + Sync {
     ///
     /// Returns `None` if the image is not found.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
+}
+
+// ============================================================================
+// SessionScheduleStore - For session-scoped scheduled tasks
+// ============================================================================
+
+use crate::session_schedule::{CreateSessionSchedule, SessionSchedule};
+
+/// Trait for managing session-scoped scheduled tasks
+///
+/// Implementations can:
+/// - Store schedules in a database (production)
+/// - Use in-memory storage for testing
+#[async_trait]
+pub trait SessionScheduleStore: Send + Sync {
+    /// Create a new session schedule
+    async fn create_schedule(&self, input: CreateSessionSchedule) -> Result<SessionSchedule>;
+
+    /// Cancel a pending schedule
+    async fn cancel_schedule(&self, schedule_id: uuid::Uuid) -> Result<Option<SessionSchedule>>;
+
+    /// List schedules for a session
+    async fn list_schedules(
+        &self,
+        session_id: crate::typed_id::SessionId,
+    ) -> Result<Vec<SessionSchedule>>;
+
+    /// Claim pending schedules that are due (for poller)
+    /// Uses SELECT ... FOR UPDATE SKIP LOCKED for multi-instance safety.
+    async fn claim_due_schedules(&self, limit: u32) -> Result<Vec<SessionSchedule>>;
+
+    /// Mark a schedule as triggered
+    async fn mark_triggered(
+        &self,
+        schedule_id: uuid::Uuid,
+        message_id: crate::typed_id::MessageId,
+    ) -> Result<()>;
+
+    /// Mark a schedule as failed
+    async fn mark_failed(&self, schedule_id: uuid::Uuid, error: &str) -> Result<()>;
 }
 
 // ============================================================================

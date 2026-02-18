@@ -503,7 +503,9 @@ impl From<&crate::message::Message> for LlmMessage {
     fn from(msg: &crate::message::Message) -> Self {
         let role = match msg.role {
             crate::message::MessageRole::System => LlmMessageRole::System,
-            crate::message::MessageRole::User => LlmMessageRole::User,
+            crate::message::MessageRole::User | crate::message::MessageRole::App => {
+                LlmMessageRole::User
+            }
             crate::message::MessageRole::Agent => LlmMessageRole::Assistant,
             crate::message::MessageRole::ToolResult => LlmMessageRole::Tool,
         };
@@ -569,7 +571,7 @@ impl LlmMessage {
 
         let role = match msg.role {
             MessageRole::System => LlmMessageRole::System,
-            MessageRole::User => LlmMessageRole::User,
+            MessageRole::User | MessageRole::App => LlmMessageRole::User,
             MessageRole::Agent => LlmMessageRole::Assistant,
             MessageRole::ToolResult => LlmMessageRole::Tool,
         };

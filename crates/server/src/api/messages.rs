@@ -41,7 +41,7 @@ pub use everruns_core::{
 
 /// Message role (API layer)
 ///
-/// Simplified to only user and agent messages.
+/// Simplified to user, agent, and app messages.
 /// Tool results are conveyed via `tool.completed` events.
 /// System messages are internal and not exposed via API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -51,6 +51,8 @@ pub enum MessageRole {
     User,
     /// Agent message (response from the AI agent)
     Agent,
+    /// Application-initiated message (e.g., scheduled tasks)
+    App,
 }
 
 impl std::fmt::Display for MessageRole {
@@ -58,6 +60,7 @@ impl std::fmt::Display for MessageRole {
         match self {
             MessageRole::User => write!(f, "user"),
             MessageRole::Agent => write!(f, "agent"),
+            MessageRole::App => write!(f, "app"),
         }
     }
 }
@@ -67,6 +70,7 @@ impl From<&str> for MessageRole {
         match s {
             // Map both "agent" and legacy "assistant" to Agent role
             "agent" | "assistant" => MessageRole::Agent,
+            "app" => MessageRole::App,
             _ => MessageRole::User,
         }
     }

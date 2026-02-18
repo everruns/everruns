@@ -900,6 +900,7 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
         "user" => everruns_core::MessageRole::User,
         "assistant" | "agent" => everruns_core::MessageRole::Agent,
         "tool_result" => everruns_core::MessageRole::ToolResult,
+        "app" => everruns_core::MessageRole::App,
         _ => everruns_core::MessageRole::User,
     }
 }

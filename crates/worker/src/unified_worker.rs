@@ -786,6 +786,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
     if let Some(connection_resolver) = adapters.connection_resolver() {
         atom = atom.with_connection_resolver(connection_resolver);
     }
+    if let Some(schedule_store) = adapters.schedule_store() {
+        atom = atom.with_schedule_store(schedule_store);
+    }
 
     let result = atom.execute(input.clone()).await?;
 

@@ -79,6 +79,7 @@ mod noop;
 mod research;
 mod sample_data;
 mod session;
+mod session_schedule;
 mod session_sql_database;
 mod session_storage;
 pub mod skill;
@@ -128,6 +129,10 @@ pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
+pub use session_schedule::{
+    CancelSessionScheduleTool, ListSessionSchedulesTool, ScheduleSessionTaskTool,
+    SessionScheduleCapability,
+};
 pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
@@ -330,6 +335,7 @@ impl CapabilityRegistry {
         registry.register(FileSystemCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
+        registry.register(SessionScheduleCapability);
         registry.register(SessionSqlDatabaseCapability);
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);

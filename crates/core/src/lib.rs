@@ -48,6 +48,7 @@ pub mod mcp_server;
 pub mod organization;
 pub mod session;
 pub mod session_file;
+pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 
@@ -95,11 +96,12 @@ pub use message_filter::{
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
+pub use session_schedule::{CreateSessionSchedule, SessionSchedule, SessionScheduleStatus};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider,
     NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionMutator,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
-    UserConnectionResolver,
+    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
+    ToolExecutor, UserConnectionResolver,
 };
 
 // Event listener re-exports
@@ -142,11 +144,12 @@ pub use capabilities::{
     IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
     McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
     MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities,
-    SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability, SqlExecuteTool,
-    SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool,
-    TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
-    WriteTodosTool, apply_capabilities, collect_capabilities_with_configs, get_dependencies,
-    is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
+    SampleDataCapability, ScheduleSessionTaskTool, SessionCapability, SessionScheduleCapability,
+    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
+    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
+    WriteFileTool, WriteSessionTitleTool, WriteTodosTool, apply_capabilities,
+    collect_capabilities_with_configs, get_dependencies, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id, resolve_dependencies,
 };
 pub use capabilities::{
     SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapability, SkillInstructions, SkillMeta,

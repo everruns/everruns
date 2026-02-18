@@ -67,7 +67,8 @@ impl DbMessageRetriever {
         // Emit as typed event based on role
         let session_id: SessionId = session_id.into();
         let event_request = match message.role {
-            MessageRole::User => EventRequest::new(
+            // User and App messages are both stored as input.message events
+            MessageRole::User | MessageRole::App => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),

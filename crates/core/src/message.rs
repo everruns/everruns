@@ -27,6 +27,9 @@ pub enum MessageRole {
     Agent,
     /// Tool execution result
     ToolResult,
+    /// Application-initiated message (e.g., scheduled tasks)
+    /// Sent to LLM as "user" role but displayed distinctly in UI.
+    App,
 }
 
 impl std::fmt::Display for MessageRole {
@@ -36,6 +39,7 @@ impl std::fmt::Display for MessageRole {
             MessageRole::User => write!(f, "user"),
             MessageRole::Agent => write!(f, "agent"),
             MessageRole::ToolResult => write!(f, "tool_result"),
+            MessageRole::App => write!(f, "app"),
         }
     }
 }
@@ -48,6 +52,7 @@ impl From<&str> for MessageRole {
             // Accept both "agent" and legacy "assistant"
             "agent" | "assistant" => MessageRole::Agent,
             "tool_result" => MessageRole::ToolResult,
+            "app" => MessageRole::App,
             _ => MessageRole::User,
         }
     }
@@ -540,6 +545,20 @@ impl Message {
         }
     }
 
+    /// Create a new app message (application/system-initiated, e.g. scheduled tasks)
+    pub fn app(content: impl Into<String>) -> Self {
+        Self {
+            id: MessageId::new(),
+            role: MessageRole::App,
+            content: vec![ContentPart::text(content)],
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        }
+    }
+
     /// Create a new system message
     pub fn system(content: impl Into<String>) -> Self {
         Self {
@@ -692,7 +711,7 @@ impl Message {
     pub fn to_openai_format(&self) -> serde_json::Value {
         let role = match self.role {
             MessageRole::System => "system",
-            MessageRole::User => "user",
+            MessageRole::User | MessageRole::App => "user",
             MessageRole::Agent => "assistant",
             MessageRole::ToolResult => "tool",
         };

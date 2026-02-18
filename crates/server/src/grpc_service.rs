@@ -897,7 +897,8 @@ impl WorkerService for WorkerServiceImpl {
 
         // Create typed event request based on role
         let event_request = match role {
-            MessageRole::User => EventRequest::new(
+            // User and App messages are both stored as input.message events
+            MessageRole::User | MessageRole::App => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),

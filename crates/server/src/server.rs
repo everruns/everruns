@@ -530,6 +530,23 @@ pub async fn run(
             let retention_days = crate::event_retention::retention_days_from_env();
             crate::event_retention::spawn_retention_task(pool.clone(), retention_days);
         }
+
+        // Session schedule poller (production)
+        if let Some(pool) = db.pool() {
+            let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> = Arc::new(
+                services::session_schedule::DbSessionScheduleStore::new(pool.clone()),
+            );
+            let (_poller_shutdown_tx, poller_shutdown_rx) = tokio::sync::watch::channel(false);
+            let poller = services::session_schedule::SessionSchedulePoller::new(
+                schedule_store,
+                (*event_service).clone(),
+                runner.clone(),
+            );
+            tokio::spawn(async move {
+                poller.run(poller_shutdown_rx).await;
+            });
+            tracing::info!("Session schedule poller started (production)");
+        }
     } else {
         // DEV MODE: Start in-process task worker
         if let Some(shared_store) = shared_durable_store {
@@ -564,6 +581,20 @@ pub async fn run(
                     crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
 
+            // Create session schedule store
+            let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
+                match db.as_ref() {
+                    crate::storage::StorageBackend::Postgres(database) => {
+                        Arc::new(services::session_schedule::DbSessionScheduleStore::new(
+                            database.pool().clone(),
+                        ))
+                    }
+                    crate::storage::StorageBackend::InMemory(_) => {
+                        Arc::new(services::session_schedule::InMemorySessionScheduleStore::new())
+                    }
+                };
+            tracing::info!("Session schedule store initialized");
+
             let mut adapters = DirectWorkerAdapters::new(
                 db.clone(),
                 event_service.clone(),
@@ -572,7 +603,8 @@ pub async fn run(
                 capability_registry,
             )
             .with_sqldb_store(sqldb_store.clone())
-            .with_storage_store(session_storage_store);
+            .with_storage_store(session_storage_store)
+            .with_schedule_store(schedule_store.clone());
 
             // Wire lazy connection resolver (requires encryption for token decryption)
             if let Some(ref enc) = encryption {
@@ -592,12 +624,27 @@ pub async fn run(
             }
 
             let worker_config = TaskWorkerConfig::dev_mode();
+
+            // Start session schedule poller
+            let (poller_shutdown_tx, poller_shutdown_rx) = tokio::sync::watch::channel(false);
+            let poller = services::session_schedule::SessionSchedulePoller::new(
+                schedule_store,
+                (*event_service).clone(),
+                runner.clone(),
+            );
+            tokio::spawn(async move {
+                poller.run(poller_shutdown_rx).await;
+            });
+            tracing::info!("Session schedule poller started");
+
             tokio::spawn(async move {
                 let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
 
                 if let Err(e) = worker.run().await {
                     tracing::error!("Task worker error: {}", e);
                 }
+                // Signal poller to stop when worker stops
+                let _ = poller_shutdown_tx.send(true);
             });
 
             tracing::info!("DEV MODE: Task worker started - server is fully functional");

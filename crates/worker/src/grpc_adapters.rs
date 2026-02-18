@@ -336,6 +336,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         // Map both "assistant" (legacy) and "agent" to Agent role
         "assistant" | "agent" => everruns_core::MessageRole::Agent,
         "tool_result" => everruns_core::MessageRole::ToolResult,
+        "app" => everruns_core::MessageRole::App,
         _ => everruns_core::MessageRole::User,
     };
 

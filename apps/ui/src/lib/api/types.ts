@@ -188,7 +188,7 @@ export interface UpdateSessionRequest {
  * Tool results are conveyed via `tool.completed` events.
  * System messages are internal and not exposed via API.
  */
-export type MessageRole = "user" | "agent";
+export type MessageRole = "user" | "agent" | "app";
 
 /**
  * Display message role (UI layer)
