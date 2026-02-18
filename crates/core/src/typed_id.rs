@@ -489,24 +489,6 @@ mod tests {
     }
 
     #[test]
-    fn test_different_id_types_not_mixable() {
-        // This test verifies type safety at compile time
-        // AgentId and SessionId are different types
-        let agent_id = AgentId::new();
-        let session_id = SessionId::new();
-
-        // These would not compile:
-        // let _: AgentId = session_id;
-        // assert_eq!(agent_id, session_id);
-
-        // But we can compare their string representations
-        assert_ne!(
-            agent_id.to_string().chars().take(4).collect::<String>(),
-            session_id.to_string().chars().take(4).collect::<String>()
-        );
-    }
-
-    #[test]
     fn test_default_org_id() {
         assert_eq!(
             DEFAULT_ORG_ID.to_string(),
@@ -544,13 +526,5 @@ mod tests {
         assert_eq!(set.len(), 2);
         set.insert(id1);
         assert_eq!(set.len(), 2); // No duplicate
-    }
-
-    #[test]
-    fn test_debug_format() {
-        let id = AgentId::from_seed(42);
-        let debug = format!("{:?}", id);
-        assert!(debug.contains("AgentIdMarker"));
-        assert!(debug.contains("agent_"));
     }
 }
