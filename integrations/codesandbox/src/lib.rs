@@ -14,7 +14,9 @@ pub mod state;
 pub mod tools;
 pub mod types;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityStatus, ConnectionProviderInfo, IntegrationPlugin,
+};
 use everruns_core::tools::Tool;
 
 use tools::*;
@@ -104,6 +106,14 @@ Always DELETE sandboxes when done (shutdown/hibernate leave them on the dashboar
             Box::new(CsbManageSandboxTool),
             Box::new(CsbGitCloneTool),
         ]
+    }
+
+    fn connection_provider(&self) -> Option<ConnectionProviderInfo> {
+        Some(ConnectionProviderInfo::new(
+            "codesandbox",
+            "CodeSandbox",
+            "API key for cloud sandbox VMs. Get one at codesandbox.io",
+        ))
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

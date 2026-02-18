@@ -939,6 +939,16 @@ export type SyncModelsResponse =
 
 export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
 
+/** Connection provider info for capabilities that require an API key */
+export interface ConnectionProviderInfo {
+  /** Provider ID used for storage (e.g., "brave_search", "daytona") */
+  id: string;
+  /** Display name shown in UI */
+  name: string;
+  /** Description/instructions shown in UI */
+  description: string;
+}
+
 export interface Capability {
   id: CapabilityId;
   name: string;
@@ -954,6 +964,8 @@ export interface Capability {
   is_mcp?: boolean;
   /** IDs of capabilities that this capability depends on */
   dependencies?: CapabilityId[];
+  /** Connection provider info if this capability requires a user API key */
+  connection_provider?: ConnectionProviderInfo;
 }
 
 // ============================================

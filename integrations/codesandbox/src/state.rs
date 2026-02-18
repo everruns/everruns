@@ -9,8 +9,18 @@ use everruns_core::traits::ToolContext;
 use serde_json::Value;
 use tracing::{error, warn};
 
-/// Retrieve the CodeSandbox API key from session secrets.
+/// Retrieve the CodeSandbox API key from user connections or session secrets.
 pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+    // Try user connection first (Settings > Connections)
+    if let Some(ref resolver) = context.connection_resolver
+        && let Ok(Some(token)) = resolver
+            .get_connection_token(context.session_id, "codesandbox")
+            .await
+    {
+        return Ok(token);
+    }
+
+    // Fallback to session secrets
     let storage = context
         .storage_store
         .as_ref()
@@ -25,7 +35,8 @@ pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionR
         })?
         .ok_or_else(|| {
             ToolExecutionResult::tool_error(
-                "CSB_API_KEY not set. Use `secret_store set CSB_API_KEY <your-key>` first. \
+                "CSB_API_KEY not configured. Set it in Settings > Connections, or use \
+                 `secret_store set CSB_API_KEY <your-key>`. \
                  Get your key at https://codesandbox.io/t/api",
             )
         })

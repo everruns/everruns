@@ -13,7 +13,9 @@ pub mod client;
 pub mod state;
 mod tools;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityStatus, ConnectionProviderInfo, IntegrationPlugin,
+};
 use everruns_core::tools::Tool;
 
 use std::time::Duration;
@@ -127,6 +129,14 @@ fetch, rebase, etc.) — they authenticate automatically. Call again to refresh 
             Box::new(DaytonaGitCloneTool),
             Box::new(DaytonaGitCredentialsTool),
         ]
+    }
+
+    fn connection_provider(&self) -> Option<ConnectionProviderInfo> {
+        Some(ConnectionProviderInfo::new(
+            "daytona",
+            "Daytona",
+            "API key for cloud sandbox execution. Get one at app.daytona.io",
+        ))
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

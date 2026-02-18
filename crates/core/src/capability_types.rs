@@ -153,6 +153,42 @@ impl From<String> for AgentCapabilityConfig {
 }
 
 // ============================================================================
+// Connection Provider Types
+// ============================================================================
+
+/// Describes a user connection provider for a capability.
+///
+/// Capabilities that require an API key can declare a connection provider,
+/// which the UI uses to show an API key input on the Connections settings page.
+/// The provider ID is used as the key when storing the connection via
+/// `PUT /v1/user/connections/api-key/{provider}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ConnectionProviderInfo {
+    /// Provider ID used for storage (e.g., "brave_search", "daytona")
+    pub id: String,
+    /// Display name shown in UI (e.g., "Brave Search API Key")
+    pub name: String,
+    /// Description/instructions shown in UI
+    pub description: String,
+}
+
+impl ConnectionProviderInfo {
+    /// Create a new connection provider info
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            description: description.into(),
+        }
+    }
+}
+
+// ============================================================================
 // Mount Point Types
 // ============================================================================
 

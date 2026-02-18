@@ -48,6 +48,16 @@ pub struct SandboxState {
 // ============================================================================
 
 pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+    // Try user connection first (Settings > Connections)
+    if let Some(ref resolver) = context.connection_resolver
+        && let Ok(Some(token)) = resolver
+            .get_connection_token(context.session_id, "daytona")
+            .await
+    {
+        return Ok(token);
+    }
+
+    // Fallback to session secrets
     let storage = context
         .storage_store
         .as_ref()
@@ -62,7 +72,8 @@ pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionR
         })?
         .ok_or_else(|| {
             ToolExecutionResult::tool_error(
-                "DAYTONA_API_KEY not set. Use `secret_store set DAYTONA_API_KEY <your-key>` first. \
+                "DAYTONA_API_KEY not configured. Set it in Settings > Connections, or use \
+                 `secret_store set DAYTONA_API_KEY <your-key>`. \
                  Get your key at https://app.daytona.io/ under API Keys.",
             )
         })

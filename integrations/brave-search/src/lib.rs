@@ -10,7 +10,9 @@
 pub mod client;
 mod tools;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityStatus, ConnectionProviderInfo, IntegrationPlugin,
+};
 use everruns_core::tools::Tool;
 
 use tools::BraveWebSearchTool;
@@ -84,6 +86,14 @@ Get a free API key at https://brave.com/search/api/"#,
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(BraveWebSearchTool)]
+    }
+
+    fn connection_provider(&self) -> Option<ConnectionProviderInfo> {
+        Some(ConnectionProviderInfo::new(
+            BRAVE_SEARCH_CONNECTION_PROVIDER,
+            "Brave Search",
+            "API key for web search. Get a free key at brave.com/search/api/",
+        ))
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

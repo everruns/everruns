@@ -12,3 +12,7 @@ export async function getUserConnections(): Promise<UserConnection[]> {
 export async function deleteUserConnection(provider: string): Promise<void> {
   await api.delete(`/v1/user/connections/${provider}`);
 }
+
+export async function putApiKeyConnection(provider: string, apiKey: string): Promise<void> {
+  await api.put(`/v1/user/connections/api-key/${provider}`, { api_key: apiKey });
+}

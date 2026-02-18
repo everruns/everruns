@@ -57,7 +57,7 @@ pub struct ApiKeyConnectionRequest {
 }
 
 /// Providers that support API-key-based connections.
-const API_KEY_PROVIDERS: &[&str] = &["brave_search"];
+const API_KEY_PROVIDERS: &[&str] = &["brave_search", "daytona", "codesandbox"];
 
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]

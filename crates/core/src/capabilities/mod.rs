@@ -59,8 +59,8 @@ inventory::collect!(IntegrationPlugin);
 
 // Re-export capability types from capability_types module
 pub use crate::capability_types::{
-    AgentCapabilityConfig, CapabilityId, CapabilityStatus, MountAccess, MountDirectoryBuilder,
-    MountEntry, MountPoint, MountSource,
+    AgentCapabilityConfig, CapabilityId, CapabilityStatus, ConnectionProviderInfo, MountAccess,
+    MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
 };
 
 // ============================================================================
@@ -251,6 +251,17 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no dependencies).
     fn dependencies(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    /// Returns connection provider info if this capability requires a user API key.
+    ///
+    /// Capabilities that need an API key (e.g., Brave Search, Daytona, CodeSandbox)
+    /// should return a `ConnectionProviderInfo` so the UI can display an API key
+    /// input on the Settings > Connections page.
+    ///
+    /// By default, returns None (no API key required).
+    fn connection_provider(&self) -> Option<ConnectionProviderInfo> {
+        None
     }
 
     /// Returns a message filter provider if this capability modifies message retrieval.

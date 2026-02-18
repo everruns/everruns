@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-use crate::capability_types::{CapabilityId, CapabilityStatus};
+use crate::capability_types::{CapabilityId, CapabilityStatus, ConnectionProviderInfo};
 use crate::tool_types::ToolDefinition;
 
 /// Public capability information (without internal details)
@@ -50,6 +50,10 @@ pub struct CapabilityInfo {
     /// When this capability is selected, its dependencies are automatically included.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub dependencies: Vec<String>,
+    /// Connection provider info if this capability requires a user API key.
+    /// Used by the UI to show an API key input on Settings > Connections.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_provider: Option<ConnectionProviderInfo>,
 }
 
 impl CapabilityInfo {
@@ -73,6 +77,7 @@ impl CapabilityInfo {
             is_mcp,
             is_skill,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
+            connection_provider: cap.connection_provider(),
         }
     }
 }
@@ -106,6 +111,7 @@ mod tests {
             is_mcp: false,
             is_skill: false,
             dependencies: vec![],
+            connection_provider: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -118,6 +124,8 @@ mod tests {
         assert!(!json.contains("\"is_skill\""));
         // Empty dependencies should be skipped in serialization
         assert!(!json.contains("\"dependencies\""));
+        // None connection_provider should be skipped
+        assert!(!json.contains("\"connection_provider\""));
     }
 
     #[test]
@@ -134,6 +142,7 @@ mod tests {
             is_mcp: true,
             is_skill: false,
             dependencies: vec![],
+            connection_provider: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -154,6 +163,7 @@ mod tests {
             is_mcp: false,
             is_skill: false,
             dependencies: vec!["session_file_system".to_string()],
+            connection_provider: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
