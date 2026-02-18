@@ -1,19 +1,21 @@
-//! Smoke tests against real Brave Search API.
-//! Run with: doppler run -- cargo test -p everruns-integrations-brave-search --test smoke_real_api -- --ignored
+//! Real API smoke tests for Brave Search.
+//!
+//! Gated behind `integration` feature — only compiled when run with:
+//!   cargo test -p everruns-integrations-brave-search --features integration
+//!
+//! CI workflow passes BRAVE_SEARCH_API_KEY and enables the feature automatically.
+
+#![cfg(feature = "integration")]
 
 use everruns_integrations_brave_search::client::BraveSearchClient;
 
-fn api_key() -> Option<String> {
-    std::env::var("BRAVE_SEARCH_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
+fn api_key() -> String {
+    std::env::var("BRAVE_SEARCH_API_KEY").expect("BRAVE_SEARCH_API_KEY must be set")
 }
 
 #[tokio::test]
-#[ignore] // requires BRAVE_SEARCH_API_KEY
 async fn smoke_basic_search() {
-    let key = api_key().expect("BRAVE_SEARCH_API_KEY required");
-    let client = BraveSearchClient::new(key);
+    let client = BraveSearchClient::new(api_key());
 
     let resp = client
         .web_search("Rust programming language", Some(3), None, None)
@@ -27,10 +29,8 @@ async fn smoke_basic_search() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn smoke_freshness_filter() {
-    let key = api_key().expect("BRAVE_SEARCH_API_KEY required");
-    let client = BraveSearchClient::new(key);
+    let client = BraveSearchClient::new(api_key());
 
     let resp = client
         .web_search("AI news", Some(2), None, Some("pw"))
@@ -42,10 +42,8 @@ async fn smoke_freshness_filter() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn smoke_pagination() {
-    let key = api_key().expect("BRAVE_SEARCH_API_KEY required");
-    let client = BraveSearchClient::new(key);
+    let client = BraveSearchClient::new(api_key());
 
     let resp = client
         .web_search("Rust async await", Some(2), Some(5), None)
