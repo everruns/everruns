@@ -51,6 +51,10 @@ impl Tool for GetCurrentTimeTool {
         "get_current_time"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Current Time")
+    }
+
     fn description(&self) -> &str {
         "Get the current date and time. Can return time in different formats and timezones."
     }

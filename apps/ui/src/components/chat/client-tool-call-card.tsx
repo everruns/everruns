@@ -42,7 +42,9 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
       <div className="flex items-center gap-1">
         {statusIcon}
         <MonitorSmartphone className="h-3 w-3 text-amber-500/70" />
-        <span className="font-mono text-amber-700 dark:text-amber-400">{toolCall.name}</span>
+        <span className="font-mono text-amber-700 dark:text-amber-400">
+          {toolResult?.display_name ?? toolCall.display_name ?? toolCall.name}
+        </span>
         {!isComplete && (
           <span className="text-amber-500/70 italic text-[10px] ml-1">Waiting for client...</span>
         )}

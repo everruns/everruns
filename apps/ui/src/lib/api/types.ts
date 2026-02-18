@@ -449,6 +449,8 @@ export interface ReasonCompletedData {
 export interface ToolCallSummary {
   id: string;
   name: string;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
 }
 
 /** Data for act.started event */
@@ -474,6 +476,8 @@ export interface ToolCall {
 /** Data for tool.started event */
 export interface ToolStartedData {
   tool_call: ToolCall;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
 }
 
 /** Data for tool.call_requested event (client-side tool calls awaiting results) */
@@ -489,6 +493,8 @@ export interface ToolCallRequestedData {
 export interface ToolCompletedData {
   tool_call_id: string;
   tool_name: string;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
   success: boolean;
   status: "success" | "error" | "timeout" | "cancelled";
   result?: ContentPart[];
@@ -623,6 +629,8 @@ export interface BuiltinTool {
   type: "builtin";
   /** Tool name (used by LLM and for registry lookup) */
   name: string;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
   /** Tool description for LLM */
   description: string;
   /** JSON schema for tool parameters */
@@ -636,6 +644,8 @@ export interface ClientSideTool {
   type: "client_side";
   /** Tool name (used by LLM and for registry lookup) */
   name: string;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
   /** Tool description for LLM */
   description: string;
   /** JSON schema for tool parameters */

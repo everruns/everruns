@@ -77,6 +77,10 @@ impl Tool for WebFetchTool {
         "web_fetch"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Web Fetch")
+    }
+
     fn description(&self) -> &str {
         // Use the description from fetchkit library
         TOOL_DESCRIPTION

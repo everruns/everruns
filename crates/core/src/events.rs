@@ -592,6 +592,9 @@ impl ReasonCompletedData {
 pub struct ToolCallSummary {
     pub id: String,
     pub name: String,
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 impl From<&ToolCall> for ToolCallSummary {
@@ -599,6 +602,7 @@ impl From<&ToolCall> for ToolCallSummary {
         Self {
             id: tc.id.clone(),
             name: tc.name.clone(),
+            display_name: None,
         }
     }
 }
@@ -609,6 +613,9 @@ impl From<&ToolCall> for ToolCallSummary {
 pub struct ToolDefinitionSummary {
     /// Tool name
     pub name: String,
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// Tool description
     pub description: String,
 }
@@ -617,6 +624,7 @@ impl From<&crate::tool_types::ToolDefinition> for ToolDefinitionSummary {
     fn from(tool: &crate::tool_types::ToolDefinition) -> Self {
         Self {
             name: tool.name().to_string(),
+            display_name: tool.display_name().map(|s| s.to_string()),
             description: tool.description().to_string(),
         }
     }
@@ -634,6 +642,30 @@ impl ActStartedData {
     pub fn new(tool_calls: &[ToolCall]) -> Self {
         Self {
             tool_calls: tool_calls.iter().map(ToolCallSummary::from).collect(),
+        }
+    }
+
+    /// Create with display names resolved from tool definitions
+    pub fn with_definitions(
+        tool_calls: &[ToolCall],
+        tool_defs: &[crate::tool_types::ToolDefinition],
+    ) -> Self {
+        let def_map: std::collections::HashMap<&str, &crate::tool_types::ToolDefinition> =
+            tool_defs.iter().map(|d| (d.name(), d)).collect();
+        Self {
+            tool_calls: tool_calls
+                .iter()
+                .map(|tc| {
+                    let display_name = def_map
+                        .get(tc.name.as_str())
+                        .and_then(|d| d.display_name().map(|s| s.to_string()));
+                    ToolCallSummary {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        display_name,
+                    }
+                })
+                .collect(),
         }
     }
 }
@@ -662,6 +694,9 @@ pub struct ActCompletedData {
 pub struct ToolStartedData {
     /// The tool call being executed
     pub tool_call: ToolCall,
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Data for tool.completed event
@@ -673,6 +708,10 @@ pub struct ToolCompletedData {
 
     /// Tool name
     pub tool_name: String,
+
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 
     /// Whether the tool call succeeded
     pub success: bool,
@@ -703,6 +742,7 @@ impl ToolCompletedData {
         Self {
             tool_call_id,
             tool_name,
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: Some(result),
@@ -721,12 +761,19 @@ impl ToolCompletedData {
         Self {
             tool_call_id,
             tool_name,
+            display_name: None,
             success: false,
             status,
             result: None,
             error: Some(error),
             duration_ms,
         }
+    }
+
+    /// Set display name on this event data
+    pub fn with_display_name(mut self, display_name: Option<String>) -> Self {
+        self.display_name = display_name;
+        self
     }
 }
 
@@ -1769,6 +1816,7 @@ mod tests {
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
         let tools = vec![ToolDefinitionSummary {
             name: "get_weather".to_string(),
+            display_name: None,
             description: "Get weather for a city".to_string(),
         }];
         let tool_calls = vec![];
@@ -2337,6 +2385,7 @@ mod contract_tests {
             tool_calls: vec![ToolCallSummary {
                 id: "tc_1".to_string(),
                 name: "get_weather".to_string(),
+                display_name: None,
             }],
         };
         with_settings!({
@@ -2369,6 +2418,7 @@ mod contract_tests {
                 name: "get_weather".to_string(),
                 arguments: serde_json::json!({"city": "London"}),
             },
+            display_name: None,
         };
         with_settings!({
             sort_maps => true,
@@ -2398,6 +2448,7 @@ mod contract_tests {
             vec![Message::user("Hello")],
             vec![ToolDefinitionSummary {
                 name: "tool1".to_string(),
+                display_name: None,
                 description: "A tool".to_string(),
             }],
             Some("Hi there!".to_string()),
@@ -2498,6 +2549,128 @@ mod contract_tests {
         }, {
             assert_json_snapshot!("event_data_session_idled", data);
         });
+    }
+
+    // ========================================================================
+    // Display Name Tests
+    // ========================================================================
+    // Verify display_name propagation through event data types.
+
+    #[test]
+    fn tool_call_summary_with_display_name() {
+        let summary = ToolCallSummary {
+            id: "tc_1".to_string(),
+            name: "get_weather".to_string(),
+            display_name: Some("Get Weather".to_string()),
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["display_name"], "Get Weather");
+
+        // Round-trip
+        let deserialized: ToolCallSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.display_name.as_deref(), Some("Get Weather"));
+    }
+
+    #[test]
+    fn tool_call_summary_without_display_name_omits_field() {
+        let summary = ToolCallSummary {
+            id: "tc_1".to_string(),
+            name: "get_weather".to_string(),
+            display_name: None,
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        assert!(!json.contains("display_name"));
+
+        // Deserialize without display_name field present
+        let json_without = r#"{"id":"tc_1","name":"get_weather"}"#;
+        let deserialized: ToolCallSummary = serde_json::from_str(json_without).unwrap();
+        assert_eq!(deserialized.display_name, None);
+    }
+
+    #[test]
+    fn act_started_with_definitions_populates_display_names() {
+        use crate::tool_types::{BuiltinTool, ToolPolicy};
+
+        let tool_calls = vec![
+            ToolCall {
+                id: "tc_1".to_string(),
+                name: "get_weather".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            ToolCall {
+                id: "tc_2".to_string(),
+                name: "unknown_tool".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        ];
+        let tool_defs = vec![crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
+            name: "get_weather".to_string(),
+            display_name: Some("Get Weather".to_string()),
+            description: "Gets weather".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+        })];
+
+        let data = ActStartedData::with_definitions(&tool_calls, &tool_defs);
+        assert_eq!(data.tool_calls.len(), 2);
+        assert_eq!(
+            data.tool_calls[0].display_name.as_deref(),
+            Some("Get Weather")
+        );
+        assert_eq!(data.tool_calls[1].display_name, None);
+    }
+
+    #[test]
+    fn tool_completed_with_display_name_roundtrip() {
+        let data = ToolCompletedData::success(
+            "tc_1".to_string(),
+            "get_weather".to_string(),
+            vec![crate::message::ContentPart::text("Sunny")],
+            Some(100),
+        )
+        .with_display_name(Some("Get Weather".to_string()));
+
+        assert_eq!(data.display_name.as_deref(), Some("Get Weather"));
+
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(json["display_name"], "Get Weather");
+
+        let deserialized: ToolCompletedData = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.display_name.as_deref(), Some("Get Weather"));
+    }
+
+    #[test]
+    fn tool_started_display_name_serialization() {
+        let data = ToolStartedData {
+            tool_call: ToolCall {
+                id: "tc_1".to_string(),
+                name: "bash".to_string(),
+                arguments: serde_json::json!({"command": "ls"}),
+            },
+            display_name: Some("Bash".to_string()),
+        };
+
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(json["display_name"], "Bash");
+    }
+
+    #[test]
+    fn tool_definition_summary_display_name() {
+        use crate::tool_types::{BuiltinTool, ToolPolicy};
+
+        let def = crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: Some("Read File".to_string()),
+            description: "Reads a file".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+        });
+
+        let summary = ToolDefinitionSummary::from(&def);
+        assert_eq!(summary.display_name.as_deref(), Some("Read File"));
+
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["display_name"], "Read File");
     }
 
     // ========================================================================

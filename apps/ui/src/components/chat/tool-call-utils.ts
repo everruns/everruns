@@ -11,6 +11,8 @@ import { isToolCallPart, isToolResultPart } from "@/lib/api/types";
 export interface ToolCallContent {
   id: string;
   name: string;
+  /** Human-readable display name for UI rendering */
+  display_name?: string;
   arguments: Record<string, unknown>;
 }
 

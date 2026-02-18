@@ -271,13 +271,22 @@ where
         // Track act phase timing for Braintrust observability
         let act_start = Instant::now();
 
-        // Emit act.started event
+        // Build tool name to definition map
+        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
+            .iter()
+            .map(|def| {
+                let name = def.name();
+                (name, def)
+            })
+            .collect();
+
+        // Emit act.started event (with display names from tool definitions)
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
-                ActStartedData::new(&tool_calls),
+                ActStartedData::with_definitions(&tool_calls, &tool_definitions),
             ))
             .await
         {
@@ -287,15 +296,6 @@ where
                 "ActAtom: failed to emit act.started event"
             );
         }
-
-        // Build tool name to definition map
-        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
-            .iter()
-            .map(|def| {
-                let name = def.name();
-                (name, def)
-            })
-            .collect();
 
         // Execute all tool calls in parallel (each tool event references act span as parent)
         let futures: Vec<_> = tool_calls
@@ -404,6 +404,9 @@ where
         // Track tool call timing for Braintrust observability
         let tool_start = Instant::now();
 
+        // Resolve display name from tool definition
+        let display_name = tool_def.and_then(|d| d.display_name().map(|s| s.to_string()));
+
         // Emit tool.started event (child of act.started)
         if let Err(e) = self
             .event_emitter
@@ -412,6 +415,7 @@ where
                 event_context.clone(),
                 ToolStartedData {
                     tool_call: tool_call.clone(),
+                    display_name: display_name.clone(),
                 },
             ))
             .await
@@ -536,6 +540,7 @@ where
                         result_content,
                         Some(tool_duration_ms),
                     )
+                    .with_display_name(display_name.clone())
                 } else {
                     ToolCompletedData::failure(
                         tool_call.id.clone(),
@@ -544,6 +549,7 @@ where
                         tool_result.error.clone().unwrap_or_default(),
                         Some(tool_duration_ms),
                     )
+                    .with_display_name(display_name.clone())
                 };
 
                 if let Err(e) = self
@@ -594,7 +600,8 @@ where
                             "error".to_string(),
                             error_msg.clone(),
                             Some(tool_duration_ms),
-                        ),
+                        )
+                        .with_display_name(display_name.clone()),
                     ))
                     .await
                 {

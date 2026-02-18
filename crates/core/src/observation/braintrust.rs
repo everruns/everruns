@@ -1683,10 +1683,12 @@ mod tests {
                 ToolCallSummary {
                     id: "call_1".to_string(),
                     name: "search".to_string(),
+                    display_name: None,
                 },
                 ToolCallSummary {
                     id: "call_2".to_string(),
                     name: "fetch".to_string(),
+                    display_name: None,
                 },
             ],
         };
@@ -1733,6 +1735,7 @@ mod tests {
         let data = ToolCompletedData {
             tool_call_id: "call_123".to_string(),
             tool_name: "search".to_string(),
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: None,
@@ -1924,6 +1927,7 @@ mod tests {
             tool_calls: vec![ToolCallSummary {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
+                display_name: None,
             }],
         };
         let act_event = Event::new(
@@ -1947,6 +1951,7 @@ mod tests {
         let tool_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: None,
@@ -2118,6 +2123,7 @@ mod tests {
             tool_calls: vec![ToolCallSummary {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
+                display_name: None,
             }],
         };
         let started_event = Event::new(
@@ -2176,6 +2182,7 @@ mod tests {
                 name: "search".to_string(),
                 arguments: serde_json::json!({"query": "test"}),
             },
+            display_name: None,
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -2194,6 +2201,7 @@ mod tests {
         let completed_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
+            display_name: None,
             success: true,
             status: "success".to_string(),
             result: None,

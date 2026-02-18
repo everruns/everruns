@@ -61,7 +61,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
     <div className="w-full space-y-0.5 text-sm text-muted-foreground">
       {/* Tool name and arguments */}
       <div>
-        <span className="font-medium">{content.name}:</span>
+        <span className="font-medium">{content.display_name ?? content.name}:</span>
         {argsPreview && <span className="ml-1">{argsPreview}</span>}
       </div>
 

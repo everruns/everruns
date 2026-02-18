@@ -274,6 +274,16 @@ pub trait Tool: Send + Sync {
     /// within a ToolRegistry.
     fn name(&self) -> &str;
 
+    /// Returns a human-readable display name for UI rendering.
+    ///
+    /// This name is shown to users in the UI instead of the technical tool name.
+    /// For example, "Get Current Time" instead of "get_current_time".
+    /// Returns None if no display name is set, in which case the UI may
+    /// fall back to the technical name.
+    fn display_name(&self) -> Option<&str> {
+        None
+    }
+
     /// Returns a description of what the tool does.
     ///
     /// This description is provided to the LLM to help it understand
@@ -347,6 +357,7 @@ pub trait Tool: Send + Sync {
     fn to_definition(&self) -> ToolDefinition {
         ToolDefinition::Builtin(BuiltinTool {
             name: self.name().to_string(),
+            display_name: self.display_name().map(|s| s.to_string()),
             description: self.description().to_string(),
             parameters: self.parameters_schema(),
             policy: self.policy(),
@@ -612,6 +623,10 @@ impl Tool for EchoTool {
         "echo"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Echo")
+    }
+
     fn description(&self) -> &str {
         "Echo back the provided message. Useful for testing tool execution."
     }
@@ -677,6 +692,10 @@ impl Default for FailingTool {
 impl Tool for FailingTool {
     fn name(&self) -> &str {
         "failing_tool"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Failing Tool")
     }
 
     fn description(&self) -> &str {
@@ -804,6 +823,39 @@ mod tests {
             .build();
 
         assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn test_tool_display_name_in_definition() {
+        // GetCurrentTimeTool has display_name "Get Current Time"
+        let tool = GetCurrentTimeTool;
+        assert_eq!(tool.display_name(), Some("Get Current Time"));
+
+        let def = tool.to_definition();
+        assert_eq!(def.display_name(), Some("Get Current Time"));
+    }
+
+    #[test]
+    fn test_echo_tool_display_name() {
+        let tool = EchoTool;
+        assert_eq!(tool.display_name(), Some("Echo"));
+
+        let def = tool.to_definition();
+        assert_eq!(def.display_name(), Some("Echo"));
+    }
+
+    #[test]
+    fn test_all_default_tools_have_display_names() {
+        let registry = ToolRegistry::with_defaults();
+        let definitions = registry.tool_definitions();
+
+        for def in &definitions {
+            assert!(
+                def.display_name().is_some(),
+                "Tool '{}' should have a display_name",
+                def.name()
+            );
+        }
     }
 
     #[tokio::test]

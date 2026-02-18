@@ -37,6 +37,7 @@ async fn test_tool_registry_as_executor() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "echo".to_string(),
+        display_name: None,
         description: "Echo".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -61,6 +62,7 @@ async fn test_get_current_time_tool() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "get_current_time".to_string(),
+        display_name: None,
         description: "Get time".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -89,6 +91,7 @@ async fn test_tool_error_handling() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "failing_tool".to_string(),
+        display_name: None,
         description: "A tool that fails".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -119,6 +122,7 @@ async fn test_internal_error_is_hidden() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "failing_tool".to_string(),
+        display_name: None,
         description: "A tool that fails internally".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -147,6 +151,7 @@ async fn test_tool_not_found_error() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "nonexistent_tool".to_string(),
+        display_name: None,
         description: "Does not exist".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -211,6 +216,7 @@ async fn test_custom_tool_execution() {
 
     let tool_def = ToolDefinition::Builtin(BuiltinTool {
         name: "counter".to_string(),
+        display_name: None,
         description: "Counter".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -249,6 +255,7 @@ async fn test_multiple_tools_in_registry() {
 
     let time_def = ToolDefinition::Builtin(BuiltinTool {
         name: "get_current_time".to_string(),
+        display_name: None,
         description: "Get time".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
@@ -267,6 +274,7 @@ async fn test_multiple_tools_in_registry() {
 
     let echo_def = ToolDefinition::Builtin(BuiltinTool {
         name: "echo".to_string(),
+        display_name: None,
         description: "Echo".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,

@@ -1059,6 +1059,7 @@ fn proto_mcp_tool_def_to_tool_definition(
 
     ToolDefinition::Builtin(BuiltinTool {
         name: proto_tool.name,
+        display_name: None,
         description: proto_tool.description,
         parameters,
         policy: ToolPolicy::Auto, // MCP tools are auto-executed

@@ -4169,6 +4169,13 @@
             "type": "string",
             "description": "Tool description for LLM"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering (e.g., \"Get Current Time\" for `get_current_time`)"
+          },
           "name": {
             "type": "string",
             "description": "Tool name (used by LLM and for registry lookup)"
@@ -4292,6 +4299,13 @@
           "description": {
             "type": "string",
             "description": "Tool description for LLM"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
           },
           "name": {
             "type": "string",
@@ -9137,6 +9151,13 @@
           "name"
         ],
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
+          },
           "id": {
             "type": "string"
           },
@@ -9155,6 +9176,13 @@
           "status"
         ],
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
+          },
           "duration_ms": {
             "type": [
               "integer",
@@ -9262,6 +9290,13 @@
             "type": "string",
             "description": "Tool description"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
+          },
           "name": {
             "type": "string",
             "description": "Tool name"
@@ -9304,6 +9339,13 @@
           "tool_call"
         ],
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
+          },
           "tool_call": {
             "$ref": "#/components/schemas/ToolCall",
             "description": "The tool call being executed"

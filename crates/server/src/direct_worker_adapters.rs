@@ -940,6 +940,7 @@ impl DirectWorkerAdapters {
 
                 mcp_tools.push(ToolDefinition::Builtin(BuiltinTool {
                     name: prefixed_name,
+                    display_name: None,
                     description,
                     parameters: tool.input_schema,
                     policy: ToolPolicy::Auto,

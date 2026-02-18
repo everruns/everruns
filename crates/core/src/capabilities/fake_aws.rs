@@ -173,6 +173,10 @@ impl Tool for AwsListEc2InstancesTool {
         "aws_list_ec2_instances"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List EC2 Instances")
+    }
+
     fn description(&self) -> &str {
         "List all EC2 instances with their current status, IPs, and configuration."
     }
@@ -310,6 +314,10 @@ impl Tool for AwsCreateEc2InstanceTool {
         "aws_create_ec2_instance"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Create EC2 Instance")
+    }
+
     fn description(&self) -> &str {
         "Launch a new EC2 instance with specified configuration."
     }
@@ -445,6 +453,10 @@ impl Tool for AwsStopEc2InstanceTool {
         "aws_stop_ec2_instance"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Stop EC2 Instance")
+    }
+
     fn description(&self) -> &str {
         "Stop a running EC2 instance."
     }
@@ -546,6 +558,10 @@ impl Tool for AwsListRdsDatabasesTool {
         "aws_list_rds_databases"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List RDS Databases")
+    }
+
     fn description(&self) -> &str {
         "List all RDS database instances."
     }
@@ -606,6 +622,10 @@ impl Tool for AwsCreateRdsDatabaseTool {
         "aws_create_rds_database"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Create RDS Database")
+    }
+
     fn description(&self) -> &str {
         "Create a new RDS database instance."
     }
@@ -658,6 +678,10 @@ impl Tool for AwsListS3BucketsTool {
         "aws_list_s3_buckets"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List S3 Buckets")
+    }
+
     fn description(&self) -> &str {
         "List all S3 buckets in the account."
     }
@@ -706,6 +730,10 @@ pub struct AwsCreateS3BucketTool;
 impl Tool for AwsCreateS3BucketTool {
     fn name(&self) -> &str {
         "aws_create_s3_bucket"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create S3 Bucket")
     }
 
     fn description(&self) -> &str {
@@ -760,6 +788,10 @@ impl Tool for AwsListIamUsersTool {
         "aws_list_iam_users"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List IAM Users")
+    }
+
     fn description(&self) -> &str {
         "List all IAM users in the account."
     }
@@ -808,6 +840,10 @@ pub struct AwsCreateIamUserTool;
 impl Tool for AwsCreateIamUserTool {
     fn name(&self) -> &str {
         "aws_create_iam_user"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create IAM User")
     }
 
     fn description(&self) -> &str {
@@ -862,6 +898,10 @@ pub struct AwsListSecurityGroupsTool;
 impl Tool for AwsListSecurityGroupsTool {
     fn name(&self) -> &str {
         "aws_list_security_groups"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("List Security Groups")
     }
 
     fn description(&self) -> &str {
@@ -921,6 +961,10 @@ pub struct AwsGetCloudWatchMetricsTool;
 impl Tool for AwsGetCloudWatchMetricsTool {
     fn name(&self) -> &str {
         "aws_get_cloudwatch_metrics"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Get CloudWatch Metrics")
     }
 
     fn description(&self) -> &str {

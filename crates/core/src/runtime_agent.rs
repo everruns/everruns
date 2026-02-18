@@ -504,6 +504,7 @@ mod tests {
 
         let client_tool = ToolDefinition::ClientSide(ClientSideTool {
             name: "browser_click".to_string(),
+            display_name: None,
             description: "Click an element in the browser".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -553,6 +554,7 @@ mod tests {
 
         let client_tool = ToolDefinition::ClientSide(ClientSideTool {
             name: "deploy_staging".to_string(),
+            display_name: None,
             description: "Deploy to staging".to_string(),
             parameters: serde_json::json!({"type": "object"}),
         });

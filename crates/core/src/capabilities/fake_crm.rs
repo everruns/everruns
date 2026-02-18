@@ -132,6 +132,10 @@ impl Tool for CrmListCustomersTool {
         "crm_list_customers"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Customers")
+    }
+
     fn description(&self) -> &str {
         "List all customers. Optionally filter by customer tier."
     }
@@ -248,6 +252,10 @@ impl Tool for CrmGetCustomerTool {
         "crm_get_customer"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Customer")
+    }
+
     fn description(&self) -> &str {
         "Get detailed customer information by customer ID."
     }
@@ -320,6 +328,10 @@ pub struct CrmCreateCustomerTool;
 impl Tool for CrmCreateCustomerTool {
     fn name(&self) -> &str {
         "crm_create_customer"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Customer")
     }
 
     fn description(&self) -> &str {
@@ -441,6 +453,10 @@ impl Tool for CrmListTicketsTool {
         "crm_list_tickets"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("List Tickets")
+    }
+
     fn description(&self) -> &str {
         "List support tickets. Filter by status or priority."
     }
@@ -520,6 +536,10 @@ pub struct CrmCreateTicketTool;
 impl Tool for CrmCreateTicketTool {
     fn name(&self) -> &str {
         "crm_create_ticket"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Create Ticket")
     }
 
     fn description(&self) -> &str {
@@ -643,6 +663,10 @@ impl Tool for CrmUpdateTicketTool {
         "crm_update_ticket"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Update Ticket")
+    }
+
     fn description(&self) -> &str {
         "Update ticket status or assignment."
     }
@@ -728,6 +752,10 @@ impl Tool for CrmAddInteractionTool {
         "crm_add_interaction"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Add Interaction")
+    }
+
     fn description(&self) -> &str {
         "Add a customer interaction note (call, email, meeting, chat)."
     }
@@ -774,6 +802,10 @@ pub struct CrmSearchCustomersTool;
 impl Tool for CrmSearchCustomersTool {
     fn name(&self) -> &str {
         "crm_search_customers"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Search Customers")
     }
 
     fn description(&self) -> &str {

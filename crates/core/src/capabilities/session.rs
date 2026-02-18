@@ -64,6 +64,10 @@ impl Tool for WriteSessionTitleTool {
         "write_session_title"
     }
 
+    fn display_name(&self) -> Option<&str> {
+        Some("Write Session Title")
+    }
+
     fn description(&self) -> &str {
         "Update the current session title."
     }
@@ -125,6 +129,10 @@ pub struct GetSessionInfoTool;
 impl Tool for GetSessionInfoTool {
     fn name(&self) -> &str {
         "get_session_info"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Session Info")
     }
 
     fn description(&self) -> &str {
