@@ -159,6 +159,8 @@ export interface Session {
   usage?: TokenUsage;
   /** Whether this session is pinned by the current user */
   is_pinned?: boolean;
+  /** Number of active schedules for this session */
+  active_schedule_count?: number;
 }
 
 export interface CreateSessionRequest {
@@ -175,6 +177,32 @@ export interface UpdateSessionRequest {
   title?: string;
   tags?: string[];
   model_id?: string;
+}
+
+// ============================================
+// Session Schedule types
+// ============================================
+
+export type ScheduleType = "oneshot" | "recurring";
+
+export interface SessionSchedule {
+  id: string;
+  session_id: string;
+  description: string;
+  cron_expression?: string;
+  scheduled_at?: string;
+  timezone: string;
+  enabled: boolean;
+  schedule_type: ScheduleType;
+  next_trigger_at?: string;
+  last_triggered_at?: string;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateSessionScheduleRequest {
+  enabled?: boolean;
 }
 
 // ============================================

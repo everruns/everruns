@@ -49,6 +49,7 @@ pub mod mcp_server;
 pub mod organization;
 pub mod session;
 pub mod session_file;
+pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 
@@ -225,7 +226,7 @@ pub use skill::{
 };
 pub use typed_id::{
     AgentId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId, MessageId,
-    ModelId, OrgId, ProviderId, SessionId, SkillId, TurnId, TypedId,
+    ModelId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Deployment configuration

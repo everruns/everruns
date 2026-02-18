@@ -392,7 +392,8 @@ impl SessionService {
             started_at: row.started_at,
             finished_at: row.finished_at,
             usage,
-            is_pinned: None, // Populated by caller with user context
+            is_pinned: None,             // Populated by caller with user context
+            active_schedule_count: None, // Populated by caller
         }
     }
 }

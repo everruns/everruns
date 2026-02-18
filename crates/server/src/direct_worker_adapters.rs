@@ -257,6 +257,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 finished_at: r.finished_at,
                 usage: None,
                 is_pinned: None,
+                active_schedule_count: None,
             }
         }))
     }

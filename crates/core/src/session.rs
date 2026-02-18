@@ -118,4 +118,8 @@ pub struct Session {
     /// Only populated when the request has an authenticated user context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_pinned: Option<bool>,
+    /// Number of active (enabled) schedules for this session.
+    /// Populated when the session is fetched for API responses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_schedule_count: Option<u32>,
 }

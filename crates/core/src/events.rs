@@ -67,6 +67,9 @@ pub const SESSION_STARTED: &str = "session.started";
 pub const SESSION_ACTIVATED: &str = "session.activated";
 pub const SESSION_IDLED: &str = "session.idled";
 
+// Schedule events
+pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
+
 // ============================================================================
 // Event Context
 // ============================================================================

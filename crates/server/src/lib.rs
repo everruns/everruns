@@ -48,6 +48,9 @@ pub mod event_retention;
 // Service seeding (default agents, providers, models)
 pub mod seed;
 
+// Session schedule poller
+pub mod session_scheduler;
+
 // Server entrypoint (reusable by SaaS binary)
 pub mod server;
 pub use server::{ServerConfig, run};

@@ -2,7 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, EventId, HarnessId, ImageId, McpServerId, ModelId, ProviderId, SessionId, SkillId,
+    AgentId, EventId, HarnessId, ImageId, McpServerId, ModelId, ProviderId, ScheduleId, SessionId,
+    SkillId,
 };
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -876,4 +877,45 @@ pub struct CreateUserConnectionRow {
     pub expires_at: Option<DateTime<Utc>>,
     /// GitHub App installation ID (tokens minted on demand)
     pub installation_id: Option<i64>,
+}
+
+// ============================================
+// Session Schedule models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionScheduleRow {
+    pub id: ScheduleId,
+    pub public_id: String,
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub description: String,
+    pub cron_expression: Option<String>,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub timezone: String,
+    pub enabled: bool,
+    pub next_trigger_at: Option<DateTime<Utc>>,
+    pub last_triggered_at: Option<DateTime<Utc>>,
+    pub trigger_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSessionScheduleRow {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub description: String,
+    pub cron_expression: Option<String>,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub timezone: String,
+    pub next_trigger_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateSessionScheduleRow {
+    pub enabled: Option<bool>,
+    pub next_trigger_at: Option<Option<DateTime<Utc>>>,
+    pub last_triggered_at: Option<DateTime<Utc>>,
+    pub trigger_count_increment: bool,
 }

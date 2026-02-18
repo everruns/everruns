@@ -82,6 +82,7 @@ mod noop;
 mod research;
 mod sample_data;
 mod session;
+mod session_schedule;
 mod session_sql_database;
 mod session_storage;
 pub mod skill;
@@ -132,6 +133,10 @@ pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
+pub use session_schedule::{
+    CancelScheduleTool, CreateScheduleTool, ListSchedulesTool, SESSION_SCHEDULE_CAPABILITY_ID,
+    SessionScheduleCapability,
+};
 pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
@@ -404,6 +409,7 @@ impl CapabilityRegistry {
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
         registry.register(VirtualBashCapability);
+        registry.register(SessionScheduleCapability);
 
         // Skills discovery (filesystem-based, all environments)
         registry.register(SkillsDiscoveryCapability);
@@ -1015,9 +1021,10 @@ mod tests {
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
-        // 19 core built-in capabilities
+        assert!(registry.has("session_schedule"));
+        // 20 core built-in capabilities
         // (integration plugins like docker_container, codesandbox add more when linked)
-        assert!(registry.len() >= 19);
+        assert!(registry.len() >= 20);
     }
 
     #[test]
@@ -1044,9 +1051,10 @@ mod tests {
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
+        assert!(registry.has("session_schedule"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 19);
+        assert_eq!(registry.len(), 20);
     }
 
     #[test]

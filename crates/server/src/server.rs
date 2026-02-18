@@ -280,6 +280,11 @@ pub async fn run(
         auth: auth_state.clone(),
         auth_config: auth_config.clone(),
     };
+    let session_schedule_service =
+        Arc::new(crate::services::SessionScheduleService::new(db.clone()));
+    let session_schedules_state =
+        api::session_schedules::AppState::new(session_schedule_service.clone(), auth_state.clone());
+
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -315,7 +320,8 @@ pub async fn run(
         .merge(api::images::routes(images_state))
         .merge(api::skills::routes(skills_state))
         .merge(api::organizations::routes(organizations_state))
-        .merge(api::user_connections::routes(user_connections_state));
+        .merge(api::user_connections::routes(user_connections_state))
+        .merge(api::session_schedules::routes(session_schedules_state));
 
     // Add auth-specific routes if the backend provides them
     if let Some(auth_routes) = auth_backend.auth_routes() {
@@ -605,6 +611,15 @@ pub async fn run(
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
     }
+
+    // Session schedule poller (runs in both prod and dev mode)
+    crate::session_scheduler::spawn_session_scheduler(
+        db.clone(),
+        session_schedule_service,
+        event_service,
+        runner,
+        std::time::Duration::from_secs(15),
+    );
 
     // Start HTTP server
     let listener = tokio::net::TcpListener::bind(&config.addr)

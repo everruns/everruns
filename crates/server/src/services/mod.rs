@@ -13,6 +13,7 @@ pub mod message;
 pub mod model_sync;
 pub mod session;
 pub mod session_file;
+pub mod session_schedule;
 pub mod skill;
 pub mod usage_tracking;
 
@@ -28,5 +29,6 @@ pub use message::MessageService;
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use session::SessionService;
 pub use session_file::SessionFileService;
+pub use session_schedule::SessionScheduleService;
 pub use skill::SkillService;
 pub use usage_tracking::UsageTrackingListener;
