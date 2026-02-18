@@ -120,6 +120,8 @@ pub struct DurableWorkerConfig {
     pub heartbeat_interval: Duration,
     /// gRPC address for control-plane communication
     pub grpc_address: String,
+    /// Timeout for initial connection to control-plane gRPC
+    pub connect_timeout: Duration,
 }
 
 impl Default for DurableWorkerConfig {
@@ -135,6 +137,7 @@ impl Default for DurableWorkerConfig {
             poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
+            connect_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -153,10 +156,16 @@ impl DurableWorkerConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
 
+        let connect_timeout_secs: u64 = std::env::var("GRPC_CONNECT_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+
         Self {
             worker_id,
             grpc_address,
             max_concurrent_tasks: max_concurrent,
+            connect_timeout: Duration::from_secs(connect_timeout_secs),
             ..Default::default()
         }
     }
@@ -189,7 +198,9 @@ impl DurableWorker {
             "Initializing durable worker (gRPC mode)"
         );
 
-        let store = GrpcDurableStore::connect(&config.grpc_address).await?;
+        let store =
+            GrpcDurableStore::connect_with_timeout(&config.grpc_address, config.connect_timeout)
+                .await?;
         let grpc_address = config.grpc_address.clone();
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
