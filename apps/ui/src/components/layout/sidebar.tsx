@@ -44,6 +44,7 @@ import {
   ChevronUp,
   ChevronDown,
   FlaskConical,
+  Calendar,
   Cog,
   Server,
   Workflow,
@@ -70,6 +71,7 @@ const durableNavigation = [
   { name: "Overview", href: "/durable", icon: Cog, exact: true },
   { name: "Workers", href: "/durable/workers", icon: Server },
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
+  { name: "Schedules", href: "/durable/schedules", icon: Calendar },
 ];
 
 const devNavigation = [{ name: "Dev Tools", href: "/dev", icon: FlaskConical }];
