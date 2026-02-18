@@ -107,6 +107,38 @@ Unlike Daytona (which manages sandbox lifecycle), Brave Search is stateless. Eac
 
 Unlike Daytona (which depends on `session_storage`), Brave Search has no capability dependencies. The API key resolution uses the connection resolver and storage store from ToolContext directly.
 
+## Testing
+
+### Unit & mock tests
+
+Run without flags — no API key needed:
+
+```bash
+cargo test -p everruns-integrations-brave-search
+```
+
+Uses `wiremock` for HTTP-level assertions (auth headers, query params, error codes).
+
+### Integration tests (real API)
+
+Gated behind the `integration` Cargo feature so they never compile in normal `cargo test` runs:
+
+```bash
+BRAVE_SEARCH_API_KEY=<key> cargo test -p everruns-integrations-brave-search --features integration
+```
+
+Tests: `smoke_basic_search`, `smoke_freshness_filter`, `smoke_pagination` in `tests/smoke_real_api.rs`.
+
+### CI
+
+Dedicated workflow `.github/workflows/brave-search-integration.yml`:
+
+- **Path-filtered**: only triggers when `integrations/brave-search/**` changes.
+- Reads `BRAVE_SEARCH_API_KEY` from GitHub Actions secrets.
+- Passes `--features integration` to compile and run the real-API tests.
+
+Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, add a path-filtered workflow, store the key in GitHub secrets.
+
 ## Crate Structure
 
 `integrations/brave-search/` → `everruns-integrations-brave-search`
@@ -121,6 +153,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/client.rs` | `BraveSearchClient` HTTP client, API response types |
 | `src/tools.rs` | `BraveWebSearchTool` implementation, API key resolution |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
+| `tests/smoke_real_api.rs` | Real-API smoke tests (behind `integration` feature) |
 
 ## Capability Registration
 
