@@ -137,16 +137,17 @@ pub async fn github_authorize(
     _auth: AuthUser,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let config = state
-        .auth_config
-        .github_connection
-        .as_ref()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "GitHub App not configured".to_string(),
-            )
-        })?;
+    let config = match state.auth_config.github_connection.as_ref() {
+        Some(c) => c,
+        None => {
+            // Redirect back to frontend with error instead of returning 500
+            let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
+            return Ok(Redirect::to(&format!(
+                "{}/settings/connections?error=github_not_configured",
+                frontend_url
+            )));
+        }
+    };
 
     let service = GitHubAppService::new(config);
 

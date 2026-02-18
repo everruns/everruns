@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserConnections, useDeleteUserConnection } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, Github, LinkIcon, Trash2, Check } from "lucide-react";
+import { ExternalLink, Github, LinkIcon, Trash2, Check, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection } from "@/lib/api/types";
 
@@ -109,16 +109,25 @@ export default function ConnectionsPage() {
   const deleteConnection = useDeleteUserConnection();
   const searchParams = useSearchParams();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Show success toast when redirected back from OAuth
+  // Show toast when redirected back from connection flow
   useEffect(() => {
     const connected = searchParams.get("connected");
+    const errorParam = searchParams.get("error");
     if (connected) {
       const meta = providers[connected];
       setSuccessMessage(`${meta?.name ?? connected} connected successfully`);
-      // Clear URL param without reload
       window.history.replaceState({}, "", "/settings/connections");
       const timer = setTimeout(() => setSuccessMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+    if (errorParam === "github_not_configured") {
+      setErrorMessage(
+        "GitHub App is not configured. Set GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY to enable GitHub connections.",
+      );
+      window.history.replaceState({}, "", "/settings/connections");
+      const timer = setTimeout(() => setErrorMessage(null), 8000);
       return () => clearTimeout(timer);
     }
   }, [searchParams]);
@@ -148,6 +157,14 @@ export default function ConnectionsPage() {
         <div className="flex items-center gap-2 bg-green-500/10 text-green-700 dark:text-green-400 p-3 rounded-lg text-sm">
           <Check className="h-4 w-4" />
           {successMessage}
+        </div>
+      )}
+
+      {/* Error banner */}
+      {errorMessage && (
+        <div className="flex items-center gap-2 bg-destructive/10 text-destructive p-3 rounded-lg text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {errorMessage}
         </div>
       )}
 
