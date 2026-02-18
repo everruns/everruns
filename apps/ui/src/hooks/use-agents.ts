@@ -3,6 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  copyAgent,
   createAgent,
   deleteAgent,
   exportAgent,
@@ -81,6 +82,17 @@ export function useDeleteAgent() {
 
   return useMutation({
     mutationFn: (agentId: string) => deleteAgent(agentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+    },
+  });
+}
+
+export function useCopyAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) => copyAgent(agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },

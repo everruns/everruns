@@ -896,6 +896,147 @@ async fn test_create_session_with_generic_harness() {
 }
 
 // ============================================
+// Copy Agent Tests
+// ============================================
+
+#[tokio::test]
+async fn test_copy_agent() {
+    let server = TestServer::new().await;
+
+    // Create an agent with capabilities and tags
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Original Agent",
+                "description": "Original description",
+                "system_prompt": "You are helpful",
+                "tags": ["tag1", "tag2"],
+                "capabilities": [
+                    {"ref": "current_time", "config": {}}
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Copy the agent
+    let copied: Agent = server
+        .post(&format!("/v1/agents/{}/copy", agent.public_id), json!({}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Verify copy
+    assert_eq!(copied.name, "Original Agent (copy)");
+    assert_eq!(copied.description.as_deref(), Some("Original description"));
+    assert_eq!(copied.system_prompt, "You are helpful");
+    assert_eq!(copied.tags, vec!["tag1", "tag2"]);
+    assert_eq!(copied.capabilities.len(), 1);
+    assert_eq!(copied.capabilities[0].capability_id(), "current_time");
+    // New ID
+    assert_ne!(copied.public_id, agent.public_id);
+    assert_ne!(copied.internal_id, agent.internal_id);
+}
+
+#[tokio::test]
+async fn test_copy_agent_not_found() {
+    let server = TestServer::new().await;
+
+    server
+        .post(
+            "/v1/agents/agent_00000000000000000000000000000099/copy",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+// ============================================
+// Copy Harness Tests
+// ============================================
+
+#[tokio::test]
+async fn test_copy_harness() {
+    let server = TestServer::new().await;
+
+    // Create a harness with capabilities and tags
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "Original Harness",
+                "description": "Original harness description",
+                "system_prompt": "Harness prompt",
+                "tags": ["harness-tag"],
+                "capabilities": [
+                    {"ref": "current_time", "config": {}}
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Copy the harness
+    let copied: Harness = server
+        .post(&format!("/v1/harnesses/{}/copy", harness.id), json!({}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Verify copy
+    assert_eq!(copied.name, "Original Harness (copy)");
+    assert_eq!(
+        copied.description.as_deref(),
+        Some("Original harness description")
+    );
+    assert_eq!(copied.system_prompt, "Harness prompt");
+    assert_eq!(copied.tags, vec!["harness-tag"]);
+    assert_eq!(copied.capabilities.len(), 1);
+    assert_eq!(copied.capabilities[0].capability_id(), "current_time");
+    // New ID
+    assert_ne!(copied.id, harness.id);
+}
+
+#[tokio::test]
+async fn test_copy_harness_not_found() {
+    let server = TestServer::new().await;
+
+    server
+        .post(
+            "/v1/harnesses/harness_00000000000000000000000000000099/copy",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_copy_seed_generic_harness() {
+    let server = TestServer::new().await;
+
+    // Copy the seed Generic harness
+    let copied: Harness = server
+        .post(
+            &format!("/v1/harnesses/{}/copy", SEED_GENERIC_HARNESS_ID),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(copied.name, "Generic (copy)");
+    // Generic harness has 4 capabilities
+    assert_eq!(
+        copied.capabilities.len(),
+        4,
+        "Copied harness should have same 4 capabilities"
+    );
+}
+
+// ============================================
 // Capabilities Tests
 // ============================================
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useMemo } from "react";
-import { useHarness, useCapabilities, useLlmModels, useDeleteHarness } from "@/hooks";
+import { use, useMemo, useCallback } from "react";
+import { useHarness, useCapabilities, useLlmModels, useDeleteHarness, useCopyHarness } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Copy, Trash2 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -23,6 +23,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const deleteHarness = useDeleteHarness();
+  const copyHarness = useCopyHarness();
 
   const modelMap = useMemo(() => {
     if (!llmModels) return new Map<string, LlmModelWithProvider>();
@@ -49,6 +50,15 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       console.error("Failed to delete harness:", error);
     }
   };
+
+  const handleCopy = useCallback(async () => {
+    try {
+      const copied = await copyHarness.mutateAsync(harnessId);
+      router.push(`/harnesses/${copied.id}`);
+    } catch (error) {
+      console.error("Failed to copy harness:", error);
+    }
+  }, [harnessId, copyHarness, router]);
 
   if (harnessLoading) {
     return (
@@ -92,6 +102,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           </h1>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
+            <Copy className="w-4 h-4 mr-2" />
+            {copyHarness.isPending ? "Copying..." : "Copy"}
+          </Button>
           <Link href={`/harnesses/${harnessId}/edit`}>
             <Button variant="outline">
               <Pencil className="w-4 h-4 mr-2" />

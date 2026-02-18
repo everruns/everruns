@@ -3,6 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  copyHarness,
   createHarness,
   deleteHarness,
   getHarness,
@@ -67,6 +68,17 @@ export function useUpdateHarness() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.harnesses.detail(harnessId),
       });
+    },
+  });
+}
+
+export function useCopyHarness() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (harnessId: string) => copyHarness(harnessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
     },
   });
 }

@@ -128,6 +128,27 @@ impl HarnessService {
         }
     }
 
+    /// Copy a harness by UUID. Creates a new harness with "{name} (copy)" and
+    /// duplicates description, system_prompt, default_model_id, tags, capabilities.
+    pub async fn copy(&self, org_id: i64, id: Uuid) -> Result<Option<Harness>> {
+        let source = self.get(org_id, id).await?;
+        let Some(source) = source else {
+            return Ok(None);
+        };
+
+        let req = CreateHarnessRequest {
+            name: format!("{} (copy)", source.name),
+            description: source.description,
+            system_prompt: source.system_prompt,
+            default_model_id: source.default_model_id,
+            tags: source.tags,
+            capabilities: source.capabilities,
+        };
+
+        let harness = self.create(org_id, req).await?;
+        Ok(Some(harness))
+    }
+
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
         self.db
             .delete_harness(org_id, HarnessId::from_uuid(id))

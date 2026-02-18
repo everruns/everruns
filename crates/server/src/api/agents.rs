@@ -212,6 +212,7 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_agent),
         )
         .route("/v1/agents/{agent_id}/export", get(export_agent))
+        .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .with_state(state)
 }
 
@@ -412,6 +413,48 @@ pub async fn delete_agent(
             }),
         ))
     }
+}
+
+/// POST /v1/agents/{agent_id}/copy - Copy an agent
+///
+/// Creates a new agent with the same configuration as the source agent.
+/// The new agent's name will be "{original name} (copy)".
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/copy",
+    params(
+        ("agent_id" = String, Path, description = "Source agent ID to copy")
+    ),
+    responses(
+        (status = 201, description = "Agent copied successfully", body = Agent),
+        (status = 400, description = "Invalid agent ID", body = ErrorResponse),
+        (status = 404, description = "Source agent not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn copy_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
+    let agent = state
+        .service
+        .copy(org.org_id, &agent_id.to_string())
+        .await
+        .log_internal_error_json("copy agent")?
+        .ok_or_not_found_json("Agent")?;
+
+    Ok((StatusCode::CREATED, Json(agent)))
 }
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)

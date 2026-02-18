@@ -30,3 +30,8 @@ export async function updateHarness(
 export async function deleteHarness(harnessId: string): Promise<void> {
   await api.delete(`/v1/harnesses/${harnessId}`);
 }
+
+export async function copyHarness(harnessId: string): Promise<Harness> {
+  const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});
+  return response.data;
+}

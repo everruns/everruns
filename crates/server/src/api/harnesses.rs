@@ -125,6 +125,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_harness)
                 .delete(delete_harness),
         )
+        .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
         .with_state(state)
 }
 
@@ -318,6 +319,48 @@ pub async fn delete_harness(
             }),
         ))
     }
+}
+
+/// POST /v1/harnesses/{harness_id}/copy - Copy a harness
+///
+/// Creates a new harness with the same configuration as the source harness.
+/// The new harness's name will be "{original name} (copy)".
+#[utoipa::path(
+    post,
+    path = "/v1/harnesses/{harness_id}/copy",
+    params(
+        ("harness_id" = String, Path, description = "Source harness ID to copy")
+    ),
+    responses(
+        (status = 201, description = "Harness copied successfully", body = Harness),
+        (status = 400, description = "Invalid harness ID", body = ErrorResponse),
+        (status = 404, description = "Source harness not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "harnesses"
+)]
+pub async fn copy_harness(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(harness_id): Path<String>,
+) -> Result<(StatusCode, Json<Harness>), (StatusCode, Json<ErrorResponse>)> {
+    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid harness ID: {}", e),
+            }),
+        )
+    })?;
+
+    let harness = state
+        .service
+        .copy(org.org_id, harness_id.uuid())
+        .await
+        .log_internal_error_json("copy harness")?
+        .ok_or_not_found_json("Harness")?;
+
+    Ok((StatusCode::CREATED, Json(harness)))
 }
 
 /// POST /v1/harnesses/preview
