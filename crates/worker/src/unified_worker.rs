@@ -11,6 +11,7 @@
 use anyhow::Result;
 use everruns_core::ActInput;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
+use everruns_core::capabilities::{collect_capabilities, is_mcp_capability};
 use everruns_core::events::{
     EventContext, EventRequest, SessionActivatedData, SessionIdledData, TurnCompletedData,
     TurnFailedData, TurnStartedData,
@@ -759,11 +760,37 @@ async fn execute_act_activity<A: WorkerAdapters>(
         "Executing act activity"
     );
 
-    // Build tool registry with defaults and capability tools
+    // Build tool registry with defaults and capability tools.
+    // When agent_id is present, use agent capabilities.
+    // When agent_id is absent, fall back to harness capabilities so that
+    // harness-provided tools (e.g. bash) are still registered.
     let tool_registry = if let Some(agent_id) = input.agent_id {
         adapters.build_tool_registry(agent_id.uuid()).await?
     } else {
-        everruns_core::ToolRegistry::with_defaults()
+        let mut registry = everruns_core::ToolRegistry::with_defaults();
+        let org_id = input.org_id.unwrap_or(1);
+        if let Ok(Some(harness)) = adapters.get_harness(org_id, input.harness_id.uuid()).await {
+            let builtin_cap_ids: Vec<String> = harness
+                .capabilities
+                .iter()
+                .map(|c| c.capability_id().to_string())
+                .filter(|id| !is_mcp_capability(id))
+                .collect();
+
+            if !builtin_cap_ids.is_empty() {
+                let cap_registry = adapters.capability_registry();
+                let collected = collect_capabilities(&builtin_cap_ids, &cap_registry);
+                for tool in collected.tools {
+                    registry.register_boxed(tool);
+                }
+                debug!(
+                    capability_count = builtin_cap_ids.len(),
+                    tool_count = collected.tool_definitions.len(),
+                    "Registered harness capability tools (no agent)"
+                );
+            }
+        }
+        registry
     };
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
