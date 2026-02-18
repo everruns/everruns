@@ -82,6 +82,7 @@ mod session;
 mod session_sql_database;
 mod session_storage;
 pub mod skill;
+mod skills_discovery;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
@@ -137,6 +138,7 @@ pub use skill::{
     SkillSource, discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
     skill_capability_id,
 };
+pub use skills_discovery::{SKILLS_DISCOVERY_CAPABILITY_ID, SkillsDiscoveryCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -336,6 +338,9 @@ impl CapabilityRegistry {
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
         registry.register(VirtualBashCapability);
+
+        // Skills discovery (filesystem-based, all environments)
+        registry.register(SkillsDiscoveryCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
@@ -934,9 +939,10 @@ mod tests {
         assert!(registry.has("fake_aws"));
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
-        // 18 core built-in capabilities
+        assert!(registry.has("skills"));
+        // 19 core built-in capabilities
         // (integration plugins like docker_container, codesandbox add more when linked)
-        assert!(registry.len() >= 18);
+        assert!(registry.len() >= 19);
     }
 
     #[test]
@@ -962,9 +968,10 @@ mod tests {
         assert!(registry.has("fake_aws"));
         assert!(registry.has("fake_crm"));
         assert!(registry.has("fake_financial"));
+        assert!(registry.has("skills"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 18);
+        assert_eq!(registry.len(), 19);
     }
 
     #[test]

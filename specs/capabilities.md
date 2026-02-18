@@ -133,6 +133,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `sample_data` | Sample Data | Data | Available |
 | `docker_container` | Docker Container | Development | Available (Dev only, integration plugin) |
 | `session_sql_database` | SQL Database | Data | Available |
+| `skills` | Agent Skills | Skills | Available |
 | `research` | Research | AI | Coming Soon |
 
 ```rust
@@ -284,6 +285,7 @@ pub fn resolve_dependencies(
 | Capability | Depends On |
 |------------|-----------|
 | `sample_data` | `session_file_system` |
+| `skills` | `session_file_system` |
 
 ### Built-in Capabilities
 
@@ -630,6 +632,40 @@ The system prompt instructs agents to use task management when:
 2. **Update immediately** - Mark tasks completed as soon as done, don't batch
 3. **Replace entire list** - Each `write_todos` call replaces the full list
 4. **Completion criteria** - Only mark `completed` when fully done (tests pass, no errors)
+
+#### SkillsDiscovery
+
+- **Status**: Available
+- **ID**: `skills`
+- **Purpose**: Discover and activate skills from the session filesystem (VFS-based skill discovery)
+- **Dependencies**: `session_file_system`
+- **System Prompt**: Explains the skills system, `/.agents/skills/` path, and how to use `list_skills`/`activate_skill`
+- **Tools**:
+  - `list_skills` - Scan `/.agents/skills/` in the session VFS for SKILL.md files
+    - Parameters: none
+    - Returns: Array of discovered skills with name, description, path, version
+    - Policy: Auto
+  - `activate_skill` - Load a skill's full instructions by name
+    - Parameters:
+      - `name`: string (required) - Skill directory name (e.g., `pdf-processing`)
+    - Returns: Skill instructions wrapped in `<skill name="...">` XML tags, plus bundled file paths
+    - Validation: Path traversal blocked (`..`, `/`, `\` in name rejected)
+    - Policy: Auto
+- **Icon**: "wand"
+- **Category**: "Skills"
+
+##### Design Decision: VFS-Based Discovery
+
+This is the built-in skills discovery mechanism. It does NOT ship with any skills — users upload SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session filesystem. The agent discovers them at runtime via `list_skills` and activates them on demand via `activate_skill`.
+
+This complements registry-based skills (`skill:{uuid}` capabilities) which are database-stored and org-wide. VFS-discovered skills are per-session and project-specific.
+
+##### Design Decision: Progressive Disclosure
+
+Following the agentskills.io specification:
+1. **Discovery**: `list_skills` returns only names and descriptions (~100 tokens per skill)
+2. **Activation**: `activate_skill` loads full SKILL.md instructions (<5000 tokens recommended)
+3. **Resources**: Bundled files listed in activation response, accessible via existing session filesystem tools
 
 ### MCP Virtual Capabilities
 

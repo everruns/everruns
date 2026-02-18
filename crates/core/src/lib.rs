@@ -149,8 +149,9 @@ pub use capabilities::{
     is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
 };
 pub use capabilities::{
-    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapability, SkillInstructions, SkillMeta,
-    SkillSource, discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
+    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,
+    SkillCapability, SkillInstructions, SkillMeta, SkillSource, SkillsDiscoveryCapability,
+    discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
     skill_capability_id,
 };
 
