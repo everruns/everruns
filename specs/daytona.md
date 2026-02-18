@@ -4,7 +4,7 @@
 
 The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based sandboxes as an agent execution environment. Agents can create, manage, and interact with multiple isolated environments per session via the Daytona REST API. Like CodeSandbox, this supports multiple sandboxes per session, each identified by a `sandbox_id`.
 
-**Status**: Experimental (Dev only)
+**Status**: Available (All environments)
 
 ## Architecture
 
@@ -241,13 +241,14 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
 | `src/tools.rs` | 9 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
-| `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
+| `tests/plugin_registration.rs` | Integration tests for inventory registration |
+| `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 
 ## Capability Registration
 
 - **ID**: `daytona`
-- **Name**: `[Experimental] Daytona`
-- **Status**: Available (Dev only)
+- **Name**: `Daytona`
+- **Status**: Available
 - **Icon**: `cloud`
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
@@ -256,4 +257,4 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 
 A pre-configured seed agent (`Daytona Coder`) demonstrates the capability:
 - **Capabilities**: `daytona`, `session_storage`, `session_file_system`
-- **Dev-only**: true
+- **Dev-only**: false
