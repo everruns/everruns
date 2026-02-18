@@ -164,6 +164,20 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
 3. If token found: passes `username=oauth2`, `password=<token>` to the git clone API
 4. If no token: public repos only; private repos fail with hint to connect GitHub
 
+### daytona_git_credentials
+
+Configure git credentials in a sandbox so that all git operations (push, pull, fetch, rebase, etc.) work transparently via `daytona_exec`. Call once after creating a sandbox; call again to refresh if the token expires (~1 hour).
+
+- **Parameters**:
+  - `sandbox_id`: string (required)
+- **Returns**: `{ sandbox_id, authenticated, provider, hint }`
+
+**Implementation:** Writes a `git credential store` file (`/tmp/.git-credentials`) containing `https://oauth2:<token>@github.com`, then configures `git config --global credential.helper 'store --file=/tmp/.git-credentials'`. After this, any git command via `daytona_exec` authenticates automatically.
+
+**Authentication flow:** Same token resolution as `daytona_git_clone` (connection_resolver → GITHUB_TOKEN fallback). Fails with actionable error if no credentials found.
+
+**Design:** Avoids per-verb tools (git_push, git_fetch, etc.). Instead, configures standard git credential store once, then agent uses `daytona_exec` for all git operations naturally. Token in `/tmp` — lost on sandbox stop, same trust boundary as sandbox exec access.
+
 ## Security
 
 - **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest
@@ -212,7 +226,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
-| `src/tools.rs` | 8 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `src/tools.rs` | 9 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 
 ## Capability Registration

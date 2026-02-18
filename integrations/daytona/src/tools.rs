@@ -935,6 +935,125 @@ impl Tool for DaytonaGitCloneTool {
 }
 
 // ============================================================================
+// DaytonaGitCredentialsTool
+// ============================================================================
+
+pub struct DaytonaGitCredentialsTool;
+
+#[async_trait]
+impl Tool for DaytonaGitCredentialsTool {
+    fn name(&self) -> &str {
+        "daytona_git_credentials"
+    }
+
+    fn description(&self) -> &str {
+        "Configure git credentials in a Daytona sandbox so that all git operations \
+         (push, pull, fetch, rebase, etc.) work transparently via daytona_exec. \
+         Uses the user's connected GitHub credentials. Call once after creating a \
+         sandbox; call again to refresh if the token expires (~1 hour)."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "sandbox_id": {
+                    "type": "string",
+                    "description": "Sandbox ID to configure git credentials in"
+                }
+            },
+            "required": ["sandbox_id"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "daytona_git_credentials requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let sandbox_id = match required_str(&arguments, "sandbox_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let api_key = match get_api_key(context).await {
+            Ok(k) => k,
+            Err(e) => return e,
+        };
+        let _state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        // Resolve GitHub token (same chain as daytona_git_clone)
+        let github_token = match get_github_token(context).await {
+            Some(token) => token,
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "No GitHub credentials found. The user must connect their GitHub account \
+                     in Settings > Connections, or set a GITHUB_TOKEN session secret.",
+                );
+            }
+        };
+
+        let client = DaytonaClient::new(api_key);
+
+        // Write git-credentials file: https://oauth2:<token>@github.com
+        let credentials_content = format!("https://oauth2:{github_token}@github.com\n");
+        if let Err(e) = client
+            .file_upload(
+                sandbox_id,
+                "/tmp/.git-credentials",
+                credentials_content.as_bytes(),
+            )
+            .await
+        {
+            return ToolExecutionResult::tool_error(format!(
+                "Failed to write credentials file: {e}"
+            ));
+        }
+
+        // Configure git to use the credential store
+        let config_cmd =
+            "git config --global credential.helper 'store --file=/tmp/.git-credentials'";
+        match client.exec(sandbox_id, config_cmd, None, None).await {
+            Ok(r) if r.exit_code == 0 => {}
+            Ok(r) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to configure git credential helper (exit {}): {}",
+                    r.exit_code, r.result
+                ));
+            }
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to configure git credential helper: {e}"
+                ));
+            }
+        }
+
+        debug!("Configured git credentials in sandbox {sandbox_id}");
+
+        ToolExecutionResult::success(json!({
+            "sandbox_id": sandbox_id,
+            "authenticated": true,
+            "provider": "github",
+            "hint": "Git credentials configured. All git operations (push, pull, fetch, etc.) via daytona_exec will now authenticate automatically. Token expires in ~1 hour; call this tool again to refresh."
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
 // Git Clone Helpers
 // ============================================================================
 
@@ -1196,6 +1315,7 @@ mod tests {
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
+            Box::new(DaytonaGitCredentialsTool),
         ];
         for tool in &tools {
             assert!(
@@ -1217,6 +1337,7 @@ mod tests {
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
+            Box::new(DaytonaGitCredentialsTool),
         ];
         for tool in &tools {
             assert!(
@@ -1238,6 +1359,7 @@ mod tests {
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
+            Box::new(DaytonaGitCredentialsTool),
         ];
         for tool in &tools {
             let schema = tool.parameters_schema();
@@ -1248,6 +1370,28 @@ mod tests {
                 tool.name()
             );
         }
+    }
+
+    // --- Git credentials tool tests ---
+
+    #[tokio::test]
+    async fn test_git_credentials_without_context() {
+        let tool = DaytonaGitCredentialsTool;
+        let result = tool.execute(json!({"sandbox_id": "test"})).await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
+        );
+    }
+
+    #[test]
+    fn test_git_credentials_schema() {
+        let tool = DaytonaGitCredentialsTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"sandbox_id"));
+        assert_eq!(required_strs.len(), 1);
+        assert_eq!(schema["additionalProperties"], json!(false));
     }
 
     // --- Git clone tool tests ---
