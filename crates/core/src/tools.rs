@@ -963,4 +963,23 @@ mod tests {
         // AddTool returns floats, so compare as f64
         assert_eq!(result.result.unwrap()["result"].as_f64().unwrap(), 8.0);
     }
+
+    /// Regression: with_defaults() must NOT include capability-provided tools like
+    /// 'bash'. These tools come from capabilities and must be registered separately.
+    /// If bash were in defaults, the harness capability fallback would be masked.
+    #[test]
+    fn test_with_defaults_excludes_capability_only_tools() {
+        let registry = ToolRegistry::with_defaults();
+
+        // bash comes from virtual_bash capability, not defaults
+        assert!(
+            !registry.has("bash"),
+            "bash must not be in defaults — it comes from virtual_bash capability"
+        );
+        // kv_store/secret_store come from session_storage capability
+        assert!(
+            !registry.has("kv_store"),
+            "kv_store must not be in defaults — it comes from session_storage capability"
+        );
+    }
 }

@@ -759,11 +759,17 @@ async fn execute_act_activity<A: WorkerAdapters>(
         "Executing act activity"
     );
 
-    // Build tool registry with defaults and capability tools
+    // Build tool registry with defaults and capability tools.
+    // When agent_id is present, use agent capabilities.
+    // When agent_id is absent, fall back to harness capabilities so that
+    // harness-provided tools (e.g. bash) are still registered.
     let tool_registry = if let Some(agent_id) = input.agent_id {
         adapters.build_tool_registry(agent_id.uuid()).await?
     } else {
-        everruns_core::ToolRegistry::with_defaults()
+        let org_id = input.org_id.unwrap_or(1);
+        adapters
+            .build_tool_registry_for_harness(org_id, input.harness_id.uuid())
+            .await?
     };
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());

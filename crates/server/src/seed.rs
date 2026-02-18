@@ -1552,6 +1552,90 @@ mod tests {
         }
     }
 
+    /// Regression test for "Tool not found: bash" bug.
+    ///
+    /// When a session uses the Generic Harness without an agent, the worker must
+    /// build a ToolRegistry from harness capabilities. This test verifies that
+    /// collect_capabilities on the Generic Harness cap IDs actually produces a
+    /// registry containing the 'bash' tool — the exact path that was broken.
+    #[test]
+    fn test_generic_harness_capabilities_produce_bash_tool() {
+        use everruns_core::capabilities::collect_capabilities;
+
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let generic = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("Generic harness should exist");
+
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let collected = collect_capabilities(&cap_ids, &registry);
+
+        // Build a ToolRegistry exactly as the worker does
+        let mut tool_registry = everruns_core::ToolRegistry::with_defaults();
+        for tool in collected.tools {
+            tool_registry.register_boxed(tool);
+        }
+
+        assert!(
+            tool_registry.has("bash"),
+            "ToolRegistry built from Generic Harness capabilities must include 'bash' tool. \
+             This was the root cause of the 'Tool not found: bash' bug."
+        );
+    }
+
+    /// Verify that ToolRegistry::with_defaults() alone does NOT include 'bash'.
+    /// This documents why harness capability registration is necessary.
+    #[test]
+    fn test_defaults_alone_miss_bash_tool() {
+        let registry = everruns_core::ToolRegistry::with_defaults();
+        assert!(
+            !registry.has("bash"),
+            "with_defaults() must NOT include 'bash' — it comes from virtual_bash capability. \
+             If this fails, the tool was added to defaults and the harness fallback is moot."
+        );
+    }
+
+    /// Verify all Generic Harness capabilities produce tool implementations
+    /// (not just definitions). Tools without implementations cause "Tool not found".
+    #[test]
+    fn test_generic_harness_collected_tools_have_implementations() {
+        use everruns_core::capabilities::collect_capabilities;
+
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let generic = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("Generic harness should exist");
+
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let collected = collect_capabilities(&cap_ids, &registry);
+
+        // Every tool definition must have a matching tool implementation
+        assert_eq!(
+            collected.tools.len(),
+            collected.tool_definitions.len(),
+            "tool implementations ({}) must match tool definitions ({}) — \
+             mismatches cause 'Tool not found' at runtime",
+            collected.tools.len(),
+            collected.tool_definitions.len(),
+        );
+
+        // Verify specific tools that Generic Harness users expect
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        assert!(tool_names.contains(&"bash"), "must include bash tool");
+    }
+
     // --- seed_all ---
 
     #[tokio::test]

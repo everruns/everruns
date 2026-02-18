@@ -297,31 +297,49 @@ pub async fn act_activity(
     // Create tool registry with default built-in tools
     let mut builtin_executor = ToolRegistry::with_defaults();
 
-    // Load agent capabilities and register their tools
-    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-    if let Some(agent_id) = input.agent_id
-        && let Ok(Some(agent)) = agent_store.get_agent(agent_id).await
-    {
-        // Extract capability IDs, filtering out MCP capabilities (handled separately)
-        let builtin_cap_ids: Vec<String> = agent
-            .capabilities
-            .iter()
-            .map(|c| c.capability_id().to_string())
-            .filter(|id| !is_mcp_capability(id))
-            .collect();
-
-        if !builtin_cap_ids.is_empty() {
-            let capability_registry = CapabilityRegistry::with_builtins();
-            let collected = collect_capabilities(&builtin_cap_ids, &capability_registry);
-            for tool in collected.tools {
-                builtin_executor.register_boxed(tool);
-            }
-            tracing::debug!(
-                capability_count = builtin_cap_ids.len(),
-                tool_count = collected.tool_definitions.len(),
-                "Registered capability tools for act_activity"
-            );
+    // Load capabilities and register their tools.
+    // When agent_id is present, use agent capabilities.
+    // When agent_id is absent, fall back to harness capabilities so that
+    // harness-provided tools (e.g. bash) are still registered.
+    let cap_ids: Vec<String> = if let Some(agent_id) = input.agent_id {
+        let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+        if let Ok(Some(agent)) = agent_store.get_agent(agent_id).await {
+            agent
+                .capabilities
+                .iter()
+                .map(|c| c.capability_id().to_string())
+                .filter(|id| !is_mcp_capability(id))
+                .collect()
+        } else {
+            vec![]
         }
+    } else {
+        let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
+        if let Ok(Some(harness)) =
+            everruns_core::traits::HarnessStore::get_harness(&harness_store, input.harness_id).await
+        {
+            harness
+                .capabilities
+                .iter()
+                .map(|c| c.capability_id().to_string())
+                .filter(|id| !is_mcp_capability(id))
+                .collect()
+        } else {
+            vec![]
+        }
+    };
+
+    if !cap_ids.is_empty() {
+        let capability_registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(&cap_ids, &capability_registry);
+        for tool in collected.tools {
+            builtin_executor.register_boxed(tool);
+        }
+        tracing::debug!(
+            capability_count = cap_ids.len(),
+            tool_count = collected.tool_definitions.len(),
+            "Registered capability tools for act_activity"
+        );
     }
 
     // Create composite tool executor that handles both built-in and MCP tools

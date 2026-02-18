@@ -1893,4 +1893,87 @@ mod tests {
         let (_, stored_config) = &collected.message_filter_providers[0];
         assert_eq!(*stored_config, test_config);
     }
+
+    // =========================================================================
+    // Harness capability tool registration tests
+    //
+    // Regression tests for the "Tool not found: bash" bug where harness
+    // capabilities were not used for tool registration when agent_id was absent.
+    // These tests verify that capability-provided tools (especially bash) are
+    // correctly produced by collect_capabilities.
+    // =========================================================================
+
+    #[test]
+    fn test_virtual_bash_capability_produces_bash_tool() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(&["virtual_bash".to_string()], &registry);
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        assert!(
+            tool_names.contains(&"bash"),
+            "virtual_bash capability must produce 'bash' tool, got: {:?}",
+            tool_names
+        );
+        assert!(
+            !collected.tools.is_empty(),
+            "virtual_bash must provide tool implementations"
+        );
+    }
+
+    #[test]
+    fn test_generic_harness_capability_set_produces_bash_tool() {
+        // These are the exact capability IDs from the Generic Harness seed data.
+        // If any are renamed or removed, this test catches the regression.
+        let generic_harness_caps = vec![
+            "session_file_system".to_string(),
+            "virtual_bash".to_string(),
+            "session_storage".to_string(),
+            "session".to_string(),
+        ];
+
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(&generic_harness_caps, &registry);
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        assert!(
+            tool_names.contains(&"bash"),
+            "Generic Harness capabilities must produce 'bash' tool, got: {:?}",
+            tool_names
+        );
+    }
+
+    #[test]
+    fn test_collect_capabilities_tool_count_matches_definitions() {
+        // Ensure collected tools (implementations) match tool_definitions count.
+        // A mismatch means some tools won't be executable at runtime.
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(&["virtual_bash".to_string()], &registry);
+
+        assert_eq!(
+            collected.tools.len(),
+            collected.tool_definitions.len(),
+            "tool implementations ({}) must match tool definitions ({})",
+            collected.tools.len(),
+            collected.tool_definitions.len(),
+        );
+    }
+
+    #[test]
+    fn test_defaults_do_not_include_bash() {
+        // ToolRegistry::with_defaults() must NOT include bash — it comes from
+        // capabilities only. This documents the invariant that the bug violated.
+        let registry = crate::ToolRegistry::with_defaults();
+        assert!(
+            !registry.has("bash"),
+            "with_defaults() must not include 'bash' — it comes from virtual_bash capability"
+        );
+    }
 }
