@@ -23,6 +23,9 @@ use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
+use crate::traits::SessionFileStore;
+use crate::typed_id::SessionId;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -146,6 +149,32 @@ pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{WebFetchCapability, WebFetchTool};
 
 // ============================================================================
+// System Prompt Context
+// ============================================================================
+
+/// Context provided to capabilities when resolving dynamic system prompt contributions.
+///
+/// This gives capabilities access to session-specific resources (filesystem, etc.)
+/// so they can generate system prompt content at runtime rather than returning
+/// only static text.
+pub struct SystemPromptContext {
+    /// The current session ID
+    pub session_id: SessionId,
+    /// Optional file store for reading session files (e.g., AGENTS.md)
+    pub file_store: Option<Arc<dyn SessionFileStore>>,
+}
+
+impl SystemPromptContext {
+    /// Create context with no file store (for callers that don't need filesystem access)
+    pub fn without_file_store(session_id: SessionId) -> Self {
+        Self {
+            session_id,
+            file_store: None,
+        }
+    }
+}
+
+// ============================================================================
 // Capability Trait
 // ============================================================================
 
@@ -154,6 +183,17 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 /// A capability can contribute:
 /// - System prompt additions (prepended to agent's system prompt)
 /// - Tools (added to agent's available tools)
+///
+/// # System Prompt Contributions
+///
+/// Capabilities provide system prompt content via `system_prompt_contribution()`.
+/// This async method receives a `SystemPromptContext` with access to the session
+/// filesystem, allowing capabilities to generate dynamic content (e.g., reading
+/// AGENTS.md or scanning for skills).
+///
+/// The default implementation wraps the static `system_prompt_addition()` text
+/// in `<capability id="...">` XML tags. Capabilities that need dynamic content
+/// override `system_prompt_contribution()` directly.
 ///
 /// # Example
 ///
@@ -180,6 +220,7 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 ///     }
 /// }
 /// ```
+#[async_trait]
 pub trait Capability: Send + Sync {
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
@@ -205,9 +246,34 @@ pub trait Capability: Send + Sync {
         None
     }
 
-    /// Returns text to prepend to the agent's system prompt (optional)
+    /// Returns static text to prepend to the agent's system prompt (optional).
+    ///
+    /// This is the simple sync path for capabilities with static prompts.
+    /// For dynamic content that requires filesystem access, override
+    /// `system_prompt_contribution()` instead.
     fn system_prompt_addition(&self) -> Option<&str> {
         None
+    }
+
+    /// Returns the system prompt contribution for this capability, with access
+    /// to session context (filesystem, etc.).
+    ///
+    /// This is the primary method for contributing to the system prompt.
+    /// The returned string is included as-is in the final prompt (the capability
+    /// is responsible for its own XML wrapping).
+    ///
+    /// The default implementation wraps `system_prompt_addition()` in
+    /// `<capability id="...">` XML tags. Capabilities with dynamic content
+    /// (e.g., `agent_instructions`, `skills`) override this to read from the
+    /// session filesystem.
+    async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
+        self.system_prompt_addition().map(|addition| {
+            format!(
+                "<capability id=\"{}\">\n{}\n</capability>",
+                self.id(),
+                addition
+            )
+        })
     }
 
     /// Returns a preview of the system prompt addition for UI display.
@@ -714,9 +780,9 @@ pub fn get_dependencies(cap_id: &str, registry: &CapabilityRegistry) -> Vec<Stri
 
 /// Collect contributions from capabilities without applying them.
 ///
-/// This extracts system prompt additions, tools, tool definitions, and mount
-/// points from the given capabilities. Use this when you need the raw capability
-/// data before applying it to a config or builder.
+/// Calls `system_prompt_contribution()` (async) on each capability, enabling
+/// dynamic content generation based on session context (e.g., reading AGENTS.md,
+/// discovering skills).
 ///
 /// Note: This function does not collect message filter providers since it doesn't
 /// have access to per-agent capability configs. Use `collect_capabilities_with_configs`
@@ -726,9 +792,11 @@ pub fn get_dependencies(cap_id: &str, registry: &CapabilityRegistry) -> Vec<Stri
 ///
 /// * `capability_ids` - Ordered list of capability IDs to collect
 /// * `registry` - The capability registry containing implementations
-pub fn collect_capabilities(
+/// * `ctx` - Session context for dynamic prompt resolution
+pub async fn collect_capabilities(
     capability_ids: &[String],
     registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
     // Convert to AgentCapabilityConfig with empty configs
     let configs: Vec<AgentCapabilityConfig> = capability_ids
@@ -739,21 +807,23 @@ pub fn collect_capabilities(
         })
         .collect();
 
-    collect_capabilities_with_configs(&configs, registry)
+    collect_capabilities_with_configs(&configs, registry, ctx).await
 }
 
 /// Collect contributions from capabilities with their per-agent configurations.
 ///
-/// This extracts system prompt additions, tools, tool definitions, mount points,
-/// and message filter providers from the given capabilities.
+/// Calls `system_prompt_contribution()` (async) on each capability, enabling
+/// dynamic content generation based on session context.
 ///
 /// # Arguments
 ///
 /// * `capability_configs` - Ordered list of capability configs (ID + per-agent config)
 /// * `registry` - The capability registry containing implementations
-pub fn collect_capabilities_with_configs(
+/// * `ctx` - Session context for dynamic prompt resolution
+pub async fn collect_capabilities_with_configs(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
@@ -771,12 +841,9 @@ pub fn collect_capabilities_with_configs(
                 continue;
             }
 
-            // Collect system prompt addition wrapped in XML tags for clear boundaries
-            if let Some(addition) = capability.system_prompt_addition() {
-                system_prompt_parts.push(format!(
-                    "<capability id=\"{}\">\n{}\n</capability>",
-                    cap_id, addition
-                ));
+            // Collect dynamic system prompt contribution (may read from filesystem)
+            if let Some(contribution) = capability.system_prompt_contribution(ctx).await {
+                system_prompt_parts.push(contribution);
             }
 
             // Collect tools
@@ -827,7 +894,7 @@ pub struct AppliedCapabilities {
 /// Apply capabilities to a base runtime agent configuration.
 ///
 /// This function:
-/// 1. Collects system prompt additions from capabilities (in order)
+/// 1. Collects system prompt contributions from capabilities (in order)
 /// 2. Prepends them to the agent's base system prompt
 /// 3. Collects all tools from capabilities
 /// 4. Returns the modified runtime agent and a tool registry
@@ -837,6 +904,7 @@ pub struct AppliedCapabilities {
 /// * `base_runtime_agent` - The agent's base runtime configuration
 /// * `capability_ids` - Ordered list of capability IDs to apply
 /// * `registry` - The capability registry containing implementations
+/// * `ctx` - Session context for dynamic prompt resolution
 ///
 /// # Returns
 ///
@@ -845,25 +913,27 @@ pub struct AppliedCapabilities {
 ///
 /// # Example
 ///
-/// ```
-/// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry};
+/// ```ignore
+/// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry, SystemPromptContext};
 /// use everruns_core::runtime_agent::RuntimeAgent;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 /// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+/// let ctx = SystemPromptContext::without_file_store(SessionId::new());
 ///
 /// let capability_ids = vec!["current_time".to_string()];
-/// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry);
+/// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry, &ctx).await;
 ///
 /// // The runtime agent now includes CurrentTime tool
 /// assert!(!applied.tool_registry.is_empty());
 /// ```
-pub fn apply_capabilities(
+pub async fn apply_capabilities(
     base_runtime_agent: RuntimeAgent,
     capability_ids: &[String],
     registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
 ) -> AppliedCapabilities {
-    let collected = collect_capabilities(capability_ids, registry);
+    let collected = collect_capabilities(capability_ids, registry, ctx).await;
 
     // Build final system prompt: capability additions + base prompt (wrapped in XML tags)
     let final_system_prompt = match collected.system_prompt_prefix() {
@@ -906,6 +976,11 @@ mod tests {
     use super::*;
     use crate::typed_id::SessionId;
     use uuid::Uuid;
+
+    /// Test helper: dummy context with no file store
+    fn test_ctx() -> SystemPromptContext {
+        SystemPromptContext::without_file_store(SessionId::new())
+    }
 
     // =========================================================================
     // CapabilityRegistry tests
@@ -1052,12 +1127,13 @@ mod tests {
     // apply_capabilities tests
     // =========================================================================
 
-    #[test]
-    fn test_apply_capabilities_empty() {
+    #[tokio::test]
+    async fn test_apply_capabilities_empty() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_runtime_agent.clone(), &[], &registry);
+        let applied =
+            apply_capabilities(base_runtime_agent.clone(), &[], &registry, &test_ctx()).await;
 
         assert_eq!(
             applied.runtime_agent.system_prompt,
@@ -1067,13 +1143,18 @@ mod tests {
         assert!(applied.applied_ids.is_empty());
     }
 
-    #[test]
-    fn test_apply_capabilities_noop() {
+    #[tokio::test]
+    async fn test_apply_capabilities_noop() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied =
-            apply_capabilities(base_runtime_agent.clone(), &["noop".to_string()], &registry);
+        let applied = apply_capabilities(
+            base_runtime_agent.clone(),
+            &["noop".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
 
         // Noop has no system prompt addition or tools
         assert_eq!(
@@ -1084,8 +1165,8 @@ mod tests {
         assert_eq!(applied.applied_ids, vec!["noop"]);
     }
 
-    #[test]
-    fn test_apply_capabilities_current_time() {
+    #[tokio::test]
+    async fn test_apply_capabilities_current_time() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1093,7 +1174,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["current_time".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // CurrentTime has no system prompt addition but has a tool
         assert_eq!(
@@ -1105,8 +1188,8 @@ mod tests {
         assert_eq!(applied.applied_ids, vec!["current_time"]);
     }
 
-    #[test]
-    fn test_apply_capabilities_skips_coming_soon() {
+    #[tokio::test]
+    async fn test_apply_capabilities_skips_coming_soon() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1115,7 +1198,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["research".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // System prompt should not have the research addition
         assert_eq!(
@@ -1125,8 +1210,8 @@ mod tests {
         assert!(applied.applied_ids.is_empty()); // Research was not applied
     }
 
-    #[test]
-    fn test_apply_capabilities_multiple() {
+    #[tokio::test]
+    async fn test_apply_capabilities_multiple() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1134,14 +1219,16 @@ mod tests {
             base_runtime_agent.clone(),
             &["noop".to_string(), "current_time".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(applied.applied_ids, vec!["noop", "current_time"]);
     }
 
-    #[test]
-    fn test_apply_capabilities_preserves_order() {
+    #[tokio::test]
+    async fn test_apply_capabilities_preserves_order() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.2");
 
@@ -1150,13 +1237,15 @@ mod tests {
             base_runtime_agent,
             &["current_time".to_string(), "noop".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         assert_eq!(applied.applied_ids, vec!["current_time", "noop"]);
     }
 
-    #[test]
-    fn test_apply_capabilities_test_math() {
+    #[tokio::test]
+    async fn test_apply_capabilities_test_math() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1164,7 +1253,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["test_math".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // TestMath has system prompt addition and 4 tools
         assert!(applied.runtime_agent.system_prompt.contains("math tools"));
@@ -1201,8 +1292,8 @@ mod tests {
         assert_eq!(applied.tool_registry.len(), 4);
     }
 
-    #[test]
-    fn test_apply_capabilities_test_weather() {
+    #[tokio::test]
+    async fn test_apply_capabilities_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1210,7 +1301,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["test_weather".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // TestWeather has system prompt addition and 2 tools
         assert!(
@@ -1230,8 +1323,8 @@ mod tests {
         assert_eq!(applied.tool_registry.len(), 2);
     }
 
-    #[test]
-    fn test_apply_capabilities_test_math_and_test_weather() {
+    #[tokio::test]
+    async fn test_apply_capabilities_test_math_and_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1239,7 +1332,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["test_math".to_string(), "test_weather".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // Should have both sets of tools
         assert_eq!(applied.tool_registry.len(), 6); // 4 math + 2 weather
@@ -1247,8 +1342,8 @@ mod tests {
         assert!(applied.tool_registry.has("get_weather"));
     }
 
-    #[test]
-    fn test_apply_capabilities_stateless_todo_list() {
+    #[tokio::test]
+    async fn test_apply_capabilities_stateless_todo_list() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1256,7 +1351,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["stateless_todo_list".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // StatelessTodoList has system prompt addition and 1 tool
         assert!(
@@ -1270,8 +1367,8 @@ mod tests {
         assert_eq!(applied.tool_registry.len(), 1);
     }
 
-    #[test]
-    fn test_apply_capabilities_web_fetch() {
+    #[tokio::test]
+    async fn test_apply_capabilities_web_fetch() {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
@@ -1279,7 +1376,9 @@ mod tests {
             base_runtime_agent.clone(),
             &["web_fetch".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         // WebFetch has system prompt from fetchkit's TOOL_LLMTXT and 1 tool
         assert!(
@@ -1297,10 +1396,11 @@ mod tests {
     // XML prompt formatting tests
     // =========================================================================
 
-    #[test]
-    fn test_xml_tags_wrap_capability_prompts() {
+    #[tokio::test]
+    async fn test_xml_tags_wrap_capability_prompts() {
         let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(&["test_math".to_string()], &registry);
+        let collected =
+            collect_capabilities(&["test_math".to_string()], &registry, &test_ctx()).await;
 
         assert_eq!(collected.system_prompt_parts.len(), 1);
         let part = &collected.system_prompt_parts[0];
@@ -1309,13 +1409,15 @@ mod tests {
         assert!(part.contains("math tools"));
     }
 
-    #[test]
-    fn test_xml_tags_multiple_capabilities() {
+    #[tokio::test]
+    async fn test_xml_tags_multiple_capabilities() {
         let registry = CapabilityRegistry::with_builtins();
         let collected = collect_capabilities(
             &["test_math".to_string(), "test_weather".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         assert_eq!(collected.system_prompt_parts.len(), 2);
         assert!(collected.system_prompt_parts[0].starts_with("<capability id=\"test_math\">"));
@@ -1326,12 +1428,13 @@ mod tests {
         assert!(prefix.contains("</capability>\n\n<capability"));
     }
 
-    #[test]
-    fn test_xml_tags_system_prompt_wrapping() {
+    #[tokio::test]
+    async fn test_xml_tags_system_prompt_wrapping() {
         let registry = CapabilityRegistry::with_builtins();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
-        let applied = apply_capabilities(base, &["test_math".to_string()], &registry);
+        let applied =
+            apply_capabilities(base, &["test_math".to_string()], &registry, &test_ctx()).await;
 
         let prompt = &applied.runtime_agent.system_prompt;
         // Capability wrapped
@@ -1341,12 +1444,12 @@ mod tests {
         assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));
     }
 
-    #[test]
-    fn test_no_xml_wrapping_without_capabilities() {
+    #[tokio::test]
+    async fn test_no_xml_wrapping_without_capabilities() {
         let registry = CapabilityRegistry::with_builtins();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
-        let applied = apply_capabilities(base, &[], &registry);
+        let applied = apply_capabilities(base, &[], &registry, &test_ctx()).await;
 
         // No capabilities = no XML wrapping (plain base prompt)
         assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
@@ -1358,13 +1461,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_no_xml_wrapping_for_noop_capability() {
+    #[tokio::test]
+    async fn test_no_xml_wrapping_for_noop_capability() {
         let registry = CapabilityRegistry::with_builtins();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
         // Noop has no system_prompt_addition, so no XML wrapping should occur
-        let applied = apply_capabilities(base, &["noop".to_string()], &registry);
+        let applied = apply_capabilities(base, &["noop".to_string()], &registry, &test_ctx()).await;
 
         assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
         assert!(
@@ -1379,11 +1482,12 @@ mod tests {
     // Mount collection tests
     // =========================================================================
 
-    #[test]
-    fn test_collect_capabilities_includes_mounts() {
+    #[tokio::test]
+    async fn test_collect_capabilities_includes_mounts() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let collected = collect_capabilities(&["sample_data".to_string()], &registry);
+        let collected =
+            collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
 
         assert!(!collected.mounts.is_empty());
         assert_eq!(collected.mounts.len(), 1);
@@ -1391,25 +1495,28 @@ mod tests {
         assert!(collected.mounts[0].is_readonly());
     }
 
-    #[test]
-    fn test_collect_capabilities_empty_mounts_by_default() {
+    #[tokio::test]
+    async fn test_collect_capabilities_empty_mounts_by_default() {
         let registry = CapabilityRegistry::with_builtins();
 
         // Most capabilities don't have mounts
-        let collected = collect_capabilities(&["current_time".to_string()], &registry);
+        let collected =
+            collect_capabilities(&["current_time".to_string()], &registry, &test_ctx()).await;
 
         assert!(collected.mounts.is_empty());
     }
 
-    #[test]
-    fn test_collect_capabilities_combines_mounts() {
+    #[tokio::test]
+    async fn test_collect_capabilities_combines_mounts() {
         let registry = CapabilityRegistry::with_builtins();
 
         // Collect from multiple capabilities - only sample_data has mounts
         let collected = collect_capabilities(
             &["sample_data".to_string(), "current_time".to_string()],
             &registry,
-        );
+            &test_ctx(),
+        )
+        .await;
 
         assert_eq!(collected.mounts.len(), 1);
         assert_eq!(collected.applied_ids.len(), 2);
@@ -1658,22 +1765,22 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_collect_capabilities_with_configs_no_filter_providers() {
+    #[tokio::test]
+    async fn test_collect_capabilities_with_configs_no_filter_providers() {
         let registry = CapabilityRegistry::with_builtins();
         let configs = vec![AgentCapabilityConfig {
             capability_ref: CapabilityId::new("current_time"),
             config: serde_json::json!({}),
         }];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         assert!(collected.message_filter_providers.is_empty());
         assert!(!collected.has_message_filters());
     }
 
-    #[test]
-    fn test_collect_capabilities_with_configs_with_filter_provider() {
+    #[tokio::test]
+    async fn test_collect_capabilities_with_configs_with_filter_provider() {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
@@ -1682,14 +1789,14 @@ mod tests {
             config: serde_json::json!({ "search": "hello" }),
         }];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         assert_eq!(collected.message_filter_providers.len(), 1);
         assert!(collected.has_message_filters());
     }
 
-    #[test]
-    fn test_collect_capabilities_with_configs_filter_priority_order() {
+    #[tokio::test]
+    async fn test_collect_capabilities_with_configs_filter_priority_order() {
         // Create capabilities with different priorities
         struct HighPriorityCapability;
         struct LowPriorityCapability;
@@ -1740,7 +1847,7 @@ mod tests {
             },
         ];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         // Should be sorted by priority (lower first)
         assert_eq!(collected.message_filter_providers.len(), 2);
@@ -1748,8 +1855,8 @@ mod tests {
         assert_eq!(collected.message_filter_providers[1].0.priority(), 10);
     }
 
-    #[test]
-    fn test_collected_capabilities_apply_message_filters() {
+    #[tokio::test]
+    async fn test_collected_capabilities_apply_message_filters() {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
@@ -1758,7 +1865,7 @@ mod tests {
             config: serde_json::json!({ "search": "test_query" }),
         }];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         // Apply filters to a query
         let session_id: SessionId = Uuid::now_v7().into();
@@ -1771,8 +1878,8 @@ mod tests {
         assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
     }
 
-    #[test]
-    fn test_collected_capabilities_apply_multiple_filters_in_priority_order() {
+    #[tokio::test]
+    async fn test_collected_capabilities_apply_multiple_filters_in_priority_order() {
         struct SearchCapability {
             id: &'static str,
             search_term: &'static str,
@@ -1846,7 +1953,7 @@ mod tests {
             },
         ];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         let session_id: SessionId = Uuid::now_v7().into();
         let mut query = MessageQuery::new(session_id);
@@ -1871,8 +1978,8 @@ mod tests {
         assert!(current_time.message_filter_provider().is_none());
     }
 
-    #[test]
-    fn test_collect_capabilities_preserves_config_for_filter_provider() {
+    #[tokio::test]
+    async fn test_collect_capabilities_preserves_config_for_filter_provider() {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
@@ -1886,7 +1993,7 @@ mod tests {
             config: test_config.clone(),
         }];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry);
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         // Verify the config is preserved
         assert_eq!(collected.message_filter_providers.len(), 1);
@@ -1903,10 +2010,11 @@ mod tests {
     // correctly produced by collect_capabilities.
     // =========================================================================
 
-    #[test]
-    fn test_virtual_bash_capability_produces_bash_tool() {
+    #[tokio::test]
+    async fn test_virtual_bash_capability_produces_bash_tool() {
         let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(&["virtual_bash".to_string()], &registry);
+        let collected =
+            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
 
         let tool_names: Vec<&str> = collected
             .tool_definitions
@@ -1924,8 +2032,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generic_harness_capability_set_produces_bash_tool() {
+    #[tokio::test]
+    async fn test_generic_harness_capability_set_produces_bash_tool() {
         // These are the exact capability IDs from the Generic Harness seed data.
         // If any are renamed or removed, this test catches the regression.
         let generic_harness_caps = vec![
@@ -1936,7 +2044,7 @@ mod tests {
         ];
 
         let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(&generic_harness_caps, &registry);
+        let collected = collect_capabilities(&generic_harness_caps, &registry, &test_ctx()).await;
 
         let tool_names: Vec<&str> = collected
             .tool_definitions
@@ -1950,12 +2058,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_collect_capabilities_tool_count_matches_definitions() {
+    #[tokio::test]
+    async fn test_collect_capabilities_tool_count_matches_definitions() {
         // Ensure collected tools (implementations) match tool_definitions count.
         // A mismatch means some tools won't be executable at runtime.
         let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(&["virtual_bash".to_string()], &registry);
+        let collected =
+            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
 
         assert_eq!(
             collected.tools.len(),

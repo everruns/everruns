@@ -21,41 +21,64 @@ Everruns implements AGENTS.md as a built-in capability that reads from the sessi
 | Size limit | 32 KiB max (truncated with warning if exceeded, matching Codex convention) |
 | Missing file | Silently ignored (no error) |
 | Format | Plain markdown, no special syntax, no `@` imports |
-| Architecture | Capability (marker) + ReasonAtom integration (dynamic reader) |
+| Architecture | Self-contained capability with `system_prompt_contribution()` override |
 | Dependencies | None required; `session_file_system` recommended for authoring |
 
 ## Capability Definition
 
+The capability encapsulates all AGENTS.md logic: reading from the session filesystem,
+formatting, size limiting, and XML wrapping. It uses the `system_prompt_contribution()`
+async method (via `SystemPromptContext`) to access the session filesystem.
+
 ```rust
 pub struct AgentInstructionsCapability;
 
+#[async_trait]
 impl Capability for AgentInstructionsCapability {
     fn id(&self) -> &str { "agent_instructions" }
     fn name(&self) -> &str { "Agent Instructions" }
-    fn description(&self) -> &str {
-        "Reads AGENTS.md from the session workspace and includes it as context in the system prompt. Content is re-read on every turn, so changes are picked up automatically."
-    }
     fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
     fn icon(&self) -> Option<&str> { Some("file-text") }
     fn category(&self) -> Option<&str> { Some("Configuration") }
-    // No system_prompt_addition() — content is dynamic (read at runtime)
-    // No tools
-    // No dependencies
+
+    // No static system_prompt_addition — content is dynamic
+
+    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
+        // Reads /AGENTS.md from ctx.file_store
+        // Formats with <agent-instructions> XML wrapping
+        // Returns None if file missing or empty
+    }
 }
 ```
+
+## SystemPromptContext
+
+Capabilities that need dynamic system prompt content receive a `SystemPromptContext`
+with access to session-specific resources:
+
+```rust
+pub struct SystemPromptContext {
+    pub session_id: SessionId,
+    pub file_store: Option<Arc<dyn SessionFileStore>>,
+}
+```
+
+The context is constructed in `ReasonAtom` and passed through the async builder
+methods (`with_harness_async`, `with_agent_async`, `with_capabilities_async`).
 
 ## Integration Flow
 
 ```
 execute_llm_call()
   ├── Load agent + session
-  ├── Resolve capabilities
-  ├── Check: is "agent_instructions" in resolved capabilities?
-  │   └── Yes: read /AGENTS.md from session file store
-  │       ├── File exists: prepend content to system prompt
-  │       ├── File missing: skip silently
-  │       └── File > 32 KiB: truncate + log warning
-  ├── Build RuntimeAgent (capabilities + tools + model)
+  ├── Create SystemPromptContext { session_id, file_store }
+  ├── Build RuntimeAgent using async builder methods
+  │   ├── with_harness_async() — resolves harness capabilities (including agent_instructions)
+  │   ├── with_agent_async() — resolves agent capabilities
+  │   └── with_capabilities_async() — resolves session capabilities
+  │       └── For each capability: call system_prompt_contribution(ctx)
+  │           └── agent_instructions: reads /AGENTS.md from file store
+  ├── Build final RuntimeAgent
   └── Execute LLM call
 ```
 
@@ -71,7 +94,8 @@ XML tags provide clear boundaries between sections. See `specs/xml-prompt-format
 
 ## ReasonAtom Changes
 
-Add optional `SessionFileStore` to ReasonAtom:
+ReasonAtom holds an optional `SessionFileStore` that is passed to capabilities
+via `SystemPromptContext`:
 
 ```rust
 pub struct ReasonAtom<A, S, M, P, E> {

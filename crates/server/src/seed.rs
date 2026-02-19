@@ -1560,9 +1560,9 @@ mod tests {
     /// build a ToolRegistry from harness capabilities. This test verifies that
     /// collect_capabilities on the Generic Harness cap IDs actually produces a
     /// registry containing the 'bash' tool — the exact path that was broken.
-    #[test]
-    fn test_generic_harness_capabilities_produce_bash_tool() {
-        use everruns_core::capabilities::collect_capabilities;
+    #[tokio::test]
+    async fn test_generic_harness_capabilities_produce_bash_tool() {
+        use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
         let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
             everruns_core::DeploymentGrade::Dev,
@@ -1574,7 +1574,8 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
-        let collected = collect_capabilities(&cap_ids, &registry);
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Build a ToolRegistry exactly as the worker does
         let mut tool_registry = everruns_core::ToolRegistry::with_defaults();
@@ -1603,9 +1604,9 @@ mod tests {
 
     /// Verify all Generic Harness capabilities produce tool implementations
     /// (not just definitions). Tools without implementations cause "Tool not found".
-    #[test]
-    fn test_generic_harness_collected_tools_have_implementations() {
-        use everruns_core::capabilities::collect_capabilities;
+    #[tokio::test]
+    async fn test_generic_harness_collected_tools_have_implementations() {
+        use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
         let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
             everruns_core::DeploymentGrade::Dev,
@@ -1617,7 +1618,8 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
-        let collected = collect_capabilities(&cap_ids, &registry);
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Every tool definition must have a matching tool implementation
         assert_eq!(

@@ -13,7 +13,7 @@
 // Individual database-registered skills use `skill:{uuid}` capabilities
 // (handled by SkillCapability). This capability handles dynamic VFS discovery.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -32,6 +32,15 @@ const SKILLS_PATH: &str = "/.agents/skills";
 /// SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session VFS.
 pub struct SkillsDiscoveryCapability;
 
+/// Static skills system prompt (used by sync callers and as fallback)
+const SKILLS_SYSTEM_PROMPT: &str = "You have access to an agent skills system. Skills are instruction packages \
+that can be discovered from the session filesystem.\n\n\
+Skills location: `/.agents/skills/{skill-name}/SKILL.md`\n\n\
+Use `list_skills` to discover available skills. When a skill is relevant to the \
+user's task, use `activate_skill` to load its full instructions into your context. \
+Only activate skills that are relevant to the current task.";
+
+#[async_trait]
 impl Capability for SkillsDiscoveryCapability {
     fn id(&self) -> &str {
         SKILLS_DISCOVERY_CAPABILITY_ID
@@ -63,14 +72,70 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            "You have access to an agent skills system. Skills are instruction packages \
-            that can be discovered from the session filesystem.\n\n\
-            Skills location: `/.agents/skills/{skill-name}/SKILL.md`\n\n\
-            Use `list_skills` to discover available skills. When a skill is relevant to the \
-            user's task, use `activate_skill` to load its full instructions into your context. \
-            Only activate skills that are relevant to the current task.",
-        )
+        Some(SKILLS_SYSTEM_PROMPT)
+    }
+
+    /// Dynamically discovers skills from the session filesystem and includes
+    /// them in the system prompt.
+    ///
+    /// When a file store is available, scans `/.agents/skills/` for SKILL.md
+    /// files and lists discovered skills directly in the prompt. Falls back
+    /// to the static prompt when no file store is available.
+    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
+        let file_store = match ctx.file_store.as_ref() {
+            Some(fs) => fs,
+            None => {
+                // No file store — fall back to static prompt with capability wrapping
+                return Some(format!(
+                    "<capability id=\"{}\">\n{}\n</capability>",
+                    self.id(),
+                    SKILLS_SYSTEM_PROMPT
+                ));
+            }
+        };
+
+        // Scan /.agents/skills/ for SKILL.md files
+        let entries = match file_store.list_directory(ctx.session_id, SKILLS_PATH).await {
+            Ok(entries) => entries,
+            Err(_) => {
+                // Directory doesn't exist — use static prompt
+                return Some(format!(
+                    "<capability id=\"{}\">\n{}\n</capability>",
+                    self.id(),
+                    SKILLS_SYSTEM_PROMPT
+                ));
+            }
+        };
+
+        let mut discovered_skills = Vec::new();
+        for entry in &entries {
+            if !entry.is_directory {
+                continue;
+            }
+
+            let skill_md_path = format!("{}/SKILL.md", entry.path);
+            if let Ok(Some(file)) = file_store.read_file(ctx.session_id, &skill_md_path).await {
+                let content = file.content.as_deref().unwrap_or("");
+                if let Ok(parsed) = crate::skill::parse_skill_md(content) {
+                    discovered_skills.push((parsed.name, parsed.description));
+                }
+            }
+        }
+
+        let mut prompt = String::from(SKILLS_SYSTEM_PROMPT);
+
+        if !discovered_skills.is_empty() {
+            prompt.push_str("\n\nAvailable skills:\n");
+            for (name, description) in &discovered_skills {
+                prompt.push_str(&format!("- **{}**: {}\n", name, description));
+            }
+        }
+
+        Some(format!(
+            "<capability id=\"{}\">\n{}\n</capability>",
+            self.id(),
+            prompt
+        ))
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -1043,15 +1108,18 @@ mod tests {
     // Integration: apply_capabilities
     // ========================================================================
 
-    #[test]
-    fn test_apply_capabilities_with_skills() {
+    #[tokio::test]
+    async fn test_apply_capabilities_with_skills() {
+        use crate::capabilities::SystemPromptContext;
         use crate::runtime_agent::RuntimeAgentBuilder;
 
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let ctx = SystemPromptContext::without_file_store(crate::typed_id::SessionId::new());
         // Use builder pattern which resolves dependencies automatically
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["skills".to_string()], &registry)
+            .with_capabilities(&["skills".to_string()], &registry, &ctx)
+            .await
             .model("gpt-5.2")
             .build();
 
@@ -1078,5 +1146,67 @@ mod tests {
         // Dependency tools (from session_file_system)
         assert!(tool_names.contains(&"read_file"));
         assert!(tool_names.contains(&"write_file"));
+    }
+
+    // ========================================================================
+    // Dynamic system_prompt_contribution tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_contribution_includes_discovered_skills() {
+        let cap = SkillsDiscoveryCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        store.add_file(
+            session_id,
+            "/.agents/skills/pdf-processor/SKILL.md",
+            &valid_skill_md("pdf-processor", "Process PDF files"),
+        );
+        store.add_file(
+            session_id,
+            "/.agents/skills/data-analysis/SKILL.md",
+            &valid_skill_md("data-analysis", "Analyze datasets"),
+        );
+
+        let ctx = SystemPromptContext {
+            session_id,
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(result.contains("<capability id=\"skills\">"));
+        assert!(result.contains("pdf-processor"));
+        assert!(result.contains("data-analysis"));
+        assert!(result.contains("Available skills:"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_static_when_no_file_store() {
+        let cap = SkillsDiscoveryCapability;
+        let ctx = SystemPromptContext::without_file_store(SessionId::new());
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(result.contains("<capability id=\"skills\">"));
+        assert!(result.contains("list_skills"));
+        // No "Available skills:" section
+        assert!(!result.contains("Available skills:"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_static_when_no_skills_dir() {
+        let cap = SkillsDiscoveryCapability;
+        let store = Arc::new(MockFileStore::new());
+
+        let ctx = SystemPromptContext {
+            session_id: SessionId::new(),
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(result.contains("<capability id=\"skills\">"));
+        assert!(result.contains("list_skills"));
+        // No "Available skills:" section (dir doesn't exist)
+        assert!(!result.contains("Available skills:"));
     }
 }

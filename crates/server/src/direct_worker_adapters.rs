@@ -8,7 +8,8 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityRegistry, collect_capabilities, is_mcp_capability,
+    AgentCapabilityConfig, CapabilityRegistry, SystemPromptContext, collect_capabilities,
+    is_mcp_capability,
 };
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
@@ -822,7 +823,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .collect();
 
         if !builtin_cap_ids.is_empty() {
-            let collected = collect_capabilities(&builtin_cap_ids, &self.capability_registry);
+            let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+            let collected =
+                collect_capabilities(&builtin_cap_ids, &self.capability_registry, &ctx).await;
             for tool in collected.tools {
                 registry.register_boxed(tool);
             }

@@ -180,7 +180,8 @@ where
     event_emitter: E,
     /// Optional image resolver for resolving image_file content parts
     image_resolver: Option<Arc<dyn ImageResolver>>,
-    /// Optional file store for reading AGENTS.md (agent_instructions capability)
+    /// Optional file store for capabilities that need filesystem access
+    /// (e.g., agent_instructions reads AGENTS.md, skills_discovery scans for skills)
     file_store: Option<Arc<dyn crate::traits::SessionFileStore>>,
 }
 
@@ -219,11 +220,12 @@ where
         }
     }
 
-    /// Set the file store for reading AGENTS.md (agent_instructions capability)
+    /// Set the file store for capabilities that need filesystem access.
     ///
-    /// When set and the `agent_instructions` capability is enabled, the atom
-    /// reads `/AGENTS.md` from the session workspace on every LLM turn and
-    /// prepends its content to the system prompt.
+    /// Provides filesystem access to capabilities via `SystemPromptContext`.
+    /// Capabilities like `agent_instructions` (reads AGENTS.md) and
+    /// `skills_discovery` (scans for skills) use this to generate dynamic
+    /// system prompt content.
     pub fn with_file_store(mut self, file_store: Arc<dyn crate::traits::SessionFileStore>) -> Self {
         self.file_store = Some(file_store);
         self
@@ -538,67 +540,40 @@ where
             .await?;
 
         // 6. Build runtime agent: harness (base) → agent (optional) → session caps
+        //    Uses async builder methods so capabilities can resolve dynamic system
+        //    prompt content (e.g., reading AGENTS.md, discovering skills).
         let session_capability_ids: Vec<String> = session
             .capabilities
             .iter()
             .map(|cap| cap.capability_id().to_string())
             .collect();
-        let mut builder =
-            RuntimeAgentBuilder::new().with_harness(&harness, &self.capability_registry);
+
+        let prompt_ctx = crate::capabilities::SystemPromptContext {
+            session_id,
+            file_store: self.file_store.clone(),
+        };
+
+        let mut builder = RuntimeAgentBuilder::new()
+            .with_harness(&harness, &self.capability_registry, &prompt_ctx)
+            .await;
         if let Some(ref agent) = agent {
-            builder = builder.with_agent(agent, &self.capability_registry);
+            builder = builder
+                .with_agent(agent, &self.capability_registry, &prompt_ctx)
+                .await;
         }
         builder = builder
-            .with_capabilities(&session_capability_ids, &self.capability_registry)
+            .with_capabilities(
+                &session_capability_ids,
+                &self.capability_registry,
+                &prompt_ctx,
+            )
+            .await
             .tools(mcp_tool_definitions.iter().cloned())
             .model(&model_with_provider.model);
 
         // Add session-level client-side tools (additive to agent tools)
         if !session.tools.is_empty() {
             builder = builder.tools(session.tools.clone());
-        }
-
-        // 6b. Read AGENTS.md if agent_instructions capability is enabled
-        //     Check harness, agent, and session capabilities (any layer can enable it).
-        let has_agent_instructions =
-            harness.capabilities.iter().any(|c| {
-                c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
-            }) || agent
-                .as_ref()
-                .map(|a| {
-                    a.capabilities.iter().any(|c| {
-                        c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
-                    })
-                })
-                .unwrap_or(false)
-                || session_capability_ids
-                    .iter()
-                    .any(|id| id == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID);
-
-        if has_agent_instructions && let Some(ref file_store) = self.file_store {
-            match file_store
-                .read_file(session_id, crate::capabilities::AGENTS_MD_PATH)
-                .await
-            {
-                Ok(Some(file)) => {
-                    if let Some(content) = &file.content
-                        && let Some(formatted) =
-                            crate::capabilities::format_agents_md_content(content)
-                    {
-                        builder = builder.prepend_system_prompt(formatted);
-                    }
-                }
-                Ok(None) => {
-                    // File doesn't exist — silently skip
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        session_id = %session_id,
-                        "Failed to read AGENTS.md, skipping"
-                    );
-                }
-            }
         }
 
         let runtime_agent = builder.build();

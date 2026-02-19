@@ -15,7 +15,8 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, CapabilityRegistry, HarnessId, ModelId, Session, SessionId,
-    SessionStatus, TokenUsage, capabilities::collect_capabilities,
+    SessionStatus, TokenUsage,
+    capabilities::{SystemPromptContext, collect_capabilities},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -152,7 +153,9 @@ impl SessionService {
         }
 
         // Collect mounts from all capabilities
-        let collected = collect_capabilities(&capability_ids, &self.capability_registry);
+        let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
+        let collected =
+            collect_capabilities(&capability_ids, &self.capability_registry, &ctx).await;
 
         if collected.mounts.is_empty() {
             return Ok(()); // No mounts to apply

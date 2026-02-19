@@ -141,6 +141,7 @@ pub use connection_provider::{
     ConnectionValidation, FieldType, FormField,
 };
 
+pub use capabilities::SystemPromptContext;
 pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
@@ -152,8 +153,9 @@ pub use capabilities::{
     SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability, SqlExecuteTool,
     SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool,
     TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
-    WriteTodosTool, apply_capabilities, collect_capabilities_with_configs, get_dependencies,
-    is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
+    WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
+    get_dependencies, is_mcp_capability, mcp_capability_id, parse_mcp_capability_id,
+    resolve_dependencies,
 };
 pub use capabilities::{
     SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

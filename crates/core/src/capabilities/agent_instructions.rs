@@ -5,15 +5,16 @@
 //! context and conventions to agents.
 //!
 //! Design decisions:
-//! - Capability is a marker: no static system_prompt_addition (content is dynamic)
-//! - ReasonAtom reads /AGENTS.md from session file store when this capability is enabled
+//! - Capability encapsulates all AGENTS.md logic: reading, formatting, and injection
+//! - system_prompt_contribution() reads /AGENTS.md from session filesystem via context
 //! - Re-read every turn so edits are picked up immediately
 //! - 32 KiB size limit (truncated with warning), matching Codex convention
 //! - Missing file is silently ignored
 //! - Content wrapped in `<agent-instructions>` XML tags to separate user-provided
 //!   instructions from system capability prompts (reduces prompt injection surface)
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, SystemPromptContext};
+use async_trait::async_trait;
 
 /// Maximum size of AGENTS.md content in bytes (32 KiB).
 pub const MAX_AGENTS_MD_SIZE: usize = 32_768;
@@ -27,6 +28,7 @@ pub const AGENT_INSTRUCTIONS_CAPABILITY_ID: &str = "agent_instructions";
 /// Agent Instructions capability — reads AGENTS.md from session workspace.
 pub struct AgentInstructionsCapability;
 
+#[async_trait]
 impl Capability for AgentInstructionsCapability {
     fn id(&self) -> &str {
         AGENT_INSTRUCTIONS_CAPABILITY_ID
@@ -52,7 +54,31 @@ impl Capability for AgentInstructionsCapability {
         Some("Configuration")
     }
 
-    // No system_prompt_addition — content is dynamic (read at runtime by ReasonAtom)
+    // No static system_prompt_addition — content is dynamic via system_prompt_contribution
+
+    /// Reads AGENTS.md from the session filesystem and returns formatted content.
+    ///
+    /// This replaces the previous approach where ReasonAtom had hardcoded AGENTS.md
+    /// reading logic. Now the capability fully encapsulates its own prompt generation.
+    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
+        let file_store = ctx.file_store.as_ref()?;
+
+        match file_store.read_file(ctx.session_id, AGENTS_MD_PATH).await {
+            Ok(Some(file)) => file.content.as_deref().and_then(format_agents_md_content),
+            Ok(None) => {
+                // File doesn't exist — silently skip
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    session_id = %ctx.session_id,
+                    "Failed to read AGENTS.md, skipping"
+                );
+                None
+            }
+        }
+    }
 
     fn system_prompt_preview(&self) -> Option<String> {
         Some(
@@ -101,6 +127,88 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::capabilities::CapabilityRegistry;
+    use crate::error::Result;
+    use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use crate::traits::SessionFileStore;
+    use crate::typed_id::SessionId;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    /// Mock file store for testing dynamic system prompt contribution
+    struct MockFileStore {
+        content: Option<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionFileStore for MockFileStore {
+        async fn read_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> Result<Option<SessionFile>> {
+            Ok(self.content.as_ref().map(|c| SessionFile {
+                id: Uuid::nil(),
+                session_id: Uuid::nil(),
+                path: AGENTS_MD_PATH.to_string(),
+                name: "AGENTS.md".to_string(),
+                content: Some(c.clone()),
+                encoding: "text".to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: c.len() as i64,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }))
+        }
+
+        async fn write_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+            _content: &str,
+            _encoding: &str,
+        ) -> Result<SessionFile> {
+            unimplemented!("not needed for test")
+        }
+
+        async fn delete_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+            _recursive: bool,
+        ) -> Result<bool> {
+            unimplemented!("not needed for test")
+        }
+
+        async fn list_directory(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> Result<Vec<FileInfo>> {
+            Ok(vec![])
+        }
+
+        async fn stat_file(&self, _session_id: SessionId, _path: &str) -> Result<Option<FileStat>> {
+            Ok(None)
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> Result<Vec<GrepMatch>> {
+            Ok(vec![])
+        }
+
+        async fn create_directory(&self, _session_id: SessionId, _path: &str) -> Result<FileInfo> {
+            unimplemented!("not needed for test")
+        }
+    }
+
+    fn test_session_id() -> SessionId {
+        SessionId::from_uuid(Uuid::nil())
+    }
 
     #[test]
     fn test_capability_metadata() {
@@ -203,5 +311,60 @@ mod tests {
         assert_eq!(MAX_AGENTS_MD_SIZE, 32_768);
         assert_eq!(AGENTS_MD_PATH, "/AGENTS.md");
         assert_eq!(AGENT_INSTRUCTIONS_CAPABILITY_ID, "agent_instructions");
+    }
+
+    // ========================================================================
+    // Dynamic system_prompt_contribution tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_contribution_reads_agents_md() {
+        let cap = AgentInstructionsCapability;
+        let store = Arc::new(MockFileStore {
+            content: Some("## Style\nUse snake_case.".to_string()),
+        });
+        let ctx = SystemPromptContext {
+            session_id: test_session_id(),
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(result.contains("Use snake_case"));
+        assert!(result.starts_with("<agent-instructions"));
+        assert!(result.ends_with("</agent-instructions>"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_none_when_file_missing() {
+        let cap = AgentInstructionsCapability;
+        let store = Arc::new(MockFileStore { content: None });
+        let ctx = SystemPromptContext {
+            session_id: test_session_id(),
+            file_store: Some(store),
+        };
+
+        assert!(cap.system_prompt_contribution(&ctx).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_contribution_none_when_no_file_store() {
+        let cap = AgentInstructionsCapability;
+        let ctx = SystemPromptContext::without_file_store(test_session_id());
+
+        assert!(cap.system_prompt_contribution(&ctx).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_contribution_none_when_empty_content() {
+        let cap = AgentInstructionsCapability;
+        let store = Arc::new(MockFileStore {
+            content: Some("   \n  ".to_string()),
+        });
+        let ctx = SystemPromptContext {
+            session_id: test_session_id(),
+            file_store: Some(store),
+        };
+
+        assert!(cap.system_prompt_contribution(&ctx).await.is_none());
     }
 }

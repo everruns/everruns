@@ -236,10 +236,10 @@ impl PrependTransform for ExcludedNoticeTransform {
 ///
 /// ```
 /// use everruns_core::message_filter::{MessageQuery, MessageFilter};
-/// use uuid::Uuid;
+/// use everruns_core::typed_id::SessionId;
 /// use chrono::Utc;
 ///
-/// let query = MessageQuery::new(Uuid::now_v7())
+/// let query = MessageQuery::new(SessionId::new())
 ///     .with_filter(MessageFilter::TimeRange {
 ///         from: Some(Utc::now() - chrono::Duration::hours(24)),
 ///         to: None,
