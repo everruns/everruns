@@ -35,7 +35,7 @@ jest.mock("lucide-react", () => ({
 }));
 
 // Mock the file hooks
-const mockRefetch = jest.fn();
+const mockRefetch = jest.fn().mockResolvedValue({ data: [] });
 const mockCreateFile = jest.fn();
 const mockCreateDir = jest.fn();
 const mockDeleteFile = jest.fn();
@@ -545,6 +545,8 @@ describe("FileBrowser Directory Expansion", () => {
   });
 
   it("reloads expanded directories on refresh", async () => {
+    mockRefetch.mockResolvedValue({ data: [mockDirectory] });
+
     (useFiles as jest.Mock).mockReturnValue({
       data: [mockDirectory],
       isLoading: false,
