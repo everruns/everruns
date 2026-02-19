@@ -128,7 +128,7 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
 ### Shipping
 
-"Ship" means: implement with extensive test coverage (positive and negative paths), then complete the full Pre-PR Checklist (especially smoke testing new functionality), create PR, and merge when CI is green.
+"Ship" means: implement with extensive test coverage (positive and negative paths), then complete the full Pre-PR Checklist (especially smoke testing impacted functionality in both dev and full modes), create PR, and merge when CI is green.
 
 ### Pre-PR Checklist
 
@@ -141,7 +141,7 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 7. OpenAPI spec fresh: `./scripts/export-openapi.sh`
 8. Docs build: `npm run build` in `apps/docs/`
 9. Rebase on main: `git fetch origin main && git rebase origin/main`
-10. Smoke test new functionality
+10. Smoke test impacted functionality in both dev mode (`just start-dev`) and full mode (`just start-all`)
 11. UI screenshots for UI changes
 12. Test coverage: extensive positive and negative tests; reproduce issue + verify fix, cover touched code paths
 13. Update relevant specs in `specs/`
