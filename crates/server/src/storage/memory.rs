@@ -3274,6 +3274,7 @@ impl InMemoryDatabase {
             id,
             user_id: input.user_id,
             provider: input.provider,
+            connection_type: input.connection_type,
             provider_user_id: input.provider_user_id,
             provider_username: input.provider_username,
             access_token_encrypted: input.access_token_encrypted,

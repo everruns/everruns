@@ -5,47 +5,57 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUserConnections, useDeleteUserConnection } from "@/hooks/use-user-connections";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useUserConnections,
+  useDeleteUserConnection,
+  useConnectionProviders,
+  useCreateApiKeyConnection,
+} from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, Github, LinkIcon, Trash2, Check } from "lucide-react";
+import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { UserConnection } from "@/lib/api/types";
+import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 
-/** Provider metadata for display */
-const providers: Record<string, { name: string; icon: LucideIcon; description: string }> = {
-  github: {
-    name: "GitHub",
-    icon: Github,
-    description: "Install the GitHub App to grant access to selected repositories",
-  },
+/** Icon mapping — lucide icon name to component */
+const iconMap: Record<string, LucideIcon> = {
+  github: Github,
+  cloud: Cloud,
 };
 
-function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
-  const meta = providers[provider];
-  if (meta) {
-    const Icon = meta.icon;
-    return <Icon className={className} />;
-  }
-  return <LinkIcon className={className} />;
+function ProviderIcon({ iconName, className }: { iconName: string; className?: string }) {
+  const Icon = iconMap[iconName] ?? LinkIcon;
+  return <Icon className={className} />;
 }
 
 function ConnectionRow({
   connection,
+  provider,
   onDisconnect,
   isDisconnecting,
 }: {
   connection: UserConnection;
+  provider?: ConnectionProviderType;
   onDisconnect: (provider: string) => void;
   isDisconnecting: boolean;
 }) {
-  const meta = providers[connection.provider];
-  const displayName = meta?.name ?? connection.provider;
+  const displayName = provider?.display_name ?? connection.provider;
+  const icon = provider?.icon ?? "link";
 
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-3">
-        <ProviderIcon provider={connection.provider} className="h-5 w-5" />
+        <ProviderIcon iconName={icon} className="h-5 w-5" />
         <div>
           <div className="font-medium flex items-center gap-2">
             {displayName}
@@ -77,55 +87,176 @@ function ConnectionRow({
 
 function AvailableProviderRow({
   provider,
-  meta,
+  onConnectApiKey,
 }: {
-  provider: string;
-  meta: { name: string; icon: LucideIcon; description: string };
+  provider: ConnectionProviderType;
+  onConnectApiKey: (provider: ConnectionProviderType) => void;
 }) {
   const handleConnect = () => {
-    // Navigate to GitHub App installation flow through the API proxy
-    window.location.href = `${getBackendUrl()}/v1/user/connections/${provider}/authorize`;
+    if (provider.connection_type === "oauth") {
+      window.location.href = `${getBackendUrl()}/v1/user/connections/${provider.provider_id}/authorize`;
+    } else {
+      onConnectApiKey(provider);
+    }
   };
 
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center gap-3">
-        <ProviderIcon provider={provider} className="h-5 w-5" />
+        <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
         <div>
-          <div className="font-medium">{meta.name}</div>
-          <div className="text-sm text-muted-foreground">{meta.description}</div>
+          <div className="font-medium">{provider.display_name}</div>
+          <div className="text-sm text-muted-foreground">{provider.description}</div>
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={handleConnect}>
-        <ExternalLink className="h-4 w-4 mr-1" />
-        Install
+        {provider.connection_type === "oauth" ? (
+          <ExternalLink className="h-4 w-4 mr-1" />
+        ) : (
+          <LinkIcon className="h-4 w-4 mr-1" />
+        )}
+        Connect
       </Button>
     </div>
   );
 }
 
+/** Dialog for entering an API key */
+function ApiKeyDialog({
+  provider,
+  open,
+  onOpenChange,
+}: {
+  provider: ConnectionProviderType | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const createConnection = useCreateApiKeyConnection();
+
+  // Reset form when dialog opens/closes
+  useEffect(() => {
+    if (open) {
+      setFormValues({});
+      setError(null);
+    }
+  }, [open]);
+
+  if (!provider?.form_schema) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const apiKey = formValues["api_key"] ?? "";
+    if (!apiKey.trim()) {
+      setError("API key is required");
+      return;
+    }
+
+    try {
+      await createConnection.mutateAsync({
+        provider: provider.provider_id,
+        apiKey,
+      });
+      onOpenChange(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save connection";
+      // Extract error message from API response if available
+      const apiError = (err as { response?: { data?: string } })?.response?.data;
+      setError(typeof apiError === "string" ? apiError : message);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
+            Connect {provider.display_name}
+          </DialogTitle>
+          <DialogDescription>{provider.description}</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit}>
+          {/* Instructions */}
+          <div className="text-sm text-muted-foreground whitespace-pre-line mb-4 leading-relaxed">
+            {provider.form_schema.instructions_markdown}
+          </div>
+
+          {/* Form fields */}
+          <div className="space-y-4 mb-4">
+            {provider.form_schema.fields.map((field) => (
+              <div key={field.name} className="space-y-2">
+                <Label htmlFor={field.name}>{field.label}</Label>
+                <Input
+                  id={field.name}
+                  type={field.field_type}
+                  required={field.required}
+                  placeholder={field.placeholder}
+                  value={formValues[field.name] ?? ""}
+                  onChange={(e) =>
+                    setFormValues((prev) => ({
+                      ...prev,
+                      [field.name]: e.target.value,
+                    }))
+                  }
+                  autoComplete="off"
+                />
+                {field.help_text && (
+                  <p className="text-xs text-muted-foreground">{field.help_text}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 text-destructive text-sm mb-4">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createConnection.isPending}>
+              {createConnection.isPending ? "Validating..." : "Connect"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ConnectionsPage() {
   const { data: connections = [], isLoading, error } = useUserConnections();
+  const { data: providers = [] } = useConnectionProviders();
   const deleteConnection = useDeleteUserConnection();
   const searchParams = useSearchParams();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [apiKeyProvider, setApiKeyProvider] = useState<ConnectionProviderType | null>(null);
 
   // Show success toast when redirected back from OAuth
   useEffect(() => {
     const connected = searchParams.get("connected");
     if (connected) {
-      const meta = providers[connected];
-      setSuccessMessage(`${meta?.name ?? connected} connected successfully`);
-      // Clear URL param without reload
+      const provider = providers.find((p) => p.provider_id === connected);
+      setSuccessMessage(`${provider?.display_name ?? connected} connected successfully`);
       window.history.replaceState({}, "", "/settings/connections");
       const timer = setTimeout(() => setSuccessMessage(null), 4000);
       return () => clearTimeout(timer);
     }
-  }, [searchParams]);
+  }, [searchParams, providers]);
 
   const handleDisconnect = async (provider: string) => {
-    const meta = providers[provider];
-    const name = meta?.name ?? provider;
+    const meta = providers.find((p) => p.provider_id === provider);
+    const name = meta?.display_name ?? provider;
     if (
       confirm(
         `Disconnect ${name}? New sessions will no longer have access to your ${name} account.`,
@@ -135,11 +266,12 @@ export default function ConnectionsPage() {
     }
   };
 
-  // Determine which providers are not yet connected
+  // Providers not yet connected
   const connectedProviders = new Set(connections.map((c) => c.provider));
-  const availableProviders = Object.entries(providers).filter(
-    ([key]) => !connectedProviders.has(key),
-  );
+  const availableProviders = providers.filter((p) => !connectedProviders.has(p.provider_id));
+
+  // Build provider lookup for connected rows
+  const providerMap = new Map(providers.map((p) => [p.provider_id, p]));
 
   return (
     <div className="space-y-8">
@@ -184,6 +316,7 @@ export default function ConnectionsPage() {
               <ConnectionRow
                 key={conn.provider}
                 connection={conn}
+                provider={providerMap.get(conn.provider)}
                 onDisconnect={handleDisconnect}
                 isDisconnecting={deleteConnection.isPending}
               />
@@ -198,16 +331,29 @@ export default function ConnectionsPage() {
           <div className="mb-4">
             <h2 className="text-lg font-semibold">Available</h2>
             <p className="text-sm text-muted-foreground">
-              Connect additional accounts to enable repository access in sessions.
+              Connect additional accounts to enable access in sessions.
             </p>
           </div>
           <div className="space-y-2">
-            {availableProviders.map(([key, meta]) => (
-              <AvailableProviderRow key={key} provider={key} meta={meta} />
+            {availableProviders.map((provider) => (
+              <AvailableProviderRow
+                key={provider.provider_id}
+                provider={provider}
+                onConnectApiKey={setApiKeyProvider}
+              />
             ))}
           </div>
         </section>
       )}
+
+      {/* API Key entry dialog */}
+      <ApiKeyDialog
+        provider={apiKeyProvider}
+        open={apiKeyProvider !== null}
+        onOpenChange={(open) => {
+          if (!open) setApiKeyProvider(null);
+        }}
+      />
     </div>
   );
 }

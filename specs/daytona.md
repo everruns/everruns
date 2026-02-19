@@ -35,10 +35,27 @@ Daytona exposes two API layers:
 
 ### State Management
 
-All state is stored in session **secrets** (encrypted at rest via AES-256-GCM envelope encryption):
+Per-sandbox state is stored in session **secrets** (encrypted at rest via AES-256-GCM envelope encryption):
 
-- **API key**: secret name `DAYTONA_API_KEY`
 - **Per-sandbox state**: secret name `daytona_sandbox:{sandbox_id}`, value is JSON-serialized `SandboxState`
+
+### API Key Resolution
+
+The Daytona API key is resolved with fallback chain:
+
+1. **Session secret** `DAYTONA_API_KEY` — highest priority, local to session
+2. **User connection** for `daytona` provider — persistent, set up via Settings > Connections
+3. **Error** — guides user to Settings > Connections
+
+### User Connection
+
+Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > Connections > Daytona**:
+
+1. User enters API key (from [Daytona Dashboard](https://app.daytona.io) > API Keys)
+2. Key validated via `GET /sandbox` endpoint
+3. Key encrypted and stored in `user_connections` table
+
+This avoids entering the key in chat (see TM-AGENT-016).
 
 ## Data Model
 
@@ -180,7 +197,7 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
 
 ## Security
 
-- **API Key**: Stored in session secrets (`DAYTONA_API_KEY`), encrypted at rest (TM-DAYTONA-004)
+- **API Key**: Stored in user connections (preferred) or session secrets (`DAYTONA_API_KEY`), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
 - **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
@@ -239,6 +256,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 |------|---------|
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
+| `src/connection.rs` | `DaytonaConnectionProvider` — API-key connection plugin |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
 | `src/tools.rs` | 9 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |

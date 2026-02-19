@@ -532,6 +532,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
+| TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 
 ### Mitigation Details
 
@@ -585,6 +586,13 @@ This is accepted because:
 - `web_fetch` is an opt-in capability, not default
 - The intended use case requires external HTTP access
 - Removing this would break legitimate functionality
+
+**TM-AGENT-016 — Plaintext Secrets in Chat History (OPEN):**
+When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the user to provide one in chat. The user types the key as a chat message, which is stored as plaintext in the `events` table (message content). The `session_secrets` table encrypts the value separately, but the original chat message retains plaintext indefinitely.
+
+- **Impact:** API keys visible in session history, event exports, and any observability pipeline that captures events.
+- **Recommendation:** Prefer Settings UI for credential entry (user connections). Phase out in-chat secret collection. For tools that need credentials, guide users to Settings > Connections instead of requesting secrets in chat. See also TM-CRYPTO-007.
+- **Priority:** High
 
 ## 14. Bash Sandbox (TM-BASH)
 
@@ -733,6 +741,7 @@ Session A cannot access sb_xyz (different session_id in storage query)
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global SSE connection limit with per-user cap |
+| TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 
 ### Accepted Risks
 

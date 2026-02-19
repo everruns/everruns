@@ -47,25 +47,50 @@ pub struct SandboxState {
 // State Management Helpers
 // ============================================================================
 
+/// Resolve Daytona API key with fallback chain:
+/// 1. Session secret DAYTONA_API_KEY (highest priority — most local)
+/// 2. User connection for "daytona" provider (Settings > Connections)
+/// 3. Error with guidance to set up in Settings
 pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
+    // 1. Session secret (highest priority)
+    if let Some(storage) = context.storage_store.as_ref() {
+        match storage
+            .get_secret(context.session_id, DAYTONA_API_KEY_SECRET)
+            .await
+        {
+            Ok(Some(key)) => return Ok(key),
+            Ok(None) => {} // fall through
+            Err(e) => {
+                error!("Failed to read DAYTONA_API_KEY secret: {e}");
+                // Fall through to try user connection
+            }
+        }
+    }
 
-    storage
-        .get_secret(context.session_id, DAYTONA_API_KEY_SECRET)
-        .await
-        .map_err(|e| {
-            error!("Failed to read DAYTONA_API_KEY secret: {e}");
-            ToolExecutionResult::internal_error_msg(format!("Failed to read API key: {e}"))
-        })?
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(
-                "DAYTONA_API_KEY not set. Use `secret_store set DAYTONA_API_KEY <your-key>` first. \
-                 Get your key at https://app.daytona.io/ under API Keys.",
-            )
-        })
+    // 2. User connection
+    if let Some(resolver) = context.connection_resolver.as_ref() {
+        match resolver
+            .get_connection_token(context.session_id, "daytona")
+            .await
+        {
+            Ok(Some(key)) => return Ok(key),
+            Ok(None) => {} // fall through
+            Err(e) => {
+                error!("Failed to resolve Daytona user connection: {e}");
+                // Fall through to error
+            }
+        }
+    }
+
+    // 3. Not found — guide to Settings
+    // THREAT[TM-AGENT-016]: Asking secrets in chat stores them plaintext in events.
+    // Prefer Settings UI for credential entry.
+    Err(ToolExecutionResult::tool_error(
+        "Daytona API key not configured.\n\n\
+         Set up your API key in **Settings > Connections > Daytona**, \
+         or use `secret_store set DAYTONA_API_KEY <key>` for this session only.\n\n\
+         Get your key at https://app.daytona.io/ under API Keys.",
+    ))
 }
 
 pub async fn get_sandbox_state(

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-User connections allow users to link external service accounts (GitHub, GitLab, etc.) to their Everruns account, independent of their authentication provider. A user who logged in via Google or email/password can still connect their GitHub account for repo access. Connection tokens are resolved lazily at tool execution time, enabling tools like `git_clone` to operate as the user without exposing credentials to the LLM.
+User connections allow users to link external service accounts (GitHub, GitLab, Daytona, etc.) to their Everruns account, independent of their authentication provider. A user who logged in via Google or email/password can still connect their GitHub account for repo access, or their Daytona API key for sandbox access. Connection tokens are resolved lazily at tool execution time, enabling tools like `git_clone` or Daytona sandbox tools to operate as the user without exposing credentials to the LLM.
 
 ## Requirements
 
@@ -12,7 +12,8 @@ User connections allow users to link external service accounts (GitHub, GitLab, 
 |-------|------|-------------|
 | `id` | UUID v7 | Internal primary key |
 | `user_id` | UUID | FK to users.id |
-| `provider` | string | `github`, `gitlab`, `bitbucket` |
+| `provider` | string | `github`, `gitlab`, `bitbucket`, `daytona` |
+| `connection_type` | string | `oauth` or `api_key` |
 | `provider_user_id` | string | Provider's user/account ID |
 | `provider_username` | string | Display name (e.g., `octocat`) |
 | `access_token_encrypted` | bytes? | Encrypted OAuth token (NULL for GitHub App) |
@@ -24,6 +25,43 @@ User connections allow users to link external service accounts (GitHub, GitLab, 
 | `updated_at` | timestamp | |
 
 No unique DB constraint on (user_id, provider). Uniqueness enforced in application code. This allows future multi-account support per provider if needed.
+
+### Connection Types
+
+Two connection types:
+
+| Type | Flow | Example Providers |
+|------|------|-------------------|
+| `oauth` | Redirect to provider for authorization | GitHub, GitLab |
+| `api_key` | User enters API key in Settings UI dialog | Daytona |
+
+For `api_key` connections, OAuth-specific fields (`provider_user_id`, `scopes`, `refresh_token_encrypted`, `expires_at`) are NULL. The API key is stored in `access_token_encrypted`.
+
+### Connection Provider Plugin System
+
+API-key providers register themselves via `ConnectionProviderPlugin` (parallel to `IntegrationPlugin`). Each provider defines:
+- `provider_id`, `display_name`, `description`, `icon`
+- `connection_type` (OAuth vs ApiKey)
+- `form_schema` — fields and instructions for the UI dialog
+- `validate()` — async validation of credential before saving
+
+Registration uses `inventory::submit!`. Server discovers providers at runtime via `GET /v1/user/connections/providers`.
+
+### API Key Connection Flow
+
+1. User clicks "Connect" for an API-key provider in Settings > Connections
+2. Dialog renders the provider's `form_schema` (fields + instructions)
+3. User enters API key and submits
+4. `POST /v1/user/connections/{provider}` with `{ api_key: "..." }`
+5. Server validates key via `provider.validate()`
+6. Key encrypted and upserted into `user_connections` with `connection_type = 'api_key'`
+
+**Resolution priority** (for tools like Daytona):
+1. Session secret (highest priority — local to session)
+2. User connection (persistent, configured in Settings)
+3. Error with guidance to Settings > Connections
+
+**Security:** API keys should be entered via the Settings UI, not in chat. Secrets typed in chat are stored plaintext in the events table (see TM-AGENT-016).
 
 ### Connection Method: GitHub App
 
@@ -84,6 +122,37 @@ The token value never appears in tool arguments, tool results, or message histor
 
 ### API Endpoints
 
+#### GET /v1/user/connections/providers
+
+List available connection providers. Includes hardcoded OAuth providers and plugin-registered API-key providers.
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "provider_id": "github",
+      "display_name": "GitHub",
+      "description": "Access private repositories for agent sessions",
+      "icon": "github",
+      "connection_type": "oauth",
+      "form_schema": null
+    },
+    {
+      "provider_id": "daytona",
+      "display_name": "Daytona",
+      "description": "Cloud sandbox environments for code execution",
+      "icon": "cloud",
+      "connection_type": "api_key",
+      "form_schema": {
+        "fields": [{"name": "api_key", "label": "API Key", "field_type": "password", "required": true}],
+        "instructions_markdown": "1. Go to Daytona Dashboard..."
+      }
+    }
+  ]
+}
+```
+
 #### GET /v1/user/connections
 
 List user's connected accounts. Token values never returned.
@@ -94,6 +163,7 @@ List user's connected accounts. Token values never returned.
   "data": [
     {
       "provider": "github",
+      "connection_type": "oauth",
       "provider_username": "octocat",
       "scopes": "contents: write, metadata: read",
       "connected_at": "2026-02-15T10:00:00Z"
@@ -101,6 +171,21 @@ List user's connected accounts. Token values never returned.
   ]
 }
 ```
+
+#### POST /v1/user/connections/{provider}
+
+Create an API-key connection. Validates the key, encrypts, and stores.
+
+**Request:**
+```json
+{ "api_key": "your-api-key" }
+```
+
+**Response:** `201 Created` with `ConnectionResponse`
+
+**Errors:**
+- `404` — Unknown provider
+- `400` — Provider uses OAuth (not API key), or validation failed
 
 #### DELETE /v1/user/connections/{provider}
 

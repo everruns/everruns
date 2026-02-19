@@ -10,12 +10,15 @@
 //! Decision: session_storage dependency for API key and state persistence
 
 pub mod client;
+pub mod connection;
 pub mod state;
 mod tools;
 
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
+use connection::DaytonaConnectionProvider;
 use std::time::Duration;
 
 use tools::{
@@ -25,13 +28,20 @@ use tools::{
 };
 
 // ============================================================================
-// Integration Plugin Registration
+// Plugin Registration
 // ============================================================================
 
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: false,
         factory: || Box::new(DaytonaCapability),
+    }
+}
+
+inventory::submit! {
+    ConnectionProviderPlugin {
+        experimental_only: true,
+        factory: || Box::new(DaytonaConnectionProvider),
     }
 }
 
@@ -88,7 +98,10 @@ impl Capability for DaytonaCapability {
 
 Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with full Linux and network access.
 
-Prerequisite: DAYTONA_API_KEY must be set in session secrets before using any sandbox tool.
+Authentication: Daytona API key is resolved automatically:
+1. Session secret `DAYTONA_API_KEY` (if set for this session)
+2. User connection (if configured in Settings > Connections > Daytona)
+If neither is available, guide the user to set up their key in Settings > Connections.
 
 Tools:
 - `daytona_create_sandbox` - Create and start a new sandbox
@@ -180,6 +193,7 @@ mod tests {
         assert!(prompt.contains("daytona_git_credentials"));
         assert!(prompt.contains("DAYTONA_API_KEY"));
         assert!(prompt.contains("Daytona"));
+        assert!(prompt.contains("Settings > Connections"));
     }
 
     #[test]

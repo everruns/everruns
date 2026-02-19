@@ -1,7 +1,8 @@
 // User Connections API routes
-// Decision: User-scoped (not org-scoped) — token represents user's GitHub identity
+// Decision: User-scoped (not org-scoped) — token represents user's identity
 // Decision: GitHub App installation flow replaces OAuth App for repo access
-// Decision: API-key providers (brave_search) use PUT with encrypted token storage
+// Decision: API-key providers (Daytona etc.) register via ConnectionProviderPlugin
+//   and define their own form schema + validation. Server discovers them at runtime.
 
 use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
@@ -9,18 +10,20 @@ use crate::auth::oauth::GitHubAppService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{FromRef, Path, Query, State},
     http::StatusCode,
     response::Redirect,
     routing::{delete, get, put},
 };
 use chrono::{DateTime, Utc};
+use everruns_core::connection_provider::{
+    ConnectionFormSchema as CoreFormSchema, ConnectionProviderPlugin, ConnectionType,
+};
+use everruns_core::deployment::DeploymentGrade;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
-
-use axum::extract::FromRef;
 
 use crate::storage::models::CreateUserConnectionRow;
 
@@ -39,15 +42,58 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+// ============================================================================
+// Response / Request Types
+// ============================================================================
+
 /// Connection info returned in API responses (never includes token)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConnectionResponse {
     pub provider: String,
+    pub connection_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_username: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scopes: Option<String>,
     pub connected_at: DateTime<Utc>,
+}
+
+/// Provider info for the connections UI
+#[derive(Debug, Serialize)]
+pub struct ProviderResponse {
+    pub provider_id: String,
+    pub display_name: String,
+    pub description: String,
+    pub icon: String,
+    pub connection_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub form_schema: Option<FormSchemaResponse>,
+}
+
+/// Form schema for API-key providers
+#[derive(Debug, Serialize)]
+pub struct FormSchemaResponse {
+    pub fields: Vec<FormFieldResponse>,
+    pub instructions_markdown: String,
+}
+
+/// Single form field
+#[derive(Debug, Serialize)]
+pub struct FormFieldResponse {
+    pub name: String,
+    pub label: String,
+    pub field_type: String,
+    pub required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help_text: Option<String>,
+}
+
+/// Request body for API-key connection creation (plugin-based providers)
+#[derive(Debug, Deserialize)]
+pub struct CreateApiKeyConnectionRequest {
+    pub api_key: String,
 }
 
 /// Request body for API-key-based connections (e.g., Brave Search)
@@ -69,11 +115,22 @@ pub struct GitHubInstallationCallbackQuery {
     pub state: Option<String>,
 }
 
+// ============================================================================
+// Routes
+// ============================================================================
+
 /// Create user connections routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
-        .route("/v1/user/connections/{provider}", delete(delete_connection))
+        .route(
+            "/v1/user/connections/providers",
+            get(list_connection_providers),
+        )
+        .route(
+            "/v1/user/connections/{provider}",
+            delete(delete_connection).post(create_api_key_connection),
+        )
         .route(
             "/v1/user/connections/github/authorize",
             get(github_authorize),
@@ -85,6 +142,10 @@ pub fn routes(state: AppState) -> Router {
         )
         .with_state(state)
 }
+
+// ============================================================================
+// Handlers
+// ============================================================================
 
 /// GET /v1/user/connections — List user's connected accounts
 pub async fn list_connections(
@@ -100,6 +161,7 @@ pub async fn list_connections(
         .into_iter()
         .map(|r| ConnectionResponse {
             provider: r.provider,
+            connection_type: r.connection_type,
             provider_username: r.provider_username,
             scopes: r.scopes,
             connected_at: r.created_at,
@@ -107,6 +169,148 @@ pub async fn list_connections(
         .collect();
 
     Ok(Json(connections))
+}
+
+/// GET /v1/user/connections/providers — List available connection providers
+///
+/// Returns both hardcoded providers (GitHub/OAuth) and plugin-registered
+/// providers (Daytona/API-key). Frontend uses this to render connection forms.
+pub async fn list_connection_providers(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Json<Vec<ProviderResponse>> {
+    let grade = DeploymentGrade::from_env();
+    let mut providers = Vec::new();
+
+    // Hardcoded GitHub OAuth provider (only if configured)
+    if state.auth_config.github_connection.is_some() {
+        providers.push(ProviderResponse {
+            provider_id: "github".to_string(),
+            display_name: "GitHub".to_string(),
+            description: "Access private repositories for agent sessions".to_string(),
+            icon: "github".to_string(),
+            connection_type: "oauth".to_string(),
+            form_schema: None,
+        });
+    }
+
+    // Plugin-registered providers (API-key based)
+    for plugin in inventory::iter::<ConnectionProviderPlugin> {
+        if plugin.experimental_only && !grade.experimental_features_enabled() {
+            continue;
+        }
+        let provider = (plugin.factory)();
+        let form_schema = provider.form_schema().map(|s| form_schema_to_response(&s));
+        let conn_type = match provider.connection_type() {
+            ConnectionType::OAuth => "oauth",
+            ConnectionType::ApiKey => "api_key",
+        };
+        providers.push(ProviderResponse {
+            provider_id: provider.provider_id().to_string(),
+            display_name: provider.display_name().to_string(),
+            description: provider.description().to_string(),
+            icon: provider.icon().to_string(),
+            connection_type: conn_type.to_string(),
+            form_schema,
+        });
+    }
+
+    Json(providers)
+}
+
+/// POST /v1/user/connections/:provider — Create API-key connection
+///
+/// For providers that use direct API key entry (not OAuth).
+/// Validates the key via the provider's validate() method before saving.
+pub async fn create_api_key_connection(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(provider_id): Path<String>,
+    Json(body): Json<CreateApiKeyConnectionRequest>,
+) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, String)> {
+    let grade = DeploymentGrade::from_env();
+
+    // Find the registered ConnectionProvider for this provider_id
+    let provider: Option<Box<dyn everruns_core::connection_provider::ConnectionProvider>> =
+        inventory::iter::<ConnectionProviderPlugin>
+            .into_iter()
+            .filter(|p| !p.experimental_only || grade.experimental_features_enabled())
+            .map(|p| (p.factory)())
+            .find(|p| p.provider_id() == provider_id);
+
+    let provider = provider.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Unknown connection provider: {provider_id}"),
+        )
+    })?;
+
+    // Only API-key providers support direct creation
+    if provider.connection_type() != ConnectionType::ApiKey {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("Provider '{provider_id}' uses OAuth, not API key"),
+        ));
+    }
+
+    let encryption = state.encryption.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Encryption not configured".to_string(),
+        )
+    })?;
+
+    // Validate the API key
+    let validation: everruns_core::connection_provider::ConnectionValidation =
+        provider.validate(&body.api_key).await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("API key validation failed: {e}"),
+            )
+        })?;
+
+    // Encrypt and store
+    let access_token_encrypted = encryption.encrypt_string(&body.api_key).map_err(|e| {
+        tracing::error!("Failed to encrypt API key: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to store connection".to_string(),
+        )
+    })?;
+
+    let row = state
+        .db
+        .upsert_user_connection(CreateUserConnectionRow {
+            user_id: auth.id,
+            provider: provider_id.clone(),
+            connection_type: "api_key".to_string(),
+            provider_user_id: None,
+            provider_username: validation.provider_username.clone(),
+            access_token_encrypted: Some(access_token_encrypted),
+            installation_id: None,
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store {provider_id} connection: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store connection".to_string(),
+            )
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ConnectionResponse {
+            provider: row.provider,
+            connection_type: row.connection_type,
+            provider_username: row.provider_username,
+            scopes: row.scopes,
+            connected_at: row.created_at,
+        }),
+    ))
 }
 
 /// DELETE /v1/user/connections/:provider — Disconnect
@@ -200,6 +404,7 @@ pub async fn github_callback(
         .upsert_user_connection(CreateUserConnectionRow {
             user_id: auth.id,
             provider: "github".to_string(),
+            connection_type: "oauth".to_string(),
             provider_user_id: Some(result.account_id),
             provider_username: Some(result.account_login),
             access_token_encrypted: None,
@@ -277,6 +482,7 @@ pub async fn put_api_key_connection(
         .upsert_user_connection(CreateUserConnectionRow {
             user_id: auth.id,
             provider: provider.clone(),
+            connection_type: "api_key".to_string(),
             provider_user_id: None,
             provider_username: None,
             access_token_encrypted: Some(encrypted),
@@ -295,4 +501,33 @@ pub async fn put_api_key_connection(
         })?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResponse {
+    FormSchemaResponse {
+        instructions_markdown: schema.instructions_markdown.clone(),
+        fields: schema
+            .fields
+            .iter()
+            .map(|f| {
+                let field_type = match f.field_type {
+                    everruns_core::connection_provider::FieldType::Password => "password",
+                    everruns_core::connection_provider::FieldType::Text => "text",
+                    everruns_core::connection_provider::FieldType::Url => "url",
+                };
+                FormFieldResponse {
+                    name: f.name.clone(),
+                    label: f.label.clone(),
+                    field_type: field_type.to_string(),
+                    required: f.required,
+                    placeholder: f.placeholder.clone(),
+                    help_text: f.help_text.clone(),
+                }
+            })
+            .collect(),
+    }
 }

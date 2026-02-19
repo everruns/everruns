@@ -1436,6 +1436,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "image",
+ "inventory",
  "jsonwebtoken",
  "parking_lot",
  "prost",
