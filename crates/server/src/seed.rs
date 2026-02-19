@@ -286,7 +286,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
     SeedHarness {
         id: seed_ids::GENERIC_HARNESS,
         name: "Generic",
-        description: "General-purpose harness with file system, bash, secrets, and session management. Recommended default for most use cases.",
+        description: "General-purpose harness with file system, bash, secrets, session management, and agent skills. Recommended default for most use cases.",
         system_prompt: "You are a helpful assistant.",
         tags: &["generic", "default", "seed"],
         capabilities: &[
@@ -295,6 +295,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
             "session_storage",
             "session",
             "agent_instructions",
+            "skills",
         ],
     },
 ];
@@ -1523,12 +1524,13 @@ mod tests {
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        assert_eq!(generic.capabilities.len(), 5);
+        assert_eq!(generic.capabilities.len(), 6);
         assert!(generic.capabilities.contains(&"session_file_system"));
         assert!(generic.capabilities.contains(&"virtual_bash"));
         assert!(generic.capabilities.contains(&"session_storage"));
         assert!(generic.capabilities.contains(&"session"));
         assert!(generic.capabilities.contains(&"agent_instructions"));
+        assert!(generic.capabilities.contains(&"skills"));
         assert!(generic.tags.contains(&"generic"));
         assert!(generic.tags.contains(&"default"));
     }
@@ -1638,6 +1640,50 @@ mod tests {
             .map(|t| t.name())
             .collect();
         assert!(tool_names.contains(&"bash"), "must include bash tool");
+        assert!(
+            tool_names.contains(&"list_skills"),
+            "must include list_skills tool"
+        );
+        assert!(
+            tool_names.contains(&"activate_skill"),
+            "must include activate_skill tool"
+        );
+    }
+
+    /// Verify Generic Harness includes skills discovery tools.
+    #[tokio::test]
+    async fn test_generic_harness_capabilities_produce_skills_tools() {
+        use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
+
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let generic = SEED_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("Generic harness should exist");
+
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+
+        assert!(
+            tool_names.contains(&"list_skills"),
+            "Generic Harness must include 'list_skills' tool from skills capability, got: {:?}",
+            tool_names
+        );
+        assert!(
+            tool_names.contains(&"activate_skill"),
+            "Generic Harness must include 'activate_skill' tool from skills capability, got: {:?}",
+            tool_names
+        );
     }
 
     // --- seed_all ---

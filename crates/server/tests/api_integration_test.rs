@@ -832,7 +832,7 @@ async fn test_get_generic_harness() {
     assert!(harness.tags.contains(&"generic".to_string()));
     assert!(harness.tags.contains(&"default".to_string()));
 
-    // Verify Generic harness has the expected 5 capabilities
+    // Verify Generic harness has the expected 6 capabilities
     let cap_ids: Vec<&str> = harness
         .capabilities
         .iter()
@@ -840,8 +840,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        5,
-        "Generic harness should have 5 capabilities"
+        6,
+        "Generic harness should have 6 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -863,6 +863,7 @@ async fn test_get_generic_harness() {
         cap_ids.contains(&"agent_instructions"),
         "Should have agent instructions"
     );
+    assert!(cap_ids.contains(&"skills"), "Should have skills discovery");
 }
 
 #[tokio::test]
@@ -1031,11 +1032,11 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "Generic (copy)");
-    // Generic harness has 5 capabilities
+    // Generic harness has 6 capabilities
     assert_eq!(
         copied.capabilities.len(),
-        5,
-        "Copied harness should have same 5 capabilities"
+        6,
+        "Copied harness should have same 6 capabilities"
     );
 }
 

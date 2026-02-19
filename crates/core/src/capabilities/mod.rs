@@ -2041,6 +2041,7 @@ mod tests {
             "virtual_bash".to_string(),
             "session_storage".to_string(),
             "session".to_string(),
+            "skills".to_string(),
         ];
 
         let registry = CapabilityRegistry::with_builtins();
