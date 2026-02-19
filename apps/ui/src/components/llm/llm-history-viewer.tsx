@@ -347,8 +347,6 @@ export interface LlmHistoryViewerProps {
   timestamp?: string;
   /** Whether to show in compact mode */
   compact?: boolean;
-  /** Maximum height for the messages scroll area */
-  maxHeight?: string;
 }
 
 export function LlmHistoryViewer({
@@ -356,7 +354,6 @@ export function LlmHistoryViewer({
   eventId,
   timestamp,
   compact = false,
-  maxHeight = "600px",
 }: LlmHistoryViewerProps) {
   const { messages, output, metadata } = data;
 
@@ -394,10 +391,10 @@ export function LlmHistoryViewer({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col min-h-0 gap-4">
       {/* Header */}
       {(eventId || timestamp) && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="font-mono">
               llm.generation
@@ -417,15 +414,17 @@ export function LlmHistoryViewer({
       )}
 
       {/* Metadata */}
-      <MetadataSection metadata={metadata} />
+      <div className="shrink-0">
+        <MetadataSection metadata={metadata} />
+      </div>
 
-      {/* Messages */}
-      <Card>
-        <CardHeader className="pb-2">
+      {/* Messages - scrollable, takes remaining space */}
+      <Card className="flex flex-col min-h-0 flex-1">
+        <CardHeader className="pb-2 shrink-0">
           <CardTitle className="text-sm">Input Messages ({messages.length})</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
-          <ScrollArea style={{ maxHeight }} className="p-4">
+        <CardContent className="p-0 min-h-0 flex-1">
+          <ScrollArea className="h-full max-h-[40vh] p-4">
             <div className="space-y-3">
               {messages.map((message, index) => (
                 <MessageCard key={message.id || index} message={message} index={index} />
@@ -435,8 +434,10 @@ export function LlmHistoryViewer({
         </CardContent>
       </Card>
 
-      {/* Output */}
-      <OutputSection output={output} />
+      {/* Output - always visible */}
+      <div className="shrink-0">
+        <OutputSection output={output} />
+      </div>
     </div>
   );
 }

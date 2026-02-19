@@ -274,17 +274,18 @@ export default function EventsPage() {
           if (!open) setSelectedGeneration(null);
         }}
       >
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden rounded-lg">
+          <DialogHeader className="shrink-0">
             <DialogTitle>LLM Generation Details</DialogTitle>
           </DialogHeader>
           {selectedGeneration && (
-            <LlmHistoryViewer
-              data={selectedGeneration.data as LlmGenerationData}
-              eventId={selectedGeneration.id}
-              timestamp={selectedGeneration.ts}
-              maxHeight="60vh"
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <LlmHistoryViewer
+                data={selectedGeneration.data as LlmGenerationData}
+                eventId={selectedGeneration.id}
+                timestamp={selectedGeneration.ts}
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>
