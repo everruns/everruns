@@ -26,6 +26,18 @@ pub const SKILLS_DISCOVERY_CAPABILITY_ID: &str = "skills";
 /// Path in session VFS where skills are discovered
 const SKILLS_PATH: &str = "/.agents/skills";
 
+/// Workspace prefix for agent-facing paths (matches file_system capability convention)
+const WORKSPACE_PREFIX: &str = "/workspace";
+
+/// Add workspace prefix for display paths shown to the agent
+fn workspace_path(path: &str) -> String {
+    if path.starts_with('/') {
+        format!("{}{}", WORKSPACE_PREFIX, path)
+    } else {
+        format!("{}/{}", WORKSPACE_PREFIX, path)
+    }
+}
+
 /// Built-in Skills Discovery Capability
 ///
 /// Provides the generic skills mechanism. No skills are bundled — users upload
@@ -35,7 +47,7 @@ pub struct SkillsDiscoveryCapability;
 /// Static skills system prompt (used by sync callers and as fallback)
 const SKILLS_SYSTEM_PROMPT: &str = "You have access to an agent skills system. Skills are instruction packages \
 that can be discovered from the session filesystem.\n\n\
-Skills location: `/.agents/skills/{skill-name}/SKILL.md`\n\n\
+Skills location: `/workspace/.agents/skills/{skill-name}/SKILL.md`\n\n\
 Use `list_skills` to discover available skills. When a skill is relevant to the \
 user's task, use `activate_skill` to load its full instructions into your context. \
 Only activate skills that are relevant to the current task.";
@@ -53,7 +65,7 @@ impl Capability for SkillsDiscoveryCapability {
     fn description(&self) -> &str {
         r#"Discover and activate skills from the session filesystem.
 
-Skills are instruction packages (SKILL.md files) that teach the agent new abilities. Upload skills to `/.agents/skills/{name}/SKILL.md` and the agent will discover them automatically.
+Skills are instruction packages (SKILL.md files) that teach the agent new abilities. Upload skills to `/workspace/.agents/skills/{name}/SKILL.md` and the agent will discover them automatically.
 
 > [!TIP]
 > Use the `list_skills` tool to see available skills, then `activate_skill` to load one."#
@@ -148,7 +160,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 name: "list_skills".to_string(),
                 display_name: Some("List Skills".to_string()),
                 description: "Discover available skills from the session filesystem. \
-                    Scans /.agents/skills/ for SKILL.md files and returns their names \
+                    Scans /workspace/.agents/skills/ for SKILL.md files and returns their names \
                     and descriptions."
                     .to_string(),
                 parameters: serde_json::json!({
@@ -162,7 +174,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 name: "activate_skill".to_string(),
                 display_name: Some("Activate Skill".to_string()),
                 description: "Activate a skill by name to load its full instructions. \
-                    The skill must exist at /.agents/skills/{name}/SKILL.md in the \
+                    The skill must exist at /workspace/.agents/skills/{name}/SKILL.md in the \
                     session filesystem."
                     .to_string(),
                 parameters: serde_json::json!({
@@ -249,7 +261,7 @@ impl Tool for ListSkillsTool {
                 // Directory doesn't exist yet — no skills available
                 return ToolExecutionResult::success(serde_json::json!({
                     "skills": [],
-                    "message": "No skills found. Upload skills to /.agents/skills/{name}/SKILL.md"
+                    "message": "No skills found. Upload skills to /workspace/.agents/skills/{name}/SKILL.md"
                 }));
             }
         };
@@ -272,14 +284,14 @@ impl Tool for ListSkillsTool {
                         skills.push(serde_json::json!({
                             "name": parsed.name,
                             "description": parsed.description,
-                            "path": skill_md_path,
+                            "path": workspace_path(&skill_md_path),
                             "version": parsed.version,
                         }));
                     }
                     Err(errors) => {
                         skills.push(serde_json::json!({
                             "name": entry.name,
-                            "path": skill_md_path,
+                            "path": workspace_path(&skill_md_path),
                             "error": format!("Invalid SKILL.md: {}", errors.join(", ")),
                         }));
                     }
@@ -290,7 +302,7 @@ impl Tool for ListSkillsTool {
         ToolExecutionResult::success(serde_json::json!({
             "skills": skills,
             "count": skills.len(),
-            "skills_path": SKILLS_PATH,
+            "skills_path": workspace_path(SKILLS_PATH),
         }))
     }
 }
@@ -378,8 +390,9 @@ impl Tool for ActivateSkillFromVfsTool {
             Ok(Some(f)) => f,
             Ok(None) => {
                 return ToolExecutionResult::tool_error(format!(
-                    "Skill '{name}' not found at {skill_md_path}. \
-                     Use list_skills to see available skills."
+                    "Skill '{name}' not found at {}. \
+                     Use list_skills to see available skills.",
+                    workspace_path(&skill_md_path)
                 ));
             }
             Err(e) => {
@@ -407,7 +420,7 @@ impl Tool for ActivateSkillFromVfsTool {
                     Ok(entries) => entries
                         .iter()
                         .filter(|e| !e.is_directory && e.name != "SKILL.md")
-                        .map(|e| e.path.clone())
+                        .map(|e| workspace_path(&e.path))
                         .collect::<Vec<_>>(),
                     Err(_) => vec![],
                 };
@@ -425,7 +438,8 @@ impl Tool for ActivateSkillFromVfsTool {
                 ToolExecutionResult::success(result)
             }
             Err(errors) => ToolExecutionResult::tool_error(format!(
-                "Invalid SKILL.md at {skill_md_path}: {}",
+                "Invalid SKILL.md at {}: {}",
+                workspace_path(&skill_md_path),
                 errors.join(", ")
             )),
         }
@@ -666,7 +680,7 @@ mod tests {
         let cap = SkillsDiscoveryCapability;
         let prompt = cap.system_prompt_addition().unwrap();
 
-        assert!(prompt.contains("/.agents/skills/"));
+        assert!(prompt.contains("/workspace/.agents/skills/"));
         assert!(prompt.contains("list_skills"));
         assert!(prompt.contains("activate_skill"));
     }
@@ -1052,7 +1066,7 @@ mod tests {
                 // Should have the extra files (not SKILL.md)
                 assert!(!bundled.is_empty());
                 let paths: Vec<&str> = bundled.iter().map(|f| f.as_str().unwrap()).collect();
-                assert!(paths.contains(&"/.agents/skills/data-tool/README.md"));
+                assert!(paths.contains(&"/workspace/.agents/skills/data-tool/README.md"));
                 // scripts/run.py is nested so won't be a direct child
             }
             other => panic!("Expected Success, got: {:?}", other),
@@ -1129,8 +1143,10 @@ mod tests {
             "System prompt should mention list_skills tool"
         );
         assert!(
-            runtime_agent.system_prompt.contains("/.agents/skills/"),
-            "System prompt should mention skills path"
+            runtime_agent
+                .system_prompt
+                .contains("/workspace/.agents/skills/"),
+            "System prompt should mention skills path with workspace prefix"
         );
         assert!(
             runtime_agent

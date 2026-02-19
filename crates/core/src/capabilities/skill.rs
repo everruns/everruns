@@ -30,6 +30,9 @@ pub const SKILL_CAPABILITY_PREFIX: &str = "skill:";
 /// Default path for filesystem-based skill discovery
 pub const SKILLS_DISCOVERY_PATH: &str = "/.agents/skills";
 
+/// Workspace prefix for agent-facing paths (matches file_system capability convention)
+const WORKSPACE_PREFIX: &str = "/workspace";
+
 /// Maximum number of skills in a single capability
 pub const MAX_SKILLS_PER_CAPABILITY: usize = 50;
 
@@ -168,7 +171,10 @@ impl SkillCapability {
                 skill.description
             ));
             if let SkillSource::Filesystem { ref path } = skill.source {
-                xml.push_str(&format!("    <location>{}/SKILL.md</location>\n", path));
+                xml.push_str(&format!(
+                    "    <location>{}{}/SKILL.md</location>\n",
+                    WORKSPACE_PREFIX, path
+                ));
             }
             xml.push_str("  </skill>\n");
         }
@@ -376,10 +382,10 @@ impl Tool for ActivateSkillTool {
                     let file_list: Vec<&str> =
                         skill.files.iter().map(|(path, _)| path.as_str()).collect();
                     result.push_str(&format!(
-                        "\n\nBundled files are available at /skills/{name}/:\n{}",
+                        "\n\nBundled files are available at {WORKSPACE_PREFIX}/skills/{name}/:\n{}",
                         file_list
                             .iter()
-                            .map(|f| format!("- /skills/{name}/{f}"))
+                            .map(|f| format!("- {WORKSPACE_PREFIX}/skills/{name}/{f}"))
                             .collect::<Vec<_>>()
                             .join("\n")
                     ));
@@ -547,8 +553,11 @@ mod tests {
         assert!(prompt.contains("<description>Extract text from PDFs</description>"));
         assert!(prompt.contains("activate_skill"));
         assert!(prompt.contains("</available_skills>"));
-        // Filesystem skills include location
-        assert!(prompt.contains("<location>/.agents/skills/data-analysis/SKILL.md</location>"));
+        // Filesystem skills include location with workspace prefix
+        assert!(
+            prompt
+                .contains("<location>/workspace/.agents/skills/data-analysis/SKILL.md</location>")
+        );
     }
 
     #[test]
@@ -644,7 +653,7 @@ mod tests {
             ToolExecutionResult::Success(value) => {
                 assert_eq!(value["files_mounted"], true);
                 let instr = value["instructions"].as_str().unwrap();
-                assert!(instr.contains("/skills/data-skill/scripts/run.py"));
+                assert!(instr.contains("/workspace/skills/data-skill/scripts/run.py"));
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
@@ -759,7 +768,7 @@ mod tests {
         assert!(xml.ends_with("</available_skills>"));
         assert!(xml.contains("<name>my-skill</name>"));
         assert!(xml.contains("<description>Does cool things</description>"));
-        // Registry skills don't have location
+        // Registry skills don't have location (only filesystem skills do)
         assert!(!xml.contains("<location>"));
     }
 
