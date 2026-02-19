@@ -11,7 +11,10 @@
 // Result: [session_caps] [agent_caps] [agent_prompt] [harness_caps] [harness_prompt]
 
 use crate::agent::Agent;
-use crate::capabilities::{CapabilityRegistry, collect_capabilities, resolve_dependencies};
+use crate::capabilities::{
+    CapabilityRegistry, SystemPromptContext, collect_capabilities, collect_capabilities_async,
+    resolve_dependencies,
+};
 use crate::harness::Harness;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
@@ -245,6 +248,103 @@ impl RuntimeAgentBuilder {
     /// Build the runtime agent
     pub fn build(self) -> RuntimeAgent {
         self.runtime_agent
+    }
+
+    // ========================================================================
+    // Async variants (use dynamic system prompt contributions)
+    // ========================================================================
+
+    /// Apply a Harness's configuration with dynamic system prompt resolution.
+    ///
+    /// Like `with_harness()`, but calls `system_prompt_contribution()` on each
+    /// capability, which can access the session filesystem for dynamic content.
+    pub async fn with_harness_async(
+        self,
+        harness: &Harness,
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
+        let capability_ids: Vec<String> = harness
+            .capabilities
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
+
+        self.system_prompt(&harness.system_prompt)
+            .with_capabilities_async(&capability_ids, registry, ctx)
+            .await
+    }
+
+    /// Apply an Agent's configuration with dynamic system prompt resolution.
+    ///
+    /// Like `with_agent()`, but calls `system_prompt_contribution()` on each
+    /// capability, which can access the session filesystem for dynamic content.
+    pub async fn with_agent_async(
+        self,
+        agent: &Agent,
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
+        let capability_ids: Vec<String> = agent
+            .capabilities
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
+
+        let mut builder = self
+            .system_prompt(&agent.system_prompt)
+            .with_capabilities_async(&capability_ids, registry, ctx)
+            .await;
+
+        // Add agent-level client-side tools
+        if !agent.tools.is_empty() {
+            builder = builder.tools(agent.tools.clone());
+        }
+
+        builder
+    }
+
+    /// Apply capabilities with dynamic system prompt resolution.
+    ///
+    /// Like `with_capabilities()`, but calls `system_prompt_contribution()` on
+    /// each capability (async), enabling dynamic content from the session
+    /// filesystem (e.g., reading AGENTS.md, discovering skills).
+    pub async fn with_capabilities_async(
+        mut self,
+        capability_ids: &[String],
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
+        // Resolve dependencies first (dependencies come before dependents)
+        let resolved_ids = match resolve_dependencies(capability_ids, registry) {
+            Ok(resolved) => resolved.resolved_ids,
+            Err(e) => {
+                tracing::warn!("Failed to resolve capability dependencies: {}", e);
+                capability_ids.to_vec()
+            }
+        };
+
+        let collected = collect_capabilities_async(&resolved_ids, registry, ctx).await;
+
+        // Apply system prompt additions (prepend to existing, wrap base in XML tags)
+        if let Some(prefix) = collected.system_prompt_prefix() {
+            if !self.runtime_agent.system_prompt.is_empty()
+                && !self.runtime_agent.system_prompt.contains("<system-prompt>")
+            {
+                self.runtime_agent.system_prompt = format!(
+                    "<system-prompt>\n{}\n</system-prompt>",
+                    self.runtime_agent.system_prompt
+                );
+            }
+            self = self.prepend_system_prompt(prefix);
+        }
+
+        // Apply tool definitions
+        if !collected.tool_definitions.is_empty() {
+            self = self.tools(collected.tool_definitions);
+        }
+
+        self
     }
 }
 

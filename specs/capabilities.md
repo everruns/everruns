@@ -203,12 +203,14 @@ This allows the same capability to behave differently per-agent.
 Capabilities are defined as trait implementations in the core crate:
 
 ```rust
+#[async_trait]
 pub trait Capability: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn status(&self) -> CapabilityStatus;
     fn system_prompt_addition(&self) -> Option<&str> { None }
+    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> { ... }
     fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
     fn icon(&self) -> Option<&str> { None }
     fn category(&self) -> Option<&str> { None }
@@ -219,6 +221,24 @@ pub trait Capability: Send + Sync {
 ```
 
 The `CapabilityRegistry` in core holds all registered capability implementations. The API layer converts trait objects to DTOs using `Capability::from_core()`.
+
+##### System Prompt Methods
+
+- **`system_prompt_addition()`** — Sync method returning static `&str`. Used by the sync collection path (tools/mounts only callers).
+- **`system_prompt_contribution(ctx)`** — Async method receiving `SystemPromptContext` with session filesystem access. The default wraps `system_prompt_addition()` in `<capability id="...">` XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override this to read from the session filesystem.
+
+```rust
+pub struct SystemPromptContext {
+    pub session_id: SessionId,
+    pub file_store: Option<Arc<dyn SessionFileStore>>,
+}
+```
+
+##### Collection Functions
+
+- **`collect_capabilities()`** — Sync. Collects tools, mounts, and static prompts. Used by worker adapters.
+- **`collect_capabilities_async(ctx)`** — Async. Calls `system_prompt_contribution()` for dynamic prompts. Used by the agent loop.
+- **`RuntimeAgentBuilder::with_capabilities_async(ctx)`** — Async builder method using `collect_capabilities_async`.
 
 **Note**: The `message_filter_provider()` method returns an optional filter provider that can modify how messages are retrieved for sessions using this capability. See the [Message Filters](#message-filters) section for details.
 
@@ -748,7 +768,7 @@ When a session executes:
 3. **Fetch Agent Capabilities**: Get agent's enabled capabilities via `get_agent_capabilities(agent_id)`
 4. **Resolve Capabilities**: For each capability (ordered by `position`):
    - Look up `InternalCapability` from registry by string ID
-   - Collect `system_prompt_addition` texts
+   - Call `system_prompt_contribution(ctx)` (async) for dynamic prompt content
    - Collect `tools` definitions
 5. **Apply Session Capabilities**: Session-level capabilities are applied **after** agent capabilities (additive):
    - Session capabilities extend the agent's tools

@@ -23,6 +23,9 @@ use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
+use crate::traits::SessionFileStore;
+use crate::typed_id::SessionId;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -146,6 +149,32 @@ pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{WebFetchCapability, WebFetchTool};
 
 // ============================================================================
+// System Prompt Context
+// ============================================================================
+
+/// Context provided to capabilities when resolving dynamic system prompt contributions.
+///
+/// This gives capabilities access to session-specific resources (filesystem, etc.)
+/// so they can generate system prompt content at runtime rather than returning
+/// only static text.
+pub struct SystemPromptContext {
+    /// The current session ID
+    pub session_id: SessionId,
+    /// Optional file store for reading session files (e.g., AGENTS.md)
+    pub file_store: Option<Arc<dyn SessionFileStore>>,
+}
+
+impl SystemPromptContext {
+    /// Create context with no file store (for callers that don't need filesystem access)
+    pub fn without_file_store(session_id: SessionId) -> Self {
+        Self {
+            session_id,
+            file_store: None,
+        }
+    }
+}
+
+// ============================================================================
 // Capability Trait
 // ============================================================================
 
@@ -154,6 +183,17 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 /// A capability can contribute:
 /// - System prompt additions (prepended to agent's system prompt)
 /// - Tools (added to agent's available tools)
+///
+/// # System Prompt Contributions
+///
+/// Capabilities provide system prompt content via `system_prompt_contribution()`.
+/// This async method receives a `SystemPromptContext` with access to the session
+/// filesystem, allowing capabilities to generate dynamic content (e.g., reading
+/// AGENTS.md or scanning for skills).
+///
+/// The default implementation wraps the static `system_prompt_addition()` text
+/// in `<capability id="...">` XML tags. Capabilities that need dynamic content
+/// override `system_prompt_contribution()` directly.
 ///
 /// # Example
 ///
@@ -180,6 +220,7 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 ///     }
 /// }
 /// ```
+#[async_trait]
 pub trait Capability: Send + Sync {
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
@@ -205,9 +246,34 @@ pub trait Capability: Send + Sync {
         None
     }
 
-    /// Returns text to prepend to the agent's system prompt (optional)
+    /// Returns static text to prepend to the agent's system prompt (optional).
+    ///
+    /// This is the simple sync path for capabilities with static prompts.
+    /// For dynamic content that requires filesystem access, override
+    /// `system_prompt_contribution()` instead.
     fn system_prompt_addition(&self) -> Option<&str> {
         None
+    }
+
+    /// Returns the system prompt contribution for this capability, with access
+    /// to session context (filesystem, etc.).
+    ///
+    /// This is the primary method for contributing to the system prompt.
+    /// The returned string is included as-is in the final prompt (the capability
+    /// is responsible for its own XML wrapping).
+    ///
+    /// The default implementation wraps `system_prompt_addition()` in
+    /// `<capability id="...">` XML tags. Capabilities with dynamic content
+    /// (e.g., `agent_instructions`, `skills`) override this to read from the
+    /// session filesystem.
+    async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
+        self.system_prompt_addition().map(|addition| {
+            format!(
+                "<capability id=\"{}\">\n{}\n</capability>",
+                self.id(),
+                addition
+            )
+        })
     }
 
     /// Returns a preview of the system prompt addition for UI display.
@@ -777,6 +843,93 @@ pub fn collect_capabilities_with_configs(
                     "<capability id=\"{}\">\n{}\n</capability>",
                     cap_id, addition
                 ));
+            }
+
+            // Collect tools
+            tools.extend(capability.tools());
+
+            // Collect tool definitions
+            tool_definitions.extend(capability.tool_definitions());
+
+            // Collect mount points
+            mounts.extend(capability.mounts());
+
+            // Collect message filter provider
+            if let Some(provider) = capability.message_filter_provider() {
+                message_filter_providers.push((provider, cap_config.config.clone()));
+            }
+
+            applied_ids.push(cap_id.to_string());
+        }
+    }
+
+    // Sort message filter providers by priority (lower = earlier)
+    message_filter_providers.sort_by_key(|(p, _)| p.priority());
+
+    CollectedCapabilities {
+        system_prompt_parts,
+        tools,
+        tool_definitions,
+        mounts,
+        message_filter_providers,
+        applied_ids,
+    }
+}
+
+/// Async collection of capability contributions including dynamic system prompts.
+///
+/// Unlike `collect_capabilities_with_configs` (sync), this calls each capability's
+/// `system_prompt_contribution()` method which can access the session filesystem
+/// for dynamic content (e.g., reading AGENTS.md, discovering skills).
+///
+/// Use this in async contexts (like the agent loop) where capabilities need
+/// filesystem access. For sync contexts that only need tools/mounts, use
+/// `collect_capabilities` instead.
+pub async fn collect_capabilities_async(
+    capability_ids: &[String],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+) -> CollectedCapabilities {
+    let configs: Vec<AgentCapabilityConfig> = capability_ids
+        .iter()
+        .map(|id| AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(id),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+        })
+        .collect();
+
+    collect_capabilities_with_configs_async(&configs, registry, ctx).await
+}
+
+/// Async collection of capability contributions with per-agent configurations.
+///
+/// This is the async counterpart of `collect_capabilities_with_configs`.
+/// It calls `system_prompt_contribution()` (async) on each capability,
+/// enabling dynamic content generation based on session context.
+pub async fn collect_capabilities_with_configs_async(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+) -> CollectedCapabilities {
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut tools: Vec<Box<dyn Tool>> = Vec::new();
+    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
+    let mut mounts: Vec<MountPoint> = Vec::new();
+    let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
+        Vec::new();
+    let mut applied_ids: Vec<String> = Vec::new();
+
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
+        if let Some(capability) = registry.get(cap_id) {
+            // Only collect from available capabilities
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+
+            // Collect dynamic system prompt contribution (may read from filesystem)
+            if let Some(contribution) = capability.system_prompt_contribution(ctx).await {
+                system_prompt_parts.push(contribution);
             }
 
             // Collect tools
