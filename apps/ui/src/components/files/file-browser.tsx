@@ -129,6 +129,11 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
     }
   }, [rootFiles]);
 
+  // Auto-refresh when Workspace tab becomes active (component remounts on tab switch)
+  useEffect(() => {
+    refetchRoot();
+  }, [refetchRoot]);
+
   const handleSelect = useCallback(
     (path: string) => {
       // Find the file info for this path
@@ -172,9 +177,14 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
     [loadedDirs, loadDirectory],
   );
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setLoadedDirs(new Map());
-    refetchRoot();
+    // Await refetch and explicitly set data to handle React Query structural sharing
+    // (if server returns identical data, rootFiles ref won't change and the useEffect won't fire)
+    const { data } = await refetchRoot();
+    if (data) {
+      setLoadedDirs((prev) => new Map(prev).set("/workspace", data));
+    }
     // Reload expanded subdirectories
     for (const path of expandedPaths) {
       if (path !== "/workspace") {
