@@ -16,10 +16,17 @@ import { cn } from "@/lib/utils";
 interface EventFilterProps {
   hideDeltaEvents: boolean;
   onHideDeltaEventsChange: (hide: boolean) => void;
+  onlyLlmGeneration: boolean;
+  onOnlyLlmGenerationChange: (only: boolean) => void;
 }
 
-export function EventFilter({ hideDeltaEvents, onHideDeltaEventsChange }: EventFilterProps) {
-  const activeFilterCount = hideDeltaEvents ? 1 : 0;
+export function EventFilter({
+  hideDeltaEvents,
+  onHideDeltaEventsChange,
+  onlyLlmGeneration,
+  onOnlyLlmGenerationChange,
+}: EventFilterProps) {
+  const activeFilterCount = (hideDeltaEvents ? 1 : 0) + (onlyLlmGeneration ? 1 : 0);
 
   return (
     <DropdownMenu>
@@ -43,6 +50,12 @@ export function EventFilter({ hideDeltaEvents, onHideDeltaEventsChange }: EventF
               onCheckedChange={onHideDeltaEventsChange}
             >
               Hide streaming events
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={onlyLlmGeneration}
+              onCheckedChange={onOnlyLlmGenerationChange}
+            >
+              Only llm.generation events
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
