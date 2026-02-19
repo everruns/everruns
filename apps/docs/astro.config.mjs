@@ -71,6 +71,10 @@ export default defineConfig({
           ],
         },
         {
+          label: "Integrations",
+          autogenerate: { directory: "integrations" },
+        },
+        {
           label: "Observability",
           autogenerate: { directory: "observability" },
         },

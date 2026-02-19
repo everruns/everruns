@@ -59,7 +59,7 @@ fn test_daytona_capability_metadata() {
 
     assert_eq!(cap.id(), "daytona");
     assert_eq!(cap.name(), "Daytona");
-    assert_eq!(cap.icon(), Some("cloud"));
+    assert_eq!(cap.icon(), Some("daytona"));
     assert_eq!(cap.category(), Some("Execution"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);
     assert_eq!(cap.tools().len(), 9);

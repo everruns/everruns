@@ -30,7 +30,7 @@ impl ConnectionProvider for DaytonaConnectionProvider {
     }
 
     fn icon(&self) -> &str {
-        "cloud"
+        "daytona"
     }
 
     fn connection_type(&self) -> ConnectionType {
@@ -87,7 +87,7 @@ mod tests {
         assert_eq!(p.provider_id(), "daytona");
         assert_eq!(p.display_name(), "Daytona");
         assert_eq!(p.connection_type(), ConnectionType::ApiKey);
-        assert_eq!(p.icon(), "cloud");
+        assert_eq!(p.icon(), "daytona");
     }
 
     #[test]

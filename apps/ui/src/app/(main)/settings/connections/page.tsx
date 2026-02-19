@@ -27,11 +27,13 @@ import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, AlertCircle } fro
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { getCapabilityIcon } from "@/lib/capability-icons";
 
 /** Icon mapping — lucide icon name to component */
 const iconMap: Record<string, LucideIcon> = {
   github: Github,
   cloud: Cloud,
+  daytona: getCapabilityIcon("daytona"),
 };
 
 function ProviderIcon({ iconName, className }: { iconName: string; className?: string }) {
