@@ -559,17 +559,21 @@ where
         }
 
         // 6b. Read AGENTS.md if agent_instructions capability is enabled
-        let has_agent_instructions = agent
-            .as_ref()
-            .map(|a| {
-                a.capabilities.iter().any(|c| {
-                    c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
+        //     Check harness, agent, and session capabilities (any layer can enable it).
+        let has_agent_instructions =
+            harness.capabilities.iter().any(|c| {
+                c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
+            }) || agent
+                .as_ref()
+                .map(|a| {
+                    a.capabilities.iter().any(|c| {
+                        c.capability_id() == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID
+                    })
                 })
-            })
-            .unwrap_or(false)
-            || session_capability_ids
-                .iter()
-                .any(|id| id == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID);
+                .unwrap_or(false)
+                || session_capability_ids
+                    .iter()
+                    .any(|id| id == crate::capabilities::AGENT_INSTRUCTIONS_CAPABILITY_ID);
 
         if has_agent_instructions && let Some(ref file_store) = self.file_store {
             match file_store

@@ -25,7 +25,7 @@ The empty harness. No capabilities, no opinions. Intended as a blank canvas for 
 
 ### Generic
 
-The recommended default harness. Bundles the core capabilities needed for general-purpose agent work: file system access, bash execution, secret management, and session metadata.
+The recommended default harness. Bundles the core capabilities needed for general-purpose agent work: file system access, bash execution, secret management, session metadata, and project instructions.
 
 | Property | Value |
 |----------|-------|
@@ -42,6 +42,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
 | `session_storage` | Session Storage | Key/value store and encrypted secret storage |
 | `session` | Session | Session info access and title management |
+| `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
 
 **Use cases:**
 - Default harness for most agents
@@ -57,6 +58,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | Why is Generic the recommended default? | Most agents need file system and bash access. Bundling these in a harness avoids repetitive per-agent capability setup. |
 | Why include `session_storage` in Generic? | Secret storage is needed for agents that interact with external APIs (API keys, tokens). KV storage is useful for persisting state. |
 | Why include `session` in Generic? | Session metadata (title, info) is commonly needed and has minimal overhead. |
+| Why include `agent_instructions` in Generic? | AGENTS.md is the standard way to provide project-level instructions. Including it by default means users get this functionality without extra configuration. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are seed data, not the only options. |
 
 ## Seed Data
