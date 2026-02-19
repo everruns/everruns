@@ -43,6 +43,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | `session_storage` | Session Storage | Key/value store and encrypted secret storage |
 | `session` | Session | Session info access and title management |
 | `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
+| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
 
 **Use cases:**
 - Default harness for most agents
@@ -59,6 +60,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | Why include `session_storage` in Generic? | Secret storage is needed for agents that interact with external APIs (API keys, tokens). KV storage is useful for persisting state. |
 | Why include `session` in Generic? | Session metadata (title, info) is commonly needed and has minimal overhead. |
 | Why include `agent_instructions` in Generic? | AGENTS.md is the standard way to provide project-level instructions. Including it by default means users get this functionality without extra configuration. |
+| Why include `skills` in Generic? | Skills extend agent abilities via portable instruction packages. Including discovery by default means agents can use skills uploaded to the session filesystem without extra capability setup. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are seed data, not the only options. |
 
 ## Seed Data
