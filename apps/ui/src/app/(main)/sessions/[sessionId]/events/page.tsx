@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, Copy, Check, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, Copy, Check, RefreshCw, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Table,
@@ -16,6 +16,9 @@ import {
 import { useSessionContext } from "../session-context";
 import { EventFilter } from "@/components/events/event-filter";
 import { DEFAULT_EXCLUDED_EVENTS } from "@/lib/api/events";
+import { LlmHistoryViewer } from "@/components/llm/llm-history-viewer";
+import type { LlmGenerationData, Event as SessionEvent } from "@/lib/api/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const EVENTS_PER_PAGE = 50;
 
@@ -55,6 +58,7 @@ export default function EventsPage() {
   const [hasNewEvents, setHasNewEvents] = useState(false);
   const [hideDeltaEvents, setHideDeltaEvents] = useState(true);
   const [onlyLlmGeneration, setOnlyLlmGeneration] = useState(false);
+  const [selectedGeneration, setSelectedGeneration] = useState<SessionEvent | null>(null);
   const lastKnownCountRef = useRef(0);
 
   // Filter events based on active filters
@@ -190,6 +194,17 @@ export default function EventsPage() {
                     <TableCell className="font-mono text-xs">
                       <div className="relative">
                         <div className="absolute right-0 top-0 z-10 flex items-center gap-1 bg-background/80 backdrop-blur-sm rounded px-1">
+                          {event.type === "llm.generation" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => setSelectedGeneration(event)}
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                              Preview
+                            </Button>
+                          )}
                           <CopyButton data={event.data} />
                         </div>
                         <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
@@ -251,6 +266,28 @@ export default function EventsPage() {
           )}
         </div>
       )}
+
+      {/* LLM Generation detail dialog */}
+      <Dialog
+        open={selectedGeneration !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedGeneration(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg">
+          <DialogHeader>
+            <DialogTitle>LLM Generation Details</DialogTitle>
+          </DialogHeader>
+          {selectedGeneration && (
+            <LlmHistoryViewer
+              data={selectedGeneration.data as LlmGenerationData}
+              eventId={selectedGeneration.id}
+              timestamp={selectedGeneration.ts}
+              maxHeight="60vh"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
