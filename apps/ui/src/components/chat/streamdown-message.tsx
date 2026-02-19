@@ -13,6 +13,19 @@ import { Streamdown, type StreamdownProps } from "streamdown";
 import { code } from "@streamdown/code";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
+import type { ComponentType, AnchorHTMLAttributes } from "react";
+
+/** Opens all markdown links in a new tab with noopener noreferrer. */
+const ExternalLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>> = ({
+  children,
+  ...props
+}) => (
+  <a {...props} target="_blank" rel="noopener noreferrer">
+    {children}
+  </a>
+);
+
+const markdownComponents = { a: ExternalLink };
 
 // Streamdown styling to match the design system
 const streamdownStyles = `
@@ -108,6 +121,7 @@ export function StreamdownMessage({
           plugins={plugins}
           isAnimating={isAnimating}
           remarkPlugins={[remarkGithubAlerts]}
+          components={markdownComponents}
         >
           {children}
         </Streamdown>

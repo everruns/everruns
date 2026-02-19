@@ -26,6 +26,7 @@ import { getBackendUrl } from "@/lib/api/client";
 import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
 /** Icon mapping — lucide icon name to component */
 const iconMap: Record<string, LucideIcon> = {
@@ -182,9 +183,9 @@ function ApiKeyDialog({
 
         <form onSubmit={handleSubmit}>
           {/* Instructions */}
-          <div className="text-sm text-muted-foreground whitespace-pre-line mb-4 leading-relaxed">
+          <InlineStreamdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
             {provider.form_schema.instructions_markdown}
-          </div>
+          </InlineStreamdownMessage>
 
           {/* Form fields */}
           <div className="space-y-4 mb-4">
