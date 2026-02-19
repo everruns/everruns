@@ -89,6 +89,8 @@ mod seed_ids {
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_OPUS_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
+    pub const CLAUDE_SONNET_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030a);
     pub const CLAUDE_OPUS_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000301);
     pub const CLAUDE_SONNET_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000302);
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
@@ -1067,6 +1069,23 @@ const SEED_MODELS: &[SeedModel] = &[
         display_name: "o1 Preview",
         is_default: false,
         is_favorite: false,
+    },
+    // Anthropic Claude 4.6 series
+    SeedModel {
+        id: seed_ids::CLAUDE_OPUS_4_6,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-6-20260205",
+        display_name: "Claude Opus 4.6",
+        is_default: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_SONNET_4_6,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-4-6-20260217",
+        display_name: "Claude Sonnet 4.6",
+        is_default: false,
+        is_favorite: true, // Favorite model
     },
     // Anthropic Claude 4.5 series
     SeedModel {
