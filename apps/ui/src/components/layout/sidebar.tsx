@@ -69,9 +69,7 @@ const buildingBlocksNavigation = [
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
 ];
 
-const bottomNavigation = [
-  { name: "Settings", href: "/settings", icon: Settings },
-];
+const bottomNavigation = [{ name: "Settings", href: "/settings", icon: Settings }];
 
 const durableNavigation = [
   { name: "Overview", href: "/durable", icon: Cog, exact: true },
