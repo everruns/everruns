@@ -21,6 +21,7 @@ import {
   Pencil,
   Check,
   X,
+  CalendarClock,
 } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -151,6 +152,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
     if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/storage")) return "storage";
+    if (pathname.endsWith("/schedules")) return "schedules";
     return "chat"; // Default to chat (includes /chat and base path)
   };
   const activeTab = getActiveTab();
@@ -301,6 +303,24 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
           >
             <Database className="h-4 w-4" />
             Storage
+          </Link>
+          <Link
+            href={`${basePath}/schedules`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "schedules" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2",
+            )}
+          >
+            <CalendarClock className="h-4 w-4" />
+            Schedules
+            {(session.active_schedule_count ?? 0) > 0 && (
+              <Badge variant="secondary" className="h-5 min-w-5 px-1 text-xs">
+                {session.active_schedule_count}
+              </Badge>
+            )}
           </Link>
           <Link
             href={`${basePath}/events`}

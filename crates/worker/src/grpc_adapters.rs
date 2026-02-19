@@ -599,6 +599,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         finished_at: None,
         usage: None, // Usage not tracked in worker context
         is_pinned: None,
+        active_schedule_count: None,
     })
 }
 

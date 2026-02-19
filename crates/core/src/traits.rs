@@ -313,6 +313,42 @@ pub trait SessionStorageStore: Send + Sync {
 }
 
 // ============================================================================
+// SessionScheduleStore - For session-scoped schedule operations
+// ============================================================================
+
+use crate::session_schedule::SessionSchedule;
+use crate::typed_id::ScheduleId;
+
+/// Trait for session schedule CRUD operations.
+///
+/// Used by scheduling tools to create, cancel, and list schedules.
+#[async_trait]
+pub trait SessionScheduleStore: Send + Sync {
+    /// Create a new schedule for a session.
+    async fn create_schedule(
+        &self,
+        session_id: SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+        timezone: String,
+    ) -> Result<SessionSchedule>;
+
+    /// Cancel (disable) a schedule.
+    async fn cancel_schedule(
+        &self,
+        session_id: SessionId,
+        schedule_id: ScheduleId,
+    ) -> Result<SessionSchedule>;
+
+    /// List schedules for a session.
+    async fn list_schedules(&self, session_id: SessionId) -> Result<Vec<SessionSchedule>>;
+
+    /// Count active (enabled) schedules for a session.
+    async fn count_active_schedules(&self, session_id: SessionId) -> Result<u32>;
+}
+
+// ============================================================================
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
@@ -370,6 +406,9 @@ pub struct ToolContext {
 
     /// Optional resolver for user connection tokens (lazy GitHub token lookup, etc.)
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+
+    /// Optional session schedule store for scheduling tools.
+    pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
 }
 
 impl ToolContext {
@@ -385,6 +424,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -400,6 +440,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -418,6 +459,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -437,6 +479,7 @@ impl ToolContext {
             session_mutator: None,
             agent_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -478,6 +521,12 @@ impl ToolContext {
         self.connection_resolver = Some(resolver);
         self
     }
+
+    /// Add a session schedule store to this context.
+    pub fn with_schedule_store(mut self, store: Arc<dyn SessionScheduleStore>) -> Self {
+        self.schedule_store = Some(store);
+        self
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -492,6 +541,7 @@ impl std::fmt::Debug for ToolContext {
             .field("session_mutator", &self.session_mutator.is_some())
             .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
+            .field("schedule_store", &self.schedule_store.is_some())
             .finish()
     }
 }

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
+import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle, CalendarClock } from "lucide-react";
 import type {
   Controls,
   InputMessageData,
@@ -275,6 +275,7 @@ export default function ChatPage() {
             const textContent = getMessageText(data);
             const toolCalls = isUser ? [] : getToolCalls(data as OutputMessageCompletedData);
             const images = data.message?.content ? getMessageImages(data.message.content) : [];
+            const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
 
             return (
               <div key={event.id} className="space-y-2">
@@ -284,6 +285,12 @@ export default function ChatPage() {
                     {isUser ? (
                       /* User message - subtle border, rounded */
                       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
+                        {isScheduleTriggered && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                            <CalendarClock className="w-3 h-3" />
+                            <span>Scheduled</span>
+                          </div>
+                        )}
                         <div className="flex items-start gap-2">
                           <div className="flex-1 space-y-2">
                             {textContent && (

@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::CapabilityRegistry;
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::{BraintrustListener, EventListener, OtelEventListener};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
@@ -270,6 +271,7 @@ pub async fn run(
             })
         };
     let durable_state = api::durable::AppState::new(durable_store.clone());
+    let scheduler_store = durable_store.clone();
     let schedules_state = api::schedules::ScheduleAppState::new(durable_store);
     let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
@@ -280,6 +282,11 @@ pub async fn run(
         auth: auth_state.clone(),
         auth_config: auth_config.clone(),
     };
+    let session_schedule_service =
+        Arc::new(crate::services::SessionScheduleService::new(db.clone()));
+    let session_schedules_state =
+        api::session_schedules::AppState::new(session_schedule_service.clone(), auth_state.clone());
+
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -315,7 +322,8 @@ pub async fn run(
         .merge(api::images::routes(images_state))
         .merge(api::skills::routes(skills_state))
         .merge(api::organizations::routes(organizations_state))
-        .merge(api::user_connections::routes(user_connections_state));
+        .merge(api::user_connections::routes(user_connections_state))
+        .merge(api::session_schedules::routes(session_schedules_state));
 
     // Add auth-specific routes if the backend provides them
     if let Some(auth_routes) = auth_backend.auth_routes() {
@@ -572,7 +580,10 @@ pub async fn run(
                 capability_registry,
             )
             .with_sqldb_store(sqldb_store.clone())
-            .with_storage_store(session_storage_store);
+            .with_storage_store(session_storage_store)
+            .with_schedule_store(Arc::new(
+                crate::storage::DbSessionScheduleStore::new(db.clone(), DEFAULT_ORG_ID),
+            ));
 
             // Wire lazy connection resolver (requires encryption for token decryption)
             if let Some(ref enc) = encryption {
@@ -605,6 +616,25 @@ pub async fn run(
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
     }
+
+    // Durable task scheduler (cron-based, runs in both prod and dev mode)
+    if let Some(store) = scheduler_store {
+        let scheduler = everruns_durable::DurableScheduler::with_defaults(
+            store,
+            format!("scheduler-{}", uuid::Uuid::now_v7()),
+        );
+        let _scheduler_shutdown = scheduler.spawn();
+        tracing::info!("Durable task scheduler started");
+    }
+
+    // Session schedule poller (runs in both prod and dev mode)
+    crate::session_scheduler::spawn_session_scheduler(
+        db.clone(),
+        session_schedule_service,
+        event_service,
+        runner,
+        std::time::Duration::from_secs(15),
+    );
 
     // Start HTTP server
     let listener = tokio::net::TcpListener::bind(&config.addr)

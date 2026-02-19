@@ -4,7 +4,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, EventId, HarnessId, ScheduleId, SessionId};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -3724,6 +3724,148 @@ impl Database {
                 .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
+    // Session Schedules
+    // ============================================
+
+    pub async fn create_session_schedule(
+        &self,
+        input: CreateSessionScheduleRow,
+    ) -> Result<SessionScheduleRow> {
+        let id = ScheduleId::new();
+        let public_id = id.to_string();
+
+        let row = sqlx::query_as::<_, SessionScheduleRow>(
+            r#"
+            INSERT INTO session_schedules (id, public_id, org_id, session_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(&public_id)
+        .bind(input.org_id)
+        .bind(input.session_id)
+        .bind(&input.description)
+        .bind(&input.cron_expression)
+        .bind(input.scheduled_at)
+        .bind(&input.timezone)
+        .bind(input.next_trigger_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<Option<SessionScheduleRow>> {
+        let row = sqlx::query_as::<_, SessionScheduleRow>(
+            "SELECT * FROM session_schedules WHERE id = $1 AND org_id = $2",
+        )
+        .bind(schedule_id)
+        .bind(org_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_session_schedules(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionScheduleRow>> {
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(
+            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 ORDER BY created_at DESC",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+        input: UpdateSessionScheduleRow,
+    ) -> Result<Option<SessionScheduleRow>> {
+        let row = sqlx::query_as::<_, SessionScheduleRow>(
+            r#"
+            UPDATE session_schedules SET
+                enabled = COALESCE($3, enabled),
+                next_trigger_at = CASE WHEN $4 THEN $5 ELSE next_trigger_at END,
+                last_triggered_at = COALESCE($6, last_triggered_at),
+                trigger_count = trigger_count + CASE WHEN $7 THEN 1 ELSE 0 END,
+                updated_at = NOW()
+            WHERE id = $1 AND org_id = $2
+            RETURNING *
+            "#,
+        )
+        .bind(schedule_id)
+        .bind(org_id)
+        .bind(input.enabled)
+        .bind(input.next_trigger_at.is_some()) // flag: should update next_trigger_at
+        .bind(input.next_trigger_at.unwrap_or(None)) // value (may be NULL for one-shot)
+        .bind(input.last_triggered_at)
+        .bind(input.trigger_count_increment)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM session_schedules WHERE id = $1 AND org_id = $2")
+            .bind(schedule_id)
+            .bind(org_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true",
+        )
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0 as u32)
+    }
+
+    /// Claim due session schedules for processing.
+    /// Uses SELECT FOR UPDATE SKIP LOCKED for multi-instance safety.
+    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(
+            r#"
+            SELECT * FROM session_schedules
+            WHERE enabled = true
+              AND next_trigger_at IS NOT NULL
+              AND next_trigger_at <= NOW()
+            ORDER BY next_trigger_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
     }
 }
 

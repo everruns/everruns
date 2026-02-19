@@ -88,16 +88,20 @@ pub struct TriggerResult {
 ///
 /// Runs as a background loop, polling for due schedules and triggering them.
 /// Supports multiple concurrent instances via database locking.
-pub struct DurableScheduler<S: WorkflowEventStore> {
-    store: Arc<S>,
+pub struct DurableScheduler {
+    store: Arc<dyn WorkflowEventStore>,
     config: SchedulerConfig,
     instance_id: String,
     schedules_processed: std::sync::atomic::AtomicU64,
 }
 
-impl<S: WorkflowEventStore> DurableScheduler<S> {
+impl DurableScheduler {
     /// Create a new scheduler instance
-    pub fn new(store: Arc<S>, config: SchedulerConfig, instance_id: String) -> Self {
+    pub fn new(
+        store: Arc<dyn WorkflowEventStore>,
+        config: SchedulerConfig,
+        instance_id: String,
+    ) -> Self {
         Self {
             store,
             config,
@@ -107,8 +111,19 @@ impl<S: WorkflowEventStore> DurableScheduler<S> {
     }
 
     /// Create with default configuration
-    pub fn with_defaults(store: Arc<S>, instance_id: String) -> Self {
+    pub fn with_defaults(store: Arc<dyn WorkflowEventStore>, instance_id: String) -> Self {
         Self::new(store, SchedulerConfig::default(), instance_id)
+    }
+
+    /// Spawn the scheduler as a background tokio task.
+    /// Returns a CancellationToken that can be used to stop the scheduler.
+    pub fn spawn(self) -> CancellationToken {
+        let shutdown = CancellationToken::new();
+        let token = shutdown.clone();
+        tokio::spawn(async move {
+            self.run(token).await;
+        });
+        shutdown
     }
 
     /// Run the scheduler loop until shutdown
@@ -168,7 +183,7 @@ impl<S: WorkflowEventStore> DurableScheduler<S> {
 
     /// Process all due schedules
     #[instrument(skip(self))]
-    async fn process_due_schedules(&self) -> Result<(), SchedulerError> {
+    pub async fn process_due_schedules(&self) -> Result<(), SchedulerError> {
         // Claim due schedules (round-robin across orgs)
         let due = self
             .store
@@ -415,7 +430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheduler_creates_and_runs() {
-        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let store: Arc<dyn WorkflowEventStore> = Arc::new(InMemoryWorkflowEventStore::new());
         let scheduler = DurableScheduler::with_defaults(store, "test-scheduler-1".to_string());
 
         assert_eq!(scheduler.instance_id, "test-scheduler-1");
@@ -445,8 +460,10 @@ mod tests {
 
         let schedule_id = store.create_schedule(schedule).await.unwrap();
 
-        let scheduler =
-            DurableScheduler::with_defaults(Arc::clone(&store), "test-scheduler-1".to_string());
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-1".to_string(),
+        );
 
         // Process due schedules
         scheduler.process_due_schedules().await.unwrap();
@@ -483,8 +500,10 @@ mod tests {
 
         let schedule_id = store.create_schedule(schedule).await.unwrap();
 
-        let scheduler =
-            DurableScheduler::with_defaults(Arc::clone(&store), "test-scheduler-1".to_string());
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-1".to_string(),
+        );
 
         // First trigger should work
         scheduler.process_due_schedules().await.unwrap();
@@ -516,8 +535,10 @@ mod tests {
 
         let schedule_id = store.create_schedule(schedule).await.unwrap();
 
-        let scheduler =
-            DurableScheduler::with_defaults(Arc::clone(&store), "test-scheduler-1".to_string());
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-1".to_string(),
+        );
 
         // Trigger should create a task
         scheduler.process_due_schedules().await.unwrap();
@@ -530,8 +551,10 @@ mod tests {
     async fn test_scheduler_heartbeat() {
         let store = Arc::new(InMemoryWorkflowEventStore::new());
 
-        let scheduler =
-            DurableScheduler::with_defaults(Arc::clone(&store), "test-scheduler-1".to_string());
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-scheduler-1".to_string(),
+        );
 
         // Register instance
         let instance_info = SchedulerInstanceInfo {
@@ -558,9 +581,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_calculate_next_trigger() {
-        let store = Arc::new(InMemoryWorkflowEventStore::new());
-        let scheduler =
-            DurableScheduler::with_defaults(Arc::clone(&store), "test-scheduler-1".to_string());
+        let store: Arc<dyn WorkflowEventStore> = Arc::new(InMemoryWorkflowEventStore::new());
+        let scheduler = DurableScheduler::with_defaults(store, "test-scheduler-1".to_string());
 
         let schedule = ScheduleRow {
             id: Uuid::now_v7(),
@@ -586,5 +608,58 @@ mod tests {
 
         let next = scheduler.calculate_next_trigger(&schedule).unwrap();
         assert!(next > Utc::now());
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_run_loop_processes_schedule() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+
+        // Create a schedule due now
+        let schedule = CreateScheduleRow {
+            name: "loop-test".to_string(),
+            description: None,
+            cron_expression: "* * * * * * *".to_string(), // every second (7-field cron)
+            timezone: "UTC".to_string(),
+            target_type: ScheduleTargetType::Workflow,
+            target_name: "test-workflow".to_string(),
+            target_input: serde_json::json!({"test": true}),
+            enabled: true,
+            max_concurrent: None,
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(Utc::now() - chrono::Duration::seconds(1)),
+        };
+
+        let schedule_id = store.create_schedule(schedule).await.unwrap();
+
+        // Start scheduler with fast polling
+        let config = SchedulerConfig {
+            poll_interval: Duration::from_millis(100),
+            heartbeat_interval: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let scheduler = DurableScheduler::new(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            config,
+            "test-loop".to_string(),
+        );
+
+        let shutdown = CancellationToken::new();
+        let token = shutdown.clone();
+        tokio::spawn(async move {
+            scheduler.run(token).await;
+        });
+
+        // Wait for at least one trigger
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        shutdown.cancel();
+
+        let stats = store.get_schedule_stats(schedule_id).await.unwrap();
+        assert!(
+            stats.total_executions >= 1,
+            "expected at least 1 execution, got {}",
+            stats.total_executions
+        );
     }
 }

@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, EventId, HarnessId, ScheduleId, SessionId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -1134,5 +1134,57 @@ impl StorageBackend {
         provider: &str,
     ) -> Result<Option<i64>> {
         dispatch!(self, get_installation_id_for_session, session_id, provider)
+    }
+
+    // ============================================
+    // Session Schedules
+    // ============================================
+
+    pub async fn create_session_schedule(
+        &self,
+        input: CreateSessionScheduleRow,
+    ) -> Result<SessionScheduleRow> {
+        dispatch!(self, create_session_schedule, input)
+    }
+
+    pub async fn get_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<Option<SessionScheduleRow>> {
+        dispatch!(self, get_session_schedule, org_id, schedule_id)
+    }
+
+    pub async fn list_session_schedules(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionScheduleRow>> {
+        dispatch!(self, list_session_schedules, org_id, session_id)
+    }
+
+    pub async fn update_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+        input: UpdateSessionScheduleRow,
+    ) -> Result<Option<SessionScheduleRow>> {
+        dispatch!(self, update_session_schedule, org_id, schedule_id, input)
+    }
+
+    pub async fn delete_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<bool> {
+        dispatch!(self, delete_session_schedule, org_id, schedule_id)
+    }
+
+    pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
+        dispatch!(self, count_active_session_schedules, session_id)
+    }
+
+    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
+        dispatch!(self, claim_due_session_schedules, limit)
     }
 }

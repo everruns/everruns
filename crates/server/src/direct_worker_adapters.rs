@@ -64,6 +64,7 @@ pub struct DirectWorkerAdapters {
     sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>>,
 }
 
 impl DirectWorkerAdapters {
@@ -84,6 +85,7 @@ impl DirectWorkerAdapters {
             sqldb_store: None,
             storage_store: None,
             connection_resolver: None,
+            schedule_store: None,
         }
     }
 
@@ -108,6 +110,15 @@ impl DirectWorkerAdapters {
         resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Set the session schedule store for scheduling tools
+    pub fn with_schedule_store(
+        mut self,
+        store: Arc<dyn everruns_core::traits::SessionScheduleStore>,
+    ) -> Self {
+        self.schedule_store = Some(store);
         self
     }
 
@@ -257,6 +268,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 finished_at: r.finished_at,
                 usage: None,
                 is_pinned: None,
+                active_schedule_count: None,
             }
         }))
     }
@@ -802,6 +814,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
     ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
         self.connection_resolver.clone()
+    }
+
+    fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+        self.schedule_store.clone()
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

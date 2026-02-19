@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
     AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
-    ModelId, ProviderId, SessionId, SkillId,
+    ModelId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -54,6 +54,8 @@ pub struct InMemoryDatabase {
     user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
+    // Session schedules
+    session_schedules: RwLock<HashMap<ScheduleId, SessionScheduleRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -99,6 +101,7 @@ impl Default for InMemoryDatabase {
             session_secrets: RwLock::new(HashMap::new()),
             user_connections: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
+            session_schedules: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -3432,6 +3435,134 @@ impl InMemoryDatabase {
             .collect();
         entries.sort_by(|a, b| b.1.cmp(&a.1)); // Most recently pinned first
         Ok(entries.into_iter().map(|(sid, _)| sid).collect())
+    }
+
+    // ============================================
+    // Session Schedules
+    // ============================================
+
+    pub async fn create_session_schedule(
+        &self,
+        input: CreateSessionScheduleRow,
+    ) -> Result<SessionScheduleRow> {
+        let now = Self::now();
+        let id = ScheduleId::new();
+        let public_id = id.to_string();
+
+        let row = SessionScheduleRow {
+            id,
+            public_id,
+            org_id: input.org_id,
+            session_id: input.session_id,
+            description: input.description,
+            cron_expression: input.cron_expression,
+            scheduled_at: input.scheduled_at,
+            timezone: input.timezone,
+            enabled: true,
+            next_trigger_at: input.next_trigger_at,
+            last_triggered_at: None,
+            trigger_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        self.session_schedules.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<Option<SessionScheduleRow>> {
+        Ok(self
+            .session_schedules
+            .read()
+            .get(&schedule_id)
+            .filter(|r| r.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn list_session_schedules(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionScheduleRow>> {
+        let schedules = self.session_schedules.read();
+        let mut result: Vec<_> = schedules
+            .values()
+            .filter(|r| r.org_id == org_id && r.session_id == session_id)
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn update_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+        input: UpdateSessionScheduleRow,
+    ) -> Result<Option<SessionScheduleRow>> {
+        let mut schedules = self.session_schedules.write();
+        let Some(row) = schedules.get_mut(&schedule_id) else {
+            return Ok(None);
+        };
+        if row.org_id != org_id {
+            return Ok(None);
+        }
+        if let Some(enabled) = input.enabled {
+            row.enabled = enabled;
+        }
+        if let Some(next) = input.next_trigger_at {
+            row.next_trigger_at = next;
+        }
+        if let Some(last) = input.last_triggered_at {
+            row.last_triggered_at = Some(last);
+        }
+        if input.trigger_count_increment {
+            row.trigger_count += 1;
+        }
+        row.updated_at = Self::now();
+        Ok(Some(row.clone()))
+    }
+
+    pub async fn delete_session_schedule(
+        &self,
+        org_id: i64,
+        schedule_id: ScheduleId,
+    ) -> Result<bool> {
+        let mut schedules = self.session_schedules.write();
+        if let Some(row) = schedules.get(&schedule_id) {
+            if row.org_id != org_id {
+                return Ok(false);
+            }
+            schedules.remove(&schedule_id);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
+        let schedules = self.session_schedules.read();
+        let count = schedules
+            .values()
+            .filter(|r| r.session_id == session_id && r.enabled)
+            .count();
+        Ok(count as u32)
+    }
+
+    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
+        let now = Self::now();
+        let schedules = self.session_schedules.read();
+        let mut due: Vec<_> = schedules
+            .values()
+            .filter(|r| r.enabled && r.next_trigger_at.is_some_and(|t| t <= now))
+            .cloned()
+            .collect();
+        due.sort_by(|a, b| a.next_trigger_at.cmp(&b.next_trigger_at));
+        due.truncate(limit as usize);
+        Ok(due)
     }
 }
 

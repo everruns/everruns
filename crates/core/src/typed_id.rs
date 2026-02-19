@@ -378,6 +378,13 @@ impl IdMarker for ExecIdMarker {
     const PREFIX: &'static str = "exec";
 }
 
+/// Marker for Session Schedule IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ScheduleIdMarker;
+impl IdMarker for ScheduleIdMarker {
+    const PREFIX: &'static str = "sched";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -408,6 +415,8 @@ pub type SkillId = TypedId<SkillIdMarker>;
 pub type TurnId = TypedId<TurnIdMarker>;
 /// Execution ID
 pub type ExecId = TypedId<ExecIdMarker>;
+/// Session Schedule ID
+pub type ScheduleId = TypedId<ScheduleIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)

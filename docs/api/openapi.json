@@ -7799,6 +7799,15 @@
                 "updated_at"
               ],
               "properties": {
+                "active_schedule_count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+                  "minimum": 0
+                },
                 "agent_id": {
                   "type": [
                     "string",
@@ -8530,6 +8539,15 @@
           "updated_at"
         ],
         "properties": {
+          "active_schedule_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+            "minimum": 0
+          },
           "agent_id": {
             "type": [
               "string",

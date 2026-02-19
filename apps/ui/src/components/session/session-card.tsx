@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2, Zap, Pin, PinOff } from "lucide-react";
+import { Info, MessageSquare, Loader2, Zap, Pin, PinOff, CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -178,6 +178,12 @@ export function SessionCard({ session, agentName, model, summary, onTogglePin }:
                   {formatTotalTokens(session.usage)}
                 </span>
               )}
+            {(session.active_schedule_count ?? 0) > 0 && (
+              <span className="flex items-center gap-1" title="Active schedules">
+                <CalendarClock className="w-3 h-3" />
+                {session.active_schedule_count}
+              </span>
+            )}
           </div>
         </div>
       </div>

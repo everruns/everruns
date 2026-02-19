@@ -381,6 +381,7 @@ impl InMemoryAgenticLoopBuilder {
             finished_at: None,
             usage: None,
             is_pinned: None,
+            active_schedule_count: None,
         };
         session_store.add_session(session).await;
 

@@ -86,6 +86,7 @@ impl SessionStore for DbSessionStore {
                     finished_at: row.finished_at,
                     usage,
                     is_pinned: None,
+                    active_schedule_count: None,
                 }))
             }
             None => Ok(None),

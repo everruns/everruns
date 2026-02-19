@@ -235,6 +235,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
         None
     }
+
+    /// Get the session schedule store for scheduling tools (if available).
+    /// Default returns None (not all backends support session schedules).
+    fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+        None
+    }
 }
 
 // =============================================================================
