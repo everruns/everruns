@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,6 +45,8 @@ interface FileBrowserProps {
   sessionId: string;
   onFileSelect?: (file: FileInfo) => void;
   selectedPath?: string;
+  /** Increment to trigger a full refresh (e.g. after file upload) */
+  refreshToken?: number;
 }
 
 // Get file icon based on extension with muted colors matching app theme
@@ -102,7 +104,12 @@ function getFileIcon(filename: string) {
   }
 }
 
-export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrowserProps) {
+export function FileBrowser({
+  sessionId,
+  onFileSelect,
+  selectedPath,
+  refreshToken,
+}: FileBrowserProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(["/workspace"]));
   const [loadedDirs, setLoadedDirs] = useState<Map<string, FileInfo[]>>(new Map());
   const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
@@ -192,6 +199,15 @@ export function FileBrowser({ sessionId, onFileSelect, selectedPath }: FileBrows
       }
     }
   }, [refetchRoot, expandedPaths, loadDirectory]);
+
+  // External refresh trigger (e.g. after drag-and-drop upload)
+  const prevRefreshToken = useRef(refreshToken);
+  useEffect(() => {
+    if (refreshToken !== undefined && refreshToken !== prevRefreshToken.current) {
+      prevRefreshToken.current = refreshToken;
+      handleRefresh();
+    }
+  }, [refreshToken, handleRefresh]);
 
   const handleCreateFile = async () => {
     if (!newFileName.trim()) return;
