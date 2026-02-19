@@ -72,14 +72,8 @@ const DaytonaIcon = forwardRef<SVGSVGElement, SVGProps<SVGSVGElement>>(
       className={className}
       {...props}
     >
-      <path
-        d="M14.5584 193.736H114.275V227.925H14.5584V193.736Z"
-        fill="currentColor"
-      />
-      <path
-        d="M148.464 74.076H262.426V108.265H148.464V74.076Z"
-        fill="currentColor"
-      />
+      <path d="M14.5584 193.736H114.275V227.925H14.5584V193.736Z" fill="currentColor" />
+      <path d="M148.464 74.076H262.426V108.265H148.464V74.076Z" fill="currentColor" />
       <path
         d="M88.6338 84.6127L173.246 0L197.422 24.175L112.809 108.788L88.6338 84.6127Z"
         fill="currentColor"
@@ -96,14 +90,8 @@ const DaytonaIcon = forwardRef<SVGSVGElement, SVGProps<SVGSVGElement>>(
         d="M174.106 132.44L250.66 208.994L274.835 184.819L198.281 108.265L174.106 132.44Z"
         fill="currentColor"
       />
-      <path
-        d="M88.6338 48.434V131.057H54.4451L54.4451 48.434H88.6338Z"
-        fill="currentColor"
-      />
-      <path
-        d="M208.294 168.094V270.66H174.106V168.094H208.294Z"
-        fill="currentColor"
-      />
+      <path d="M88.6338 48.434V131.057H54.4451L54.4451 48.434H88.6338Z" fill="currentColor" />
+      <path d="M208.294 168.094V270.66H174.106V168.094H208.294Z" fill="currentColor" />
     </svg>
   ),
 );
