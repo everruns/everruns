@@ -832,7 +832,7 @@ async fn test_get_generic_harness() {
     assert!(harness.tags.contains(&"generic".to_string()));
     assert!(harness.tags.contains(&"default".to_string()));
 
-    // Verify Generic harness has the expected 4 capabilities
+    // Verify Generic harness has the expected 5 capabilities
     let cap_ids: Vec<&str> = harness
         .capabilities
         .iter()
@@ -840,8 +840,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        4,
-        "Generic harness should have 4 capabilities"
+        5,
+        "Generic harness should have 5 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -858,6 +858,10 @@ async fn test_get_generic_harness() {
     assert!(
         cap_ids.contains(&"session"),
         "Should have session capability"
+    );
+    assert!(
+        cap_ids.contains(&"agent_instructions"),
+        "Should have agent instructions"
     );
 }
 
