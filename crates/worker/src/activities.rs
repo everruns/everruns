@@ -15,7 +15,9 @@
 use anyhow::{Context, Result};
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
-use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
+use everruns_core::capabilities::{
+    CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
+};
 use everruns_core::traits::AgentStore;
 use std::sync::Arc;
 
@@ -331,7 +333,8 @@ pub async fn act_activity(
 
     if !cap_ids.is_empty() {
         let capability_registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(&cap_ids, &capability_registry);
+        let ctx = SystemPromptContext::without_file_store(input.context.session_id);
+        let collected = collect_capabilities(&cap_ids, &capability_registry, &ctx).await;
         for tool in collected.tools {
             builtin_executor.register_boxed(tool);
         }

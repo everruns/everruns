@@ -1108,15 +1108,18 @@ mod tests {
     // Integration: apply_capabilities
     // ========================================================================
 
-    #[test]
-    fn test_apply_capabilities_with_skills() {
+    #[tokio::test]
+    async fn test_apply_capabilities_with_skills() {
+        use crate::capabilities::SystemPromptContext;
         use crate::runtime_agent::RuntimeAgentBuilder;
 
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let ctx = SystemPromptContext::without_file_store(crate::typed_id::SessionId::new());
         // Use builder pattern which resolves dependencies automatically
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["skills".to_string()], &registry)
+            .with_capabilities(&["skills".to_string()], &registry, &ctx)
+            .await
             .model("gpt-5.2")
             .build();
 

@@ -266,7 +266,9 @@ impl CapabilityService {
         base_system_prompt: &str,
         capability_configs: &[everruns_core::AgentCapabilityConfig],
     ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
-        use everruns_core::capabilities::{collect_capabilities, resolve_dependencies};
+        use everruns_core::capabilities::{
+            SystemPromptContext, collect_capabilities, resolve_dependencies,
+        };
 
         let mut system_prompt_parts: Vec<String> = Vec::new();
         let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
@@ -292,7 +294,9 @@ impl CapabilityService {
             .map_err(|e| anyhow::anyhow!("Failed to resolve capability dependencies: {}", e))?;
 
         // Collect from resolved capabilities (includes dependencies in correct order)
-        let collected = collect_capabilities(&resolved.resolved_ids, &self.registry);
+        // Preview has no session context, so dynamic capabilities (agent_instructions) return None
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let collected = collect_capabilities(&resolved.resolved_ids, &self.registry, &ctx).await;
         if let Some(prefix) = collected.system_prompt_prefix() {
             system_prompt_parts.push(prefix);
         }

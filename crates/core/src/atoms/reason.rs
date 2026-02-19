@@ -554,15 +554,15 @@ where
         };
 
         let mut builder = RuntimeAgentBuilder::new()
-            .with_harness_async(&harness, &self.capability_registry, &prompt_ctx)
+            .with_harness(&harness, &self.capability_registry, &prompt_ctx)
             .await;
         if let Some(ref agent) = agent {
             builder = builder
-                .with_agent_async(agent, &self.capability_registry, &prompt_ctx)
+                .with_agent(agent, &self.capability_registry, &prompt_ctx)
                 .await;
         }
         builder = builder
-            .with_capabilities_async(
+            .with_capabilities(
                 &session_capability_ids,
                 &self.capability_registry,
                 &prompt_ctx,

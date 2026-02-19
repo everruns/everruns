@@ -4,7 +4,9 @@
 // Decision: Used by external workers that connect to control-plane via gRPC
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
+use everruns_core::capabilities::{
+    CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
+};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
@@ -346,7 +348,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
             if !builtin_cap_ids.is_empty() {
                 let cap_registry = self.capability_registry();
-                let collected = collect_capabilities(&builtin_cap_ids, &cap_registry);
+                let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+                let collected = collect_capabilities(&builtin_cap_ids, &cap_registry, &ctx).await;
                 for tool in collected.tools {
                     registry.register_boxed(tool);
                 }

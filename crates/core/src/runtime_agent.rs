@@ -12,8 +12,7 @@
 
 use crate::agent::Agent;
 use crate::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities, collect_capabilities_async,
-    resolve_dependencies,
+    CapabilityRegistry, SystemPromptContext, collect_capabilities, resolve_dependencies,
 };
 use crate::harness::Harness;
 use crate::tool_types::ToolDefinition;
@@ -95,8 +94,14 @@ impl RuntimeAgentBuilder {
     /// Apply a Harness's configuration to this builder.
     ///
     /// Sets the system prompt from the harness and applies harness capabilities.
+    /// Calls `system_prompt_contribution()` on each capability for dynamic content.
     /// Call this BEFORE `with_agent()` to establish the base prompt layer.
-    pub fn with_harness(self, harness: &Harness, registry: &CapabilityRegistry) -> Self {
+    pub async fn with_harness(
+        self,
+        harness: &Harness,
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
         let capability_ids: Vec<String> = harness
             .capabilities
             .iter()
@@ -104,7 +109,8 @@ impl RuntimeAgentBuilder {
             .collect();
 
         self.system_prompt(&harness.system_prompt)
-            .with_capabilities(&capability_ids, registry)
+            .with_capabilities(&capability_ids, registry, ctx)
+            .await
     }
 
     /// Apply an Agent's configuration to this builder.
@@ -115,14 +121,20 @@ impl RuntimeAgentBuilder {
     /// # Example
     ///
     /// ```ignore
+    /// let ctx = SystemPromptContext::without_file_store(session_id);
     /// let runtime_agent = RuntimeAgentBuilder::new()
-    ///     .with_harness(&harness, &registry)
-    ///     .with_agent(&agent, &registry)
-    ///     .with_capabilities(&session_caps, &registry)
+    ///     .with_harness(&harness, &registry, &ctx).await
+    ///     .with_agent(&agent, &registry, &ctx).await
+    ///     .with_capabilities(&session_caps, &registry, &ctx).await
     ///     .model("gpt-4o")
     ///     .build();
     /// ```
-    pub fn with_agent(self, agent: &Agent, registry: &CapabilityRegistry) -> Self {
+    pub async fn with_agent(
+        self,
+        agent: &Agent,
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
         let capability_ids: Vec<String> = agent
             .capabilities
             .iter()
@@ -131,7 +143,8 @@ impl RuntimeAgentBuilder {
 
         let mut builder = self
             .system_prompt(&agent.system_prompt)
-            .with_capabilities(&capability_ids, registry);
+            .with_capabilities(&capability_ids, registry, ctx)
+            .await;
 
         // Add agent-level client-side tools
         if !agent.tools.is_empty() {
@@ -143,8 +156,9 @@ impl RuntimeAgentBuilder {
 
     /// Apply capabilities to this builder.
     ///
-    /// This resolves dependencies, then collects contributions from capabilities:
+    /// Resolves dependencies, then collects contributions from capabilities:
     /// - Dependencies are automatically included (topologically sorted)
+    /// - `system_prompt_contribution(ctx)` called on each (may read from filesystem)
     /// - System prompt additions are prepended to the current system prompt
     /// - Tool definitions are added to the tools list
     ///
@@ -152,28 +166,26 @@ impl RuntimeAgentBuilder {
     ///
     /// * `capability_ids` - Ordered list of capability IDs to apply
     /// * `registry` - The capability registry containing implementations
-    pub fn with_capabilities(
+    /// * `ctx` - Session context for dynamic prompt resolution
+    pub async fn with_capabilities(
         mut self,
         capability_ids: &[String],
         registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
     ) -> Self {
         // Resolve dependencies first (dependencies come before dependents)
         let resolved_ids = match resolve_dependencies(capability_ids, registry) {
             Ok(resolved) => resolved.resolved_ids,
             Err(e) => {
-                // Log error but continue with original IDs to avoid breaking
                 tracing::warn!("Failed to resolve capability dependencies: {}", e);
                 capability_ids.to_vec()
             }
         };
 
-        let collected = collect_capabilities(&resolved_ids, registry);
+        let collected = collect_capabilities(&resolved_ids, registry, ctx).await;
 
         // Apply system prompt additions (prepend to existing, wrap base in XML tags)
         if let Some(prefix) = collected.system_prompt_prefix() {
-            // Wrap the base system prompt in <system-prompt> tags on first capability
-            // application. Skip if already wrapped (e.g., session capabilities applied
-            // after agent capabilities).
             if !self.runtime_agent.system_prompt.is_empty()
                 && !self.runtime_agent.system_prompt.contains("<system-prompt>")
             {
@@ -249,103 +261,6 @@ impl RuntimeAgentBuilder {
     pub fn build(self) -> RuntimeAgent {
         self.runtime_agent
     }
-
-    // ========================================================================
-    // Async variants (use dynamic system prompt contributions)
-    // ========================================================================
-
-    /// Apply a Harness's configuration with dynamic system prompt resolution.
-    ///
-    /// Like `with_harness()`, but calls `system_prompt_contribution()` on each
-    /// capability, which can access the session filesystem for dynamic content.
-    pub async fn with_harness_async(
-        self,
-        harness: &Harness,
-        registry: &CapabilityRegistry,
-        ctx: &SystemPromptContext,
-    ) -> Self {
-        let capability_ids: Vec<String> = harness
-            .capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-
-        self.system_prompt(&harness.system_prompt)
-            .with_capabilities_async(&capability_ids, registry, ctx)
-            .await
-    }
-
-    /// Apply an Agent's configuration with dynamic system prompt resolution.
-    ///
-    /// Like `with_agent()`, but calls `system_prompt_contribution()` on each
-    /// capability, which can access the session filesystem for dynamic content.
-    pub async fn with_agent_async(
-        self,
-        agent: &Agent,
-        registry: &CapabilityRegistry,
-        ctx: &SystemPromptContext,
-    ) -> Self {
-        let capability_ids: Vec<String> = agent
-            .capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-
-        let mut builder = self
-            .system_prompt(&agent.system_prompt)
-            .with_capabilities_async(&capability_ids, registry, ctx)
-            .await;
-
-        // Add agent-level client-side tools
-        if !agent.tools.is_empty() {
-            builder = builder.tools(agent.tools.clone());
-        }
-
-        builder
-    }
-
-    /// Apply capabilities with dynamic system prompt resolution.
-    ///
-    /// Like `with_capabilities()`, but calls `system_prompt_contribution()` on
-    /// each capability (async), enabling dynamic content from the session
-    /// filesystem (e.g., reading AGENTS.md, discovering skills).
-    pub async fn with_capabilities_async(
-        mut self,
-        capability_ids: &[String],
-        registry: &CapabilityRegistry,
-        ctx: &SystemPromptContext,
-    ) -> Self {
-        // Resolve dependencies first (dependencies come before dependents)
-        let resolved_ids = match resolve_dependencies(capability_ids, registry) {
-            Ok(resolved) => resolved.resolved_ids,
-            Err(e) => {
-                tracing::warn!("Failed to resolve capability dependencies: {}", e);
-                capability_ids.to_vec()
-            }
-        };
-
-        let collected = collect_capabilities_async(&resolved_ids, registry, ctx).await;
-
-        // Apply system prompt additions (prepend to existing, wrap base in XML tags)
-        if let Some(prefix) = collected.system_prompt_prefix() {
-            if !self.runtime_agent.system_prompt.is_empty()
-                && !self.runtime_agent.system_prompt.contains("<system-prompt>")
-            {
-                self.runtime_agent.system_prompt = format!(
-                    "<system-prompt>\n{}\n</system-prompt>",
-                    self.runtime_agent.system_prompt
-                );
-            }
-            self = self.prepend_system_prompt(prefix);
-        }
-
-        // Apply tool definitions
-        if !collected.tool_definitions.is_empty() {
-            self = self.tools(collected.tool_definitions);
-        }
-
-        self
-    }
 }
 
 impl Default for RuntimeAgentBuilder {
@@ -358,8 +273,12 @@ impl Default for RuntimeAgentBuilder {
 mod tests {
     use super::*;
     use crate::agent::AgentStatus;
-    use crate::capabilities::AgentCapabilityConfig;
+    use crate::capabilities::{AgentCapabilityConfig, SystemPromptContext};
     use crate::typed_id::AgentId;
+
+    fn test_ctx() -> SystemPromptContext {
+        SystemPromptContext::without_file_store(crate::typed_id::SessionId::new())
+    }
 
     #[test]
     fn test_runtime_agent_new() {
@@ -431,26 +350,28 @@ mod tests {
         assert_eq!(runtime_agent.system_prompt, "Base prompt.");
     }
 
-    #[test]
-    fn test_builder_with_capabilities_empty() {
+    #[tokio::test]
+    async fn test_builder_with_capabilities_empty() {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&[], &registry)
+            .with_capabilities(&[], &registry, &test_ctx())
+            .await
             .build();
 
         assert_eq!(runtime_agent.system_prompt, "Base prompt.");
         assert!(runtime_agent.tools.is_empty());
     }
 
-    #[test]
-    fn test_builder_with_capabilities_adds_tools() {
+    #[tokio::test]
+    async fn test_builder_with_capabilities_adds_tools() {
         use crate::tool_types::ToolDefinition;
 
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["current_time".to_string()], &registry)
+            .with_capabilities(&["current_time".to_string()], &registry, &test_ctx())
+            .await
             .build();
 
         assert_eq!(runtime_agent.tools.len(), 1);
@@ -462,12 +383,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_builder_with_capabilities_prepends_system_prompt() {
+    #[tokio::test]
+    async fn test_builder_with_capabilities_prepends_system_prompt() {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["test_math".to_string()], &registry)
+            .with_capabilities(&["test_math".to_string()], &registry, &test_ctx())
+            .await
             .build();
 
         assert!(runtime_agent.system_prompt.contains("math tools"));
@@ -480,8 +402,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_builder_with_agent() {
+    #[tokio::test]
+    async fn test_builder_with_agent() {
         use crate::tool_types::ToolDefinition;
         use uuid::{NoContext, Timestamp, Uuid};
 
@@ -505,7 +427,8 @@ mod tests {
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry)
+            .with_agent(&agent, &registry, &test_ctx())
+            .await
             .model("gpt-5.2")
             .build();
 
@@ -528,14 +451,15 @@ mod tests {
         assert_eq!(runtime_agent.model, "gpt-5.2");
     }
 
-    #[test]
-    fn test_builder_with_capabilities_resolves_dependencies() {
+    #[tokio::test]
+    async fn test_builder_with_capabilities_resolves_dependencies() {
         // Sample Data depends on Session File System
         // When we request only Sample Data, we should get system prompt from both
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["sample_data".to_string()], &registry)
+            .with_capabilities(&["sample_data".to_string()], &registry, &test_ctx())
+            .await
             .build();
 
         // System prompt should include File System's contribution (the dependency) in XML tags
@@ -571,8 +495,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_builder_additive_capabilities() {
+    #[tokio::test]
+    async fn test_builder_additive_capabilities() {
         use crate::tool_types::ToolDefinition;
 
         let registry = CapabilityRegistry::with_builtins();
@@ -580,7 +504,8 @@ mod tests {
         // Apply capabilities additively (simulating session-level capabilities)
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Agent prompt.")
-            .with_capabilities(&["current_time".to_string()], &registry)
+            .with_capabilities(&["current_time".to_string()], &registry, &test_ctx())
+            .await
             .build();
 
         // Should have the tool from capability
@@ -593,8 +518,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_builder_with_agent_client_side_tools() {
+    #[tokio::test]
+    async fn test_builder_with_agent_client_side_tools() {
         use crate::tool_types::{ClientSideTool, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
@@ -631,7 +556,8 @@ mod tests {
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry)
+            .with_agent(&agent, &registry, &test_ctx())
+            .await
             .model("gpt-5.2")
             .build();
 
@@ -643,8 +569,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_builder_with_agent_client_side_and_capabilities() {
+    #[tokio::test]
+    async fn test_builder_with_agent_client_side_and_capabilities() {
         use crate::tool_types::{ClientSideTool, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
@@ -676,7 +602,8 @@ mod tests {
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry)
+            .with_agent(&agent, &registry, &test_ctx())
+            .await
             .model("gpt-5.2")
             .build();
 
@@ -695,8 +622,8 @@ mod tests {
         assert!(matches!(deploy_tool, ToolDefinition::ClientSide(_)));
     }
 
-    #[test]
-    fn test_builder_with_agent_and_additive_capabilities() {
+    #[tokio::test]
+    async fn test_builder_with_agent_and_additive_capabilities() {
         use uuid::{NoContext, Timestamp, Uuid};
 
         let registry = CapabilityRegistry::with_builtins();
@@ -724,8 +651,10 @@ mod tests {
         let session_capability_ids = vec!["test_math".to_string()];
 
         let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry)
-            .with_capabilities(&session_capability_ids, &registry)
+            .with_agent(&agent, &registry, &test_ctx())
+            .await
+            .with_capabilities(&session_capability_ids, &registry, &test_ctx())
+            .await
             .model("gpt-5.2")
             .build();
 
