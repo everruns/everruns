@@ -54,14 +54,16 @@ export default function EventsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNewEvents, setHasNewEvents] = useState(false);
   const [hideDeltaEvents, setHideDeltaEvents] = useState(true);
+  const [onlyLlmGeneration, setOnlyLlmGeneration] = useState(false);
   const lastKnownCountRef = useRef(0);
 
-  // Filter out delta events if hideDeltaEvents is enabled
+  // Filter events based on active filters
   const filteredEvents = useMemo(() => {
     if (!events) return [];
+    if (onlyLlmGeneration) return events.filter((e) => e.type === "llm.generation");
     if (!hideDeltaEvents) return events;
     return events.filter((e) => !DEFAULT_EXCLUDED_EVENTS.includes(e.type));
-  }, [events, hideDeltaEvents]);
+  }, [events, hideDeltaEvents, onlyLlmGeneration]);
 
   // Sort events by sequence descending (newest first)
   const sortedEvents = useMemo(() => {
@@ -108,7 +110,7 @@ export default function EventsPage() {
   useEffect(() => {
     setCurrentPage(1);
     lastKnownCountRef.current = filteredEvents.length;
-  }, [hideDeltaEvents, filteredEvents.length]);
+  }, [hideDeltaEvents, onlyLlmGeneration, filteredEvents.length]);
 
   const handleRefresh = () => {
     setCurrentPage(1);
@@ -142,6 +144,8 @@ export default function EventsPage() {
               <EventFilter
                 hideDeltaEvents={hideDeltaEvents}
                 onHideDeltaEventsChange={setHideDeltaEvents}
+                onlyLlmGeneration={onlyLlmGeneration}
+                onOnlyLlmGenerationChange={setOnlyLlmGeneration}
               />
               {hasNewEvents && (
                 <Button
