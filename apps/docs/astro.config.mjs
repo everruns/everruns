@@ -31,6 +31,15 @@ export default defineConfig({
         src: "./src/assets/logo.svg",
       },
       favicon: "/favicon.svg",
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            name: "msvalidate.01",
+            content: "CA0AE96A84D6EB1E18A00BA8F0F8C70A",
+          },
+        },
+      ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
