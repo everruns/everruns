@@ -145,10 +145,11 @@ The anonymous user is added to the default organization (`org_id = 1`) via `ensu
 ### Security Considerations
 
 1. **JWT Secret**: Must be a secure random string (minimum 32 bytes recommended)
-2. **Cookie Security**: Refresh tokens use HTTP-only, Secure (in production), SameSite=Lax cookies
+2. **Cookie Security**: Refresh tokens use HTTP-only, Secure (in production), SameSite=Strict cookies with `Path=/` so the cookie is sent through the UI's `/api` proxy
 3. **API Key Storage**: Only hash is stored, full key shown once at creation
 4. **Password Storage**: Argon2id with secure defaults
 5. **Token Revocation**: Refresh tokens can be revoked by deleting from database
+6. **Token Auto-Refresh**: The UI API client intercepts 401 responses and attempts a silent token refresh before failing (skips `/v1/auth/` endpoints to avoid loops; concurrent 401s are deduplicated into a single refresh request)
 
 ### Error Responses
 
@@ -198,17 +199,29 @@ Based on `mode`:
 1. App loads, fetches `/v1/auth/config`
 2. If `mode === "none"`, render app without auth
 3. Otherwise, check if user is authenticated via `/v1/auth/me`
-4. If not authenticated, redirect to `/login`
-5. After login, cookies are set automatically (HTTP-only)
+4. If not authenticated, redirect to `/login?return_to=<current_path>` (preserving the user's location)
+5. After login, cookies are set automatically (HTTP-only) and the user is redirected back to `return_to` (default: `/dashboard`)
 6. Subsequent requests include cookies via `credentials: "include"`
+7. On 401 response, the API client silently attempts `POST /v1/auth/refresh` (using the HttpOnly `refresh_token` cookie) and retries the request
+
+### Token Refresh
+
+The `POST /v1/auth/refresh` endpoint accepts the refresh token from two sources (checked in order):
+
+1. **JSON body** `{ "refresh_token": "..." }` — for programmatic clients
+2. **HttpOnly cookie** `refresh_token` — primary flow for browser clients (cookie is set at login with `Path=/`)
+
+On success, the old refresh token is deleted (rotation) and a new token pair is returned (both in JSON body and Set-Cookie headers).
 
 ### OAuth Flow
 
 1. User clicks OAuth button (e.g., "Continue with Google")
-2. Browser redirects to `GET /v1/auth/oauth/{provider}`
-3. API redirects to provider's authorization page
-4. After user authorizes, provider redirects to callback
-5. API handles callback, sets cookies, redirects to `/`
+2. If a `return_to` URL is present, the UI persists it in `sessionStorage` (key: `everruns_return_to`) so it survives the redirect chain
+3. Browser redirects to `GET /v1/auth/oauth/{provider}`
+4. API redirects to provider's authorization page
+5. After user authorizes, provider redirects to callback
+6. API handles callback, sets cookies, redirects to `/`
+7. The main layout checks `sessionStorage` for a pending `return_to` and redirects the user back
 
 ### Protected Routes
 

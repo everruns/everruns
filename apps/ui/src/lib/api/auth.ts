@@ -53,12 +53,11 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * Refresh the access token using the refresh token
+ * Refresh the access token using the refresh token cookie.
+ * The HttpOnly refresh_token cookie is sent automatically by the browser.
  */
-export async function refreshToken(token: string): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/v1/auth/refresh", {
-    refresh_token: token,
-  });
+export async function refreshToken(): Promise<TokenResponse> {
+  const { data } = await api.post<TokenResponse>("/v1/auth/refresh");
   return data;
 }
 

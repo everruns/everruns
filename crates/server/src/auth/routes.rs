@@ -341,19 +341,32 @@ pub async fn register(
 }
 
 /// POST /v1/auth/refresh - Refresh access token
+///
+/// Accepts the refresh token from either the JSON body (`{ "refresh_token": "..." }`)
+/// or the `refresh_token` HttpOnly cookie (set at login). Cookie-based is the
+/// primary flow for browser clients since the cookie is HttpOnly.
 pub async fn refresh_token(
     State(state): State<BuiltinAuthBackend>,
     jar: CookieJar,
-    Json(req): Json<RefreshTokenRequest>,
+    body: Option<Json<RefreshTokenRequest>>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
+    // Prefer JSON body, fall back to cookie
+    let refresh_token_value = if let Some(Json(req)) = body {
+        req.refresh_token
+    } else if let Some(cookie) = jar.get("refresh_token") {
+        cookie.value().to_string()
+    } else {
+        return Err(AuthError::unauthorized("Missing refresh token"));
+    };
+
     // Validate refresh token
     let claims = state
         .jwt_service
-        .validate_refresh_token(&req.refresh_token)
+        .validate_refresh_token(&refresh_token_value)
         .map_err(|_| AuthError::unauthorized("Invalid refresh token"))?;
 
     // Check if token is in database (not revoked)
-    let token_hash = hash_token(&req.refresh_token);
+    let token_hash = hash_token(&refresh_token_value);
     let token_row = state
         .db
         .get_refresh_token_by_hash(&token_hash)
@@ -783,8 +796,10 @@ async fn generate_token_response(
         .max_age(time::Duration::seconds(token_pair.expires_in))
         .build();
 
+    // Path must be "/" so the cookie is sent through the /api proxy.
+    // "/v1/auth" doesn't match the browser-side path "/api/v1/auth".
     let refresh_cookie = Cookie::build(("refresh_token", token_pair.refresh_token.clone()))
-        .path("/v1/auth")
+        .path("/")
         .http_only(true)
         .secure(true)
         .same_site(SameSite::Strict)

@@ -1,8 +1,8 @@
 "use client";
 
 // Main app layout with sidebar and auth guard
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
@@ -12,8 +12,10 @@ interface MainLayoutProps {
   children: React.ReactNode;
 }
 
-export default function MainLayout({ children }: MainLayoutProps) {
+function MainLayoutInner({ children }: MainLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
   const { isLoading: orgLoading } = useOrg();
 
@@ -23,9 +25,24 @@ export default function MainLayout({ children }: MainLayoutProps) {
   // Redirect to login if auth is required but user is not authenticated
   useEffect(() => {
     if (!authLoading && requiresAuth && !isAuthenticated) {
-      router.replace("/login");
+      // Preserve current location so login can redirect back
+      const currentUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
+      const returnTo =
+        currentUrl !== "/dashboard" ? `?return_to=${encodeURIComponent(currentUrl)}` : "";
+      router.replace(`/login${returnTo}`);
     }
-  }, [authLoading, requiresAuth, isAuthenticated, router]);
+  }, [authLoading, requiresAuth, isAuthenticated, router, pathname, searchParams]);
+
+  // After OAuth login, check sessionStorage for a pending return_to redirect
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      const pendingReturnTo = sessionStorage.getItem("everruns_return_to");
+      if (pendingReturnTo) {
+        sessionStorage.removeItem("everruns_return_to");
+        router.replace(pendingReturnTo);
+      }
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   // Show loading state while checking auth and initializing org
   if (isLoading) {
@@ -46,5 +63,19 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <Sidebar />
       <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
     </div>
+  );
+}
+
+export default function MainLayout({ children }: MainLayoutProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <MainLayoutInner>{children}</MainLayoutInner>
+    </Suspense>
   );
 }

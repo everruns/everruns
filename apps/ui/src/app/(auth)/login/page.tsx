@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,9 @@ import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { getOAuthUrl } from "@/lib/api/auth";
 import { Loader2 } from "lucide-react";
 
+// Session storage key for preserving return_to across OAuth redirects
+const RETURN_TO_KEY = "everruns_return_to";
+
 // OAuth provider icons/names
 const oauthProviders: Record<string, { name: string; icon: string }> = {
   google: { name: "Google", icon: "/icons/google.svg" },
@@ -28,12 +31,15 @@ const oauthProviders: Record<string, { name: string; icon: string }> = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const loginMutation = useLogin();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const returnTo = searchParams.get("return_to");
 
   // Redirect to dashboard if auth is not required
   useEffect(() => {
@@ -42,13 +48,20 @@ export default function LoginPage() {
     }
   }, [config, router]);
 
+  const getRedirectTarget = (): string => {
+    // Check URL param first, then sessionStorage (for OAuth flow)
+    const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
+    sessionStorage.removeItem(RETURN_TO_KEY);
+    return target || "/dashboard";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     try {
       await loginMutation.mutateAsync({ email, password });
-      router.push("/dashboard");
+      router.push(getRedirectTarget());
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -59,6 +72,11 @@ export default function LoginPage() {
   };
 
   const handleOAuthLogin = (provider: string) => {
+    // Persist return_to in sessionStorage so it survives the OAuth redirect chain
+    const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
+    if (target) {
+      sessionStorage.setItem(RETURN_TO_KEY, target);
+    }
     window.location.assign(getOAuthUrl(provider));
   };
 
@@ -188,7 +206,10 @@ export default function LoginPage() {
         <CardFooter className="flex justify-center">
           <p className="text-sm text-muted-foreground">
             Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline">
+            <Link
+              href={returnTo ? `/register?return_to=${encodeURIComponent(returnTo)}` : "/register"}
+              className="text-primary hover:underline"
+            >
               Sign up
             </Link>
           </p>

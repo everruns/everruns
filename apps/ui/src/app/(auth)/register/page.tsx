@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const registerMutation = useRegister();
 
@@ -28,6 +29,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const returnTo = searchParams.get("return_to");
 
   // Redirect if auth is not required or signup is disabled
   useEffect(() => {
@@ -58,7 +61,7 @@ export default function RegisterPage() {
 
     try {
       await registerMutation.mutateAsync({ name, email, password });
-      router.push("/dashboard");
+      router.push(returnTo || "/dashboard");
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -160,7 +163,10 @@ export default function RegisterPage() {
       <CardFooter className="flex justify-center">
         <p className="text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="text-primary hover:underline">
+          <Link
+            href={returnTo ? `/login?return_to=${encodeURIComponent(returnTo)}` : "/login"}
+            className="text-primary hover:underline"
+          >
             Sign in
           </Link>
         </p>
