@@ -5,7 +5,7 @@
 CREATE TABLE session_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     public_id TEXT NOT NULL,
-    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) ON DELETE CASCADE,
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
     cron_expression TEXT,

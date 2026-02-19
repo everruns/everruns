@@ -271,6 +271,7 @@ pub async fn run(
             })
         };
     let durable_state = api::durable::AppState::new(durable_store.clone());
+    let scheduler_store = durable_store.clone();
     let schedules_state = api::schedules::ScheduleAppState::new(durable_store);
     let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
     let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
@@ -614,6 +615,16 @@ pub async fn run(
         } else {
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
+    }
+
+    // Durable task scheduler (cron-based, runs in both prod and dev mode)
+    if let Some(store) = scheduler_store {
+        let scheduler = everruns_durable::DurableScheduler::with_defaults(
+            store,
+            format!("scheduler-{}", uuid::Uuid::now_v7()),
+        );
+        let _scheduler_shutdown = scheduler.spawn();
+        tracing::info!("Durable task scheduler started");
     }
 
     // Session schedule poller (runs in both prod and dev mode)
