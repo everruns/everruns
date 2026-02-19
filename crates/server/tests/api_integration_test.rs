@@ -1027,11 +1027,11 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "Generic (copy)");
-    // Generic harness has 4 capabilities
+    // Generic harness has 5 capabilities
     assert_eq!(
         copied.capabilities.len(),
-        4,
-        "Copied harness should have same 4 capabilities"
+        5,
+        "Copied harness should have same 5 capabilities"
     );
 }
 

@@ -294,6 +294,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
             "virtual_bash",
             "session_storage",
             "session",
+            "agent_instructions",
         ],
     },
 ];
@@ -1522,11 +1523,12 @@ mod tests {
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        assert_eq!(generic.capabilities.len(), 4);
+        assert_eq!(generic.capabilities.len(), 5);
         assert!(generic.capabilities.contains(&"session_file_system"));
         assert!(generic.capabilities.contains(&"virtual_bash"));
         assert!(generic.capabilities.contains(&"session_storage"));
         assert!(generic.capabilities.contains(&"session"));
+        assert!(generic.capabilities.contains(&"agent_instructions"));
         assert!(generic.tags.contains(&"generic"));
         assert!(generic.tags.contains(&"default"));
     }
