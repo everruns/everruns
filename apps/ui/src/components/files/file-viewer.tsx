@@ -105,10 +105,10 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
                   size="sm"
                   className="h-7 px-2 rounded-r-none"
                   onClick={() => setViewMode("preview")}
-                  title="Preview"
+                  title="View"
                 >
                   <Eye className="h-3.5 w-3.5 mr-1" />
-                  <span className="text-xs">Preview</span>
+                  <span className="text-xs">View</span>
                 </Button>
                 <Button
                   variant={viewMode === "source" ? "secondary" : "ghost"}
