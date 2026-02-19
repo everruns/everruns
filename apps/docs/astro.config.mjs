@@ -2,6 +2,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
+import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -96,5 +97,6 @@ export default defineConfig({
       },
       lastUpdated: true,
     }),
+    sitemapEnhance(),
   ],
 });
