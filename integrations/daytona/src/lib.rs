@@ -85,7 +85,7 @@ impl Capability for DaytonaCapability {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some("cloud")
+        Some("daytona")
     }
 
     fn category(&self) -> Option<&str> {
@@ -162,7 +162,7 @@ mod tests {
         assert_eq!(cap.id(), "daytona");
         assert_eq!(cap.name(), "Daytona");
         assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("cloud"));
+        assert_eq!(cap.icon(), Some("daytona"));
         assert_eq!(cap.category(), Some("Execution"));
     }
 
