@@ -1,0 +1,137 @@
+---
+title: Agent Skills
+description: Portable instruction packages that extend agent capabilities with specialized knowledge and workflows
+---
+
+Agent Skills are portable instruction packages following the [Agent Skills](https://agentskills.io/) open specification. They enable agents to discover and activate specialized knowledge on demand, keeping the agent's context efficient through progressive disclosure.
+
+## Overview Video
+
+<iframe
+  width="100%"
+  src="https://www.youtube.com/embed/mNqXP4NA_8U"
+  title="Agent Skills Overview"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+  style={{aspectRatio: '16 / 9', borderRadius: '8px', marginTop: '1rem'}}>
+</iframe>
+
+## How It Works
+
+Skills work through a three-stage progressive disclosure model:
+
+1. **Discovery** (~100 tokens): Only skill names and descriptions are loaded at startup
+2. **Activation** (&lt;5000 tokens): Full instructions loaded when the agent calls `activate_skill`
+3. **Resources** (on-demand): Bundled files accessed through the session filesystem
+
+## SKILL.md Format
+
+Every skill contains a `SKILL.md` file with YAML frontmatter and markdown instructions:
+
+```yaml
+---
+name: csv-analyzer
+description: Analyze CSV files and generate summary reports.
+metadata:
+  category: data-processing
+  version: "1.0"
+---
+
+# CSV Analyzer
+
+## When to Use
+
+Activate this skill when a user provides a CSV file and wants summary statistics.
+
+## Instructions
+
+1. Read the CSV file using the `read_file` tool
+2. Run the analysis script
+3. Present findings to the user
+```
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| `name` | 1-64 characters, lowercase alphanumeric + hyphens only |
+| `description` | 1-1024 characters describing when to use the skill |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| `metadata` | Arbitrary key-value pairs (e.g., category, version) |
+| `license` | License identifier (e.g., MIT, Apache-2.0) |
+| `compatibility` | Environment requirements (e.g., Python 3.10+) |
+
+## Creating Skills in Your Workspace
+
+Place skills in the session filesystem at `/.agents/skills/`. Each subdirectory containing a `SKILL.md` is automatically discovered when the built-in `skills` capability is enabled on an agent.
+
+```
+/.agents/skills/
+├── hello-world/
+│   └── SKILL.md
+├── csv-analyzer/
+│   ├── SKILL.md
+│   ├── scripts/analyze.py
+│   └── references/REFERENCE.md
+```
+
+Skills can be simple (just a `SKILL.md`) or include bundled scripts, references, and assets that the agent can access after activation.
+
+### Enabling the Skills Capability
+
+Add the built-in `skills` capability to your agent to enable filesystem-based skill discovery:
+
+```bash
+curl -X POST http://localhost:9000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Agent",
+    "capabilities": [
+      { "ref": "skills", "config": {} },
+      { "ref": "session_file_system", "config": {} }
+    ]
+  }'
+```
+
+The `skills` capability provides two tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_skills` | Scan `/.agents/skills/` for available skills |
+| `activate_skill` | Load a skill's full instructions into the agent's context |
+
+## How Activation Works
+
+When skills are available to an agent, the system prompt includes an `<available_skills>` block with names and descriptions only (~100 tokens per skill):
+
+```xml
+<available_skills>
+  <skill>
+    <name>csv-analyzer</name>
+    <description>Analyze CSV files and generate summary reports.</description>
+  </skill>
+</available_skills>
+
+When a user's task matches an available skill, activate it by using the
+`activate_skill` tool with the skill name.
+```
+
+The agent decides when to activate a skill based on the user's task:
+
+```json
+{
+  "name": "activate_skill",
+  "arguments": { "name": "csv-analyzer" }
+}
+```
+
+The tool returns the complete SKILL.md instructions wrapped in `<skill>` tags. For skills with bundled files, those files are mounted into the session VFS at `/skills/{name}/` and accessible via existing `read_file` / `list_files` tools.
+
+## Skills Registry
+
+For organization-wide skills managed via API (create, upload ZIP archives, validate), see the [Skills Registry](/features/skills-registry/).
