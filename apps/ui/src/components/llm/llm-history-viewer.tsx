@@ -391,10 +391,10 @@ export function LlmHistoryViewer({
   }
 
   return (
-    <div className="flex flex-col min-h-0 gap-4">
+    <div className="space-y-4">
       {/* Header */}
       {(eventId || timestamp) && (
-        <div className="flex items-center justify-between shrink-0">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="font-mono">
               llm.generation
@@ -414,17 +414,15 @@ export function LlmHistoryViewer({
       )}
 
       {/* Metadata */}
-      <div className="shrink-0">
-        <MetadataSection metadata={metadata} />
-      </div>
+      <MetadataSection metadata={metadata} />
 
-      {/* Messages - scrollable, takes remaining space */}
-      <Card className="flex flex-col min-h-0 flex-1">
-        <CardHeader className="pb-2 shrink-0">
+      {/* Input Messages - capped height with internal scroll */}
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-sm">Input Messages ({messages.length})</CardTitle>
         </CardHeader>
-        <CardContent className="p-0 min-h-0 flex-1">
-          <ScrollArea className="h-full max-h-[40vh] p-4">
+        <CardContent className="p-0">
+          <ScrollArea className="max-h-[50vh] p-4">
             <div className="space-y-3">
               {messages.map((message, index) => (
                 <MessageCard key={message.id || index} message={message} index={index} />
@@ -434,10 +432,8 @@ export function LlmHistoryViewer({
         </CardContent>
       </Card>
 
-      {/* Output - always visible */}
-      <div className="shrink-0">
-        <OutputSection output={output} />
-      </div>
+      {/* Output */}
+      <OutputSection output={output} />
     </div>
   );
 }
