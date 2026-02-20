@@ -213,7 +213,7 @@ export function Sidebar() {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 py-4">
+      <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 py-4">
         {topNavigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (

@@ -146,4 +146,36 @@ describe("Sidebar", () => {
     );
     expect(foundNavLinks).toHaveLength(5);
   });
+
+  it("renders section labels for Building Blocks and Durable Execution", () => {
+    render(<Sidebar />);
+
+    expect(screen.getByText("Building Blocks")).toBeInTheDocument();
+    expect(screen.getByText("Durable Execution")).toBeInTheDocument();
+  });
+
+  it("renders Durable Execution navigation items", () => {
+    render(<Sidebar />);
+
+    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByText("Workers")).toBeInTheDocument();
+    expect(screen.getByText("Workflows")).toBeInTheDocument();
+    expect(screen.getByText("Schedules")).toBeInTheDocument();
+  });
+
+  it("nav element has overflow-y-auto and min-h-0 to prevent sidebar overflow", () => {
+    render(<Sidebar />);
+
+    const nav = screen.getByRole("navigation");
+    expect(nav).toHaveClass("min-h-0");
+    expect(nav).toHaveClass("overflow-y-auto");
+  });
+
+  it("highlights durable navigation for nested routes", () => {
+    mockPathname.mockReturnValue("/durable/workers");
+    render(<Sidebar />);
+
+    const workersLink = screen.getByRole("link", { name: /workers/i });
+    expect(workersLink).toHaveClass("border-accent");
+  });
 });
