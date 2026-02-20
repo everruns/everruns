@@ -69,6 +69,7 @@ fail = { workspace = true, optional = true }
 
 [features]
 failpoints = ["fail/failpoints"]
+postgres-tests = []
 
 [dev-dependencies]
 tokio-test = "0.4"
