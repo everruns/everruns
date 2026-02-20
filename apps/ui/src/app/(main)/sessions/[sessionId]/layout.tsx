@@ -181,7 +181,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b p-4">
         <Link
