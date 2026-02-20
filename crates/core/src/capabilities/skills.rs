@@ -23,8 +23,8 @@ use serde_json::Value;
 /// Skills capability ID (built-in)
 pub const SKILLS_CAPABILITY_ID: &str = "skills";
 
-/// Path in session VFS where skills are discovered
-const SKILLS_PATH: &str = "/.agents/skills";
+/// Path in session VFS where skills are discovered (reuse shared constant)
+use super::attach_skill::SKILLS_DISCOVERY_PATH as SKILLS_PATH;
 
 /// Max skills to include in the system prompt (rest via list_skills tool)
 const MAX_SKILLS_IN_PROMPT: usize = 15;

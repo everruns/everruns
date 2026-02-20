@@ -68,7 +68,7 @@ impl McpServerService {
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
-    /// Returns a map of server_id -> (McpServer, Vec<McpToolDefinition>).
+    /// Returns a map of server_id -> (McpServer, `Vec<McpToolDefinition>`).
     pub async fn get_batch_with_tools(
         &self,
         org_id: i64,

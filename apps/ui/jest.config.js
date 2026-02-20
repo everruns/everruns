@@ -10,6 +10,8 @@ const customJestConfig = {
   testEnvironment: "jest-environment-jsdom",
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    "^streamdown$": "<rootDir>/node_modules/streamdown/dist/index.js",
+    "^@streamdown/code$": "<rootDir>/node_modules/@streamdown/code/dist/index.js",
   },
   testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.next/", "<rootDir>/e2e/"],
   // Transform ES modules from react-markdown, streamdown, and their dependencies
