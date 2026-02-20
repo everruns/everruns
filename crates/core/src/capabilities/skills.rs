@@ -1357,6 +1357,286 @@ mod tests {
         assert!(!result.contains("more skills available"));
     }
 
+    // ========================================================================
+    // Integration: AttachSkillCapability mount → SkillsCapability discovery
+    // ========================================================================
+
+    /// Simulate the runtime flow: AttachSkillCapability produces a mount,
+    /// we materialize it into MockFileStore, then SkillsCapability discovers it.
+    fn materialize_mount_into_store(
+        store: &MockFileStore,
+        session_id: SessionId,
+        mount: &crate::capability_types::MountPoint,
+    ) {
+        use crate::capability_types::MountSource;
+        fn walk(store: &MockFileStore, session_id: SessionId, base: &str, source: &MountSource) {
+            match source {
+                MountSource::InlineFile { content, .. } => {
+                    store.add_file(session_id, base, content);
+                }
+                MountSource::InlineDirectory { entries } => {
+                    for (name, entry) in entries {
+                        let path = format!("{}/{}", base, name);
+                        walk(store, session_id, &path, &entry.source);
+                    }
+                }
+            }
+        }
+        walk(store, session_id, &mount.path, &mount.source);
+    }
+
+    #[tokio::test]
+    async fn test_attach_skill_mount_discovered_by_list_skills() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry(
+            skill_id,
+            "pdf-tool".to_string(),
+            "Extract text from PDFs".to_string(),
+            "# Instructions\nUse pdfplumber to extract.".to_string(),
+            vec![],
+        );
+
+        // Materialize mount into VFS mock
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        for mount in cap.mounts() {
+            materialize_mount_into_store(&store, session_id, &mount);
+        }
+
+        // list_skills should discover it
+        let context = ToolContext::with_file_store(session_id, store);
+        let tool = ListSkillsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let skills = val["skills"].as_array().unwrap();
+                assert_eq!(skills.len(), 1);
+                assert_eq!(skills[0]["name"], "pdf-tool");
+                assert_eq!(skills[0]["description"], "Extract text from PDFs");
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_attach_skill_mount_activatable_by_skills_capability() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry(
+            skill_id,
+            "code-review".to_string(),
+            "Review code for issues".to_string(),
+            "# Instructions\nReview the code carefully.\n\n## Steps\n1. Check style\n2. Check logic"
+                .to_string(),
+            vec![],
+        );
+
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        for mount in cap.mounts() {
+            materialize_mount_into_store(&store, session_id, &mount);
+        }
+
+        // activate_skill should load instructions
+        let context = ToolContext::with_file_store(session_id, store);
+        let tool = ActivateSkillFromVfsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "code-review"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["skill"], "code-review");
+                assert_eq!(val["description"], "Review code for issues");
+                let instructions = val["instructions"].as_str().unwrap();
+                assert!(instructions.contains("<skill name=\"code-review\">"));
+                assert!(instructions.contains("Review the code carefully"));
+                assert!(instructions.contains("Check logic"));
+                assert!(instructions.contains("</skill>"));
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_attach_skill_with_bundled_files_discovered() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry(
+            skill_id,
+            "data-pipeline".to_string(),
+            "Build data pipelines".to_string(),
+            "# Instructions\nUse the bundled script.".to_string(),
+            vec![
+                ("run.py".to_string(), "import pandas as pd".to_string()),
+                ("README.md".to_string(), "# Reference docs".to_string()),
+            ],
+        );
+
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        for mount in cap.mounts() {
+            materialize_mount_into_store(&store, session_id, &mount);
+        }
+
+        // list_skills discovers it
+        let context = ToolContext::with_file_store(session_id, store.clone());
+        let tool = ListSkillsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["skills"][0]["name"], "data-pipeline");
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+
+        // activate_skill returns bundled files
+        let tool = ActivateSkillFromVfsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "data-pipeline"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["skill"], "data-pipeline");
+                let bundled = val["bundled_files"].as_array().unwrap();
+                // Should list non-SKILL.md files as bundled
+                assert!(!bundled.is_empty());
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiple_attach_skills_all_discovered() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        // Mount 3 different skills from "registry"
+        for (i, (name, desc)) in [
+            ("pdf-tool", "PDF processing"),
+            ("csv-analyzer", "CSV analysis"),
+            ("code-review", "Code review"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let skill_id =
+                uuid::Uuid::parse_str(&format!("550e8400-e29b-41d4-a716-44665544000{}", i))
+                    .unwrap();
+            let cap = AttachSkillCapability::from_registry(
+                skill_id,
+                name.to_string(),
+                desc.to_string(),
+                format!("# {name} Instructions"),
+                vec![],
+            );
+            for mount in cap.mounts() {
+                materialize_mount_into_store(&store, session_id, &mount);
+            }
+        }
+
+        // list_skills discovers all 3
+        let context = ToolContext::with_file_store(session_id, store);
+        let tool = ListSkillsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let skills = val["skills"].as_array().unwrap();
+                assert_eq!(skills.len(), 3);
+                let names: Vec<&str> = skills.iter().map(|s| s["name"].as_str().unwrap()).collect();
+                assert!(names.contains(&"pdf-tool"));
+                assert!(names.contains(&"csv-analyzer"));
+                assert!(names.contains(&"code-review"));
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_attach_skill_prompt_contribution_includes_mounted_skill() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry(
+            skill_id,
+            "pdf-tool".to_string(),
+            "Extract text from PDFs".to_string(),
+            "# Instructions".to_string(),
+            vec![],
+        );
+
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        for mount in cap.mounts() {
+            materialize_mount_into_store(&store, session_id, &mount);
+        }
+
+        // SkillsCapability dynamic prompt should include the mounted skill
+        let skills_cap = SkillsCapability;
+        let ctx = SystemPromptContext {
+            session_id,
+            file_store: Some(store),
+        };
+        let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(result.contains("pdf-tool"));
+        assert!(result.contains("Extract text from PDFs"));
+        assert!(result.contains("Available skills:"));
+    }
+
+    #[tokio::test]
+    async fn test_attach_skill_description_with_special_chars_roundtrips() {
+        use crate::capabilities::attach_skill::AttachSkillCapability;
+
+        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry(
+            skill_id,
+            "tricky-skill".to_string(),
+            "Description with: colons, #hashtags, and \"quotes\"".to_string(),
+            "# Instructions\nDo the thing.".to_string(),
+            vec![],
+        );
+
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        for mount in cap.mounts() {
+            materialize_mount_into_store(&store, session_id, &mount);
+        }
+
+        // list_skills should parse the YAML correctly
+        let context = ToolContext::with_file_store(session_id, store);
+        let tool = ListSkillsTool;
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let skills = val["skills"].as_array().unwrap();
+                assert_eq!(skills.len(), 1);
+                assert_eq!(skills[0]["name"], "tricky-skill");
+                assert_eq!(
+                    skills[0]["description"],
+                    "Description with: colons, #hashtags, and \"quotes\""
+                );
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
     #[tokio::test]
     async fn test_contribution_truncates_long_descriptions() {
         let cap = SkillsCapability;
