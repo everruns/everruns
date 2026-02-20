@@ -1,10 +1,13 @@
 //! Integration tests for PostgresWorkflowEventStore
 //!
-//! Run with: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+//! Run with: cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
 //!
 //! Requirements:
+//! - `postgres-tests` feature enabled
 //! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:5432/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
+
+#![cfg(feature = "postgres-tests")]
 
 use std::time::Duration;
 

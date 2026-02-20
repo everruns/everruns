@@ -8,11 +8,14 @@
 //! These tests focus on SQL query correctness and type mappings,
 //! covering queries used by the durable SSE endpoints.
 //!
-//! Run with: cargo test -p everruns-durable --test postgres_repository_test -- --test-threads=1
+//! Run with: cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
 //!
 //! Requirements:
+//! - `postgres-tests` feature enabled
 //! - PostgreSQL running with DATABASE_URL set
 //! - Migrations applied (run migrations from crates/server/migrations/)
+
+#![cfg(feature = "postgres-tests")]
 
 use chrono::Utc;
 use serde_json::json;
