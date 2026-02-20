@@ -1996,7 +1996,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let rows = sqlx::query(
             r#"
             WITH due_schedules AS (
-                SELECT *
+                SELECT id
                 FROM durable_schedules
                 WHERE enabled = true
                   AND next_trigger_at <= NOW()

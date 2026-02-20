@@ -317,14 +317,12 @@ CREATE TABLE durable_schedules (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for scheduler polling
+-- Covering index for scheduler polling claim query.
+-- INCLUDE columns let the planner evaluate (claimed_by IS NULL OR claimed_at < ...)
+-- directly from the index without heap fetches before acquiring FOR UPDATE locks.
 CREATE INDEX idx_durable_schedules_polling
     ON durable_schedules (next_trigger_at)
-    WHERE enabled = true;
-
--- Index for enabled schedules by next trigger time
-CREATE INDEX idx_durable_schedules_next_trigger
-    ON durable_schedules (next_trigger_at)
+    INCLUDE (claimed_by, claimed_at)
     WHERE enabled = true;
 
 -- ============================================
