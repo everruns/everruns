@@ -1,0 +1,101 @@
+---
+title: Everruns Documentation
+description: Documentation for Everruns - A durable agentic harness engine
+---
+
+import { Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+
+Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks with real-time event streaming via SSE.
+
+## Get Started
+
+<Steps>
+1. Read the [Introduction](/getting-started/introduction/) to understand core concepts
+2. Deploy with [Docker Compose](/getting-started/docker-compose/) in minutes
+3. Create your first agent via the [API](/api/) or [Management UI](/features/ui/)
+</Steps>
+
+## Develop
+
+<CardGrid>
+  <LinkCard
+    title="Concepts"
+    description="Agents, sessions, turns, capabilities, and how they fit together."
+    href="/getting-started/concepts/"
+  />
+  <LinkCard
+    title="Capabilities"
+    description="Modular tools that extend agent behavior — file system, bash, web fetch, and more."
+    href="/features/capabilities/"
+  />
+  <LinkCard
+    title="SDK"
+    description="Official client libraries for Rust, Python, and TypeScript."
+    href="/features/sdk/"
+  />
+  <LinkCard
+    title="CLI"
+    description="Command-line interface for managing agents, sessions, and conversations."
+    href="/features/cli/"
+  />
+  <LinkCard
+    title="Agent Skills"
+    description="Portable instruction packages that extend agents with specialized knowledge."
+    href="/features/skills/"
+  />
+  <LinkCard
+    title="Events & Streaming"
+    description="Real-time SSE event protocol for session observability."
+    href="/features/events/"
+  />
+  <LinkCard
+    title="API Reference"
+    description="Complete REST API reference generated from OpenAPI spec."
+    href="/api/"
+  />
+  <LinkCard
+    title="Event Reference"
+    description="All event types in the Everruns event protocol."
+    href="/event-reference/"
+  />
+</CardGrid>
+
+## Integrate
+
+<CardGrid>
+  <LinkCard
+    title="Daytona"
+    description="Cloud sandbox environments for secure, isolated code execution."
+    href="/integrations/daytona/"
+  />
+  <LinkCard
+    title="Braintrust"
+    description="LLM observability, evaluation, and trace visualization."
+    href="/observability/braintrust/"
+  />
+</CardGrid>
+
+## Operate
+
+<CardGrid>
+  <LinkCard
+    title="Docker Compose"
+    description="Deploy the full platform — control plane, workers, UI, and database."
+    href="/getting-started/docker-compose/"
+  />
+  <LinkCard
+    title="Environment Variables"
+    description="All configuration knobs for the control plane and workers."
+    href="/sre/environment-variables/"
+  />
+  <LinkCard
+    title="Admin Container"
+    description="Database migrations, key rotation, and other admin tasks."
+    href="/sre/admin-container/"
+  />
+  <LinkCard
+    title="Architecture"
+    description="System components, data flow, and scaling model."
+    href="/getting-started/architecture/"
+  />
+</CardGrid>
