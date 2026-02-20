@@ -10,6 +10,7 @@ jest.mock("next/navigation", () => ({
 // Mock next/link
 jest.mock("next/link", () => ({
   __esModule: true,
+  // eslint-disable-next-line nextjs/no-html-link-for-pages
   default: ({
     children,
     href,
@@ -19,6 +20,7 @@ jest.mock("next/link", () => ({
     href: string;
     className?: string;
   }) => (
+    // eslint-disable-next-line nextjs/no-html-link-for-pages
     <a href={href} className={className}>
       {children}
     </a>
@@ -300,7 +302,9 @@ describe("SessionLayout", () => {
     const { container } = await renderLayout();
 
     await waitFor(() => {
-      const layoutDiv = container.querySelector('[class*="flex"][class*="flex-col"][class*="h-full"]');
+      const layoutDiv = container.querySelector(
+        '[class*="flex"][class*="flex-col"][class*="h-full"]',
+      );
       expect(layoutDiv).toBeInTheDocument();
     });
   });
