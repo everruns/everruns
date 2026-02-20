@@ -472,6 +472,11 @@ impl LlmDriver for AnthropicLlmDriver {
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
 
+            // Check if this is a model-not-found error (404 with not_found_error)
+            if is_anthropic_model_not_found(status, &error_text) {
+                return Err(AgentLoopError::model_not_available(config.model.clone()));
+            }
+
             // Check if this is a request-too-large error
             if is_anthropic_request_too_large(status, &error_text) {
                 return Err(AgentLoopError::request_too_large(error_msg));
@@ -812,6 +817,25 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 // ============================================================================
 // Error Detection Helpers
 // ============================================================================
+
+/// Check if the error indicates the model was not found.
+///
+/// Anthropic returns 404 with `"type":"not_found_error"` when a model doesn't exist
+/// or isn't accessible.
+fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
+    if status == reqwest::StatusCode::NOT_FOUND {
+        let error_lower = error_text.to_lowercase();
+        // Anthropic returns: {"type":"error","error":{"type":"not_found_error","message":"model: ..."}}
+        if error_lower.contains("not_found_error") {
+            return true;
+        }
+        // Also catch generic "model" + "not found" patterns
+        if error_lower.contains("model") && error_lower.contains("not found") {
+            return true;
+        }
+    }
+    false
+}
 
 /// Check if an Anthropic API error indicates the request is too large.
 ///
@@ -1477,6 +1501,49 @@ mod tests {
         let error = r#"{"error":{"message":"Internal server error"}}"#;
         assert!(!is_anthropic_request_too_large(
             reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error
+        ));
+    }
+
+    // ========================================================================
+    // Model-not-found detection tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_anthropic_model_not_found_real_error() {
+        // Real Anthropic 404 response for nonexistent model
+        let error = r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-sonnet-4-6-20260217"},"request_id":"req_011CYJKSA1AvFr6TL2NYpYEa"}"#;
+        assert!(is_anthropic_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_model_not_found_generic_not_found() {
+        let error = r#"{"error":{"message":"Model not found"}}"#;
+        assert!(is_anthropic_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_model_not_found_false_for_other_404() {
+        // 404 without model-related message
+        let error = r#"{"error":{"message":"Endpoint not found"}}"#;
+        assert!(!is_anthropic_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_model_not_found_false_for_non_404() {
+        // not_found_error text but wrong status code
+        let error = r#"{"type":"error","error":{"type":"not_found_error","message":"model: x"}}"#;
+        assert!(!is_anthropic_model_not_found(
+            reqwest::StatusCode::BAD_REQUEST,
             error
         ));
     }

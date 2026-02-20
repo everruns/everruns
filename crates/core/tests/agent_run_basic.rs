@@ -23,6 +23,8 @@ use rstest::rstest;
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_core::llm_models::LlmProviderType;
+use everruns_core::traits::ModelWithProvider;
 
 // ============================================================================
 // Scenario: basic completion (no tools)
@@ -92,5 +94,63 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
     assert!(
         result.iterations > 1,
         "Should have multiple iterations (reason -> act -> reason)"
+    );
+}
+
+// ============================================================================
+// Scenario: model not available error handling
+// ============================================================================
+
+#[rstest]
+#[case::anthropic_nonexistent(
+    "claude-sonnet-4-6-20260217",
+    LlmProviderType::Anthropic,
+    "ANTHROPIC_API_KEY"
+)]
+#[case::openai_nonexistent("gpt-99-nonexistent", LlmProviderType::Openai, "OPENAI_API_KEY")]
+#[tokio::test]
+async fn test_model_not_available_returns_user_friendly_error(
+    #[case] model_name: &str,
+    #[case] provider_type: LlmProviderType,
+    #[case] env_var: &str,
+) {
+    let Some(api_key) = std::env::var(env_var).ok().filter(|k| !k.is_empty()) else {
+        eprintln!("Skipping: {} not set", env_var);
+        return;
+    };
+
+    let model = ModelWithProvider {
+        model: model_name.to_string(),
+        provider_type,
+        api_key: Some(api_key),
+        base_url: None,
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Test Agent")
+        .system_prompt("You are helpful.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .max_iterations(1)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("Hello").await.unwrap();
+
+    // The turn should complete (not crash) but with failure
+    assert!(!result.success, "Turn should fail for nonexistent model");
+    let error = result.error.as_deref().unwrap_or("");
+    assert!(!error.is_empty(), "Should have error message");
+    assert!(
+        error.contains("Model not available"),
+        "Error should mention model not available: {}",
+        error
+    );
+    assert!(
+        error.contains(model_name),
+        "Error should contain the model name '{}': {}",
+        model_name,
+        error
     );
 }

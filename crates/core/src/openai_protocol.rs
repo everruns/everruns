@@ -313,6 +313,11 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
 
+            // Check if this is a model-not-found error
+            if is_openai_model_not_found(status, &error_text) {
+                return Err(AgentLoopError::model_not_available(config.model.clone()));
+            }
+
             // Check if this is a request-too-large error
             if is_openai_request_too_large(status, &error_text) {
                 return Err(AgentLoopError::request_too_large(error_msg));
@@ -505,6 +510,34 @@ impl std::fmt::Debug for OpenAIProtocolLlmDriver {
 // ============================================================================
 // Error Detection Helpers
 // ============================================================================
+
+/// Check if the error indicates the model was not found.
+///
+/// OpenAI returns 404 or 400 with `"model_not_found"` code or `"does not exist"` message.
+/// Also handles Gemini/OpenAI-compatible endpoints with similar patterns.
+pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
+    let error_lower = error_text.to_lowercase();
+
+    // OpenAI can return either 404 or 400 for nonexistent models
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::BAD_REQUEST {
+        // OpenAI: {"error":{"code":"model_not_found","message":"The model 'x' does not exist"}}
+        if error_lower.contains("model_not_found") {
+            return true;
+        }
+    }
+
+    // 404 with generic model-not-found patterns
+    if status == reqwest::StatusCode::NOT_FOUND {
+        if error_lower.contains("does not exist") {
+            return true;
+        }
+        if error_lower.contains("model") && error_lower.contains("not found") {
+            return true;
+        }
+    }
+
+    false
+}
 
 /// Check if an OpenAI API error indicates the request is too large.
 ///
@@ -931,6 +964,68 @@ mod tests {
         let error = r#"{"error":{"message":"Invalid request"}}"#;
         assert!(!is_openai_request_too_large(
             reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    // ========================================================================
+    // Model-not-found detection tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_openai_model_not_found_real_error() {
+        // Real OpenAI 404 response for nonexistent model
+        let error = r#"{"error":{"code":"model_not_found","message":"The model 'gpt-99' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#;
+        assert!(is_openai_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_does_not_exist() {
+        let error = r#"{"error":{"message":"The model 'fake-model' does not exist"}}"#;
+        assert!(is_openai_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_generic_not_found() {
+        let error = r#"{"error":{"message":"Model not found"}}"#;
+        assert!(is_openai_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_400_with_model_not_found_code() {
+        // OpenAI Responses API returns 400 (not 404) for nonexistent models
+        let error = r#"{"error":{"code":"model_not_found","message":"The requested model 'gpt-99' does not exist.","type":"invalid_request_error","param":"model"}}"#;
+        assert!(is_openai_model_not_found(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_false_for_non_model_error() {
+        // 400 without model_not_found code should not match
+        let error = r#"{"error":{"code":"invalid_request","message":"Some other error"}}"#;
+        assert!(!is_openai_model_not_found(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_false_for_other_404() {
+        // 404 without model-related message
+        let error = r#"{"error":{"message":"Endpoint not found"}}"#;
+        assert!(!is_openai_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
             error
         ));
     }

@@ -339,6 +339,11 @@ impl LlmDriver for GeminiLlmDriver {
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("Gemini API error ({}): {}", status, error_text);
 
+            // Check if this is a model-not-found error
+            if is_gemini_model_not_found(status, &error_text) {
+                return Err(AgentLoopError::model_not_available(config.model.clone()));
+            }
+
             if is_gemini_request_too_large(status, &error_text) {
                 return Err(AgentLoopError::request_too_large(error_msg));
             }
@@ -790,6 +795,22 @@ fn extract_sse_event(buffer: &mut String) -> Option<String> {
 // ============================================================================
 
 /// Check if a Gemini API error indicates the request is too large
+/// Check if the error indicates the model was not found.
+///
+/// Gemini returns 404 with `"NOT_FOUND"` status when a model doesn't exist.
+fn is_gemini_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
+    if status == reqwest::StatusCode::NOT_FOUND {
+        let error_lower = error_text.to_lowercase();
+        if error_lower.contains("not_found") || error_lower.contains("not found") {
+            return true;
+        }
+        if error_lower.contains("model") {
+            return true;
+        }
+    }
+    false
+}
+
 fn is_gemini_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
     let error_lower = error_text.to_lowercase();
 
@@ -1162,5 +1183,36 @@ mod tests {
 
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].role.as_deref(), Some("user"));
+    }
+
+    // ========================================================================
+    // Model-not-found detection tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_gemini_model_not_found_404_not_found() {
+        let error = r#"{"error":{"code":404,"message":"models/gemini-nonexistent is not found","status":"NOT_FOUND"}}"#;
+        assert!(is_gemini_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_gemini_model_not_found_model_keyword() {
+        let error = r#"{"error":{"code":404,"message":"Model does not exist"}}"#;
+        assert!(is_gemini_model_not_found(
+            reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_gemini_model_not_found_false_for_non_404() {
+        let error = r#"{"error":{"code":400,"status":"NOT_FOUND"}}"#;
+        assert!(!is_gemini_model_not_found(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
     }
 }

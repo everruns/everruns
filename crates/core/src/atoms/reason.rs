@@ -390,8 +390,15 @@ where
                 let error_msg = e.to_string();
 
                 // User-facing error message
-                // For request-too-large errors, provide specific guidance
-                let user_error_text = if e.is_request_too_large() {
+                // Provide specific guidance based on error type
+                let user_error_text = if let Some(model_id) = e.model_not_available_id() {
+                    format!(
+                        "The model `{}` is not available. It may have been removed, \
+                         renamed, or your API key may not have access to it. \
+                         Please select a different model.",
+                        model_id
+                    )
+                } else if e.is_request_too_large() {
                     "The conversation has become too long for the model to process. \
                      Please start a new session or reduce the context size."
                         .to_string()
