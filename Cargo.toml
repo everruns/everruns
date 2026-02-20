@@ -16,6 +16,7 @@ members = [
     "integrations/docker",
     "integrations/daytona",
     "integrations/brave-search",
+    "integrations/duckduckgo",
 ]
 
 exclude = [

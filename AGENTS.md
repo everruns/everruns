@@ -95,6 +95,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/linear-issues.md` - Linear issue processing workflow
 - `specs/daytona.md` - Daytona cloud sandbox integration
 - `specs/brave-search.md` - Brave Search web search integration
+- `specs/duckduckgo.md` - DuckDuckGo instant answer search integration
 - `specs/harness-types.md` - Built-in harness types (Base, Generic)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/codesandbox.md` - CodeSandbox cloud sandbox integration

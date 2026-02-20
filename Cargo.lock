@@ -1380,6 +1380,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-duckduckgo"
+version = "0.7.0"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-internal-protocol"
 version = "0.8.2"
 dependencies = [
@@ -1455,6 +1470,7 @@ dependencies = [
  "everruns-integrations-codesandbox",
  "everruns-integrations-daytona",
  "everruns-integrations-docker",
+ "everruns-integrations-duckduckgo",
  "everruns-internal-protocol",
  "everruns-sdk",
  "everruns-session-sqldb",
@@ -1529,6 +1545,7 @@ dependencies = [
  "everruns-integrations-codesandbox",
  "everruns-integrations-daytona",
  "everruns-integrations-docker",
+ "everruns-integrations-duckduckgo",
  "everruns-internal-protocol",
  "everruns-openai",
  "futures",
