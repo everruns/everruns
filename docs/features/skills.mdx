@@ -66,40 +66,9 @@ Activate this skill when a user provides a CSV file and wants summary statistics
 | `license` | License identifier (e.g., MIT, Apache-2.0) |
 | `compatibility` | Environment requirements (e.g., Python 3.10+) |
 
-## Creating Skills
+## Creating Skills in Your Workspace
 
-### Via API (Registry-Based)
-
-Create a skill from a SKILL.md file:
-
-```bash
-curl -X POST http://localhost:9000/v1/skills \
-  -H "Content-Type: application/json" \
-  -d '{
-    "skill_md": "---\nname: hello-world\ndescription: A simple greeting skill.\n---\n\n# Hello World\n\nGreet the user warmly."
-  }'
-```
-
-### Via ZIP Archive
-
-For skills with bundled scripts, references, or assets:
-
-```bash
-curl -X POST http://localhost:9000/v1/skills/upload \
-  -F "file=@csv-analyzer.zip"
-```
-
-Archive structure:
-```
-csv-analyzer/
-├── SKILL.md
-├── scripts/analyze.py
-└── references/REFERENCE.md
-```
-
-### Filesystem Discovery (Built-in `skills` Capability)
-
-Skills placed in the session filesystem at `/.agents/skills/` are automatically discovered when the built-in `skills` capability is enabled on an agent. This capability provides `list_skills` and `activate_skill` tools for VFS-based discovery.
+Place skills in the session filesystem at `/.agents/skills/`. Each subdirectory containing a `SKILL.md` is automatically discovered when the built-in `skills` capability is enabled on an agent.
 
 ```
 /.agents/skills/
@@ -107,37 +76,38 @@ Skills placed in the session filesystem at `/.agents/skills/` are automatically 
 │   └── SKILL.md
 ├── csv-analyzer/
 │   ├── SKILL.md
-│   └── scripts/analyze.py
+│   ├── scripts/analyze.py
+│   └── references/REFERENCE.md
 ```
 
-## Skills as Capabilities
+Skills can be simple (just a `SKILL.md`) or include bundled scripts, references, and assets that the agent can access after activation.
 
-Skills integrate into the capability system as virtual capabilities, appearing alongside built-in and MCP capabilities.
+### Enabling the Skills Capability
 
-### Capability ID Format
-
-- **Registry skills**: `skill:{uuid}` (e.g., `skill:550e8400-e29b-41d4-a716-446655440000`)
-- **Filesystem skills**: Aggregated under `skills` capability ID
-
-### Assigning to Agents
+Add the built-in `skills` capability to your agent to enable filesystem-based skill discovery:
 
 ```bash
 curl -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Analyst Agent",
+    "name": "My Agent",
     "capabilities": [
-      { "ref": "skill:550e8400-e29b-41d4-a716-446655440000", "config": {} },
+      { "ref": "skills", "config": {} },
       { "ref": "session_file_system", "config": {} }
     ]
   }'
 ```
 
-Skills automatically depend on `session_file_system` for reading bundled files.
+The `skills` capability provides two tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_skills` | Scan `/.agents/skills/` for available skills |
+| `activate_skill` | Load a skill's full instructions into the agent's context |
 
 ## How Activation Works
 
-When a skill is assigned to an agent, the system prompt includes an `<available_skills>` XML block:
+When skills are available to an agent, the system prompt includes an `<available_skills>` block with names and descriptions only (~100 tokens per skill):
 
 ```xml
 <available_skills>
@@ -151,7 +121,7 @@ When a user's task matches an available skill, activate it by using the
 `activate_skill` tool with the skill name.
 ```
 
-The agent then uses the `activate_skill` tool to load full instructions:
+The agent decides when to activate a skill based on the user's task:
 
 ```json
 {
@@ -160,45 +130,8 @@ The agent then uses the `activate_skill` tool to load full instructions:
 }
 ```
 
-The tool returns the complete SKILL.md instructions wrapped in `<skill>` tags. For archive-based skills, bundled files are mounted into the session VFS at `/skills/{name}/`.
+The tool returns the complete SKILL.md instructions wrapped in `<skill>` tags. For skills with bundled files, those files are mounted into the session VFS at `/skills/{name}/` and accessible via existing `read_file` / `list_files` tools.
 
-## API Reference
+## Skills Registry
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/skills` | Create skill from SKILL.md |
-| POST | `/v1/skills/upload` | Create skill from ZIP archive |
-| GET | `/v1/skills` | List all skills |
-| GET | `/v1/skills/{id}` | Get skill metadata |
-| GET | `/v1/skills/{id}/content` | Get full skill content |
-| PATCH | `/v1/skills/{id}` | Update skill |
-| DELETE | `/v1/skills/{id}` | Delete skill |
-| POST | `/v1/skills/validate` | Validate SKILL.md without creating |
-
-## Validation
-
-Use the validation endpoint to check a SKILL.md before creating:
-
-```bash
-curl -X POST http://localhost:9000/v1/skills/validate \
-  -H "Content-Type: application/json" \
-  -d '{"skill_md": "---\nname: my-skill\ndescription: Does things.\n---\n\n# Instructions"}'
-```
-
-Response:
-```json
-{
-  "valid": true,
-  "name": "my-skill",
-  "description": "Does things.",
-  "warnings": []
-}
-```
-
-## Security
-
-- Archive uploads are validated for path traversal, zip bombs, and size limits
-- Skill instructions are returned as tool results (not injected into system prompt)
-- Skill names are unique per organization
-- Disabled skills are hidden from capability listings
-- See the [Threat Model](/specs/threat-model/) for detailed security analysis (TM-TOOL-010 through TM-TOOL-014)
+For organization-wide skills managed via API (create, upload ZIP archives, validate), see the [Skills Registry](/features/skills-registry/).

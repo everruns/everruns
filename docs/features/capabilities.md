@@ -102,7 +102,7 @@ Enables agents to discover and activate skills from the session filesystem. Skil
   - Invalid SKILL.md files reported but don't block discovery
 - **Use cases**: Project-specific skills uploaded to the session workspace, per-session skill discovery
 
-See [Agent Skills](/features/skills/) for the full skills system including the registry API.
+See [Agent Skills](/features/skills/) for workspace-based skills and [Skills Registry](/features/skills-registry/) for the API.
 
 ### Docker Container (Experimental)
 
