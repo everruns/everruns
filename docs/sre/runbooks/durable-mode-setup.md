@@ -3,8 +3,6 @@ title: Durable Execution Engine Setup
 description: How to run Everruns with the PostgreSQL-backed durable execution engine
 ---
 
-# Durable Execution Engine Setup Guide
-
 This guide explains how to run Everruns with the custom PostgreSQL-backed durable execution engine.
 
 ## Overview

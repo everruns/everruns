@@ -149,6 +149,11 @@
   background-color: #1a1a1a;
 }
 
+/* Dark-mode logo inversion for black-on-transparent logos */
+:root[data-theme="dark"] .sl-markdown-content img.dark-invert {
+  filter: invert(1);
+}
+
 /* Typography */
 h1,
 h2,

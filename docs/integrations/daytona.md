@@ -3,9 +3,7 @@ title: Daytona Integration
 description: Cloud sandbox environments for secure code execution with Daytona
 ---
 
-# Daytona Integration
-
-<img src="/images/integrations/daytona-logo.png" alt="Daytona" width="200" style="margin-bottom: 16px;" />
+<img src="/images/integrations/daytona-logo.png" alt="Daytona" width="200" class="dark-invert" style="margin-bottom: 16px;" />
 
 Everruns integrates with [Daytona](https://www.daytona.io/) to provide cloud-based sandbox environments for secure, isolated code execution. Agents can create, manage, and interact with multiple sandboxes per session — each a fully isolated Linux environment with network access.
 
