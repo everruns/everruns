@@ -519,6 +519,238 @@ case "$cmd" in
     wait
     ;;
 
+  start-production)
+    echo "🚀 Starting Everruns in PRODUCTION MODE (release builds, no watchers)..."
+    echo ""
+
+    require_command sqlx "Run: just init"
+    if [ "$NO_UI" = false ]; then
+      require_command npm "Install Node.js/npm to build the UI (or use --no-ui)"
+      require_command caddy "Run: just init"
+    fi
+
+    CHILD_PIDS=()
+    JAEGER_STARTED=false
+    CLEANUP_DONE=false
+
+    cleanup() {
+      if [ "$CLEANUP_DONE" = true ]; then
+        return
+      fi
+      CLEANUP_DONE=true
+
+      trap '' SIGINT SIGTERM
+
+      stty sane 2>/dev/null || true
+      echo ""
+      echo "🛑 Stopping services..."
+
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill -TERM "$pid" 2>/dev/null || true
+        fi
+      done
+
+      pkill -TERM -f "caddy run" 2>/dev/null || true
+      pkill -TERM -f "everruns-server" 2>/dev/null || true
+      pkill -TERM -f "everruns-worker" 2>/dev/null || true
+      pkill -TERM -f "next-server" 2>/dev/null || true
+
+      sleep 1
+
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill -KILL "$pid" 2>/dev/null || true
+        fi
+      done
+      pkill -KILL -f "caddy run" 2>/dev/null || true
+      pkill -KILL -f "everruns-server" 2>/dev/null || true
+      pkill -KILL -f "everruns-worker" 2>/dev/null || true
+      pkill -KILL -f "next-server" 2>/dev/null || true
+
+      stty sane 2>/dev/null || true
+      echo "✅ Services stopped (Docker still running if started)"
+      exit 0
+    }
+
+    trap cleanup SIGINT SIGTERM
+
+    # Check PostgreSQL (same as start-all)
+    echo "1️⃣  Checking PostgreSQL..."
+    if [ "$NO_DOCKER" = true ]; then
+      if check_postgres_ready localhost 5432 everruns; then
+        echo "   ✅ Local PostgreSQL is ready"
+        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      else
+        echo "   ❌ PostgreSQL not running or not responding on localhost:5432"
+        echo "   Start PostgreSQL or remove --no-docker flag"
+        exit 1
+      fi
+      export OTEL_SDK_DISABLED=true
+      echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
+    elif check_postgres_ready localhost 5432 postgres; then
+      echo "   ✅ Local PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker ps 2>/dev/null | grep -q jaeger; then
+          echo "   ℹ️  Starting Jaeger for tracing..."
+          ensure_docker_daemon || true
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        else
+          JAEGER_STARTED=true
+        fi
+      fi
+    elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
+      echo "   ✅ Docker PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      if ! docker ps 2>/dev/null | grep -q jaeger; then
+        echo "   ℹ️  Starting Jaeger for tracing..."
+        if resolve_docker_compose 2>/dev/null; then
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        fi
+      else
+        JAEGER_STARTED=true
+      fi
+    else
+      echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
+      if resolve_docker_compose; then
+        ensure_docker_daemon || exit 1
+        cd "$PROJECT_ROOT/local"
+        "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
+        cd "$PROJECT_ROOT"
+        sleep 3
+        until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+          echo "   Waiting for Postgres to be ready..."
+          sleep 1
+        done
+        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        echo "   ✅ Docker PostgreSQL and Jaeger started"
+        JAEGER_STARTED=true
+      else
+        echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+        exit 1
+      fi
+    fi
+
+    if [ "$JAEGER_STARTED" = false ]; then
+      echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
+      export OTEL_SDK_DISABLED=true
+    fi
+
+    print_doppler_secret_hint
+
+    # Configure LLM API keys
+    echo "2️⃣  Configuring LLM API keys from environment..."
+    if [ -n "${OPENAI_API_KEY:-}" ]; then
+      export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
+      echo "   ✅ OpenAI API key configured"
+    else
+      echo "   ⚠️  OPENAI_API_KEY not set"
+    fi
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+      export DEFAULT_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+      echo "   ✅ Anthropic API key configured"
+    else
+      echo "   ⚠️  ANTHROPIC_API_KEY not set"
+    fi
+    if [ -n "${GEMINI_API_KEY:-}" ]; then
+      export DEFAULT_GEMINI_API_KEY="$GEMINI_API_KEY"
+      echo "   ✅ Gemini API key configured"
+    else
+      echo "   ⚠️  GEMINI_API_KEY not set"
+    fi
+
+    # Build release binaries
+    echo "3️⃣  Building release binaries (server + worker)..."
+    cargo build --release -p everruns-server -p everruns-worker
+    echo "   ✅ Release binaries built"
+
+    # Build UI
+    if [ "$NO_UI" = false ]; then
+      echo "4️⃣  Building UI (production)..."
+      check_ui_deps || true
+      cd "$PROJECT_ROOT/apps/ui"
+      npm run build
+      cd "$PROJECT_ROOT"
+      echo "   ✅ UI built"
+    fi
+
+    # Start server
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
+    export AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:9300/api}
+    export FRONTEND_URL=${FRONTEND_URL:-http://localhost:9300}
+    export DEPLOYMENT_GRADE=dev
+    export RUST_LOG=${RUST_LOG:-info}
+
+    echo "5️⃣  Starting server (release)..."
+    "$PROJECT_ROOT/target/release/everruns-server" &
+    API_PID=$!
+    CHILD_PIDS+=("$API_PID")
+    sleep 3
+
+    # Wait for server
+    echo "6️⃣  Waiting for server to be ready..."
+    for i in {1..30}; do
+      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+        echo "   ✅ Server is ready"
+        break
+      fi
+      sleep 2
+    done
+
+    # Start worker
+    echo "7️⃣  Starting worker (release)..."
+    "$PROJECT_ROOT/target/release/everruns-worker" &
+    WORKER_PID=$!
+    CHILD_PIDS+=("$WORKER_PID")
+    sleep 2
+    echo "   ✅ Worker is running (PID: $WORKER_PID)"
+
+    if [ "$NO_UI" = false ]; then
+      # Start UI production server
+      echo "8️⃣  Starting UI server (production)..."
+      cd "$PROJECT_ROOT/apps/ui"
+      PORT=9100 npm run start &
+      UI_PID=$!
+      CHILD_PIDS+=("$UI_PID")
+      cd "$PROJECT_ROOT"
+      sleep 3
+      echo "   ✅ UI is running (PID: $UI_PID)"
+
+      # Start Caddy reverse proxy
+      echo "9️⃣  Starting reverse proxy (Caddy)..."
+      caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
+      CADDY_PID=$!
+      CHILD_PIDS+=("$CADDY_PID")
+      sleep 1
+      echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
+    fi
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "✅ PRODUCTION MODE started (release builds, no watchers)!"
+    echo ""
+    if [ "$NO_UI" = false ]; then
+      echo "   🌐 App:         http://localhost:9300"
+      echo "   🔌 API:         http://localhost:9300/api/..."
+    else
+      echo "   🌐 API:         http://localhost:9000"
+    fi
+    echo "   ⚙️ Worker:      running (release)"
+    if [ "$JAEGER_STARTED" = true ]; then
+      echo "   🔍 Jaeger UI:   http://localhost:16686"
+    fi
+    echo ""
+    echo "💡 Press Ctrl+C to stop services"
+    echo ""
+
+    wait
+    ;;
+
   stop-all)
     echo "🛑 Stopping all Everruns services..."
 
@@ -537,7 +769,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {server|worker|watch-server|watch-worker|start-dev|start-all|stop-all} [options]"
+    echo "Usage: $0 {server|worker|watch-server|watch-worker|start-dev|start-all|start-production|stop-all} [options]"
     echo ""
     echo "Options:"
     echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
