@@ -3,7 +3,7 @@ title: Braintrust Integration
 description: LLM observability, evaluation, and trace visualization with Braintrust
 ---
 
-<img src="/images/observability/braintrust-logo.png" alt="Braintrust" width="64" class="dark-invert" style="float: right; margin-left: 16px;" />
+<img src="/images/observability/braintrust-logo.png" alt="Braintrust" width="64" style="float: right; margin-left: 16px;" />
 
 :::note[Preview]
 This integration is in preview. APIs and behavior may change.
