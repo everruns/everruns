@@ -160,10 +160,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   const basePath = `/sessions/${sessionId}`;
 
   // Compute active feature set from session capabilities
-  const features = useMemo(
-    () => new Set(session?.features ?? []),
-    [session?.features],
-  );
+  const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
   const hasFeature = (feature: string) => features.has(feature);
 
   if (sessionLoading) {

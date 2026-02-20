@@ -1457,10 +1457,10 @@ async fn test_session_features_in_list() {
         .assert_success()
         .json_value();
 
-    let items = list_body["items"].as_array().expect("items array");
-    assert!(!items.is_empty());
+    let data = list_body["data"].as_array().expect("data array");
+    assert!(!data.is_empty());
 
-    let first = &items[0];
+    let first = &data[0];
     let features = first["features"]
         .as_array()
         .expect("features should be an array");
@@ -1590,10 +1590,10 @@ async fn test_capability_info_includes_features() {
         .assert_success()
         .json_value();
 
-    let items = body["items"].as_array().expect("items array");
+    let data = body["data"].as_array().expect("data array");
 
     // Find session_storage capability — should have secrets and key_value features
-    let storage = items
+    let storage = data
         .iter()
         .find(|c| c["id"] == "session_storage")
         .expect("session_storage capability should exist");
@@ -1611,7 +1611,7 @@ async fn test_capability_info_includes_features() {
     );
 
     // Find session_schedule — should have schedules feature
-    let schedule = items
+    let schedule = data
         .iter()
         .find(|c| c["id"] == "session_schedule")
         .expect("session_schedule capability should exist");
@@ -1625,7 +1625,7 @@ async fn test_capability_info_includes_features() {
     );
 
     // Find noop — should have no features (empty or absent)
-    let noop = items
+    let noop = data
         .iter()
         .find(|c| c["id"] == "noop")
         .expect("noop capability should exist");
