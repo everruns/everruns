@@ -16,7 +16,7 @@ use anyhow::Result;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, CapabilityRegistry, HarnessId, ModelId, Session, SessionId,
     SessionStatus, TokenUsage,
-    capabilities::{SystemPromptContext, collect_capabilities},
+    capabilities::{SystemPromptContext, collect_capabilities, compute_features},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -96,6 +96,10 @@ impl SessionService {
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id);
+
+        // Populate features before overriding agent_id (needs internal UUID)
+        self.populate_features(&mut session).await?;
+
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
@@ -123,30 +127,9 @@ impl SessionService {
     ) -> Result<()> {
         let session_id = session_id.into();
 
-        // Collect capability IDs: harness caps first, then agent, then session
-        let harness_cap_rows = self.db.get_harness_capabilities(harness_id).await?;
-        let mut capability_ids: Vec<String> = harness_cap_rows
-            .iter()
-            .map(|r| r.capability_id.clone())
-            .collect();
-
-        // Add agent's capability IDs
-        if let Some(agent_id) = agent_id {
-            let agent_cap_rows = self.db.get_agent_capabilities(agent_id).await?;
-            for r in &agent_cap_rows {
-                if !capability_ids.contains(&r.capability_id) {
-                    capability_ids.push(r.capability_id.clone());
-                }
-            }
-        }
-
-        // Add session-level capabilities (additive)
-        for cap in session_capabilities {
-            let cap_id = cap.capability_id().to_string();
-            if !capability_ids.contains(&cap_id) {
-                capability_ids.push(cap_id);
-            }
-        }
+        let capability_ids = self
+            .collect_session_capability_ids(harness_id, agent_id, session_capabilities)
+            .await?;
 
         if capability_ids.is_empty() {
             return Ok(()); // No capabilities, nothing to mount
@@ -202,6 +185,8 @@ impl SessionService {
         match row {
             Some(r) => {
                 let mut session = Self::row_to_session(r, org_public_id);
+                // Populate features before resolving agent_id (needs internal UUID)
+                self.populate_features(&mut session).await?;
                 self.resolve_session_agent_id(org_id, &mut session).await?;
                 // Populate is_pinned if user context available
                 if let Some(uid) = user_id {
@@ -231,6 +216,11 @@ impl SessionService {
             .into_iter()
             .map(|r| Self::row_to_session(r, org_public_id))
             .collect();
+
+        // Populate features before resolving agent IDs (needs internal UUIDs)
+        for session in &mut sessions {
+            self.populate_features(session).await?;
+        }
 
         // Resolve agent internal UUIDs to public IDs
         for session in &mut sessions {
@@ -349,6 +339,56 @@ impl SessionService {
         Ok(())
     }
 
+    /// Collect all capability IDs for a session (harness + agent + session-level).
+    /// Deduplicates while preserving order: harness first, then agent, then session.
+    async fn collect_session_capability_ids(
+        &self,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<Vec<String>> {
+        let harness_cap_rows = self.db.get_harness_capabilities(harness_id).await?;
+        let mut capability_ids: Vec<String> = harness_cap_rows
+            .iter()
+            .map(|r| r.capability_id.clone())
+            .collect();
+
+        if let Some(agent_id) = agent_id {
+            let agent_cap_rows = self.db.get_agent_capabilities(agent_id).await?;
+            for r in &agent_cap_rows {
+                if !capability_ids.contains(&r.capability_id) {
+                    capability_ids.push(r.capability_id.clone());
+                }
+            }
+        }
+
+        for cap in session_capabilities {
+            let cap_id = cap.capability_id().to_string();
+            if !capability_ids.contains(&cap_id) {
+                capability_ids.push(cap_id);
+            }
+        }
+
+        Ok(capability_ids)
+    }
+
+    /// Populate the `features` field on a session by aggregating features from
+    /// all active capabilities (harness + agent + session-level).
+    ///
+    /// Must be called BEFORE `resolve_session_agent_id()` because the session's
+    /// agent_id at that point is still the internal UUID needed for DB lookups.
+    async fn populate_features(&self, session: &mut Session) -> Result<()> {
+        let harness_id = session.harness_id.uuid();
+        let agent_internal_id = session.agent_id.map(|a| a.uuid());
+
+        let capability_ids = self
+            .collect_session_capability_ids(harness_id, agent_internal_id, &session.capabilities)
+            .await?;
+
+        session.features = compute_features(&capability_ids, &self.capability_registry);
+        Ok(())
+    }
+
     fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
@@ -394,6 +434,7 @@ impl SessionService {
             usage,
             is_pinned: None,             // Populated by caller with user context
             active_schedule_count: None, // Populated by caller
+            features: vec![],            // Populated by caller via populate_features()
         }
     }
 }

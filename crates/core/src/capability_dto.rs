@@ -50,6 +50,10 @@ pub struct CapabilityInfo {
     /// When this capability is selected, its dependencies are automatically included.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub dependencies: Vec<String>,
+    /// UI feature strings this capability contributes to.
+    /// Multiple capabilities can contribute the same feature.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub features: Vec<String>,
 }
 
 impl CapabilityInfo {
@@ -73,6 +77,7 @@ impl CapabilityInfo {
             is_mcp,
             is_skill,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
+            features: cap.features().iter().map(|s| s.to_string()).collect(),
         }
     }
 }
@@ -106,6 +111,7 @@ mod tests {
             is_mcp: false,
             is_skill: false,
             dependencies: vec![],
+            features: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -118,6 +124,8 @@ mod tests {
         assert!(!json.contains("\"is_skill\""));
         // Empty dependencies should be skipped in serialization
         assert!(!json.contains("\"dependencies\""));
+        // Empty features should be skipped in serialization
+        assert!(!json.contains("\"features\""));
     }
 
     #[test]
@@ -134,6 +142,7 @@ mod tests {
             is_mcp: true,
             is_skill: false,
             dependencies: vec![],
+            features: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -154,6 +163,7 @@ mod tests {
             is_mcp: false,
             is_skill: false,
             dependencies: vec!["session_file_system".to_string()],
+            features: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -190,5 +200,45 @@ mod tests {
 
         let json = serde_json::to_string(&custom).unwrap();
         assert_eq!(json, "\"my_custom_capability\"");
+    }
+
+    #[test]
+    fn test_capability_with_features_serialization() {
+        let cap = CapabilityInfo {
+            id: CapabilityId::new("session_storage"),
+            name: "Session Storage".to_string(),
+            description: "Storage capability".to_string(),
+            status: CapabilityStatus::Available,
+            icon: None,
+            category: None,
+            system_prompt: None,
+            tool_definitions: vec![],
+            is_mcp: false,
+            is_skill: false,
+            dependencies: vec![],
+            features: vec!["secrets".to_string(), "key_value".to_string()],
+        };
+
+        let json = serde_json::to_string(&cap).unwrap();
+        assert!(json.contains("\"features\":[\"secrets\",\"key_value\"]"));
+    }
+
+    #[test]
+    fn test_from_core_populates_features() {
+        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+
+        let schedule_cap = registry.get("session_schedule").unwrap();
+        let info = CapabilityInfo::from_core(schedule_cap.as_ref());
+        assert_eq!(info.features, vec!["schedules"]);
+
+        let storage_cap = registry.get("session_storage").unwrap();
+        let info = CapabilityInfo::from_core(storage_cap.as_ref());
+        assert!(info.features.contains(&"secrets".to_string()));
+        assert!(info.features.contains(&"key_value".to_string()));
+
+        // Capability with no features
+        let noop_cap = registry.get("noop").unwrap();
+        let info = CapabilityInfo::from_core(noop_cap.as_ref());
+        assert!(info.features.is_empty());
     }
 }

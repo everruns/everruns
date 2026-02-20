@@ -122,4 +122,9 @@ pub struct Session {
     /// Populated when the session is fetched for API responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_schedule_count: Option<u32>,
+    /// Aggregated UI features from all active capabilities (harness + agent + session).
+    /// Computed at read time from the capability registry.
+    /// Known features: "file_system", "schedules", "secrets", "key_value", "sql_database".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
 }

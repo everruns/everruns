@@ -87,6 +87,7 @@ impl SessionStore for DbSessionStore {
                     usage,
                     is_pinned: None,
                     active_schedule_count: None,
+                    features: vec![],
                 }))
             }
             None => Ok(None),

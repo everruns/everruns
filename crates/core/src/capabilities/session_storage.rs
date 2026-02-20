@@ -73,6 +73,10 @@ Best practices:
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(KvStoreTool), Box::new(SecretStoreTool)]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["secrets", "key_value"]
+    }
 }
 
 // ============================================================================

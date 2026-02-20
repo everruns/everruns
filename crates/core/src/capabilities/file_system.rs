@@ -142,6 +142,10 @@ Best practices:
             Box::new(StatFileTool),
         ]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["file_system"]
+    }
 }
 
 // ============================================================================

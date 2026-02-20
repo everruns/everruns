@@ -108,6 +108,10 @@ impl Capability for VirtualBashCapability {
         // Depends on session filesystem for file access
         vec!["session_file_system"]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["file_system"]
+    }
 }
 
 // ============================================================================

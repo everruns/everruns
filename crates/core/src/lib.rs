@@ -155,8 +155,8 @@ pub use capabilities::{
     SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool,
     TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
     WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
-    get_dependencies, is_mcp_capability, mcp_capability_id, parse_mcp_capability_id,
-    resolve_dependencies,
+    compute_features, get_dependencies, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id, resolve_dependencies,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

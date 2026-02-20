@@ -382,6 +382,7 @@ impl InMemoryAgenticLoopBuilder {
             usage: None,
             is_pinned: None,
             active_schedule_count: None,
+            features: vec![],
         };
         session_store.add_session(session).await;
 
