@@ -202,7 +202,7 @@ export default function EventsPage() {
                               onClick={() => setSelectedGeneration(event)}
                             >
                               <Eye className="w-3 h-3 mr-1" />
-                              Preview
+                              View
                             </Button>
                           )}
                           <CopyButton data={event.data} />
