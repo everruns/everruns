@@ -26,8 +26,24 @@ pub const SKILLS_DISCOVERY_CAPABILITY_ID: &str = "skills";
 /// Path in session VFS where skills are discovered
 const SKILLS_PATH: &str = "/.agents/skills";
 
+/// Max skills to include in the system prompt (rest via list_skills tool)
+const MAX_SKILLS_IN_PROMPT: usize = 15;
+
+/// Max description length in system prompt (truncated with "…")
+const MAX_DESCRIPTION_CHARS: usize = 76;
+
 /// Workspace prefix for agent-facing paths (matches file_system capability convention)
 const WORKSPACE_PREFIX: &str = "/workspace";
+
+/// Truncate a string to `max_chars`, appending "…" if truncated.
+/// Splits on the nearest char boundary at or before `max_chars`.
+fn truncate_description(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let truncated: String = s.chars().take(max_chars.saturating_sub(1)).collect();
+    format!("{}…", truncated.trim_end())
+}
 
 /// Add workspace prefix for display paths shown to the agent
 fn workspace_path(path: &str) -> String {
@@ -137,9 +153,17 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         let mut prompt = String::from(SKILLS_SYSTEM_PROMPT);
 
         if !discovered_skills.is_empty() {
+            let total = discovered_skills.len();
             prompt.push_str("\n\nAvailable skills:\n");
-            for (name, description) in &discovered_skills {
-                prompt.push_str(&format!("- **{}**: {}\n", name, description));
+            for (name, description) in discovered_skills.iter().take(MAX_SKILLS_IN_PROMPT) {
+                let desc = truncate_description(description, MAX_DESCRIPTION_CHARS);
+                prompt.push_str(&format!("- **{}**: {}\n", name, desc));
+            }
+            if total > MAX_SKILLS_IN_PROMPT {
+                prompt.push_str(&format!(
+                    "\n({} more skills available — use `list_skills` to see all)\n",
+                    total - MAX_SKILLS_IN_PROMPT
+                ));
             }
         }
 
@@ -1224,5 +1248,138 @@ mod tests {
         assert!(result.contains("list_skills"));
         // No "Available skills:" section (dir doesn't exist)
         assert!(!result.contains("Available skills:"));
+    }
+
+    // ========================================================================
+    // truncate_description tests
+    // ========================================================================
+
+    #[test]
+    fn test_truncate_short_description() {
+        assert_eq!(truncate_description("Short desc", 76), "Short desc");
+    }
+
+    #[test]
+    fn test_truncate_exact_limit() {
+        let s = "a".repeat(76);
+        assert_eq!(truncate_description(&s, 76), s);
+    }
+
+    #[test]
+    fn test_truncate_long_description() {
+        let s = "a".repeat(100);
+        let result = truncate_description(&s, 76);
+        assert!(result.ends_with('…'));
+        // 75 chars + "…" = 76 display chars
+        assert_eq!(result.chars().count(), 76);
+    }
+
+    #[test]
+    fn test_truncate_preserves_words_trimming() {
+        let s = "Extract text and tables from PDF files, fill forms, merge documents, and do other cool things too";
+        let result = truncate_description(s, 76);
+        assert!(result.ends_with('…'));
+        assert!(result.chars().count() <= 76);
+    }
+
+    // ========================================================================
+    // System prompt caps at MAX_SKILLS_IN_PROMPT
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_contribution_caps_at_max_skills() {
+        let cap = SkillsDiscoveryCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        // Add 20 skills (exceeds MAX_SKILLS_IN_PROMPT = 15)
+        for i in 0..20 {
+            let name = format!("skill-{:02}", i);
+            store.add_file(
+                session_id,
+                &format!("/.agents/skills/{}/SKILL.md", name),
+                &valid_skill_md(&name, &format!("Description for skill {}", i)),
+            );
+        }
+
+        let ctx = SystemPromptContext {
+            session_id,
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        // Should contain "Available skills:"
+        assert!(result.contains("Available skills:"));
+
+        // Count how many skill entries appear (lines starting with "- **skill-")
+        let skill_lines: Vec<&str> = result
+            .lines()
+            .filter(|l| l.starts_with("- **skill-"))
+            .collect();
+        assert_eq!(skill_lines.len(), MAX_SKILLS_IN_PROMPT);
+
+        // Should contain overflow message
+        assert!(result.contains("5 more skills available"));
+        assert!(result.contains("list_skills"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_no_overflow_at_limit() {
+        let cap = SkillsDiscoveryCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        // Add exactly MAX_SKILLS_IN_PROMPT skills
+        for i in 0..MAX_SKILLS_IN_PROMPT {
+            let name = format!("skill-{:02}", i);
+            store.add_file(
+                session_id,
+                &format!("/.agents/skills/{}/SKILL.md", name),
+                &valid_skill_md(&name, &format!("Description for skill {}", i)),
+            );
+        }
+
+        let ctx = SystemPromptContext {
+            session_id,
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        let skill_lines: Vec<&str> = result
+            .lines()
+            .filter(|l| l.starts_with("- **skill-"))
+            .collect();
+        assert_eq!(skill_lines.len(), MAX_SKILLS_IN_PROMPT);
+
+        // No overflow message
+        assert!(!result.contains("more skills available"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_truncates_long_descriptions() {
+        let cap = SkillsDiscoveryCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        let long_desc = "a".repeat(200);
+        store.add_file(
+            session_id,
+            "/.agents/skills/long-desc/SKILL.md",
+            &valid_skill_md("long-desc", &long_desc),
+        );
+
+        let ctx = SystemPromptContext {
+            session_id,
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        // The full 200-char description should NOT appear
+        assert!(!result.contains(&long_desc));
+        // Should contain truncated version with ellipsis
+        assert!(result.contains('…'));
     }
 }
