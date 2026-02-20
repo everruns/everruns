@@ -18,6 +18,11 @@ pub enum AgentLoopError {
     #[error("Request too large: {0}")]
     RequestTooLarge(String),
 
+    /// Model not available (404, model not found, access denied for model)
+    /// Contains the model_id string that was requested
+    #[error("Model not available: {0}")]
+    ModelNotAvailable(String),
+
     /// Tool execution error
     #[error("Tool execution error: {0}")]
     ToolExecution(String),
@@ -120,9 +125,27 @@ impl AgentLoopError {
         AgentLoopError::RequestTooLarge(msg.into())
     }
 
+    /// Create a model not available error
+    pub fn model_not_available(model_id: impl Into<String>) -> Self {
+        AgentLoopError::ModelNotAvailable(model_id.into())
+    }
+
     /// Check if this is a request-too-large error
     pub fn is_request_too_large(&self) -> bool {
         matches!(self, AgentLoopError::RequestTooLarge(_))
+    }
+
+    /// Check if this is a model-not-available error
+    pub fn is_model_not_available(&self) -> bool {
+        matches!(self, AgentLoopError::ModelNotAvailable(_))
+    }
+
+    /// Get the model ID if this is a model-not-available error
+    pub fn model_not_available_id(&self) -> Option<&str> {
+        match self {
+            AgentLoopError::ModelNotAvailable(id) => Some(id),
+            _ => None,
+        }
     }
 }
 
@@ -159,5 +182,28 @@ mod tests {
             err.to_string(),
             format!("Request too large: {}", original_msg)
         );
+    }
+
+    #[test]
+    fn test_is_model_not_available_returns_true_for_typed_error() {
+        let err = AgentLoopError::model_not_available("claude-sonnet-4-6-20260217");
+        assert!(err.is_model_not_available());
+        assert_eq!(
+            err.model_not_available_id(),
+            Some("claude-sonnet-4-6-20260217")
+        );
+    }
+
+    #[test]
+    fn test_is_model_not_available_returns_false_for_llm_error() {
+        let err = AgentLoopError::llm("some error");
+        assert!(!err.is_model_not_available());
+        assert_eq!(err.model_not_available_id(), None);
+    }
+
+    #[test]
+    fn test_model_not_available_error_display() {
+        let err = AgentLoopError::model_not_available("gpt-99");
+        assert_eq!(err.to_string(), "Model not available: gpt-99");
     }
 }

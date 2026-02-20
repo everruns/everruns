@@ -35,7 +35,7 @@ use crate::llm_driver_registry::{
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
-use crate::openai_protocol::is_openai_request_too_large;
+use crate::openai_protocol::{is_openai_model_not_found, is_openai_request_too_large};
 use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
@@ -327,6 +327,11 @@ impl OpenResponsesProtocolLlmDriver {
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
 
+            // Check if this is a model-not-found error
+            if is_openai_model_not_found(status, &error_text) {
+                return Err(AgentLoopError::model_not_available(request.model.clone()));
+            }
+
             // Check if this is a request-too-large error (context length exceeded)
             if is_openai_request_too_large(status, &error_text) {
                 return Err(AgentLoopError::request_too_large(format!(
@@ -562,6 +567,11 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
+
+            // Check if this is a model-not-found error
+            if is_openai_model_not_found(status, &error_text) {
+                return Err(AgentLoopError::model_not_available(config.model.clone()));
+            }
 
             // Check if this is a request-too-large error (context length exceeded)
             if is_openai_request_too_large(status, &error_text) {

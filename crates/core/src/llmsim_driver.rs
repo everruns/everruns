@@ -15,7 +15,7 @@ use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::error::Result;
+use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
     BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent, ProviderType,
@@ -129,6 +129,14 @@ impl LlmSimConfig {
             ..Default::default()
         }
     }
+
+    /// Create a new config that returns a model-not-available error
+    pub fn model_not_available() -> Self {
+        Self {
+            response: ResponseConfig::ModelNotAvailable,
+            ..Default::default()
+        }
+    }
 }
 
 /// Response generation configuration
@@ -146,6 +154,8 @@ pub enum ResponseConfig {
     Empty,
     /// Simulate an error (useful for testing error handling)
     Error(String),
+    /// Simulate a model-not-available error
+    ModelNotAvailable,
 }
 
 /// Tool call configuration
@@ -268,8 +278,8 @@ impl LlmSimDriver {
 
             ResponseConfig::Empty => String::new(),
 
-            // Error case should never be reached because it's checked in chat_completion_stream
-            ResponseConfig::Error(_) => {
+            // Error/ModelNotAvailable cases should never be reached; checked in chat_completion_stream
+            ResponseConfig::Error(_) | ResponseConfig::ModelNotAvailable => {
                 unreachable!("Error config handled in chat_completion_stream")
             }
         }
@@ -391,9 +401,12 @@ impl LlmDriver for LlmSimDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        // Check for error config first
+        // Check for error configs first
         if let ResponseConfig::Error(error_msg) = &self.config.response {
             return Err(anyhow::anyhow!("LLM error: {}", error_msg).into());
+        }
+        if matches!(self.config.response, ResponseConfig::ModelNotAvailable) {
+            return Err(AgentLoopError::model_not_available(config.model.clone()));
         }
 
         // Apply response delay if configured or if model name contains "-ttft-{ms}".

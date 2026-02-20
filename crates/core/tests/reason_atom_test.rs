@@ -898,3 +898,118 @@ async fn test_driver_registry_integration() {
     // Default driver returns a fixed response
     assert!(!response.text.is_empty());
 }
+
+#[tokio::test]
+async fn test_reason_atom_handles_model_not_available() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    // Add a user message
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    // Create a driver that returns a model-not-available error
+    let driver_registry = create_custom_driver_registry(LlmSimConfig::model_not_available());
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should handle model-not-available gracefully");
+
+    // Verify the result indicates failure
+    assert!(!result.success, "Result should indicate failure");
+    assert!(
+        result.error.is_some(),
+        "Result should contain error message"
+    );
+    assert!(
+        result
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Model not available"),
+        "Error should mention model not available: {}",
+        result.error.as_ref().unwrap()
+    );
+
+    // Verify user-friendly error message mentions the model and suggests action
+    assert!(
+        result.text.contains("not available"),
+        "User-facing text should mention model not available: {}",
+        result.text
+    );
+    assert!(
+        result.text.contains("select a different model"),
+        "User-facing text should suggest selecting a different model: {}",
+        result.text
+    );
+
+    // Verify no tool calls
+    assert!(!result.has_tool_calls);
+    assert!(result.tool_calls.is_empty());
+
+    // Verify events were emitted
+    let events = event_emitter.events().await;
+    assert!(!events.is_empty(), "Events should have been emitted");
+
+    // Check for output.message.completed event (error message for user)
+    let output_msg = events
+        .iter()
+        .find(|e| e.event_type == "output.message.completed");
+    assert!(
+        output_msg.is_some(),
+        "Should emit output.message.completed event for error"
+    );
+    if let Some(event) = output_msg {
+        if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
+            let text = data.message.text().unwrap_or_default();
+            assert!(
+                text.contains("not available"),
+                "Output message should mention model not available: {}",
+                text
+            );
+        } else {
+            panic!("Expected OutputMessageCompleted data");
+        }
+    }
+
+    // Check for reason.completed event with success=false
+    let reason_completed = events.iter().find(|e| e.event_type == "reason.completed");
+    assert!(
+        reason_completed.is_some(),
+        "Should emit reason.completed event"
+    );
+}
