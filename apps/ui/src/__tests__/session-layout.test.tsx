@@ -96,6 +96,7 @@ const mockSessionContext = {
     status: "idle",
     created_at: "2025-01-01T00:00:00Z",
     active_schedule_count: 0,
+    features: ["file_system", "secrets", "key_value", "schedules"],
   } as Record<string, unknown> | null,
   llmModel: { display_name: "GPT-4" } as Record<string, unknown> | null,
   sessionLoading: false,
@@ -127,6 +128,7 @@ describe("SessionLayout", () => {
       status: "idle",
       created_at: "2025-01-01T00:00:00Z",
       active_schedule_count: 0,
+      features: ["file_system", "secrets", "key_value", "schedules"],
     };
   });
 
@@ -296,6 +298,55 @@ describe("SessionLayout", () => {
     await waitFor(() => {
       expect(screen.getByText("Session not found")).toBeInTheDocument();
     });
+  });
+
+  it("hides feature-gated tabs when features are empty", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      features: [],
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      // Chat, Events, Trajectory are always present
+      expect(screen.getByRole("link", { name: /chat/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /trajectory/i })).toBeInTheDocument();
+    });
+
+    // Feature-gated tabs should NOT be present
+    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /storage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /schedules/i })).not.toBeInTheDocument();
+  });
+
+  it("shows only workspace tab when only file_system feature is present", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      features: ["file_system"],
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /workspace/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("link", { name: /storage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /schedules/i })).not.toBeInTheDocument();
+  });
+
+  it("shows schedules tab when schedules feature is present", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      features: ["schedules"],
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /schedules/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
   });
 
   it("has flex-col layout for proper content stacking", async () => {
