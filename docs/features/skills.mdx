@@ -5,12 +5,24 @@ description: Portable instruction packages that extend agent capabilities with s
 
 Agent Skills are portable instruction packages following the [Agent Skills](https://agentskills.io/) open specification. They enable agents to discover and activate specialized knowledge on demand, keeping the agent's context efficient through progressive disclosure.
 
-## Overview
+## Overview Video
+
+<iframe
+  width="100%"
+  src="https://www.youtube.com/embed/mNqXP4NA_8U"
+  title="Agent Skills Overview"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+  style={{aspectRatio: '16 / 9', borderRadius: '8px', marginTop: '1rem'}}>
+</iframe>
+
+## How It Works
 
 Skills work through a three-stage progressive disclosure model:
 
 1. **Discovery** (~100 tokens): Only skill names and descriptions are loaded at startup
-2. **Activation** (<5000 tokens): Full instructions loaded when the agent calls `activate_skill`
+2. **Activation** (&lt;5000 tokens): Full instructions loaded when the agent calls `activate_skill`
 3. **Resources** (on-demand): Bundled files accessed through the session filesystem
 
 ## SKILL.md Format
@@ -21,12 +33,9 @@ Every skill contains a `SKILL.md` file with YAML frontmatter and markdown instru
 ---
 name: csv-analyzer
 description: Analyze CSV files and generate summary reports.
-license: MIT
-compatibility: Python 3.10+
 metadata:
   category: data-processing
   version: "1.0"
-allowed-tools: read_file write_file virtual_bash
 ---
 
 # CSV Analyzer
@@ -53,10 +62,9 @@ Activate this skill when a user provides a CSV file and wants summary statistics
 
 | Field | Description |
 |-------|-------------|
+| `metadata` | Arbitrary key-value pairs (e.g., category, version) |
 | `license` | License identifier (e.g., MIT, Apache-2.0) |
 | `compatibility` | Environment requirements (e.g., Python 3.10+) |
-| `metadata` | Arbitrary key-value pairs |
-| `allowed-tools` | Space-delimited tool names (experimental) |
 
 ## Creating Skills
 
