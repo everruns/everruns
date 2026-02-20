@@ -147,6 +147,10 @@ These files are read-only and can be used for learning, testing, or as templates
         // Sample Data depends on Session File System for file operations
         vec!["session_file_system"]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["file_system"]
+    }
 }
 
 #[cfg(test)]

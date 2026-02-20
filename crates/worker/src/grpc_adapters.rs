@@ -600,6 +600,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         usage: None, // Usage not tracked in worker context
         is_pinned: None,
         active_schedule_count: None,
+        features: vec![], // Computed at API read time, not in worker
     })
 }
 

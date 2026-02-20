@@ -4307,6 +4307,13 @@
             "type": "string",
             "description": "Description of what this capability provides"
           },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+          },
           "icon": {
             "type": [
               "string",
@@ -5855,6 +5862,13 @@
                 "description": {
                   "type": "string",
                   "description": "Description of what this capability provides"
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
                 },
                 "icon": {
                   "type": [
@@ -7828,6 +7842,13 @@
                   "format": "date-time",
                   "description": "Timestamp when the session was created."
                 },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\", \"sql_database\"."
+                },
                 "finished_at": {
                   "type": [
                     "string",
@@ -8567,6 +8588,13 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the session was created."
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\", \"sql_database\"."
           },
           "finished_at": {
             "type": [

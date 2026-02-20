@@ -324,6 +324,24 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns UI feature strings that this capability contributes to.
+    ///
+    /// Features are open-ended strings indicating what user-facing functionality
+    /// this capability enables. Multiple capabilities can contribute the same
+    /// feature (e.g., both `session_schedule` and a future `signals` capability
+    /// might contribute `"schedules"`).
+    ///
+    /// The UI uses the aggregated set of features from all active capabilities
+    /// to decide which tabs/sections to render.
+    ///
+    /// Known features: `"file_system"`, `"schedules"`, `"secrets"`,
+    /// `"key_value"`, `"sql_database"`.
+    ///
+    /// By default, returns an empty vector (no features).
+    fn features(&self) -> Vec<&'static str> {
+        vec![]
+    }
+
     /// Returns a message filter provider if this capability modifies message retrieval.
     ///
     /// Capabilities can contribute filters that modify how messages are loaded
@@ -773,6 +791,32 @@ fn resolve_single_capability(
     }
 
     Ok(())
+}
+
+/// Compute the aggregated set of UI features from a list of capability IDs.
+///
+/// Resolves dependencies, collects features from all resolved capabilities,
+/// and returns deduplicated feature strings.
+pub fn compute_features(capability_ids: &[String], registry: &CapabilityRegistry) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let resolved_ids = match resolve_dependencies(capability_ids, registry) {
+        Ok(resolved) => resolved.resolved_ids,
+        Err(_) => capability_ids.to_vec(),
+    };
+
+    let mut seen = HashSet::new();
+    let mut features = Vec::new();
+    for cap_id in &resolved_ids {
+        if let Some(cap) = registry.get(cap_id) {
+            for feature in cap.features() {
+                if seen.insert(feature) {
+                    features.push(feature.to_string());
+                }
+            }
+        }
+    }
+    features
 }
 
 /// Get direct dependencies for a capability ID.
@@ -2093,5 +2137,162 @@ mod tests {
             !registry.has("bash"),
             "with_defaults() must not include 'bash' — it comes from virtual_bash capability"
         );
+    }
+
+    // =========================================================================
+    // Feature tests
+    // =========================================================================
+
+    #[test]
+    fn test_capability_features_default_empty() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Most capabilities have no features
+        let noop = registry.get("noop").unwrap();
+        assert!(noop.features().is_empty());
+
+        let current_time = registry.get("current_time").unwrap();
+        assert!(current_time.features().is_empty());
+    }
+
+    #[test]
+    fn test_file_system_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let fs = registry.get("session_file_system").unwrap();
+        assert_eq!(fs.features(), vec!["file_system"]);
+    }
+
+    #[test]
+    fn test_virtual_bash_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let bash = registry.get("virtual_bash").unwrap();
+        assert_eq!(bash.features(), vec!["file_system"]);
+    }
+
+    #[test]
+    fn test_session_storage_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let storage = registry.get("session_storage").unwrap();
+        let features = storage.features();
+        assert!(features.contains(&"secrets"));
+        assert!(features.contains(&"key_value"));
+    }
+
+    #[test]
+    fn test_session_schedule_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let schedule = registry.get("session_schedule").unwrap();
+        assert_eq!(schedule.features(), vec!["schedules"]);
+    }
+
+    #[test]
+    fn test_session_sql_database_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let sql = registry.get("session_sql_database").unwrap();
+        assert_eq!(sql.features(), vec!["sql_database"]);
+    }
+
+    #[test]
+    fn test_sample_data_capability_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let sample = registry.get("sample_data").unwrap();
+        assert_eq!(sample.features(), vec!["file_system"]);
+    }
+
+    #[test]
+    fn test_compute_features_empty() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let features = compute_features(&[], &registry);
+        assert!(features.is_empty());
+    }
+
+    #[test]
+    fn test_compute_features_single_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let features = compute_features(&["session_schedule".to_string()], &registry);
+        assert_eq!(features, vec!["schedules"]);
+    }
+
+    #[test]
+    fn test_compute_features_multiple_capabilities() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let features = compute_features(
+            &[
+                "session_file_system".to_string(),
+                "session_storage".to_string(),
+                "session_schedule".to_string(),
+            ],
+            &registry,
+        );
+        assert!(features.contains(&"file_system".to_string()));
+        assert!(features.contains(&"secrets".to_string()));
+        assert!(features.contains(&"key_value".to_string()));
+        assert!(features.contains(&"schedules".to_string()));
+    }
+
+    #[test]
+    fn test_compute_features_deduplicates() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Both session_file_system and virtual_bash contribute "file_system"
+        let features = compute_features(
+            &[
+                "session_file_system".to_string(),
+                "virtual_bash".to_string(),
+            ],
+            &registry,
+        );
+        let file_system_count = features.iter().filter(|f| *f == "file_system").count();
+        assert_eq!(file_system_count, 1, "file_system should appear only once");
+    }
+
+    #[test]
+    fn test_compute_features_includes_dependency_features() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // virtual_bash depends on session_file_system; both contribute "file_system"
+        let features = compute_features(&["virtual_bash".to_string()], &registry);
+        assert!(features.contains(&"file_system".to_string()));
+    }
+
+    #[test]
+    fn test_compute_features_generic_harness_set() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Typical Generic Harness capabilities
+        let features = compute_features(
+            &[
+                "session_file_system".to_string(),
+                "virtual_bash".to_string(),
+                "session_storage".to_string(),
+                "session".to_string(),
+                "session_schedule".to_string(),
+            ],
+            &registry,
+        );
+        assert!(features.contains(&"file_system".to_string()));
+        assert!(features.contains(&"secrets".to_string()));
+        assert!(features.contains(&"key_value".to_string()));
+        assert!(features.contains(&"schedules".to_string()));
+    }
+
+    #[test]
+    fn test_compute_features_unknown_capability_ignored() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let features = compute_features(
+            &["unknown_cap".to_string(), "session_schedule".to_string()],
+            &registry,
+        );
+        assert_eq!(features, vec!["schedules"]);
     }
 }

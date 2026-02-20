@@ -65,6 +65,10 @@ impl Capability for SessionSqlDatabaseCapability {
             Box::new(SqlSchemaTool),
         ]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["sql_database"]
+    }
 }
 
 // ============================================================================

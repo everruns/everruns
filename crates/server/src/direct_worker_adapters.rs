@@ -269,6 +269,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 usage: None,
                 is_pinned: None,
                 active_schedule_count: None,
+                features: vec![],
             }
         }))
     }

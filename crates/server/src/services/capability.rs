@@ -80,6 +80,7 @@ impl CapabilityService {
                 is_mcp: true,
                 is_skill: false,
                 dependencies: vec![], // MCP capabilities have no dependencies
+                features: vec![],
             });
         }
 
@@ -102,6 +103,7 @@ impl CapabilityService {
                 is_mcp: false,
                 is_skill: true,
                 dependencies: vec!["session_file_system".to_string()],
+                features: vec![],
             });
         }
 
@@ -146,6 +148,7 @@ impl CapabilityService {
                     is_mcp: true,
                     is_skill: false,
                     dependencies: vec![], // MCP capabilities have no dependencies
+                    features: vec![],
                 }));
             }
             return Ok(None);
@@ -167,6 +170,7 @@ impl CapabilityService {
                     is_mcp: false,
                     is_skill: true,
                     dependencies: vec!["session_file_system".to_string()],
+                    features: vec![],
                 }));
             }
             return Ok(None);

@@ -161,6 +161,8 @@ export interface Session {
   is_pinned?: boolean;
   /** Number of active schedules for this session */
   active_schedule_count?: number;
+  /** Aggregated UI features from all active capabilities (harness + agent + session) */
+  features?: string[];
 }
 
 export interface CreateSessionRequest {
@@ -982,6 +984,8 @@ export interface Capability {
   is_mcp?: boolean;
   /** IDs of capabilities that this capability depends on */
   dependencies?: CapabilityId[];
+  /** UI feature strings this capability contributes to */
+  features?: string[];
 }
 
 // ============================================

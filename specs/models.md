@@ -56,6 +56,9 @@ An instance of agentic loop execution. Sessions are top-level entities under org
 | `updated_at` | timestamp | Last modification time (auto-updated on any change) |
 | `started_at` | timestamp? | Execution start time |
 | `finished_at` | timestamp? | Completion time |
+| `features` | string[] | Aggregated UI features (computed at read time, not stored) |
+
+**Session Features:** The `features` field is computed at read time by aggregating `features()` from all active capabilities (harness + agent + session-level), after resolving dependencies. It is not stored in the database. See `specs/capabilities.md#capability-features`.
 
 **Session Capabilities:** The `capabilities` field allows setting session-level capabilities that are additive to the agent's capabilities. When building the RuntimeAgent, agent capabilities are applied first, then session capabilities are applied after. This enables temporarily extending an agent's capabilities for specific sessions.
 

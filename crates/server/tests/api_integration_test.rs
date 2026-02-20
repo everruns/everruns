@@ -1299,3 +1299,341 @@ async fn test_session_databases_invalid_name() {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
+
+// ============================================================================
+// Session Features Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_session_features_base_harness_empty() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "Base Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Base harness has no capabilities → no features
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert!(
+        session.features.is_empty(),
+        "Base harness session should have no features, got: {:?}",
+        session.features,
+    );
+}
+
+#[tokio::test]
+async fn test_session_features_generic_harness() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "Generic Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Generic harness has session_file_system, virtual_bash, session_storage, etc.
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert!(
+        session.features.contains(&"file_system".to_string()),
+        "Generic harness should include file_system feature, got: {:?}",
+        session.features,
+    );
+    assert!(
+        session.features.contains(&"secrets".to_string()),
+        "Generic harness should include secrets feature, got: {:?}",
+        session.features,
+    );
+    assert!(
+        session.features.contains(&"key_value".to_string()),
+        "Generic harness should include key_value feature, got: {:?}",
+        session.features,
+    );
+    // file_system should only appear once despite session_file_system + virtual_bash
+    let fs_count = session
+        .features
+        .iter()
+        .filter(|f| *f == "file_system")
+        .count();
+    assert_eq!(fs_count, 1, "file_system should appear exactly once");
+}
+
+#[tokio::test]
+async fn test_session_features_persisted_in_get() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "Get Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Features should also appear in GET response
+    let fetched: Session = server
+        .get(&format!("/v1/sessions/{}", session.id))
+        .await
+        .assert_success()
+        .json();
+
+    assert_eq!(
+        fetched.features, session.features,
+        "GET session should return same features as POST",
+    );
+}
+
+#[tokio::test]
+async fn test_session_features_in_list() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "List Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let _session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Features should appear in list response
+    let list_body: Value = server
+        .get(&format!("/v1/sessions?agent_id={}", agent.public_id))
+        .await
+        .assert_success()
+        .json_value();
+
+    let data = list_body["data"].as_array().expect("data array");
+    assert!(!data.is_empty());
+
+    let first = &data[0];
+    let features = first["features"]
+        .as_array()
+        .expect("features should be an array");
+    assert!(
+        features.contains(&json!("file_system")),
+        "List should include file_system feature",
+    );
+}
+
+#[tokio::test]
+async fn test_session_features_with_session_capabilities() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "Session Cap Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Base harness has no caps, but add session_schedule at session level
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+                "capabilities": [{"ref": "session_schedule"}],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert!(
+        session.features.contains(&"schedules".to_string()),
+        "Session-level capability should contribute features, got: {:?}",
+        session.features,
+    );
+}
+
+#[tokio::test]
+async fn test_session_features_with_agent_capabilities() {
+    let server = TestServer::new().await;
+
+    // Create agent with session_schedule capability
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Agent Cap Features Agent",
+                "system_prompt": "Test",
+                "capabilities": [{"ref": "session_schedule"}],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Base harness (no caps) + agent has session_schedule
+    let body: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+
+    let features = body["features"]
+        .as_array()
+        .expect("features should be an array");
+    assert!(
+        features.contains(&json!("schedules")),
+        "Agent capability should contribute features, got: {:?}",
+        features,
+    );
+}
+
+#[tokio::test]
+async fn test_session_features_sql_database() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({"name": "SqlDb Features Agent", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Add session_sql_database via session-level capability
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+                "capabilities": [{"ref": "session_sql_database"}],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert!(
+        session.features.contains(&"sql_database".to_string()),
+        "session_sql_database should contribute sql_database feature, got: {:?}",
+        session.features,
+    );
+}
+
+#[tokio::test]
+async fn test_capability_info_includes_features() {
+    let server = TestServer::new().await;
+
+    // Check that the capabilities endpoint returns features
+    let body: Value = server
+        .get("/v1/capabilities")
+        .await
+        .assert_success()
+        .json_value();
+
+    let data = body["data"].as_array().expect("data array");
+
+    // Find session_storage capability — should have secrets and key_value features
+    let storage = data
+        .iter()
+        .find(|c| c["id"] == "session_storage")
+        .expect("session_storage capability should exist");
+
+    let features = storage["features"]
+        .as_array()
+        .expect("features should be an array");
+    assert!(
+        features.contains(&json!("secrets")),
+        "session_storage should have secrets feature",
+    );
+    assert!(
+        features.contains(&json!("key_value")),
+        "session_storage should have key_value feature",
+    );
+
+    // Find session_schedule — should have schedules feature
+    let schedule = data
+        .iter()
+        .find(|c| c["id"] == "session_schedule")
+        .expect("session_schedule capability should exist");
+
+    let schedule_features = schedule["features"]
+        .as_array()
+        .expect("features should be an array");
+    assert!(
+        schedule_features.contains(&json!("schedules")),
+        "session_schedule should have schedules feature",
+    );
+
+    // Find noop — should have no features (empty or absent)
+    let noop = data
+        .iter()
+        .find(|c| c["id"] == "noop")
+        .expect("noop capability should exist");
+    let noop_features = noop.get("features");
+    assert!(
+        noop_features
+            .and_then(|v| v.as_array())
+            .is_none_or(|a| a.is_empty()),
+        "noop should have no features",
+    );
+}

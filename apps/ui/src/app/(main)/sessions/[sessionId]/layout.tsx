@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
@@ -159,6 +159,10 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
 
   const basePath = `/sessions/${sessionId}`;
 
+  // Compute active feature set from session capabilities
+  const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
+  const hasFeature = (feature: string) => features.has(feature);
+
   if (sessionLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -278,50 +282,56 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             <MessageSquare className="h-4 w-4" />
             Chat
           </Link>
-          <Link
-            href={`${basePath}/files`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "files" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
-          >
-            <Folder className="h-4 w-4" />
-            Workspace
-          </Link>
-          <Link
-            href={`${basePath}/storage`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "storage" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
-          >
-            <Database className="h-4 w-4" />
-            Storage
-          </Link>
-          <Link
-            href={`${basePath}/schedules`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "schedules" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
-          >
-            <CalendarClock className="h-4 w-4" />
-            Schedules
-            {(session.active_schedule_count ?? 0) > 0 && (
-              <Badge variant="secondary" className="h-5 min-w-5 px-1 text-xs">
-                {session.active_schedule_count}
-              </Badge>
-            )}
-          </Link>
+          {hasFeature("file_system") && (
+            <Link
+              href={`${basePath}/files`}
+              className={cn(
+                buttonVariants({
+                  variant: activeTab === "files" ? "default" : "ghost",
+                  size: "sm",
+                }),
+                "gap-2",
+              )}
+            >
+              <Folder className="h-4 w-4" />
+              Workspace
+            </Link>
+          )}
+          {(hasFeature("secrets") || hasFeature("key_value")) && (
+            <Link
+              href={`${basePath}/storage`}
+              className={cn(
+                buttonVariants({
+                  variant: activeTab === "storage" ? "default" : "ghost",
+                  size: "sm",
+                }),
+                "gap-2",
+              )}
+            >
+              <Database className="h-4 w-4" />
+              Storage
+            </Link>
+          )}
+          {hasFeature("schedules") && (
+            <Link
+              href={`${basePath}/schedules`}
+              className={cn(
+                buttonVariants({
+                  variant: activeTab === "schedules" ? "default" : "ghost",
+                  size: "sm",
+                }),
+                "gap-2",
+              )}
+            >
+              <CalendarClock className="h-4 w-4" />
+              Schedules
+              {(session.active_schedule_count ?? 0) > 0 && (
+                <Badge variant="secondary" className="h-5 min-w-5 px-1 text-xs">
+                  {session.active_schedule_count}
+                </Badge>
+              )}
+            </Link>
+          )}
           <Link
             href={`${basePath}/events`}
             className={cn(

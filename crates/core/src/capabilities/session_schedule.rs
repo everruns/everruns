@@ -65,6 +65,10 @@ Maximum 5 active schedules per session."#,
             Box::new(ListSchedulesTool),
         ]
     }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["schedules"]
+    }
 }
 
 // ============================================================================
