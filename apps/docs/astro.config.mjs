@@ -100,7 +100,7 @@ export default defineConfig({
         ...openAPISidebarGroups,
       ],
       editLink: {
-        baseUrl: "https://github.com/everruns/everruns/blob/main/docs/",
+        baseUrl: "https://github.com/everruns/everruns/edit/main/apps/docs/",
       },
       lastUpdated: true,
     }),
