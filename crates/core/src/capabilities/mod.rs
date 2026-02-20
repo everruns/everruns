@@ -85,8 +85,8 @@ mod session;
 mod session_schedule;
 mod session_sql_database;
 mod session_storage;
-pub mod skill;
-mod skills_discovery;
+pub mod attach_skill;
+mod skills;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
@@ -141,12 +141,12 @@ pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
-pub use skill::{
-    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapability, SkillInstructions, SkillMeta,
-    SkillSource, discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
-    skill_capability_id,
+pub use attach_skill::{
+    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillInstructions,
+    SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
+    parse_skill_capability_id, skill_capability_id,
 };
-pub use skills_discovery::{SKILLS_DISCOVERY_CAPABILITY_ID, SkillsDiscoveryCapability};
+pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -411,8 +411,8 @@ impl CapabilityRegistry {
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
 
-        // Skills discovery (filesystem-based, all environments)
-        registry.register(SkillsDiscoveryCapability);
+        // Skills (filesystem-based discovery + activation, all environments)
+        registry.register(SkillsCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);

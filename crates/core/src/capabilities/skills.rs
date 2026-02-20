@@ -1,4 +1,4 @@
-// Skills Discovery Capability (built-in)
+// Skills Capability (built-in)
 //
 // Generic mechanism for filesystem-based skill discovery and activation.
 // When enabled on an agent, provides:
@@ -10,8 +10,8 @@
 // Users upload SKILL.md files to /.agents/skills/{name}/SKILL.md in the
 // session filesystem, and the agent discovers them at runtime.
 //
-// Individual database-registered skills use `skill:{uuid}` capabilities
-// (handled by SkillCapability). This capability handles dynamic VFS discovery.
+// Database-registered skills are attached via AttachSkillCapability, which
+// mounts skill files into the VFS so this capability discovers them.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
@@ -20,8 +20,8 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 
-/// Skills Discovery capability ID (built-in)
-pub const SKILLS_DISCOVERY_CAPABILITY_ID: &str = "skills";
+/// Skills capability ID (built-in)
+pub const SKILLS_CAPABILITY_ID: &str = "skills";
 
 /// Path in session VFS where skills are discovered
 const SKILLS_PATH: &str = "/.agents/skills";
@@ -58,7 +58,7 @@ fn workspace_path(path: &str) -> String {
 ///
 /// Provides the generic skills mechanism. No skills are bundled — users upload
 /// SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session VFS.
-pub struct SkillsDiscoveryCapability;
+pub struct SkillsCapability;
 
 /// Static skills system prompt (used by sync callers and as fallback)
 const SKILLS_SYSTEM_PROMPT: &str = "You have access to an agent skills system. Skills are instruction packages \
@@ -69,9 +69,9 @@ user's task, use `activate_skill` to load its full instructions into your contex
 Only activate skills that are relevant to the current task.";
 
 #[async_trait]
-impl Capability for SkillsDiscoveryCapability {
+impl Capability for SkillsCapability {
     fn id(&self) -> &str {
-        SKILLS_DISCOVERY_CAPABILITY_ID
+        SKILLS_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {
@@ -689,8 +689,8 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_skills_discovery_capability_metadata() {
-        let cap = SkillsDiscoveryCapability;
+    fn test_skills_capability_metadata() {
+        let cap = SkillsCapability;
 
         assert_eq!(cap.id(), "skills");
         assert_eq!(cap.name(), "Agent Skills");
@@ -700,8 +700,8 @@ mod tests {
     }
 
     #[test]
-    fn test_skills_discovery_has_system_prompt() {
-        let cap = SkillsDiscoveryCapability;
+    fn test_skills_has_system_prompt() {
+        let cap = SkillsCapability;
         let prompt = cap.system_prompt_addition().unwrap();
 
         assert!(prompt.contains("/workspace/.agents/skills/"));
@@ -710,8 +710,8 @@ mod tests {
     }
 
     #[test]
-    fn test_skills_discovery_provides_tools() {
-        let cap = SkillsDiscoveryCapability;
+    fn test_skills_provides_tools() {
+        let cap = SkillsCapability;
         let tools = cap.tools();
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].name(), "list_skills");
@@ -719,8 +719,8 @@ mod tests {
     }
 
     #[test]
-    fn test_skills_discovery_tool_definitions() {
-        let cap = SkillsDiscoveryCapability;
+    fn test_skills_tool_definitions() {
+        let cap = SkillsCapability;
         let defs = cap.tool_definitions();
         assert_eq!(defs.len(), 2);
 
@@ -730,8 +730,8 @@ mod tests {
     }
 
     #[test]
-    fn test_skills_discovery_dependencies() {
-        let cap = SkillsDiscoveryCapability;
+    fn test_skills_dependencies() {
+        let cap = SkillsCapability;
         assert_eq!(cap.dependencies(), vec!["session_file_system"]);
     }
 
@@ -1104,7 +1104,7 @@ mod tests {
     #[test]
     fn test_capability_info_from_core_marks_is_skill() {
         use crate::capability_dto::CapabilityInfo;
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let info = CapabilityInfo::from_core(&cap);
 
         assert_eq!(info.id.as_str(), "skills");
@@ -1194,7 +1194,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_includes_discovered_skills() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
 
@@ -1223,7 +1223,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_static_when_no_file_store() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let ctx = SystemPromptContext::without_file_store(SessionId::new());
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1235,7 +1235,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_static_when_no_skills_dir() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let store = Arc::new(MockFileStore::new());
 
         let ctx = SystemPromptContext {
@@ -1288,7 +1288,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_caps_at_max_skills() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
 
@@ -1326,7 +1326,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_no_overflow_at_limit() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
 
@@ -1359,7 +1359,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_contribution_truncates_long_descriptions() {
-        let cap = SkillsDiscoveryCapability;
+        let cap = SkillsCapability;
         let store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
 

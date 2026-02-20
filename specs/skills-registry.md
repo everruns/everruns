@@ -407,7 +407,7 @@ CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | Skill types, SKILL.md parser, name validation, `SkillCapability` impl |
+| `everruns-core` | Skill types, SKILL.md parser, name validation, `AttachSkillCapability` + `SkillsCapability` |
 | `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
 | `everruns-worker` | `SkillToolExecutor` for `activate_skill` and `read_skill_file` tool execution |
 
@@ -418,17 +418,20 @@ CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 - Validates name, description, and optional fields
 - Returns structured `ParsedSkillMd` with metadata and body
 
-**SkillCapability** (`crates/core/src/capabilities/skill.rs`):
-- Implements `Capability` trait as a virtual capability
-- Returns `activate_skill` tool definition (no separate `read_skill_file` — uses existing VFS tools)
-- System prompt adds `<available_skills>` XML block listing discovered skills
-- Supports two construction modes:
-  - `from_registry(skill_id, name, description, instructions, files)` — single registry-based skill
-  - `from_discovered(skills: Vec<SkillMeta>)` — aggregate capability from filesystem discovery
-- Progressive disclosure: names/descriptions in system prompt, full content on `activate_skill`
-- Dependencies: `["session_file_system"]` (for VFS access after activation)
-- `ActivateSkillTool` returns full SKILL.md wrapped in `<skill name="...">` XML tags
-- Archive files mounted into VFS at `/skills/{name}/` on activation
+**SkillsCapability** (`crates/core/src/capabilities/skills_discovery.rs`):
+- Built-in capability (ID: `"skills"`) included in the Generic harness
+- Scans `/.agents/skills/` in session VFS for SKILL.md files
+- Provides `list_skills` and `activate_skill` tools
+- System prompt explains skills system and lists discovered skills
+- Discovers both user-uploaded skills and registry-attached skills (via VFS mounts)
+
+**AttachSkillCapability** (`crates/core/src/capabilities/skill.rs`):
+- Virtual capability (ID: `"skill:{uuid}"`) for database-registered skills
+- Mount-only: reconstructs SKILL.md and mounts to `/.agents/skills/{name}/`
+- Does NOT contribute to system prompt or provide tools
+- `SkillsCapability` discovers mounted skills at runtime via VFS scan
+- `from_registry(skill_id, name, description, instructions, files)` — constructs from DB fields
+- Dependencies: `["session_file_system"]` (for VFS mounting)
 - `discover_skills_from_entries()` helper parses SKILL.md files from `.agents/skills/` path
 - `is_skill` flag on `CapabilityInfo` DTO for UI badge rendering
 
@@ -539,7 +542,7 @@ Skills can also be discovered from the session filesystem at `/.agents/skills/`.
 
 1. On session startup (when `skills` capability is enabled), scan `/.agents/skills/` for subdirectories
 2. For each directory containing a `SKILL.md`, parse the frontmatter
-3. Valid skills are registered as available skills in the `SkillCapability`
+3. Valid skills are registered as available skills in the `SkillsCapability`
 4. Invalid `SKILL.md` files are logged as warnings and skipped
 5. Discovered skills appear in the `<available_skills>` system prompt block alongside registry-based skills
 
