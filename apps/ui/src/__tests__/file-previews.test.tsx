@@ -16,6 +16,8 @@ import {
   canPreview,
   CSVPreview,
   ImagePreview,
+  MarkdownPreview,
+  parseFrontmatter,
 } from "@/components/files/file-previews";
 
 // ============================================
@@ -325,5 +327,127 @@ describe("ImagePreview", () => {
       const img = screen.getByRole("img");
       expect(img).toHaveAttribute("src", `data:image/png;base64,${sampleBase64}`);
     });
+  });
+});
+
+// ============================================
+// parseFrontmatter Tests
+// ============================================
+
+describe("parseFrontmatter", () => {
+  it("returns no entries for content without frontmatter", () => {
+    const content = "# Hello\n\nSome content";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([]);
+    expect(result.body).toBe(content);
+  });
+
+  it("parses simple key-value pairs", () => {
+    const content = "---\ntitle: My Page\ndate: 2025-01-15\n---\n\n# Hello";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([
+      { key: "title", value: "My Page" },
+      { key: "date", value: "2025-01-15" },
+    ]);
+    expect(result.body).toBe("# Hello");
+  });
+
+  it("handles array values in bracket notation", () => {
+    const content = "---\ntags: [react, typescript]\n---\n\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([{ key: "tags", value: "[react, typescript]" }]);
+    expect(result.body).toBe("Body");
+  });
+
+  it("handles empty frontmatter block", () => {
+    const content = "---\n---\n\n# Content";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([]);
+    expect(result.body).toBe("# Content");
+  });
+
+  it("handles boolean values", () => {
+    const content = "---\ndraft: false\npublished: true\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([
+      { key: "draft", value: "false" },
+      { key: "published", value: "true" },
+    ]);
+  });
+
+  it("returns original content when no closing delimiter found", () => {
+    const content = "---\ntitle: Broken\n\n# Content";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([]);
+    expect(result.body).toBe(content);
+  });
+
+  it("does not parse frontmatter that doesn't start at beginning", () => {
+    const content = "\n---\ntitle: Not frontmatter\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([]);
+    expect(result.body).toBe(content);
+  });
+
+  it("handles values with colons", () => {
+    const content = "---\nurl: https://example.com\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([{ key: "url", value: "https://example.com" }]);
+  });
+
+  it("handles empty values", () => {
+    const content = "---\ntitle:\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([{ key: "title", value: "" }]);
+  });
+
+  it("handles multiline values with indentation", () => {
+    const content = "---\ndescription: First line\n  continued here\ntitle: Test\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([
+      { key: "description", value: "First line\ncontinued here" },
+      { key: "title", value: "Test" },
+    ]);
+  });
+
+  it("handles keys with hyphens and underscores", () => {
+    const content = "---\nfull-title: Hello\nmy_key: World\n---\nBody";
+    const result = parseFrontmatter(content);
+    expect(result.entries).toEqual([
+      { key: "full-title", value: "Hello" },
+      { key: "my_key", value: "World" },
+    ]);
+  });
+});
+
+// ============================================
+// MarkdownPreview Tests
+// ============================================
+
+describe("MarkdownPreview", () => {
+  it("renders markdown content without frontmatter", () => {
+    render(<MarkdownPreview content="# Hello World" />);
+    expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("# Hello World");
+  });
+
+  it("strips frontmatter and renders body", () => {
+    const content = "---\ntitle: Test\n---\n\n# Hello";
+    render(<MarkdownPreview content={content} />);
+    expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("# Hello");
+  });
+
+  it("displays frontmatter entries as metadata", () => {
+    const content = "---\ntitle: My Page\nauthor: Jane\n---\n\n# Content";
+    render(<MarkdownPreview content={content} />);
+    expect(screen.getByText("title")).toBeInTheDocument();
+    expect(screen.getByText("My Page")).toBeInTheDocument();
+    expect(screen.getByText("author")).toBeInTheDocument();
+    expect(screen.getByText("Jane")).toBeInTheDocument();
+  });
+
+  it("does not render frontmatter block when none present", () => {
+    const content = "# Just Markdown";
+    const { container } = render(<MarkdownPreview content={content} />);
+    expect(container.querySelector(".file-preview-frontmatter")).not.toBeInTheDocument();
   });
 });

@@ -43,6 +43,14 @@ const previewStyles = `
   .file-preview-streamdown h2 { font-size: 1.25em; font-weight: 600; margin: 1em 0 0.5em; }
   .file-preview-streamdown h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.5em; }
 
+  /* Frontmatter metadata block */
+  .file-preview-frontmatter { background: var(--color-muted); border: 1px solid var(--color-border); border-radius: 6px; padding: 0.75em 1em; margin-bottom: 1.5em; }
+  .file-preview-frontmatter table { width: 100%; border-collapse: collapse; }
+  .file-preview-frontmatter tr:not(:last-child) td { padding-bottom: 0.25em; }
+  .file-preview-frontmatter-key { color: var(--color-muted-foreground); font-weight: 500; white-space: nowrap; padding-right: 1em; vertical-align: top; width: 1%; font-size: 0.85em; }
+  .file-preview-frontmatter-value { color: var(--color-foreground); word-break: break-word; font-size: 0.85em; }
+  .file-preview-frontmatter-value .empty { color: var(--color-muted-foreground); }
+
   /* GitHub-style alerts */
   .file-preview-streamdown .markdown-alert { padding: 0.5em 1em; margin: 0.5em 0; border-left: 4px solid; }
   .file-preview-streamdown .markdown-alert-title { display: flex; align-items: center; gap: 0.5em; font-weight: 600; margin-bottom: 0.25em; }
@@ -282,12 +290,92 @@ export function JSONPreview({ content }: { content: string }) {
   );
 }
 
+/**
+ * Parse YAML frontmatter from markdown content.
+ * Returns the frontmatter entries (key-value pairs) and the remaining body.
+ * Only detects frontmatter that starts at the very beginning of the content.
+ */
+export function parseFrontmatter(content: string): {
+  entries: { key: string; value: string }[];
+  body: string;
+} {
+  // Frontmatter must start at the very beginning with ---
+  if (!content.startsWith("---")) {
+    return { entries: [], body: content };
+  }
+
+  // Find the closing ---
+  const endIndex = content.indexOf("\n---", 3);
+  if (endIndex === -1) {
+    return { entries: [], body: content };
+  }
+
+  const frontmatterBlock = content.slice(4, endIndex).trim();
+  const body = content.slice(endIndex + 4).trimStart();
+
+  if (!frontmatterBlock) {
+    return { entries: [], body };
+  }
+
+  // Parse simple YAML key: value pairs
+  // Handles multiline values by treating indented continuation lines as part of the previous value
+  const entries: { key: string; value: string }[] = [];
+  const lines = frontmatterBlock.split("\n");
+  let currentKey = "";
+  let currentValue = "";
+
+  for (const line of lines) {
+    // Check if this is a new key-value pair (not indented, has colon)
+    const match = line.match(/^([a-zA-Z0-9_-]+)\s*:\s*(.*)/);
+    if (match) {
+      // Save previous entry
+      if (currentKey) {
+        entries.push({ key: currentKey, value: currentValue.trim() });
+      }
+      currentKey = match[1];
+      currentValue = match[2];
+    } else if (currentKey && (line.startsWith("  ") || line.startsWith("\t"))) {
+      // Continuation line for multiline value
+      currentValue += "\n" + line.trimStart();
+    }
+  }
+
+  // Save last entry
+  if (currentKey) {
+    entries.push({ key: currentKey, value: currentValue.trim() });
+  }
+
+  return { entries, body };
+}
+
+function FrontmatterBlock({ entries }: { entries: { key: string; value: string }[] }) {
+  return (
+    <div className="file-preview-frontmatter">
+      <table>
+        <tbody>
+          {entries.map(({ key, value }) => (
+            <tr key={key}>
+              <td className="file-preview-frontmatter-key">{key}</td>
+              <td className="file-preview-frontmatter-value">
+                {value || <span className="empty">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function MarkdownPreview({ content }: { content: string }) {
+  const { entries, body } = useMemo(() => parseFrontmatter(content), [content]);
+
   return (
     <ScrollArea className="h-full">
       <style>{previewStyles}</style>
       <div className="file-preview-streamdown text-sm p-4">
-        <Streamdown plugins={{ code }}>{content}</Streamdown>
+        {entries.length > 0 && <FrontmatterBlock entries={entries} />}
+        <Streamdown plugins={{ code }}>{body}</Streamdown>
       </div>
     </ScrollArea>
   );

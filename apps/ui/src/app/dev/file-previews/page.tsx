@@ -281,6 +281,37 @@ function hello(name: string): string {
 This demonstrates all the markdown features supported by the preview component.
 `;
 
+const sampleMarkdownWithFrontmatter = `---
+title: Getting Started Guide
+description: A comprehensive guide to setting up and using the platform
+author: Jane Smith
+date: 2025-12-15
+tags: [guide, setup, tutorial]
+draft: false
+---
+
+# Getting Started
+
+Welcome to the platform! This guide walks you through the initial setup.
+
+## Prerequisites
+
+- Node.js 20 or later
+- A GitHub account
+- Basic command line knowledge
+
+## Installation
+
+\`\`\`bash
+npm install -g everruns
+everruns init my-project
+\`\`\`
+
+## Next Steps
+
+See the [full documentation](https://docs.example.com) for more details.
+`;
+
 // Base64 encoded 1x1 pixel PNG (red)
 const sampleImageBase64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAABSklEQVR4nO3dwQ2DMBBFUdKROqAPrUOfpoO0YC9YJSJyYmbu3xhZT8ssPgAAAAAAAAAAAABgqftah2HYv8p6us4D0C5lPAAAAACAi5nZ+xWuZd2WMu1wLS2Eg/qjPAD4K89hqF8/R7bHOTQchYOCQMOVIBDwLqshqCEckJ4hdQ/pnKD3FwIAAAAAAAAAgB9qjlJlqThKCKC8tJZeRlDjLAEAAPi/3hdqSKPWhX68UEMaiW2dhkDDbWHbPwIAAAAA4Bfc96OktG7BuicIBNxTSwgH3U8IQAAAAAAAAAAAAAD4qOaofq8/anPUvD4OAO+YK/8V";
@@ -373,6 +404,10 @@ export default function DevFilePreviewsPage() {
           >
             <ShowcaseItem label="Documentation (.md)">
               <MarkdownPreview content={sampleMarkdown} />
+            </ShowcaseItem>
+
+            <ShowcaseItem label="With Frontmatter (.md)">
+              <MarkdownPreview content={sampleMarkdownWithFrontmatter} />
             </ShowcaseItem>
           </ShowcaseSection>
 
