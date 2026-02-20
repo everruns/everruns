@@ -70,7 +70,7 @@ curl -X POST http://localhost:9300/api/v1/sessions \
 # Send a message
 curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
-  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'
+  -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
 ```
 
 ## Contributing

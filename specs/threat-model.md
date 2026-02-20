@@ -25,6 +25,8 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
 | TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
+| TM-CSB | CodeSandbox | Sandbox token compromise, resource exhaustion |
+| TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 
 ### Managing Threat IDs
 
@@ -719,6 +721,35 @@ Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, starte
 Session A cannot access sb_xyz (different session_id in storage query)
 ```
 
+## 17. CodeSandbox Capability (TM-CSB)
+
+CodeSandbox sandboxes are Firecracker microVMs managed via REST API. Multiple sandboxes per session, each identified by `sandbox_id`. Pitcher tokens stored encrypted in session KV store.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-CSB-001 | Pitcher token compromise | Medium | Stored encrypted via AES-256-GCM in session secrets; decrypted only at runtime | MITIGATED |
+| TM-CSB-002 | Unbounded sandbox creation | Medium | No per-session sandbox count limit; could exhaust API quota | **OPEN** |
+| TM-CSB-003 | Cross-session sandbox access | Critical | Sandbox state stored in session-scoped secrets (`csb_sandbox:{id}`); isolation enforced by storage store | MITIGATED |
+
+## 18. Client-Side Tools (TM-CLIENT)
+
+Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-CLIENT-001 | Tool call ID spoofing | Medium | Submitted `tool_call_id` values must exactly match pending requests; mismatches rejected | MITIGATED |
+| TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
+| TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
+
+## 19. Brave Search (TM-LLM)
+
+Search results from Brave Search are returned as tool results. Adversarial content in search results could influence LLM behavior.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005) | **ACCEPTED** |
+| TM-LLM-009 | Search query privacy | Low | Queries sent to Brave Search (third party); caller responsibility to assess data classification | **CALLER RISK** |
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -742,6 +773,7 @@ Session A cannot access sb_xyz (different session_id in storage query)
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global SSE connection limit with per-user cap |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
+| TM-CSB-002 | Unbounded sandbox creation | Medium | Add per-session sandbox count limit |
 
 ### Accepted Risks
 
@@ -816,4 +848,8 @@ Session A cannot access sb_xyz (different session_id in storage query)
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
 - `specs/daytona.md` — Daytona cloud sandbox integration
+- `specs/codesandbox.md` — CodeSandbox cloud sandbox integration
+- `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
+- `specs/brave-search.md` — Brave Search web search integration
+- `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry
