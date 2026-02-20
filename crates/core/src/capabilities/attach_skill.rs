@@ -11,9 +11,9 @@
 // - Mounts reconstructed SKILL.md + bundled files to /.agents/skills/{name}/
 // - Depends on `session_file_system` for VFS mounting
 
-use crate::capability_types::{CapabilityId, CapabilityStatus, MountDirectoryBuilder, MountPoint};
-use crate::tool_types::ToolDefinition;
-use crate::tools::Tool;
+#[cfg(test)]
+use crate::capability_types::CapabilityStatus;
+use crate::capability_types::{CapabilityId, MountDirectoryBuilder, MountPoint};
 
 use super::Capability;
 use serde::{Deserialize, Serialize};
@@ -157,30 +157,12 @@ impl Capability for AttachSkillCapability {
         Box::leak(self.skill_description.clone().into_boxed_str())
     }
 
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::Available
-    }
-
     fn icon(&self) -> Option<&str> {
         Some("wand")
     }
 
     fn category(&self) -> Option<&str> {
         Some("Skills")
-    }
-
-    // No system prompt — SkillsCapability handles discovery and prompt injection
-    fn system_prompt_addition(&self) -> Option<&str> {
-        None
-    }
-
-    // No tools — SkillsCapability provides list_skills + activate_skill
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![]
-    }
-
-    fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        vec![]
     }
 
     fn mounts(&self) -> Vec<MountPoint> {
