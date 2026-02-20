@@ -60,6 +60,7 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 | `category` | string? | Category for grouping in UI |
 | `is_mcp` | boolean | True if this is an MCP virtual capability |
 | `dependencies` | string[] | IDs of capabilities this capability depends on |
+| `features` | string[] | UI feature strings this capability contributes to |
 
 ##### Description Markdown Support
 
@@ -216,6 +217,7 @@ pub trait Capability: Send + Sync {
     fn category(&self) -> Option<&str> { None }
     fn mounts(&self) -> Vec<MountPoint> { vec![] }
     fn dependencies(&self) -> Vec<&'static str> { vec![] }
+    fn features(&self) -> Vec<&'static str> { vec![] }
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> { None }
 }
 ```
@@ -302,10 +304,71 @@ pub fn resolve_dependencies(
 
 #### Built-in Capabilities with Dependencies
 
-| Capability | Depends On |
-|------------|-----------|
-| `sample_data` | `session_file_system` |
-| `skills` | `session_file_system` |
+| Capability | Depends On | Features |
+|------------|-----------|----------|
+| `sample_data` | `session_file_system` | `file_system` |
+| `skills` | `session_file_system` | *(none)* |
+| `virtual_bash` | `session_file_system` | `file_system` |
+
+### Capability Features
+
+Capabilities declare UI features they contribute to via `features()`. Features are open-ended strings indicating what user-facing functionality a capability enables. The Session DTO aggregates features from all active capabilities (harness + agent + session-level) at read time, and the UI uses the aggregated set to decide which tabs/sections to render.
+
+#### How Features Work
+
+1. **Declaration**: Capabilities implement `features()` returning a list of feature strings
+2. **Aggregation**: `compute_features()` resolves dependencies and collects features from all resolved capabilities
+3. **Deduplication**: Features are deduplicated — multiple capabilities contributing the same feature produce one entry
+4. **Session DTO**: The `Session.features` field is computed at read time (not stored in the database)
+5. **UI Rendering**: The UI conditionally renders tabs based on the feature set (e.g., Workspace tab only appears when `"file_system"` is present)
+
+#### Built-in Feature Mapping
+
+| Capability | Features |
+|------------|----------|
+| `session_file_system` | `file_system` |
+| `virtual_bash` | `file_system` |
+| `sample_data` | `file_system` |
+| `session_storage` | `secrets`, `key_value` |
+| `session_schedule` | `schedules` |
+| `session_sql_database` | `sql_database` |
+
+MCP and Skill virtual capabilities currently declare no features.
+
+#### Known Feature Strings
+
+| Feature | UI Element | Description |
+|---------|------------|-------------|
+| `file_system` | Workspace tab | Session has file system access |
+| `secrets` | Storage tab | Session can store encrypted secrets |
+| `key_value` | Storage tab | Session can store key/value pairs |
+| `schedules` | Schedules tab | Session can create/manage schedules |
+| `sql_database` | *(reserved)* | Session has SQL database access |
+
+#### Example
+
+```rust
+impl Capability for SessionScheduleCapability {
+    fn id(&self) -> &str { "session_schedule" }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["schedules"]
+    }
+}
+```
+
+When `session_schedule` is selected, the session's `features` will include `"schedules"`, and the UI will render the Schedules tab.
+
+#### compute_features()
+
+```rust
+/// Compute aggregated features from capability IDs.
+/// Resolves dependencies, collects features, deduplicates.
+pub fn compute_features(
+    capability_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> Vec<String>;
+```
 
 ### Built-in Capabilities
 
