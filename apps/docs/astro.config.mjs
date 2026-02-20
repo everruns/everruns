@@ -40,6 +40,13 @@ export default defineConfig({
             content: "CA0AE96A84D6EB1E18A00BA8F0F8C70A",
           },
         },
+        {
+          tag: "meta",
+          attrs: {
+            name: "google-site-verification",
+            content: "xzTq83UYKYRkoPnxWzaF5uS1gJ6wVoY_cP5oEBRe9IM",
+          },
+        },
       ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
