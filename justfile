@@ -116,6 +116,10 @@ start-dev *args:
 start-all *args:
     ./scripts/lib/services.sh start-all {{args}}
 
+# Start in PRODUCTION MODE (release builds, no watchers, production UI)
+start-production *args:
+    ./scripts/lib/services.sh start-production {{args}}
+
 # Stop all services (API, UI, Docker)
 stop-all:
     ./scripts/lib/services.sh stop-all
