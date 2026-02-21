@@ -34,6 +34,9 @@ use tokio::sync::Semaphore;
 /// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
 const DEFAULT_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
 
+/// Seed llmsim model ID from seed.rs (LLMSIM_DEFAULT = 0x01933b5a_0000_7000_8000_000000000401)
+const DEFAULT_LLMSIM_MODEL_ID: &str = "model_01933b5a000070008000000000000401";
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -61,7 +64,8 @@ impl Default for LoadTestConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(50),
-            model_id: std::env::var("MODEL_ID").unwrap_or_else(|_| "llmsim".to_string()),
+            model_id: std::env::var("MODEL_ID")
+                .unwrap_or_else(|_| DEFAULT_LLMSIM_MODEL_ID.to_string()),
             max_concurrent_sessions: std::env::var("MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -351,7 +355,7 @@ struct Event {
 
 #[derive(Debug, Deserialize)]
 struct EventsResponse {
-    items: Vec<Event>,
+    data: Vec<Event>,
 }
 
 // ============================================================================
@@ -533,7 +537,7 @@ impl LoadTestRunner {
         Ok(resp.id)
     }
 
-    /// Send message via SDK and poll for completion via raw reqwest
+    /// Send message via raw reqwest and poll for completion
     async fn send_message(&self, session_id: &str, message_num: usize) -> anyhow::Result<Duration> {
         let start = Instant::now();
 
@@ -545,7 +549,21 @@ impl LoadTestRunner {
 
         self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
 
-        self.sdk.messages().create(session_id, &text).await?;
+        // Use raw reqwest instead of SDK — the published SDK's Message type
+        // may be out of sync with the server, and we don't need the response body.
+        let url = format!("{}/v1/sessions/{}/messages", self.config.api_url, session_id);
+        let body = serde_json::json!({
+            "message": {
+                "role": "user",
+                "content": [{ "type": "text", "text": text }]
+            }
+        });
+        self.http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
 
         // Wait for turn completion by polling events (needs offset/limit)
         self.wait_for_turn_completion(session_id).await?;
@@ -582,10 +600,10 @@ impl LoadTestRunner {
                 .json::<EventsResponse>()
                 .await?;
 
-            last_event_count += resp.items.len();
+            last_event_count += resp.data.len();
 
             // Check for session.idled or session.completed
-            let completed = resp.items.iter().any(|e| {
+            let completed = resp.data.iter().any(|e| {
                 e.event_type == "session.idled"
                     || e.event_type == "session.completed"
                     || e.event_type == "session.failed"
@@ -789,15 +807,9 @@ fn print_help() {
     println!("  API_URL              API endpoint (default: http://localhost:9000)");
     println!("  SESSIONS             Number of parallel sessions (default: 100)");
     println!("  MESSAGES_PER_SESSION Messages per session (default: 50)");
-    println!("  MODEL_ID             Model ID (default: llmsim)");
+    println!("  MODEL_ID             Model ID (default: seed llmsim model)");
     println!("  MAX_CONCURRENT       Max concurrent sessions (default: 50)");
     println!("  TIMEOUT_SECS         Request timeout in seconds (default: 300)");
-    println!();
-    println!("Model ID options for different scenarios:");
-    println!("  llmsim               - Fast responses (no latency)");
-    println!("  llmsim-ttft-100      - 100ms delay before first token");
-    println!("  llmsim-ttft-500      - 500ms delay (realistic)");
-    println!("  llmsim-ttft-2000     - 2s delay (slow model simulation)");
     println!();
     println!("Examples:");
     println!("  # Basic load test");
