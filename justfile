@@ -127,7 +127,7 @@ stop-all:
 # === Load Testing ===
 
 # Load test subcommand: just load-test <profile> [args]
-# Profiles: quick, medium, heavy, realistic, slow
+# Profiles: quick, medium, heavy
 # Example: just load-test medium
 #          just load-test quick --help
 #          SESSIONS=200 just load-test medium
@@ -154,23 +154,9 @@ load-test profile="medium" *args:
             MAX_CONCURRENT="${MAX_CONCURRENT:-100}" \
             cargo bench --package everruns-server --bench load_test -- {{args}}
             ;;
-        realistic)
-            MODEL_ID="${MODEL_ID:-llmsim-ttft-500}" \
-            SESSIONS="${SESSIONS:-100}" \
-            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
-            MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
-            cargo bench --package everruns-server --bench load_test -- {{args}}
-            ;;
-        slow)
-            MODEL_ID="${MODEL_ID:-llmsim-ttft-2000}" \
-            SESSIONS="${SESSIONS:-50}" \
-            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-20}" \
-            MAX_CONCURRENT="${MAX_CONCURRENT:-25}" \
-            cargo bench --package everruns-server --bench load_test -- {{args}}
-            ;;
         *)
             echo "Unknown profile: {{profile}}"
-            echo "Available profiles: quick, medium, heavy, realistic, slow"
+            echo "Available profiles: quick, medium, heavy"
             echo ""
             echo "Usage: just load-test <profile> [args]"
             echo ""
@@ -178,14 +164,11 @@ load-test profile="medium" *args:
             echo "  quick     - 10 sessions, 10 messages (100 total)"
             echo "  medium    - 100 sessions, 50 messages (5000 total) [default]"
             echo "  heavy     - 500 sessions, 100 messages (50000 total)"
-            echo "  realistic - medium + 500ms TTFT delay"
-            echo "  slow      - 50 sessions, 20 messages + 2s TTFT delay"
             echo ""
             echo "Examples:"
             echo "  just load-test quick"
             echo "  just load-test heavy"
             echo "  SESSIONS=200 just load-test medium"
-            echo "  MODEL_ID=llmsim-ttft-1000 just load-test medium"
             exit 1
             ;;
     esac
