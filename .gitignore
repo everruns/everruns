@@ -36,5 +36,8 @@ build/
 # AI
 .claude/*.local.json
 
+# Load test checkpoints
+crates/server/benches/checkpoints/
+
 # Tools
 .sqlx.envrc

@@ -280,7 +280,7 @@ struct CheckpointStore {
 impl CheckpointStore {
     fn new() -> Self {
         Self {
-            directory: PathBuf::from("crates/server/benches/checkpoints"),
+            directory: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benches/checkpoints"),
         }
     }
 
