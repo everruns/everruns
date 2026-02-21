@@ -11,6 +11,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.0] - 2026-02-21
+
+### Highlights
+
+- **Built-in Skills Discovery** — Skills capability with system prompt integration and Generic harness support ([#516](https://github.com/everruns/everruns/pull/516), [#532](https://github.com/everruns/everruns/pull/532), [#543](https://github.com/everruns/everruns/pull/543))
+- **Daytona Integration** — User connection with API key support and official branding ([#522](https://github.com/everruns/everruns/pull/522), [#533](https://github.com/everruns/everruns/pull/533))
+- **Generic Harness Type** — New Generic harness with skills, agent_instructions, and copy endpoints ([#512](https://github.com/everruns/everruns/pull/512), [#518](https://github.com/everruns/everruns/pull/518), [#524](https://github.com/everruns/everruns/pull/524))
+- **Claude Sonnet 4.6 & Opus 4.6** — New model profiles for latest Claude models ([#531](https://github.com/everruns/everruns/pull/531))
+- **Session-Scoped Task Scheduling** — Cron-based scheduled tasks scoped to sessions ([#536](https://github.com/everruns/everruns/pull/536))
+
+### What's Changed
+
+- docs: fix Daytona integration image ([#561](https://github.com/everruns/everruns/pull/561))
+- fix(bash): set executable file mode for script execution ([#559](https://github.com/everruns/everruns/pull/559))
+- fix(durable): optimize slow claim_due_schedules scheduler query ([#558](https://github.com/everruns/everruns/pull/558))
+- chore(deps): update bashkit v0.1.5 → v0.1.6 ([#556](https://github.com/everruns/everruns/pull/556))
+- docs: fix duplicate titles, dark-mode logos, and add Braintrust icon ([#557](https://github.com/everruns/everruns/pull/557))
+- docs: fix duplicate titles, logo visibility, and redesign home page ([#555](https://github.com/everruns/everruns/pull/555))
+- fix(docs): correct edit page link URL for all doc pages ([#554](https://github.com/everruns/everruns/pull/554))
+- chore(docs): add Google site verification meta tag ([#553](https://github.com/everruns/everruns/pull/553))
+- refactor(migrations): squash post-0.7.0 migrations into single 003_v0.8.0 ([#552](https://github.com/everruns/everruns/pull/552))
+- chore: pre-release maintenance — deps, specs, threat model, code cleanup ([#551](https://github.com/everruns/everruns/pull/551))
+- feat(capabilities): add features() for UI-driven tab rendering ([#550](https://github.com/everruns/everruns/pull/550))
+- fix(ui): fix llm.generation preview modal layout and rename button to View ([#549](https://github.com/everruns/everruns/pull/549))
+- refactor(skills): separate AttachSkillCapability (mount-only) from SkillsCapability (discovery+tools) ([#548](https://github.com/everruns/everruns/pull/548))
+- docs(skills): add overview video, split into skills + skills-registry ([#547](https://github.com/everruns/everruns/pull/547))
+- feat(ui): add frontmatter support to markdown file preview ([#546](https://github.com/everruns/everruns/pull/546))
+- chore(deps): bump devalue from 5.6.2 to 5.6.3 in /apps/docs ([#545](https://github.com/everruns/everruns/pull/545))
+- fix(durable): gate postgres integration tests behind feature flag ([#544](https://github.com/everruns/everruns/pull/544))
+- feat(skills): include first 15 skill descriptions in system prompt ([#543](https://github.com/everruns/everruns/pull/543))
+- fix(ui): fix chat input panel and sidebar layout alignment ([#542](https://github.com/everruns/everruns/pull/542))
+- feat: add `just start-production` command ([#541](https://github.com/everruns/everruns/pull/541))
+- fix(llm): detect model-not-found errors and surface user-friendly message ([#540](https://github.com/everruns/everruns/pull/540))
+- docs: add sitemap.xml with lastmod dates ([#539](https://github.com/everruns/everruns/pull/539))
+- feat(docs): add Bing meta validation tag, robots.txt with AI crawler rules ([#538](https://github.com/everruns/everruns/pull/538))
+- feat(ui): add drag-and-drop file upload to workspace ([#537](https://github.com/everruns/everruns/pull/537))
+- feat(schedules): add session-scoped task scheduling ([#536](https://github.com/everruns/everruns/pull/536))
+- fix(ui): rename Preview button to View and restore generation visualization ([#535](https://github.com/everruns/everruns/pull/535))
+- fix(capabilities): respect /workspace prefix in skills agent-facing paths ([#534](https://github.com/everruns/everruns/pull/534))
+- feat(daytona): add official Daytona logo icon and integration docs ([#533](https://github.com/everruns/everruns/pull/533))
+- feat(harness): add skills capability to Generic harness ([#532](https://github.com/everruns/everruns/pull/532))
+- feat(models): add Claude Sonnet 4.6 and Opus 4.6 model profiles ([#531](https://github.com/everruns/everruns/pull/531))
+- refactor(capabilities): make Capability trait async for dynamic system prompt content ([#530](https://github.com/everruns/everruns/pull/530))
+- feat(commands): add /ship command for automated ship flow ([#529](https://github.com/everruns/everruns/pull/529))
+- fix(auth): auto-refresh expired tokens and preserve page on re-login ([#528](https://github.com/everruns/everruns/pull/528))
+- fix(ui): render connection instructions as markdown ([#527](https://github.com/everruns/everruns/pull/527))
+- feat(ui): add llm.generation filter to session events ([#526](https://github.com/everruns/everruns/pull/526))
+- chore(agents): update pre-PR checklist and add shipping definition ([#525](https://github.com/everruns/everruns/pull/525))
+- fix(harness): include agent_instructions in Generic harness ([#524](https://github.com/everruns/everruns/pull/524))
+- fix(ui): fix workspace refresh button and auto-refresh on tab switch ([#523](https://github.com/everruns/everruns/pull/523))
+- feat(connections): add Daytona user connection with API key support ([#522](https://github.com/everruns/everruns/pull/522))
+- feat(ui): reorganize sidebar navigation ([#521](https://github.com/everruns/everruns/pull/521))
+- fix(worker): increase control-plane connection timeout from 5s to 30s ([#520](https://github.com/everruns/everruns/pull/520))
+- fix(ui): fix settings panel not filling full height ([#519](https://github.com/everruns/everruns/pull/519))
+- feat(agents,harnesses): add copy endpoints ([#518](https://github.com/everruns/everruns/pull/518))
+- fix(worker): register harness capability tools when agent_id is absent ([#517](https://github.com/everruns/everruns/pull/517))
+- feat(capabilities): add built-in skills discovery capability ([#516](https://github.com/everruns/everruns/pull/516))
+- feat(ui): add Schedules link to sidebar navigation ([#515](https://github.com/everruns/everruns/pull/515))
+- chore(deps): update bashkit from v0.1.4 to v0.1.5 ([#514](https://github.com/everruns/everruns/pull/514))
+- fix(seed): upsert seed data with change detection ([#513](https://github.com/everruns/everruns/pull/513))
+- feat(harness): rename Default to Base, add Generic harness type ([#512](https://github.com/everruns/everruns/pull/512))
+- test: remove 11 ineffective tests ([#511](https://github.com/everruns/everruns/pull/511))
+
+### Migration Notes
+
+**0.7.0 → 0.8.0:** This release includes database schema changes (session-scoped scheduling, Generic harness type, migration squash). A fresh database is required — no automatic migration is supported.
+
 ## [0.7.0] - 2026-02-13
 
 ### Highlights
