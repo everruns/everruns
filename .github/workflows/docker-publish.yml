@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # Triggered by Release workflow after creating tag (GITHUB_TOKEN tag pushes
+  # don't fire push events, so Release calls this via workflow_dispatch)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build and publish (e.g., v0.8.0)'
+        required: true
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -44,9 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # QEMU needed for UI ARM builds (runs npm on target platform)
+      # QEMU needed for multi-arch builds (ARM64 cross-compilation)
       - name: Set up QEMU
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -70,15 +78,30 @@ jobs:
             echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
           fi
 
-      # Build ARM64 only on main push and version tags (cross-compiled)
+      - name: Determine release tag
+        id: release_tag
+        run: |
+          # workflow_dispatch passes the tag explicitly
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag=" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Build ARM64 only on main push, version tags, and release dispatches
       # PRs only build amd64 for faster CI
       - name: Determine platforms
         id: platforms
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          else
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          else
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           fi
 
       - name: Extract metadata for Docker
@@ -87,9 +110,10 @@ jobs:
         with:
           images: ${{ env.IMAGE_BASE }}/${{ matrix.image_name }}
           tags: |
-            # On version tags (v*): use the tag name + update latest
+            # On version tags (push or workflow_dispatch): use the tag name + update latest
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             # On main push: tag as 'development' (mutable, tracks main branch)
             type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             # Always tag with short and full SHA

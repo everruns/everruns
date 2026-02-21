@@ -44,6 +44,7 @@ jobs:
 
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Checkout
@@ -117,3 +118,14 @@ jobs:
             --target "${{ github.sha }}"
 
           echo "Created release v${{ steps.version.outputs.version }}"
+
+      # GITHUB_TOKEN tag pushes don't trigger other workflows (GitHub anti-recursion).
+      # Explicitly dispatch Docker Publish to build version-tagged images.
+      - name: Trigger Docker Publish for release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          echo "Triggering Docker Publish for tag $TAG..."
+          gh workflow run docker-publish.yml --ref "$TAG" -f "tag=$TAG"
+          echo "Docker Publish triggered for $TAG"

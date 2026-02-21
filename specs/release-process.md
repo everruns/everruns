@@ -61,7 +61,10 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 1. Tag format: `vX.Y.Z` (e.g., `v0.4.0`)
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
-4. Docker images tagged with version (triggered by tag push)
+4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
+
+> **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
+> The Release workflow explicitly dispatches Docker Publish after creating the release.
 
 ### Docker Image Tagging
 
