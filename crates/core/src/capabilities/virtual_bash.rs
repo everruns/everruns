@@ -428,10 +428,13 @@ impl FileSystem for SessionFileSystemAdapter {
                 let size = file.size_bytes as u64;
                 let now = SystemTime::now();
 
+                // Use 0o755 so files are executable by default in the virtual filesystem.
+                // The session filesystem doesn't track Unix permissions, and scripts
+                // stored in /workspace need to be directly executable.
                 Ok(Metadata {
                     file_type: FileType::File,
                     size,
-                    mode: 0o644,
+                    mode: 0o755,
                     modified: now,
                     created: now,
                 })
@@ -493,7 +496,7 @@ impl FileSystem for SessionFileSystemAdapter {
                     metadata: Metadata {
                         file_type,
                         size: e.size_bytes as u64,
-                        mode: if e.is_directory { 0o755 } else { 0o644 },
+                        mode: 0o755,
                         modified: now,
                         created: now,
                     },
@@ -691,7 +694,11 @@ mod tests {
         async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
+            let dirs = self.directories.lock().unwrap();
             let mut entries = Vec::new();
+
+            // Root directory always exists
+            let is_root = path == "/";
 
             for ((sid, file_path), (content, _)) in files.iter() {
                 if *sid != session_id {
@@ -721,6 +728,18 @@ mod tests {
                         created_at: chrono::Utc::now(),
                         updated_at: chrono::Utc::now(),
                     });
+                }
+            }
+
+            // Return error if directory doesn't exist (not root, not explicitly created,
+            // and no files have it as parent)
+            if !is_root && entries.is_empty() && !dirs.contains_key(&(session_id, path.clone())) {
+                // Also check if any file has this as an ancestor (implicit directory)
+                let has_children = files
+                    .keys()
+                    .any(|(sid, fp)| *sid == session_id && fp.starts_with(&format!("{}/", path)));
+                if !has_children {
+                    return Err(anyhow::anyhow!("Directory not found: {}", path).into());
                 }
             }
 
@@ -1610,6 +1629,217 @@ mod tests {
             assert!(output["stdout"].as_str().unwrap_or("").contains("done"));
         } else {
             panic!("Expected success for commands within limit: {:?}", result);
+        }
+    }
+
+    // ========================================================================
+    // Script file execution tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_execute_script_by_absolute_path() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create a script file
+        let result = tool
+            .execute_with_context(
+                json!({"command": "cat > /workspace/test.sh << 'EOF'\n#!/bin/bash\necho hello\nEOF"}),
+                &context,
+            )
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success(_)),
+            "Failed to create script: {:?}",
+            result
+        );
+
+        // Execute by absolute path
+        let result = tool
+            .execute_with_context(json!({"command": "/workspace/test.sh"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"], "hello\n");
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_execute_script_with_args() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create a script that uses arguments
+        let result = tool
+            .execute_with_context(
+                json!({"command": "cat > /workspace/greet.sh << 'EOF'\n#!/bin/bash\necho \"Hello, $1! You are $2.\"\nEOF"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Execute with arguments
+        let result = tool
+            .execute_with_context(
+                json!({"command": "/workspace/greet.sh world awesome"}),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"], "Hello, world! You are awesome.\n");
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_execute_script_without_shebang() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create a script without shebang
+        let result = tool
+            .execute_with_context(
+                json!({"command": "cat > /workspace/simple.sh << 'EOF'\necho simple\nEOF"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Execute - should still work
+        let result = tool
+            .execute_with_context(json!({"command": "/workspace/simple.sh"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"], "simple\n");
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_execute_nonexistent_script() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Try to execute a script that doesn't exist
+        let result = tool
+            .execute_with_context(json!({"command": "/workspace/nonexistent.sh"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_ne!(output["exit_code"], 0, "Should fail with non-zero exit");
+            let stderr = output["stderr"].as_str().unwrap_or("");
+            assert!(
+                stderr.contains("No such file") || stderr.contains("not found"),
+                "Expected file not found error, got stderr: {}",
+                stderr
+            );
+        } else {
+            panic!(
+                "Expected success result with error output, got: {:?}",
+                result
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_execute_script_in_nested_dir() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create nested directory structure and script
+        let setup = tool
+            .execute_with_context(
+                json!({"command": "mkdir -p /workspace/.agents/skills/nav/scripts && cat > /workspace/.agents/skills/nav/scripts/nav.sh << 'EOF'\n#!/bin/bash\necho \"navigating $1\"\nEOF"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(setup, ToolExecutionResult::Success(_)));
+
+        // Execute by absolute path (the exact scenario from the bug report)
+        let result = tool
+            .execute_with_context(
+                json!({"command": "/workspace/.agents/skills/nav/scripts/nav.sh dist"}),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert_eq!(output["stdout"], "navigating dist\n");
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_file_mode_is_executable() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Write a file and check that test -x reports it as executable
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'echo hi' > /workspace/check.sh && test -x /workspace/check.sh && echo 'executable' || echo 'not executable'"}),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            assert!(
+                output["stdout"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("executable"),
+                "File should be reported as executable, got: {}",
+                output["stdout"]
+            );
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_execute_script_with_exit_code() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create a script that exits with a specific code
+        let result = tool
+            .execute_with_context(
+                json!({"command": "cat > /workspace/fail.sh << 'EOF'\n#!/bin/bash\necho failing\nexit 42\nEOF"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Execute and check exit code propagation
+        let result = tool
+            .execute_with_context(
+                json!({"command": "/workspace/fail.sh; echo \"code: $?\""}),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            let stdout = output["stdout"].as_str().unwrap_or("");
+            assert!(stdout.contains("failing"), "Script should have run");
+            assert!(
+                stdout.contains("code: 42"),
+                "Exit code should propagate, got: {}",
+                stdout
+            );
+        } else {
+            panic!("Expected success, got: {:?}", result);
         }
     }
 }
