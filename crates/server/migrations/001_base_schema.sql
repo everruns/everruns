@@ -399,6 +399,7 @@ CREATE TABLE sessions (
 CREATE INDEX idx_sessions_agent_id ON sessions(agent_id);
 CREATE INDEX idx_sessions_org_id ON sessions(org_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
+CREATE INDEX idx_sessions_org_status ON sessions(org_id, status);
 CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 CREATE INDEX idx_sessions_tags ON sessions USING GIN(tags);
 
