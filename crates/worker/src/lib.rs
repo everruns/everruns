@@ -6,6 +6,7 @@ extern crate everruns_integrations_docker;
 
 pub mod activities;
 pub mod adapters;
+pub mod app_builder;
 pub mod durable_runner;
 pub mod durable_worker;
 pub mod grpc_adapters;
@@ -48,3 +49,6 @@ pub use worker_adapters::{
 
 // Re-export OpenAI driver from the openai crate
 pub use everruns_openai::OpenAILlmDriver;
+
+// Re-export app builder for composable worker configurations
+pub use app_builder::WorkerAppBuilder;

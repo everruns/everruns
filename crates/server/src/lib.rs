@@ -2,6 +2,7 @@
 // Decision: Shared library for binaries (API server, CLI tools)
 // Decision: Pluggable auth backend for SaaS wrapper repos
 // Decision: Server entrypoint extracted into run() for SaaS binary reuse
+// Decision: App builder pattern for composable server configurations
 
 // Force-link integration crates so inventory::submit! registrations are included
 extern crate everruns_integrations_brave_search;
@@ -54,3 +55,7 @@ pub mod session_scheduler;
 // Server entrypoint (reusable by SaaS binary)
 pub mod server;
 pub use server::{ServerConfig, run};
+
+// App builder for composable server configurations
+pub mod app_builder;
+pub use app_builder::{ServerAppBuilder, ServerContext};
