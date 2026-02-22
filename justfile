@@ -42,8 +42,10 @@ build:
     cargo build
 
 # Run all tests (Rust + UI e2e)
+# Note: uses default features only. PostgreSQL-gated tests (postgres-tests, failpoints)
+# are run via `just test-integration` which sets up Docker and enables those features.
 test:
-    cargo test --all-features
+    cargo test
     cd apps/ui && npm run e2e 2>/dev/null || echo "(e2e skipped)"
 
 # Run pure unit tests (no PostgreSQL required) - fast feedback
