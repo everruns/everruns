@@ -913,49 +913,70 @@ mod tests {
     }
 
     // ========================================================================
-    // Real-world integration tests (require network access)
-    // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_real --ignored
+    // Integration tests using wiremock (no network access needed)
     // ========================================================================
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_wasmtime_docs_fetch() {
-        let tool = WebFetchTool::default();
+    async fn test_fetch_html_page() {
+        let mock_server = MockServer::start().await;
+        let html = r#"<html><head><title>Wasmtime Docs</title></head>
+        <body><h1>Wasmtime</h1><p>A fast and secure runtime for WebAssembly.</p>
+        <p>Wasmtime is a standalone runtime for WebAssembly that can be used
+        as a CLI tool or embedded into other systems.</p></body></html>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(html)
+                    .insert_header("content-type", "text/html; charset=utf-8"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/"
+                "url": format!("{}/", mock_server.uri())
             }))
             .await;
 
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
-            assert!(
-                value["content_type"]
-                    .as_str()
-                    .unwrap()
-                    .contains("text/html")
-            );
             let content = value["content"].as_str().unwrap();
             assert!(
                 content.contains("Wasmtime") || content.contains("wasmtime"),
                 "Content should mention Wasmtime"
             );
             assert!(
-                value["size"].as_u64().unwrap() > 1000,
+                value["size"].as_u64().unwrap() > 100,
                 "Page should have substantial content"
             );
         } else {
-            panic!("Expected successful response from docs.wasmtime.dev");
+            panic!("Expected successful response, got: {:?}", result);
         }
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_wasmtime_docs_as_text() {
-        let tool = WebFetchTool::default();
+    async fn test_fetch_html_as_text() {
+        let mock_server = MockServer::start().await;
+        let html = r#"<html><head><title>Wasmtime Docs</title></head>
+        <body><h1>Wasmtime</h1><p>A fast and secure runtime.</p></body></html>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(html)
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/",
+                "url": format!("{}/", mock_server.uri()),
                 "as_text": true
             }))
             .await;
@@ -963,12 +984,10 @@ mod tests {
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
             let content = value["content"].as_str().unwrap();
-            // Content should be present and mention Wasmtime
             assert!(
                 content.contains("Wasmtime") || content.contains("wasmtime"),
                 "Text should contain Wasmtime reference"
             );
-            // Check format field - may be "text" or "raw" depending on HTML detection
             let format = value["format"].as_str().unwrap_or("raw");
             assert!(
                 format == "text" || format == "raw",
@@ -976,17 +995,31 @@ mod tests {
                 format
             );
         } else {
-            panic!("Expected successful response with text conversion");
+            panic!(
+                "Expected successful response with text conversion, got: {:?}",
+                result
+            );
         }
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_wasmtime_docs_head_request() {
-        let tool = WebFetchTool::default();
+    async fn test_fetch_head_request() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("HEAD"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/html; charset=utf-8")
+                    .insert_header("content-length", "5000"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/",
+                "url": format!("{}/", mock_server.uri()),
                 "method": "HEAD"
             }))
             .await;
@@ -994,115 +1027,133 @@ mod tests {
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
             assert_eq!(value["method"], "HEAD");
-            // HEAD should return metadata but not content
             assert!(
                 value["content"].is_null()
                     || value["content"].as_str().is_none_or(|s| s.is_empty()),
                 "HEAD request should not return content body"
             );
-            // Should have content-type header info
             assert!(value["content_type"].as_str().is_some());
         } else {
-            panic!("Expected successful HEAD response");
+            panic!("Expected successful HEAD response, got: {:?}", result);
         }
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_wasmtime_docs_subpage() {
-        let tool = WebFetchTool::default();
-        // No as_markdown - fetchkit returns markdown by default
+    async fn test_fetch_subpage() {
+        let mock_server = MockServer::start().await;
+        // Build a page with >500 chars of content
+        let body = format!(
+            "<html><body><h1>Introduction</h1><p>{}</p></body></html>",
+            "WebAssembly is a portable binary instruction format. ".repeat(20)
+        );
+
+        Mock::given(method("GET"))
+            .and(path("/introduction.html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(&body)
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/introduction.html"
+                "url": format!("{}/introduction.html", mock_server.uri())
             }))
             .await;
 
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
             let content = value["content"].as_str().unwrap();
-            // Introduction page should have relevant content
             assert!(
                 content.len() > 500,
-                "Introduction page should have substantial content"
+                "Subpage should have substantial content, got {} bytes",
+                content.len()
             );
         } else {
-            panic!("Expected successful response from introduction page");
+            panic!(
+                "Expected successful response from subpage, got: {:?}",
+                result
+            );
         }
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_github_wasm3_readme() {
-        // GitHub READMEs may return HTML even though fetchkit tries to convert
-        // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
-        let tool = WebFetchTool::default();
+    async fn test_fetch_repo_page() {
+        let mock_server = MockServer::start().await;
+        let html = r#"<html><body>
+        <h1>wasm3/wasm3</h1>
+        <p>The fastest WebAssembly interpreter (and target for wasm3).</p>
+        <div class="readme"><h2>README</h2><p>wasm3 is a high performance
+        WebAssembly interpreter written in C.</p></div>
+        </body></html>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/wasm3/wasm3"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(html)
+                    .insert_header("content-type", "text/html; charset=utf-8"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://github.com/wasm3/wasm3"
+                "url": format!("{}/wasm3/wasm3", mock_server.uri())
             }))
             .await;
 
-        match &result {
-            ToolExecutionResult::Success(value) => {
-                assert_eq!(value["status_code"], 200);
-                let content = value["content"].as_str().unwrap();
-                // Should contain wasm3 reference
-                assert!(
-                    content.to_lowercase().contains("wasm3"),
-                    "Content should mention wasm3"
-                );
-                // GitHub pages return HTML even with fetchkit's markdown conversion
-                // This documents the known limitation
-                if content.contains("<") && content.contains(">") {
-                    println!("Note: GitHub returned HTML content as expected");
-                }
-            }
-            ToolExecutionResult::ToolError(msg) if msg.contains("timed out") => {
-                // GitHub often times out with fetchkit's 1-second timeout
-                // This is a known limitation, not a test failure
-                println!("GitHub request timed out (expected with 1s timeout)");
-            }
-            other => {
-                panic!("Unexpected result from GitHub wasm3 repo: {:?}", other);
-            }
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            let content = value["content"].as_str().unwrap();
+            assert!(
+                content.to_lowercase().contains("wasm3"),
+                "Content should mention wasm3"
+            );
+        } else {
+            panic!("Expected successful response, got: {:?}", result);
         }
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
-    async fn test_real_github_wasm3_as_text() {
-        // Test as_text conversion on GitHub page
-        // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
-        let tool = WebFetchTool::default();
+    async fn test_fetch_repo_page_as_text() {
+        let mock_server = MockServer::start().await;
+        let html = r#"<html><body>
+        <h1>wasm3/wasm3</h1>
+        <p>The fastest WebAssembly interpreter written in C.</p>
+        </body></html>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/wasm3/wasm3"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(html)
+                    .insert_header("content-type", "text/html; charset=utf-8"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = tool_for_wiremock();
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://github.com/wasm3/wasm3",
+                "url": format!("{}/wasm3/wasm3", mock_server.uri()),
                 "as_text": true
             }))
             .await;
 
-        match &result {
-            ToolExecutionResult::Success(value) => {
-                assert_eq!(value["status_code"], 200);
-                let content = value["content"].as_str().unwrap();
-                // Should contain wasm3 reference
-                assert!(
-                    content.to_lowercase().contains("wasm3"),
-                    "Content should mention wasm3"
-                );
-            }
-            ToolExecutionResult::ToolError(msg) if msg.contains("timed out") => {
-                // GitHub often times out with fetchkit's 1-second timeout
-                // This is a known limitation, not a test failure
-                println!("GitHub request timed out (expected with 1s timeout)");
-            }
-            other => {
-                panic!(
-                    "Unexpected result from GitHub wasm3 with as_text: {:?}",
-                    other
-                );
-            }
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            let content = value["content"].as_str().unwrap();
+            assert!(
+                content.to_lowercase().contains("wasm3"),
+                "Content should mention wasm3"
+            );
+        } else {
+            panic!("Expected successful response, got: {:?}", result);
         }
     }
 }
