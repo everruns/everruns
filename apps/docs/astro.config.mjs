@@ -28,8 +28,12 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Everruns",
+      description:
+        "Documentation for Everruns, a durable agentic harness engine for AI agents",
+      routeMiddleware: "./src/routeData.ts",
       logo: {
         src: "./src/assets/logo.svg",
+        alt: "Everruns",
       },
       favicon: "/favicon.svg",
       head: [

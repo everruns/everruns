@@ -172,6 +172,50 @@ The OpenAPI spec should be regenerated and committed when API endpoints change:
 
 This ensures developers cannot forget to regenerate the spec after API changes.
 
+### SEO Requirements
+
+The docs site must maintain good SEO hygiene to ensure discoverability.
+
+#### Meta Descriptions
+
+Every page must have a `<meta name="description">` tag.
+
+- **Content pages**: Set `description` in YAML frontmatter (required for all `docs/*.md` files)
+- **API pages**: Auto-generated via route middleware (`apps/docs/src/routeData.ts`)
+- **Fallback**: Starlight `description` config provides a site-level fallback
+
+#### Page Titles
+
+Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
+
+- Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
+- For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
+- When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+
+#### Images
+
+All `<img>` tags must have an `alt` attribute.
+
+- The Starlight logo config must include `alt: "Everruns"`
+- Markdown images: `![descriptive alt text](path/to/image.png)`
+- HTML images: `<img src="..." alt="descriptive text" />`
+
+#### Links
+
+No internal links should produce 404 errors.
+
+- Content pages under `docs/` should link using root-relative paths matching the sidebar structure (e.g. `/event-reference/`, not `/features/event-reference`)
+- Links to internal specs (`specs/*.md`) should use absolute GitHub URLs since specs aren't published as docs pages
+- The `starlight-openapi` plugin does not generate individual schema pages — do not link to `/api/schemas/{SchemaName}`
+
+#### Route Middleware (`apps/docs/src/routeData.ts`)
+
+SEO improvements for auto-generated pages are handled by Starlight route middleware:
+
+1. Strips `METHOD /path - ` prefix from API operation titles for shorter `<title>` tags
+2. Generates per-page meta descriptions for API reference pages that lack frontmatter descriptions
+3. Updates `og:title` and `og:description` to match
+
 ### Future Enhancements
 
 1. **Versioned Documentation**: Support for multiple documentation versions

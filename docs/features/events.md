@@ -235,16 +235,8 @@ Events follow semantic versioning. The contract is defined in `specs/events-cont
 
 All events in API responses are well-defined types. The server filters out any internal or unsupported events before transmission.
 
-## OpenAPI Schema
-
-Full event schemas are documented in the OpenAPI specification:
-
-- [Event Schema](/api/schemas/Event)
-- [EventData Variants](/api/schemas/EventData)
-- [EventContext](/api/schemas/EventContext)
-
 ## Related Resources
 
-- [Event Reference](/features/event-reference) - Complete reference for all event types
+- [Event Reference](/event-reference/) - Complete reference for all event types
 - [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Internal specification
 - [specs/events-contract.md](https://github.com/everruns/everruns/blob/main/specs/events-contract.md) - Contract specification

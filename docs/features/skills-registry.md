@@ -102,4 +102,4 @@ Response:
 - Skill instructions are returned as tool results (not injected into system prompt)
 - Skill names are unique per organization
 - Disabled skills are hidden from capability listings
-- See the [Threat Model](/specs/threat-model/) for detailed security analysis (TM-TOOL-010 through TM-TOOL-014)
+- See the [Threat Model](https://github.com/everruns/everruns/blob/main/specs/threat-model.md) for detailed security analysis (TM-TOOL-010 through TM-TOOL-014)
