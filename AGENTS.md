@@ -145,12 +145,13 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 8. Docs build: `npm run build` in `apps/docs/`
 9. Rebase on main: `git fetch origin main && git rebase origin/main`
 10. Smoke test impacted functionality in both dev mode (`just start-dev`) and full mode (`just start-all`)
-11. UI screenshots for UI changes
-12. Test coverage: extensive positive and negative tests; reproduce issue + verify fix, cover touched code paths
-13. Update relevant specs in `specs/`
-14. Update docs in `apps/docs/` if applicable
-15. CI green before merge
-16. Resolve all PR comments
+11. Performance impact: no unindexed queries, no full table scans, no N+1 queries, no unbounded result sets; add pagination/limits where needed
+12. UI screenshots for UI changes
+13. Test coverage: extensive positive and negative tests; reproduce issue + verify fix, cover touched code paths
+14. Update relevant specs in `specs/`
+15. Update docs in `apps/docs/` if applicable
+16. CI green before merge
+17. Resolve all PR comments
 
 ### CI
 

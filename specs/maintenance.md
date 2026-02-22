@@ -68,21 +68,34 @@ Identify and fill gaps.
 6. Check for untested error paths and edge cases
 7. New features since last release must have test coverage
 
-### 5. API Documentation
+### 5. Performance Review
+
+Verify no new performance regressions, especially in database access patterns.
+
+1. Review new/changed SQL queries and ORM calls for full table scans — all list queries must use indexes
+2. Check for N+1 query patterns (loading related entities in a loop instead of a single join/batch)
+3. Verify all list endpoints have pagination with bounded `LIMIT`; no unbounded `SELECT *` without `WHERE`/`LIMIT`
+4. Check new indexes have corresponding migrations; verify with `EXPLAIN ANALYZE` on representative data
+5. Review any new background jobs or scheduled tasks for query cost at scale
+6. Ensure bulk operations (batch inserts, deletes, updates) are bounded and chunked where appropriate
+7. Check for missing database indexes on columns used in `WHERE`, `JOIN`, or `ORDER BY` clauses
+8. Verify no hot-path code holds long-lived DB connections or transactions
+
+### 6. API Documentation
 
 1. Run `./scripts/export-openapi.sh` — must succeed
 2. Verify OpenAPI spec at `docs/api/openapi.json` is up to date
 3. Check all endpoints have descriptions and response types in utoipa annotations
 4. Cross-check `specs/apis.md` with actual routes
 
-### 6. Examples
+### 7. Examples
 
 1. Verify all example markdown files in `examples/` have valid agent definitions
 2. Check `examples/hackernews-reader/` README is accurate
 3. Verify `examples/docker-compose-full.yaml` works with current Docker image
 4. Run smoke test against example agents if possible
 
-### 7. README
+### 8. README
 
 1. Verify Quick Start instructions work
 2. Check all links (docs, badges, API reference) resolve
@@ -90,7 +103,7 @@ Identify and fill gaps.
 4. Verify API example matches current API shape
 5. Check Docker Compose instructions match `examples/docker-compose-full.yaml`
 
-### 8. SDK Documentation and Feature Parity
+### 9. SDK Documentation and Feature Parity
 
 Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`docs/features/sdk.mdx`) is current and the SDK supports latest main API features.
 
@@ -107,14 +120,14 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 8. Verify CLI crate (`crates/cli/`) can exercise all SDK sub-clients without errors
 9. File issues or PRs on [everruns/sdk](https://github.com/everruns/sdk) for any gaps found
 
-### 9. Rust Documentation
+### 10. Rust Documentation
 
 1. Run `cargo doc --no-deps --all-features` — must compile without warnings
 2. Verify public types have doc comments
 3. Check crate-level documentation (`//!` comments in `lib.rs`)
 4. Fix any broken intra-doc links
 
-### 10. AGENTS.md (CLAUDE.md)
+### 11. AGENTS.md (CLAUDE.md)
 
 `AGENTS.md` is the primary agent instruction file (`CLAUDE.md` references it).
 
@@ -126,7 +139,7 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 6. Check commit convention matches `commitlint.config.js`
 7. Ensure tone/style guidance is clear and consistent
 
-### 11. Additional Checks
+### 12. Additional Checks
 
 1. `cargo deny check` — license compliance passes
 2. `cargo fmt --check` — formatting passes
@@ -135,7 +148,7 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 5. No TODO/FIXME items that should be resolved before release
 6. CHANGELOG.md has entries for all changes since last release
 
-### 12. Code Simplification
+### 13. Code Simplification
 
 Run the [code-simplifier](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md) agent against recently modified code to clean up clarity, consistency, and maintainability issues while preserving exact functionality.
 
@@ -151,7 +164,7 @@ Run the [code-simplifier](https://github.com/anthropics/claude-plugins-official/
 
 
 
-Run `just pre-pr` to automate checks 1-9 where possible. Manual review needed for spec accuracy, threat model, SDK parity, and AGENTS.md content.
+Run `just pre-pr` to automate checks 1-10 where possible. Manual review needed for spec accuracy, threat model, performance review, SDK parity, and AGENTS.md content.
 
 ## Frequency
 
