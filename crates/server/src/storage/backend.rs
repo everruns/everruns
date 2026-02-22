@@ -289,6 +289,11 @@ impl StorageBackend {
         dispatch!(self, list_sessions, org_id, agent_id, pagination)
     }
 
+    /// Count sessions grouped by status for an organization.
+    pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
+        dispatch!(self, count_sessions_by_status, org_id)
+    }
+
     pub async fn update_session(
         &self,
         org_id: i64,

@@ -136,9 +136,26 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+/// Response for session statistics endpoint
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SessionStatsResponse {
+    /// Total number of sessions across all statuses
+    pub total: u32,
+    /// Sessions with a turn currently running
+    pub active: u32,
+    /// Sessions waiting for next input
+    pub idle: u32,
+    /// Sessions just created, no turn executed yet
+    pub started: u32,
+    /// Sessions waiting for client-side tool results
+    pub waiting_for_tool_results: u32,
+}
+
 /// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        // Session stats (must be before /{session_id} to avoid conflict)
+        .route("/v1/sessions/stats", get(get_session_stats))
         // Session CRUD
         .route("/v1/sessions", post(create_session).get(list_sessions))
         .route(
@@ -254,6 +271,35 @@ pub async fn list_sessions(
         .log_internal_error_json("list sessions")?;
 
     Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
+}
+
+/// GET /v1/sessions/stats - Get session counts by status
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/stats",
+    responses(
+        (status = 200, description = "Session statistics", body = SessionStatsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_session_stats(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Result<Json<SessionStatsResponse>, StatusCode> {
+    let stats = state
+        .session_service
+        .stats(org.org_id)
+        .await
+        .log_internal_error("get session stats")?;
+
+    Ok(Json(SessionStatsResponse {
+        total: stats.total,
+        active: stats.active,
+        idle: stats.idle,
+        started: stats.started,
+        waiting_for_tool_results: stats.waiting_for_tool_results,
+    }))
 }
 
 /// GET /v1/sessions/{session_id} - Get session

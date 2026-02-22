@@ -1,23 +1,16 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Boxes, MessageSquare, CheckCircle, Clock } from "lucide-react";
-import type { Agent, Session } from "@/lib/api/types";
+import { Boxes, MessageSquare, CheckCircle, Clock, Hash } from "lucide-react";
+import type { Agent, SessionStats } from "@/lib/api/types";
 
 interface StatsCardsProps {
   agents: Agent[];
-  sessions: Session[];
+  sessionStats?: SessionStats;
 }
 
-// Session status: started → active → idle (cycles)
-// - started: Session just created, no turn executed yet
-// - active: A turn is currently running
-// - idle: Turn completed, session waiting for next input
-export function StatsCards({ agents, sessions }: StatsCardsProps) {
+export function StatsCards({ agents, sessionStats }: StatsCardsProps) {
   const activeAgents = agents.filter((a) => a.status === "active").length;
-  const activeSessions = sessions.filter((s) => s.status === "active").length;
-  const idleSessions = sessions.filter((s) => s.status === "idle").length;
-  const newSessions = sessions.filter((s) => s.status === "started").length;
 
   const stats = [
     {
@@ -28,25 +21,25 @@ export function StatsCards({ agents, sessions }: StatsCardsProps) {
       color: "text-blue-600",
     },
     {
+      title: "Total Sessions",
+      value: sessionStats?.total ?? 0,
+      description: "All sessions",
+      icon: Hash,
+      color: "text-purple-600",
+    },
+    {
       title: "Active Sessions",
-      value: activeSessions,
+      value: sessionStats?.active ?? 0,
       description: "Currently processing",
       icon: MessageSquare,
       color: "text-yellow-600",
     },
     {
       title: "Idle Sessions",
-      value: idleSessions,
+      value: sessionStats?.idle ?? 0,
       description: "Ready for input",
       icon: CheckCircle,
       color: "text-green-600",
-    },
-    {
-      title: "New Sessions",
-      value: newSessions,
-      description: "Just created",
-      icon: Clock,
-      color: "text-blue-400",
     },
   ];
 

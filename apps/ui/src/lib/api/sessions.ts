@@ -4,6 +4,7 @@
 import { api } from "./client";
 import type {
   Session,
+  SessionStats,
   CreateSessionRequest,
   UpdateSessionRequest,
   PaginatedResponse,
@@ -47,6 +48,12 @@ export async function listSessions(
   const query = searchParams.toString();
   const url = `/v1/sessions${query ? `?${query}` : ""}`;
   const response = await api.get<PaginatedResponse<Session>>(url);
+  return response.data;
+}
+
+/** Get session counts grouped by status */
+export async function getSessionStats(): Promise<SessionStats> {
+  const response = await api.get<SessionStats>("/v1/sessions/stats");
   return response.data;
 }
 
