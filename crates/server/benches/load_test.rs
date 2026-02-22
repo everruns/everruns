@@ -14,6 +14,7 @@
 //!   SESSIONS=100                    # Number of parallel sessions
 //!   MESSAGES_PER_SESSION=50         # Messages per session
 //!   MODEL_ID=llmsim                 # Model to use (llmsim, llmsim-ttft-500, etc.)
+//!   TARGET=docker-example           # Target label (auto-detected if unset)
 
 use std::fs;
 use std::io::{BufReader, BufWriter};
@@ -49,6 +50,8 @@ struct LoadTestConfig {
     model_id: String,
     max_concurrent_sessions: usize,
     timeout_secs: u64,
+    #[serde(default = "default_bench_name")]
+    bench_name: String,
 }
 
 impl Default for LoadTestConfig {
@@ -74,6 +77,7 @@ impl Default for LoadTestConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(300),
+            bench_name: "throughput".to_string(),
         }
     }
 }
@@ -85,6 +89,7 @@ impl Default for LoadTestConfig {
 struct CliArgs {
     save: bool,
     moniker: Option<String>,
+    bench_name: Option<String>,
     help: bool,
 }
 
@@ -101,9 +106,16 @@ impl CliArgs {
             .and_then(|i| args.get(i + 1))
             .cloned();
 
+        let bench_name = args
+            .iter()
+            .position(|a| a == "--bench-name")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
         Self {
             save,
             moniker,
+            bench_name,
             help,
         }
     }
@@ -209,6 +221,85 @@ impl EnvironmentInfo {
     }
 }
 
+/// Server information fetched from health endpoints before the test
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ServerInfo {
+    /// Server version (from GET /health)
+    version: String,
+    /// Auth mode (from GET /health)
+    auth_mode: String,
+    /// Target label (from TARGET env var or auto-inferred)
+    target: String,
+    /// Total registered workers (from GET /v1/durable/health)
+    workers: usize,
+    /// Currently active workers
+    active_workers: usize,
+    /// Total task capacity across all workers
+    total_capacity: usize,
+}
+
+impl ServerInfo {
+    /// Fetch server info from health endpoints.
+    async fn fetch(http: &Client, api_url: &str) -> Self {
+        // Derive base URL: /api -> /health (sibling, not child)
+        let base_url = api_url.trim_end_matches('/');
+        let health_url = if let Some(prefix) = base_url.strip_suffix("/api") {
+            format!("{}/health", prefix)
+        } else {
+            format!("{}/health", base_url)
+        };
+
+        // GET /health -> version, auth_mode
+        let (version, auth_mode) = match http.get(&health_url).send().await {
+            Ok(resp) => {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    (
+                        body["version"].as_str().unwrap_or("unknown").to_string(),
+                        body["auth_mode"].as_str().unwrap_or("unknown").to_string(),
+                    )
+                } else {
+                    ("unknown".to_string(), "unknown".to_string())
+                }
+            }
+            Err(_) => ("unknown".to_string(), "unknown".to_string()),
+        };
+
+        // GET /v1/durable/health -> worker topology
+        let durable_url = format!("{}/v1/durable/health", base_url);
+        let (workers, active_workers, total_capacity) =
+            match http.get(&durable_url).send().await {
+                Ok(resp) => {
+                    if let Ok(body) = resp.json::<serde_json::Value>().await {
+                        (
+                            body["total_workers"].as_u64().unwrap_or(0) as usize,
+                            body["active_workers"].as_u64().unwrap_or(0) as usize,
+                            body["total_capacity"].as_u64().unwrap_or(0) as usize,
+                        )
+                    } else {
+                        (0, 0, 0)
+                    }
+                }
+                Err(_) => (0, 0, 0),
+            };
+
+        // Target: explicit env var or auto-inferred from URL + worker count
+        let target = std::env::var("TARGET").unwrap_or_else(|_| {
+            let is_local = api_url.contains("localhost") || api_url.contains("127.0.0.1");
+            let location = if is_local { "local" } else { "remote" };
+            format!("{}-{}w", location, workers)
+        });
+
+        Self {
+            version,
+            auth_mode,
+            target,
+            workers,
+            active_workers,
+            total_capacity,
+        }
+    }
+}
+
 /// Serializable metrics for checkpointing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MetricsSnapshot {
@@ -232,8 +323,14 @@ struct MetricsSnapshot {
 struct LoadTestCheckpoint {
     /// Unique ID for this checkpoint
     id: String,
+    /// Bench name (e.g., "throughput", "history-depth", "horizontal-scale")
+    #[serde(default = "default_bench_name")]
+    bench_name: String,
     /// Timestamp when test was run
     timestamp: DateTime<Utc>,
+    /// Server information (version, target, workers)
+    #[serde(default)]
+    server: Option<ServerInfo>,
     /// Environment information
     environment: EnvironmentInfo,
     /// Test configuration
@@ -244,8 +341,14 @@ struct LoadTestCheckpoint {
     errors: Vec<String>,
 }
 
+fn default_bench_name() -> String {
+    "throughput".to_string()
+}
+
 impl LoadTestCheckpoint {
     fn new(
+        bench_name: String,
+        server: ServerInfo,
         environment: EnvironmentInfo,
         config: LoadTestConfig,
         metrics: MetricsSnapshot,
@@ -253,7 +356,9 @@ impl LoadTestCheckpoint {
     ) -> Self {
         Self {
             id: uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)).to_string(),
+            bench_name,
             timestamp: Utc::now(),
+            server: Some(server),
             environment,
             config,
             metrics,
@@ -263,9 +368,9 @@ impl LoadTestCheckpoint {
 
     fn filename(&self) -> String {
         format!(
-            "load_test_{}_{}_{}_{}.json",
+            "{}_{}_{}_{}.json",
+            self.bench_name,
             self.config.sessions,
-            self.config.messages_per_session,
             self.environment.moniker.replace(' ', "_").to_lowercase(),
             self.timestamp.format("%Y%m%d_%H%M%S"),
         )
@@ -686,10 +791,29 @@ impl LoadTestRunner {
         Ok(())
     }
 
-    async fn run(&self) -> anyhow::Result<MetricsSummary> {
+    /// Fetch server info from health endpoints
+    async fn fetch_server_info(&self) -> ServerInfo {
+        ServerInfo::fetch(&self.http, &self.config.api_url).await
+    }
+
+    async fn run(&self) -> anyhow::Result<(MetricsSummary, ServerInfo)> {
+        // Fetch server info before the test
+        let server_info = self.fetch_server_info().await;
+
         println!("═══════════════════════════════════════════════════════════");
-        println!("              Everruns Load Test");
+        println!(
+            "              Everruns Load Test [{}]",
+            self.config.bench_name
+        );
         println!("═══════════════════════════════════════════════════════════");
+        println!();
+        println!("Server:");
+        println!("  Version:   {}", server_info.version);
+        println!("  Target:    {}", server_info.target);
+        println!(
+            "  Workers:   {} active / {} total (capacity: {})",
+            server_info.active_workers, server_info.workers, server_info.total_capacity
+        );
         println!();
         println!("Configuration:");
         println!("  API URL:              {}", self.config.api_url);
@@ -810,7 +934,7 @@ impl LoadTestRunner {
         println!();
         println!("═══════════════════════════════════════════════════════════");
 
-        Ok(summary)
+        Ok((summary, server_info))
     }
 }
 
@@ -836,6 +960,7 @@ fn print_help() {
     println!();
     println!("Options:");
     println!("  --save              Save results to crates/server/benches/checkpoints/");
+    println!("  --bench-name <NAME> Bench name (default: throughput)");
     println!("  --moniker <NAME>    Set custom environment moniker for saved results");
     println!("  --help, -h          Show this help message");
     println!();
@@ -846,6 +971,8 @@ fn print_help() {
     println!("  MODEL_ID             Model ID (default: seed llmsim model)");
     println!("  MAX_CONCURRENT       Max concurrent sessions (default: 50)");
     println!("  TIMEOUT_SECS         Request timeout in seconds (default: 300)");
+    println!("  TARGET               Target label for saved results (default: auto-detected)");
+    println!("                       Examples: dev, docker-example, staging");
     println!();
     println!("Examples:");
     println!("  # Basic load test");
@@ -854,11 +981,21 @@ fn print_help() {
     println!("  # Save results with custom moniker");
     println!("  just load-test medium --save --moniker ci-4cpu-8gb");
     println!();
+    println!("  # Load test against docker example stack");
+    println!("  TARGET=docker-example just load-test quick --save");
+    println!();
+    println!("  # Named bench (history depth test)");
+    println!("  SESSIONS=1 MESSAGES_PER_SESSION=200 just load-test quick --save --bench-name history-depth");
+    println!();
     println!("  # High volume test with save");
     println!("  SESSIONS=500 just load-test heavy --save");
 }
 
-fn print_comparison(current: &MetricsSnapshot, previous: &[LoadTestCheckpoint]) {
+fn print_comparison(
+    current: &MetricsSnapshot,
+    current_server: &ServerInfo,
+    previous: &[LoadTestCheckpoint],
+) {
     if previous.is_empty() {
         return;
     }
@@ -876,6 +1013,22 @@ fn print_comparison(current: &MetricsSnapshot, previous: &[LoadTestCheckpoint]) 
         baseline.config.sessions * baseline.config.messages_per_session,
         baseline.timestamp.format("%Y-%m-%d %H:%M")
     );
+
+    // Warn if target differs
+    if let Some(ref prev_server) = baseline.server {
+        if prev_server.target != current_server.target {
+            println!(
+                "   WARNING: target mismatch! current={}, previous={}",
+                current_server.target, prev_server.target
+            );
+        }
+        if prev_server.version != current_server.version {
+            println!(
+                "   Version: {} -> {}",
+                prev_server.version, current_server.version
+            );
+        }
+    }
 
     let pct_change = |current: f64, baseline: f64| -> f64 {
         if baseline == 0.0 {
@@ -939,10 +1092,13 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let config = LoadTestConfig::default();
+    let mut config = LoadTestConfig::default();
+    if let Some(name) = cli.bench_name {
+        config.bench_name = name;
+    }
     let runner = LoadTestRunner::new(config.clone());
 
-    let summary = runner.run().await?;
+    let (summary, server_info) = runner.run().await?;
 
     // Save checkpoint if requested
     if cli.save {
@@ -953,15 +1109,23 @@ async fn main() -> anyhow::Result<()> {
 
         let store = CheckpointStore::new();
 
-        // Load previous results for comparison
-        let previous = store.list_recent(5).unwrap_or_default();
+        // Load previous results for comparison (same bench name only)
+        let previous: Vec<_> = store
+            .list_recent(50)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| c.bench_name == config.bench_name)
+            .take(5)
+            .collect();
 
         let snapshot = summary.to_snapshot();
 
         // Print comparison if we have previous results
-        print_comparison(&snapshot, &previous);
+        print_comparison(&snapshot, &server_info, &previous);
 
         let checkpoint = LoadTestCheckpoint::new(
+            config.bench_name.clone(),
+            server_info,
             environment,
             config,
             snapshot,
