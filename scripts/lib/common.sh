@@ -111,8 +111,18 @@ check_postgres_ready() {
     return $?
   fi
 
-  # If no tools available, just rely on port check (less reliable)
-  return 0
+  # No pg_isready or psql available — probe the PostgreSQL wire protocol.
+  # Send a minimal SSLRequest packet and check for a valid response (S or N).
+  # This catches stale port forwards (e.g., Colima SSH mux) that accept TCP
+  # but have no PostgreSQL behind them.
+  local response
+  response=$(printf '\x00\x00\x00\x08\x04\xd2\x16\x2f' | \
+    nc -w 2 "$host" "$port" 2>/dev/null | head -c1 | od -An -tx1 | tr -d ' ')
+  # PostgreSQL responds with 'S' (0x53) or 'N' (0x4e) to SSLRequest
+  if [ "$response" = "53" ] || [ "$response" = "4e" ]; then
+    return 0
+  fi
+  return 1
 }
 
 

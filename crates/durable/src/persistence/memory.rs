@@ -247,8 +247,16 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
         workflow.status = status;
-        workflow.result = result;
-        workflow.error = error;
+        if matches!(status, WorkflowStatus::Pending) {
+            // Clear transient fields when resetting for a new turn
+            workflow.result = None;
+            workflow.error = None;
+            workflow.started_at = None;
+            workflow.completed_at = None;
+        } else {
+            workflow.result = result;
+            workflow.error = error;
+        }
         Ok(())
     }
 

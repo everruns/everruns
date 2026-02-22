@@ -123,3 +123,52 @@ start-production *args:
 # Stop all services (API, UI, Docker)
 stop-all:
     ./scripts/lib/services.sh stop-all
+
+# === Load Testing ===
+
+# Load test subcommand: just load-test <profile> [args]
+# Profiles: quick, medium, heavy
+# Example: just load-test medium
+#          just load-test quick --help
+#          SESSIONS=200 just load-test medium
+[no-cd]
+load-test profile="medium" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{profile}}" in
+        quick)
+            SESSIONS="${SESSIONS:-10}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-10}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-10}" \
+            cargo bench --package everruns-server --bench load_test -- {{args}}
+            ;;
+        medium)
+            SESSIONS="${SESSIONS:-100}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
+            cargo bench --package everruns-server --bench load_test -- {{args}}
+            ;;
+        heavy)
+            SESSIONS="${SESSIONS:-500}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-100}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-100}" \
+            cargo bench --package everruns-server --bench load_test -- {{args}}
+            ;;
+        *)
+            echo "Unknown profile: {{profile}}"
+            echo "Available profiles: quick, medium, heavy"
+            echo ""
+            echo "Usage: just load-test <profile> [args]"
+            echo ""
+            echo "Profiles:"
+            echo "  quick     - 10 sessions, 10 messages (100 total)"
+            echo "  medium    - 100 sessions, 50 messages (5000 total) [default]"
+            echo "  heavy     - 500 sessions, 100 messages (50000 total)"
+            echo ""
+            echo "Examples:"
+            echo "  just load-test quick"
+            echo "  just load-test heavy"
+            echo "  SESSIONS=200 just load-test medium"
+            exit 1
+            ;;
+    esac

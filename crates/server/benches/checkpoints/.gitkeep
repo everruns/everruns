@@ -1,0 +1,2 @@
+# This directory stores load test checkpoints for historical comparison.
+# Checkpoints are committed to track performance over time.

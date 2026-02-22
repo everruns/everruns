@@ -72,3 +72,9 @@ prost.workspace = true
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-native-certs", "blocking"] }
 http-body-util = "0.1"
+sysinfo = "0.33"
+everruns-sdk.workspace = true
+
+[[bench]]
+name = "load_test"
+harness = false

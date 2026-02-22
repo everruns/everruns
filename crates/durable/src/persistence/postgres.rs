@@ -287,6 +287,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             .transpose()
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
+        // When resetting to Pending (for multi-turn reuse), clear timestamps,
+        // result, and error so the workflow starts clean. For other transitions,
+        // use COALESCE to preserve existing values.
+        let reset_to_pending = matches!(status, WorkflowStatus::Pending);
+
         let (started_at, completed_at): (Option<DateTime<Utc>>, Option<DateTime<Utc>>) =
             match status {
                 WorkflowStatus::Running => (Some(Utc::now()), None),
@@ -296,7 +301,18 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 WorkflowStatus::Pending => (None, None),
             };
 
-        sqlx::query(
+        let query = if reset_to_pending {
+            // Clear all transient fields when resetting for a new turn
+            r#"
+            UPDATE durable_workflow_instances
+            SET status = $2,
+                result = NULL,
+                error = NULL,
+                started_at = NULL,
+                completed_at = NULL
+            WHERE id = $1
+            "#
+        } else {
             r#"
             UPDATE durable_workflow_instances
             SET status = $2,
@@ -305,20 +321,22 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 started_at = COALESCE($5, started_at),
                 completed_at = COALESCE($6, completed_at)
             WHERE id = $1
-            "#,
-        )
-        .bind(workflow_id)
-        .bind(&status_str)
-        .bind(&result)
-        .bind(&error_json)
-        .bind(started_at)
-        .bind(completed_at)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to update workflow status: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+            "#
+        };
+
+        sqlx::query(query)
+            .bind(workflow_id)
+            .bind(&status_str)
+            .bind(&result)
+            .bind(&error_json)
+            .bind(started_at)
+            .bind(completed_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to update workflow status: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
 
         debug!(%workflow_id, %status_str, "updated workflow status");
         Ok(())
