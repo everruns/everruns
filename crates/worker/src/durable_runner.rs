@@ -537,10 +537,7 @@ impl AgentRunner for DurableRunner {
                         if err_str.contains("not found") || err_str.contains("NOT_FOUND") {
                             break false;
                         }
-                        return Err(anyhow::anyhow!(
-                            "Failed to check workflow status: {}",
-                            e
-                        ));
+                        return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
                     }
                 }
             }

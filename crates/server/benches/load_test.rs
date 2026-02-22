@@ -266,21 +266,20 @@ impl ServerInfo {
 
         // GET /v1/durable/health -> worker topology
         let durable_url = format!("{}/v1/durable/health", base_url);
-        let (workers, active_workers, total_capacity) =
-            match http.get(&durable_url).send().await {
-                Ok(resp) => {
-                    if let Ok(body) = resp.json::<serde_json::Value>().await {
-                        (
-                            body["total_workers"].as_u64().unwrap_or(0) as usize,
-                            body["active_workers"].as_u64().unwrap_or(0) as usize,
-                            body["total_capacity"].as_u64().unwrap_or(0) as usize,
-                        )
-                    } else {
-                        (0, 0, 0)
-                    }
+        let (workers, active_workers, total_capacity) = match http.get(&durable_url).send().await {
+            Ok(resp) => {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    (
+                        body["total_workers"].as_u64().unwrap_or(0) as usize,
+                        body["active_workers"].as_u64().unwrap_or(0) as usize,
+                        body["total_capacity"].as_u64().unwrap_or(0) as usize,
+                    )
+                } else {
+                    (0, 0, 0)
                 }
-                Err(_) => (0, 0, 0),
-            };
+            }
+            Err(_) => (0, 0, 0),
+        };
 
         // Target: explicit env var or auto-inferred from URL + worker count
         let target = std::env::var("TARGET").unwrap_or_else(|_| {
@@ -666,7 +665,10 @@ impl LoadTestRunner {
 
         self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
 
-        let url = format!("{}/v1/sessions/{}/messages", self.config.api_url, session_id);
+        let url = format!(
+            "{}/v1/sessions/{}/messages",
+            self.config.api_url, session_id
+        );
         let body = serde_json::json!({
             "message": {
                 "role": "user",
@@ -727,7 +729,10 @@ impl LoadTestRunner {
         session_id: &str,
         expected_agent_count: usize,
     ) -> anyhow::Result<()> {
-        let url = format!("{}/v1/sessions/{}/messages", self.config.api_url, session_id);
+        let url = format!(
+            "{}/v1/sessions/{}/messages",
+            self.config.api_url, session_id
+        );
         let timeout = Duration::from_secs(60);
         let start = Instant::now();
 
@@ -985,7 +990,9 @@ fn print_help() {
     println!("  TARGET=docker-example just load-test quick --save");
     println!();
     println!("  # Named bench (history depth test)");
-    println!("  SESSIONS=1 MESSAGES_PER_SESSION=200 just load-test quick --save --bench-name history-depth");
+    println!(
+        "  SESSIONS=1 MESSAGES_PER_SESSION=200 just load-test quick --save --bench-name history-depth"
+    );
     println!();
     println!("  # High volume test with save");
     println!("  SESSIONS=500 just load-test heavy --save");

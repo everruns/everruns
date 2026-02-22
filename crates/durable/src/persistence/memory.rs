@@ -246,7 +246,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .get_mut(&workflow_id)
             .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
-        workflow.status = status.clone();
+        workflow.status = status;
         if matches!(status, WorkflowStatus::Pending) {
             // Clear transient fields when resetting for a new turn
             workflow.result = None;

@@ -325,18 +325,18 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         };
 
         sqlx::query(query)
-        .bind(workflow_id)
-        .bind(&status_str)
-        .bind(&result)
-        .bind(&error_json)
-        .bind(started_at)
-        .bind(completed_at)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to update workflow status: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+            .bind(workflow_id)
+            .bind(&status_str)
+            .bind(&result)
+            .bind(&error_json)
+            .bind(started_at)
+            .bind(completed_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to update workflow status: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
 
         debug!(%workflow_id, %status_str, "updated workflow status");
         Ok(())
