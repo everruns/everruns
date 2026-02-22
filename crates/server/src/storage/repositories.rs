@@ -934,6 +934,23 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
+    /// Count sessions grouped by status for an organization.
+    pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT status, COUNT(*) as count
+            FROM sessions
+            WHERE org_id = $1
+            GROUP BY status
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// Update session by org and session id
     pub async fn update_session(
         &self,

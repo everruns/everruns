@@ -6,6 +6,7 @@ import {
   useHarnesses,
   useCapabilities,
   useSessions,
+  useSessionStats,
   useLlmModels,
   useCreateSession,
 } from "@/hooks";
@@ -36,6 +37,7 @@ export default function DashboardPage() {
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, {
     limit: 5,
   });
+  const { data: sessionStats } = useSessionStats();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
   const { data: harnesses } = useHarnesses();
@@ -90,7 +92,7 @@ export default function DashboardPage() {
     <>
       <Header title="Dashboard" />
       <div className="p-6 space-y-6">
-        <StatsCards agents={agents} sessions={sessions} />
+        <StatsCards agents={agents} sessionStats={sessionStats} />
         <div className="grid gap-6 md:grid-cols-2">
           <AgentListWidget agents={agents} allCapabilities={allCapabilities} />
 

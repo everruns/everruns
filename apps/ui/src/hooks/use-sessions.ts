@@ -7,6 +7,7 @@ import {
   createSession,
   deleteSession,
   getSession,
+  getSessionStats,
   listSessions,
   updateSession,
   sendUserMessage,
@@ -40,6 +41,23 @@ export function useSessions(agentId?: string, params?: PaginationParams) {
   });
 
   // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+/** Fetch session counts grouped by status for the current organization. */
+export function useSessionStats() {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.stats(org),
+    queryFn: () => getSessionStats(),
+    enabled: !!org,
+  });
+
   return {
     ...query,
     isLoading: orgLoading || query.isLoading,

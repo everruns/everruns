@@ -23,6 +23,16 @@ use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
+/// Session counts grouped by status.
+#[derive(Debug, Clone, Default)]
+pub struct SessionStats {
+    pub total: u32,
+    pub active: u32,
+    pub idle: u32,
+    pub started: u32,
+    pub waiting_for_tool_results: u32,
+}
+
 pub struct SessionService {
     db: Arc<StorageBackend>,
     capability_registry: CapabilityRegistry,
@@ -197,6 +207,24 @@ impl SessionService {
             }
             None => Ok(None),
         }
+    }
+
+    /// Get session counts grouped by status for an organization.
+    pub async fn stats(&self, org_id: i64) -> Result<SessionStats> {
+        let counts = self.db.count_sessions_by_status(org_id).await?;
+        let mut stats = SessionStats::default();
+        for (status, count) in counts {
+            let count = count as u32;
+            stats.total += count;
+            match status.as_str() {
+                "active" => stats.active = count,
+                "idle" => stats.idle = count,
+                "started" => stats.started = count,
+                "waiting_for_tool_results" => stats.waiting_for_tool_results = count,
+                _ => {} // ignore unknown statuses
+            }
+        }
+        Ok(stats)
     }
 
     /// List sessions for an organization with optional agent filter.

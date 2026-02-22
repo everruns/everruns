@@ -833,6 +833,18 @@ impl InMemoryDatabase {
         Ok((paginated, total))
     }
 
+    /// Count sessions grouped by status for an organization.
+    pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
+        let sessions = self.sessions.read();
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for s in sessions.values() {
+            if s.org_id == org_id {
+                *counts.entry(s.status.clone()).or_default() += 1;
+            }
+        }
+        Ok(counts.into_iter().collect())
+    }
+
     /// Update session, validating org ownership directly
     pub async fn update_session(
         &self,

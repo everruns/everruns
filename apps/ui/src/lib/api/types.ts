@@ -165,6 +165,15 @@ export interface Session {
   features?: string[];
 }
 
+/** Session counts grouped by status */
+export interface SessionStats {
+  total: number;
+  active: number;
+  idle: number;
+  started: number;
+  waiting_for_tool_results: number;
+}
+
 export interface CreateSessionRequest {
   /** Harness ID for this session (required) */
   harness_id: string;
