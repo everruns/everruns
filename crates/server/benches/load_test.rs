@@ -10,7 +10,7 @@
 //!   just load-test
 //!
 //! Configuration via environment:
-//!   API_URL=http://localhost:9000   # API endpoint
+//!   API_URL=http://localhost:9300/api   # API endpoint
 //!   SESSIONS=100                    # Number of parallel sessions
 //!   MESSAGES_PER_SESSION=50         # Messages per session
 //!   MODEL_ID=llmsim                 # Model to use (llmsim, llmsim-ttft-500, etc.)
@@ -55,7 +55,7 @@ impl Default for LoadTestConfig {
     fn default() -> Self {
         Self {
             api_url: std::env::var("API_URL")
-                .unwrap_or_else(|_| "http://localhost:9000".to_string()),
+                .unwrap_or_else(|_| "http://localhost:9300/api".to_string()),
             sessions: std::env::var("SESSIONS")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -344,18 +344,18 @@ struct CreateSessionRequest {
 #[derive(Debug, Deserialize)]
 struct Session {
     id: String,
-}
-
-/// Event polling requires offset/limit which the SDK doesn't support yet
-#[derive(Debug, Deserialize)]
-struct Event {
-    #[serde(rename = "type")]
-    event_type: String,
+    #[serde(default)]
+    status: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct EventsResponse {
-    data: Vec<Event>,
+struct MessageResponse {
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MessagesListResponse {
+    data: Vec<MessageResponse>,
 }
 
 // ============================================================================
@@ -537,8 +537,20 @@ impl LoadTestRunner {
         Ok(resp.id)
     }
 
-    /// Send message via raw reqwest and poll for completion
-    async fn send_message(&self, session_id: &str, message_num: usize) -> anyhow::Result<Duration> {
+    /// Send message and wait for the agent's response to appear.
+    /// Waits for session to be idle before sending to ensure the server
+    /// creates a new turn (it won't if the session is still active).
+    async fn send_message(
+        &self,
+        session_id: &str,
+        message_num: usize,
+        expected_agent_count: usize,
+    ) -> anyhow::Result<Duration> {
+        // Ensure session is idle before sending (server ignores messages to active sessions)
+        if message_num > 0 {
+            self.wait_for_session_idle(session_id).await?;
+        }
+
         let start = Instant::now();
 
         let text = format!(
@@ -549,8 +561,6 @@ impl LoadTestRunner {
 
         self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
 
-        // Use raw reqwest instead of SDK — the published SDK's Message type
-        // may be out of sync with the server, and we don't need the response body.
         let url = format!("{}/v1/sessions/{}/messages", self.config.api_url, session_id);
         let body = serde_json::json!({
             "message": {
@@ -565,8 +575,9 @@ impl LoadTestRunner {
             .await?
             .error_for_status()?;
 
-        // Wait for turn completion by polling events (needs offset/limit)
-        self.wait_for_turn_completion(session_id).await?;
+        // Wait until the agent's response message appears
+        self.wait_for_agent_response(session_id, expected_agent_count)
+            .await?;
 
         let duration = start.elapsed();
         self.metrics.record_latency(duration);
@@ -577,39 +588,60 @@ impl LoadTestRunner {
         Ok(duration)
     }
 
-    /// Poll events via raw reqwest (SDK lacks offset/limit pagination)
-    async fn wait_for_turn_completion(&self, session_id: &str) -> anyhow::Result<()> {
-        let base_url = format!("{}/v1/sessions/{}/events", self.config.api_url, session_id);
-
+    /// Poll session status until idle.
+    async fn wait_for_session_idle(&self, session_id: &str) -> anyhow::Result<()> {
+        let url = format!("{}/v1/sessions/{}", self.config.api_url, session_id);
         let timeout = Duration::from_secs(60);
         let start = Instant::now();
-        let mut last_event_count = 0;
 
         loop {
             if start.elapsed() > timeout {
-                return Err(anyhow::anyhow!("Timeout waiting for turn completion"));
+                return Err(anyhow::anyhow!("Timeout waiting for session idle"));
             }
 
-            let url = format!("{}?limit=100&offset={}", base_url, last_event_count);
-            let resp = self
+            let session: Session = self
                 .http
                 .get(&url)
                 .send()
                 .await?
                 .error_for_status()?
-                .json::<EventsResponse>()
+                .json()
                 .await?;
 
-            last_event_count += resp.data.len();
+            if session.status == "idle" {
+                return Ok(());
+            }
 
-            // Check for session.idled or session.completed
-            let completed = resp.data.iter().any(|e| {
-                e.event_type == "session.idled"
-                    || e.event_type == "session.completed"
-                    || e.event_type == "session.failed"
-            });
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
 
-            if completed {
+    /// Poll messages endpoint until we see the expected number of agent messages.
+    async fn wait_for_agent_response(
+        &self,
+        session_id: &str,
+        expected_agent_count: usize,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/v1/sessions/{}/messages", self.config.api_url, session_id);
+        let timeout = Duration::from_secs(60);
+        let start = Instant::now();
+
+        loop {
+            if start.elapsed() > timeout {
+                return Err(anyhow::anyhow!("Timeout waiting for agent response"));
+            }
+
+            let resp: MessagesListResponse = self
+                .http
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+
+            let agent_count = resp.data.iter().filter(|m| m.role == "agent").count();
+            if agent_count >= expected_agent_count {
                 return Ok(());
             }
 
@@ -629,9 +661,13 @@ impl LoadTestRunner {
             }
         };
 
-        // Send messages sequentially within session
+        // Send messages sequentially — each waits for agent response before next
         for msg_num in 0..self.config.messages_per_session {
-            match self.send_message(&session_id, msg_num).await {
+            let expected_agent_count = msg_num + 1;
+            match self
+                .send_message(&session_id, msg_num, expected_agent_count)
+                .await
+            {
                 Ok(_duration) => {}
                 Err(e) => {
                     self.metrics.messages_failed.fetch_add(1, Ordering::Relaxed);
@@ -804,7 +840,7 @@ fn print_help() {
     println!("  --help, -h          Show this help message");
     println!();
     println!("Environment Variables:");
-    println!("  API_URL              API endpoint (default: http://localhost:9000)");
+    println!("  API_URL              API endpoint (default: http://localhost:9300/api)");
     println!("  SESSIONS             Number of parallel sessions (default: 100)");
     println!("  MESSAGES_PER_SESSION Messages per session (default: 50)");
     println!("  MODEL_ID             Model ID (default: seed llmsim model)");

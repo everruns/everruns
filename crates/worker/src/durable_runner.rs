@@ -496,38 +496,57 @@ impl AgentRunner for DurableRunner {
         let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
 
-        let mut store = self.store.lock().await;
-
-        // Check if workflow already exists
-        let workflow_exists = match store.get_workflow_status(workflow_id).await {
-            Ok((status, _, _)) => {
-                if !status.is_terminal() {
-                    info!(
-                        session_id = %session_id,
-                        workflow_id = %workflow_id,
-                        status = ?status,
-                        "Workflow already running, skipping creation"
-                    );
-                    return Ok(());
+        // Check if workflow already exists and wait for it to complete if needed.
+        // Race condition: session becomes idle (in execute_reason_activity) BEFORE
+        // schedule_next_activity marks the workflow as Completed. If a new message
+        // arrives during this window, the workflow is still non-terminal. We wait
+        // briefly instead of silently dropping the new turn.
+        let workflow_exists = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let mut store = self.store.lock().await;
+                match store.get_workflow_status(workflow_id).await {
+                    Ok((status, _, _)) => {
+                        if status.is_terminal() {
+                            info!(
+                                session_id = %session_id,
+                                workflow_id = %workflow_id,
+                                status = ?status,
+                                "Existing workflow is terminal, resetting for new turn"
+                            );
+                            break true;
+                        }
+                        // Workflow is non-terminal — release lock and wait
+                        drop(store);
+                        if std::time::Instant::now() > deadline {
+                            return Err(anyhow::anyhow!(
+                                "Timeout waiting for previous workflow to complete for session {}",
+                                session_id
+                            ));
+                        }
+                        info!(
+                            session_id = %session_id,
+                            workflow_id = %workflow_id,
+                            status = ?status,
+                            "Workflow still running, waiting for completion before starting new turn"
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("not found") || err_str.contains("NOT_FOUND") {
+                            break false;
+                        }
+                        return Err(anyhow::anyhow!(
+                            "Failed to check workflow status: {}",
+                            e
+                        ));
+                    }
                 }
-                // Workflow exists but is terminal - we'll reset it for a new turn
-                info!(
-                    session_id = %session_id,
-                    workflow_id = %workflow_id,
-                    status = ?status,
-                    "Existing workflow is terminal, resetting for new turn"
-                );
-                true
-            }
-            Err(e) => {
-                // Check if it's a not found error (expected for new workflows)
-                let err_str = e.to_string();
-                if !err_str.contains("not found") && !err_str.contains("NOT_FOUND") {
-                    return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
-                }
-                false
             }
         };
+
+        let mut store = self.store.lock().await;
 
         // Enqueue the initial activity (input processing)
         let activity_id = format!("input_{}", Uuid::now_v7());
