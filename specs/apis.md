@@ -108,6 +108,7 @@ Sessions are top-level entities under organizations. Each session has an agent a
 |--------|------|-------------|
 | POST | `/v1/sessions` | Create session |
 | GET | `/v1/sessions` | List sessions (paginated) |
+| GET | `/v1/sessions/stats` | Session counts by status |
 | GET | `/v1/sessions/{session_id}` | Get session |
 | PATCH | `/v1/sessions/{session_id}` | Update session |
 | DELETE | `/v1/sessions/{session_id}` | Delete session |
@@ -149,6 +150,27 @@ GET /v1/sessions?agent_id=agent_01234567-...
 ```
 
 Without the `agent_id` query parameter, returns all sessions in the organization.
+
+#### Session Stats
+
+Returns session counts grouped by status. Used by the dashboard stats cards.
+
+```
+GET /v1/sessions/stats
+```
+
+**Response:**
+```json
+{
+  "total": 42,
+  "active": 3,
+  "idle": 25,
+  "started": 2,
+  "waiting_for_tool_results": 1
+}
+```
+
+Backed by a composite index `(org_id, status)` for efficient aggregation at scale.
 
 #### Cancel Turn
 
