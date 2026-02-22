@@ -29,39 +29,12 @@ Everruns integrates bashkit as the execution backend for the **virtual bash** ag
 
 ### Session Filesystem Bridge
 
-The key integration point is `SessionFileSystemAdapter` — a custom `FileSystem` implementation that bridges bashkit to the Everruns session file store. This gives agents:
+Bashkit's pluggable filesystem trait lets Everruns bridge the interpreter directly to the session file store. Files created by other tools are immediately visible inside bash, and vice versa — no pre/post sync needed. Session files are mounted at `/workspace` in the bash environment.
 
 - **Live file visibility** — files written by other tools during bash execution are immediately visible
 - **No sync overhead** — eliminates pre/post execution sync of the entire filesystem
 - **Memory efficiency** — files read on-demand instead of loading all into memory
 - **Single source of truth** — consistent file state across all agent capabilities
-
-Session files are mounted at `/workspace` in the bash environment, with path normalization shared between the `virtual_bash` and `session_file_system` capabilities.
-
-```rust
-use bashkit::{DirEntry, FileSystem, FileType, Metadata};
-
-pub struct SessionFileSystemAdapter {
-    session_id: SessionId,
-    store: Arc<dyn SessionFileStore>,
-}
-
-#[async_trait]
-impl FileSystem for SessionFileSystemAdapter {
-    async fn read_file(&self, path: &Path) -> Result<Vec<u8>> {
-        // Delegates to SessionFileStore::read_file
-    }
-
-    async fn stat(&self, path: &Path) -> Result<Metadata> {
-        // Builds Metadata from SessionFile info
-    }
-
-    async fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>> {
-        // Maps SessionFileStore::list_directory to Vec<DirEntry>
-    }
-    // ...
-}
-```
 
 ### Resource Controls
 
