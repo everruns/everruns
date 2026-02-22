@@ -76,16 +76,21 @@ export default defineConfig({
           label: "Features",
           autogenerate: { directory: "features" },
         },
+        // SRE Guide hidden for now
+        // {
+        //   label: "SRE Guide",
+        //   items: [
+        //     { label: "Environment Variables", slug: "sre/environment-variables" },
+        //     { label: "Admin Container", slug: "sre/admin-container" },
+        //     {
+        //       label: "Runbooks",
+        //       autogenerate: { directory: "sre/runbooks" },
+        //     },
+        //   ],
+        // },
         {
-          label: "SRE Guide",
-          items: [
-            { label: "Environment Variables", slug: "sre/environment-variables" },
-            { label: "Admin Container", slug: "sre/admin-container" },
-            {
-              label: "Runbooks",
-              autogenerate: { directory: "sre/runbooks" },
-            },
-          ],
+          label: "Ecosystem",
+          autogenerate: { directory: "ecosystem" },
         },
         {
           label: "Integrations",
