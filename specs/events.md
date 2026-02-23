@@ -172,641 +172,87 @@ Examples:
 
 ## Event Categories
 
-### Input Events
+For the complete list of event types and their data schemas, see [event type constants](../crates/core/src/events.rs) and `EventData` enum variants.
 
-Input events represent user messages submitted to the session.
+### Event Category Overview
 
-#### `input.message`
+| Category | Events | Purpose |
+|----------|--------|---------|
+| Input | `input.message` | User messages |
+| Output | `output.message.{started,delta,completed}` | Agent response lifecycle |
+| Turn | `turn.{started,completed,failed,cancelled}` | Turn lifecycle |
+| Atom | `reason.*`, `act.*` | Execution pipeline observability |
+| Tool | `tool.{started,completed}` | Individual tool execution |
+| LLM | `llm.generation` | Full LLM API call visibility |
+| Session | `session.{started,activated,idled}` | Session lifecycle |
+| Thinking | `reason.thinking.{started,delta,completed}` | Extended thinking (Anthropic) |
 
-User message submitted to the session. Emitted when the API stores a new user message.
+### Representative Example
 
-```json
-{
-  "id": "...",
-  "type": "input.message",
-  "ts": "...",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "message": {
-      "id": "01937abc-...",
-      "role": "user",
-      "content": [
-        { "type": "text", "text": "Hello, world!" }
-      ],
-      "controls": { "max_tokens": 1000 },
-      "metadata": { "source": "web" },
-      "created_at": "2024-01-15T10:30:00.000Z"
-    }
-  }
-}
-```
-
-### Output Events
-
-Output events represent agent responses. They follow a lifecycle pattern: `started` → `delta*` → `completed`.
-
-#### `output.message.started`
-
-Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
+All events follow the standard schema. Here's an `output.message.completed` event as a representative example:
 
 ```json
 {
-  "id": "...",
-  "type": "output.message.started",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "model": "gpt-4o"
-  }
-}
-```
-
-#### `output.message.delta`
-
-Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `output.message.completed` arrives with the final text.
-
-```json
-{
-  "id": "...",
-  "type": "output.message.delta",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "delta": "Hello, ",
-    "accumulated": "Hello, "
-  }
-}
-```
-
-#### `output.message.completed`
-
-Agent response message. Emitted when LLM generation completes.
-
-```json
-{
-  "id": "...",
+  "id": "01937abc-def0-7000-8000-000000000001",
   "type": "output.message.completed",
-  "ts": "...",
+  "ts": "2024-01-15T10:30:01.000Z",
   "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
+  "context": { "turn_id": "...", "input_message_id": "..." },
   "data": {
     "message": {
       "id": "01937abc-...",
       "role": "agent",
-      "content": [
-        { "type": "text", "text": "Hello! How can I help?" }
-      ],
+      "content": [{ "type": "text", "text": "Hello! How can I help?" }],
       "created_at": "2024-01-15T10:30:01.000Z"
     },
-    "metadata": {
-      "model": "gpt-4o",
-      "model_id": "01937abc-...",
-      "provider_id": "01937abc-..."
-    },
-    "usage": {
-      "input_tokens": 50,
-      "output_tokens": 20
-    }
+    "metadata": { "model": "gpt-4o", "model_id": "...", "provider_id": "..." },
+    "usage": { "input_tokens": 50, "output_tokens": 20 }
   }
 }
 ```
 
-**Streaming Timeline:**
+### Output Streaming Timeline
 
 ```
 User sends message
        │
        ▼
-┌──────────────────────────┐
-│ output.message.started   │  ← UI shows thinking indicator
-└───────────┬──────────────┘
-            │
-       ┌────┴────┐
-       ▼         ▼
-output.message.delta  output.message.delta  ← UI shows streaming text (batched ~100ms)
-       │         │
-       └────┬────┘
-            │
-            ▼
-┌──────────────────────────┐
-│ output.message.completed │  ← UI shows final message, stops streaming
-└──────────────────────────┘
+output.message.started    ← UI shows thinking indicator
+       │
+output.message.delta*     ← UI shows streaming text (batched ~100ms)
+       │
+output.message.completed  ← UI shows final message, stops streaming
 ```
 
-### Turn Lifecycle Events
+### Turn Failure
 
-Turn events track the lifecycle of a single turn in the conversation.
+`turn.failed` is emitted when LLM call fails, max iterations exceeded, or other unrecoverable errors. An `output.message.completed` with a user-friendly error is also emitted.
 
-#### `turn.started`
+**Error Codes:** `llm_error`, `max_iterations`
 
-Turn execution started.
+### Turn Cancellation Flow
 
-```json
-{
-  "type": "turn.started",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  }
-}
-```
-
-#### `turn.completed`
-
-Turn execution completed successfully.
-
-```json
-{
-  "type": "turn.completed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "iterations": 3,
-    "duration_ms": 1500
-  }
-}
-```
-
-#### `turn.failed`
-
-Turn execution failed. This event is emitted when:
-- The LLM call fails (e.g., API key not configured, rate limit exceeded)
-- Max iterations exceeded
-- Other unrecoverable errors during turn execution
-
-When a turn fails, an `output.message.completed` event with a user-friendly error message is also emitted so users see feedback in the chat.
-
-```json
-{
-  "type": "turn.failed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "error": "An error occurred while processing your request.",
-    "error_code": "llm_error"
-  }
-}
-```
-
-**Error Codes:**
-| Code | Description |
-|------|-------------|
-| `llm_error` | LLM call failed (API key missing, rate limit, network error) |
-| `max_iterations` | Maximum iterations exceeded |
-
-#### `turn.cancelled`
-
-Turn execution was cancelled by user request. This event is emitted immediately when the cancel endpoint is called.
-
-```json
-{
-  "type": "turn.cancelled",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "reason": "User requested cancellation",
-    "usage": {
-      "input_tokens": 150,
-      "output_tokens": 30
-    }
-  }
-}
-```
-
-**Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `turn_id` | UUID | The cancelled turn identifier |
-| `reason` | string | Optional reason for cancellation |
-| `usage` | TokenUsage | Optional token usage up to cancellation point |
-
-**Cancellation Flow:**
 1. User clicks cancel in UI
-2. API emits `turn.cancelled` event immediately
+2. API emits `turn.cancelled` immediately
 3. API emits `input.message` with "User requested to cancel the work."
 4. Worker detects cancellation and stops execution
 5. Worker emits `output.message.completed` with "Work was cancelled by user."
-6. Worker emits `session.idled` event
+6. Worker emits `session.idled`
 
-### Atom Lifecycle Events
+### LLM Generation Events
 
-Atom events provide observability into the execution pipeline.
-
-#### `reason.started` / `reason.completed`
-
-ReasonAtom lifecycle - LLM inference.
-
-```json
-{
-  "type": "reason.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "agent_id": "...",
-    "metadata": {
-      "model": "gpt-4o",
-      "model_id": "...",
-      "provider_id": "..."
-    }
-  }
-}
-```
-
-```json
-{
-  "type": "reason.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "success": true,
-    "text_preview": "First 200 chars...",
-    "has_tool_calls": true,
-    "tool_call_count": 2
-  }
-}
-```
-
-For failed reasoning (LLM call error):
-
-```json
-{
-  "type": "reason.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "success": false,
-    "text_preview": null,
-    "has_tool_calls": false,
-    "tool_call_count": 0,
-    "error": "LLM error: API key is required"
-  }
-}
-```
-
-#### `act.started` / `act.completed`
-
-ActAtom lifecycle - tool batch execution.
-
-```json
-{
-  "type": "act.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_calls": [
-      { "id": "call_123", "name": "get_weather", "display_name": "Get Weather" }
-    ]
-  }
-}
-```
-
-```json
-{
-  "type": "act.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "completed": true,
-    "success_count": 2,
-    "error_count": 0
-  }
-}
-```
-
-#### `tool.started` / `tool.completed`
-
-Individual tool execution within ActAtom.
-
-```json
-{
-  "type": "tool.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call": {
-      "id": "call_123",
-      "name": "get_weather",
-      "arguments": { "city": "Tokyo" }
-    },
-    "display_name": "Get Weather"
-  }
-}
-```
-
-```json
-{
-  "type": "tool.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call_id": "call_123",
-    "tool_name": "get_weather",
-    "display_name": "Get Weather",
-    "success": true,
-    "status": "success",
-    "result": [
-      { "type": "text", "text": "Temperature: 22C, Sunny" }
-    ]
-  }
-}
-```
-
-For failed tool calls:
-
-```json
-{
-  "type": "tool.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call_id": "call_456",
-    "tool_name": "search_db",
-    "display_name": "Search Database",
-    "success": false,
-    "status": "error",
-    "error": "Connection timeout"
-  }
-}
-```
-
-### LLM Events
-
-LLM events provide visibility into the actual LLM API calls.
-
-#### `llm.generation`
-
-Emitted after each LLM API call to provide full visibility into the messages sent to the model and the response received. This is useful for debugging, auditing, and understanding the exact prompts and responses.
-
-**Metadata fields** (aligned with gen-ai OTel semantic conventions):
-- `model` - Model name used for generation
-- `provider` - LLM provider (openai, anthropic, etc.)
-- `usage` - Token usage (input_tokens, output_tokens)
-- `duration_ms` - Request duration in milliseconds
-- `time_to_first_token_ms` - Time to first token (streaming latency)
-- `success` - Whether the generation succeeded
-- `error` - Error message if failed
-- `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
-- `response_id` - Provider's response ID for correlation
-
-```json
-{
-  "type": "llm.generation",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "messages": [
-      {
-        "id": "...",
-        "role": "system",
-        "content": [{ "type": "text", "text": "You are a helpful assistant." }],
-        "created_at": "..."
-      },
-      {
-        "id": "...",
-        "role": "user",
-        "content": [{ "type": "text", "text": "What's the weather in Tokyo?" }],
-        "created_at": "..."
-      }
-    ],
-    "output": {
-      "text": "I'll check the weather for you.",
-      "tool_calls": [
-        {
-          "id": "call_123",
-          "name": "get_weather",
-          "arguments": { "city": "Tokyo" }
-        }
-      ]
-    },
-    "metadata": {
-      "model": "gpt-4o",
-      "provider": "openai",
-      "usage": {
-        "input_tokens": 150,
-        "output_tokens": 45
-      },
-      "duration_ms": 1200,
-      "time_to_first_token_ms": 180,
-      "success": true,
-      "finish_reasons": ["stop"],
-      "response_id": "chatcmpl-abc123"
-    }
-  }
-}
-```
-
-For failed generations:
-
-```json
-{
-  "type": "llm.generation",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "messages": [...],
-    "output": {
-      "text": null,
-      "tool_calls": []
-    },
-    "metadata": {
-      "model": "gpt-4o",
-      "provider": "openai",
-      "duration_ms": 500,
-      "success": false,
-      "error": "Rate limit exceeded"
-    }
-  }
-}
-```
-
-### Session Events
-
-Session lifecycle events.
-
-#### `session.started`
-
-Session execution started.
-
-```json
-{
-  "type": "session.started",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "agent_id": "...",
-    "model_id": "..."
-  }
-}
-```
-
-#### `session.activated`
-
-Session became active (turn started). Emitted when a new turn begins.
-
-```json
-{
-  "type": "session.activated",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  }
-}
-```
-
-#### `session.idled`
-
-Session became idle (turn completed). Contains cumulative session usage for real-time UI updates.
-
-```json
-{
-  "type": "session.idled",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "iterations": 3,
-    "usage": {
-      "input_tokens": 500,
-      "output_tokens": 150,
-      "cache_read_tokens": 100
-    }
-  }
-}
-```
-
-**Usage Field:** Contains cumulative session token usage at this point.
+`llm.generation` metadata fields align with gen-ai OTel semantic conventions: `model`, `provider`, `usage`, `duration_ms`, `time_to_first_token_ms`, `success`, `error`, `finish_reasons`, `response_id`.
 
 ### Extended Thinking Events
 
-Extended thinking events provide visibility into the model's chain-of-thought reasoning when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured).
-
-#### `reason.thinking.started`
-
-Emitted when the LLM starts generating a response with extended thinking enabled (`reasoning_effort` is set). This event is only emitted when using models that support extended thinking. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
-
-**Note:** This event is NOT emitted when `reasoning_effort` is not configured, even if the model supports extended thinking.
-
-```json
-{
-  "type": "reason.thinking.started",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "model": "claude-opus-4-5"
-  }
-}
-```
-
-#### `reason.thinking.delta`
-
-Streaming thinking/reasoning content from extended thinking models. These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `output.message.delta`.
-
-```json
-{
-  "type": "reason.thinking.delta",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "delta": "Let me analyze this step by step...",
-    "accumulated": "Let me analyze this step by step..."
-  }
-}
-```
-
-#### `reason.thinking.completed`
-
-Emitted when the model finishes its chain-of-thought reasoning and transitions to producing the final response. Contains the complete thinking content.
-
-```json
-{
-  "type": "reason.thinking.completed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "thinking": "Let me analyze this step by step...\n\n1. First consideration...\n2. Second consideration..."
-  }
-}
-```
-
-**Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode. The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `output.message.completed` event's `thinking` field for multi-turn context.
-
-**Extended Thinking Timeline Example:**
+Extended thinking events (`reason.thinking.*`) are only emitted when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured). The thinking content is separate from the main response text.
 
 ```
-User sends message
-       │
-       ▼
-┌──────────────────────────┐
-│ reason.thinking.started  │  ← UI shows thinking indicator
-└────────┬─────────────────┘
-         │
-         ▼
-  ┌────────────────────────┐
-  │ reason.thinking.delta  │  ← UI shows streaming reasoning
-  └────────┬───────────────┘
-           │
-           ▼
-  ┌──────────────────────────┐
-  │ reason.thinking.completed│  ← Thinking phase done
-  └────────┬─────────────────┘
-           │
-      ┌────┴────┐
-      ▼         ▼
-output.message.delta  output.message.delta  ← UI shows streaming text
-      │         │
-      └────┬────┘
-           │
-           ▼
-  ┌──────────────────────────┐
-  │ output.message.completed │  ← UI shows final message
-  └──────────────────────────┘
+reason.thinking.started    ← UI shows thinking indicator
+reason.thinking.delta*     ← UI shows streaming reasoning
+reason.thinking.completed  ← Thinking done, transitions to response
+output.message.delta*      ← UI shows streaming response text
+output.message.completed   ← Final message
 ```
 
 **Real-time Usage Tracking Pattern:**
@@ -817,65 +263,11 @@ The UI uses a combination of events for real-time usage display:
 2. `llm.generation` - Adds tokens during turn execution (real-time increments)
 3. `session.idled` - Resets to final cumulative value when turn completes
 
-```
-Timeline during a turn:
-──────────────────────────────────────────────────────────────────
-│ session.idled │ llm.generation │ llm.generation │ session.idled │
-│   (baseline)  │    (+tokens)   │    (+tokens)   │  (final set)  │
-──────────────────────────────────────────────────────────────────
-      500 in    →     650 in     →     800 in     →     800 in
-      100 out         130 out          175 out          175 out
-```
-
 This approach provides real-time feedback as tokens are consumed during LLM calls, while self-correcting to the accurate cumulative value when each turn ends.
-
-## Event Type Registry
-
-| Event Type | Category | Description |
-|------------|----------|-------------|
-| `input.message` | Input | User input message |
-| `output.message.started` | Output | LLM generation started (thinking indicator) |
-| `output.message.delta` | Output | Incremental text update during streaming |
-| `output.message.completed` | Output | Agent response |
-| `turn.started` | Turn | Turn execution started |
-| `turn.completed` | Turn | Turn completed |
-| `turn.failed` | Turn | Turn failed |
-| `turn.cancelled` | Turn | Turn cancelled by user |
-| `reason.started` | Atom | ReasonAtom started |
-| `reason.completed` | Atom | ReasonAtom completed |
-| `act.started` | Atom | ActAtom started |
-| `act.completed` | Atom | ActAtom completed |
-| `tool.started` | Atom | Individual tool started |
-| `tool.completed` | Atom | Individual tool completed (includes result) |
-| `llm.generation` | LLM | Full LLM API call with messages and response |
-| `reason.thinking.started` | Thinking | Extended thinking started (thinking indicator) |
-| `reason.thinking.delta` | Thinking | Incremental reasoning content from extended thinking models |
-| `reason.thinking.completed` | Thinking | Extended thinking completed |
-| `session.started` | Session | Session execution started |
-| `session.activated` | Session | Session became active (turn started) |
-| `session.idled` | Session | Session became idle (turn completed, includes usage) |
 
 ## Database Storage
 
-Events are stored in the `events` table:
-
-```sql
-CREATE TABLE events (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id),
-    sequence INTEGER NOT NULL,
-    event_type VARCHAR(100) NOT NULL,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    context JSONB NOT NULL DEFAULT '{}',
-    data JSONB NOT NULL DEFAULT '{}',
-    metadata JSONB,
-    tags TEXT[],
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(session_id, sequence)
-);
-```
-
-The `data` column contains the event-specific payload. The `event_type` column is denormalized for efficient filtering. The `context` column holds correlation data (turn_id, input_message_id, exec_id). The `metadata` and `tags` columns provide additional filtering and categorization capabilities.
+See [migrations](../crates/server/migrations/) for the events table schema. Key columns: `data` (event-specific payload as JSONB), `event_type` (denormalized for filtering), `context` (correlation data: turn_id, input_message_id, exec_id).
 
 ## Storage Guarantees
 
@@ -883,60 +275,19 @@ The event store provides three key guarantees:
 
 ### 1. Append-Only Immutability
 
-Events are **immutable** once written. The database enforces this via triggers:
-
-```sql
-CREATE TRIGGER events_append_only_update
-    BEFORE UPDATE ON events
-    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
-
-CREATE TRIGGER events_append_only_delete
-    BEFORE DELETE ON events
-    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
-```
-
-**Behavior:**
-- `UPDATE` on `events` → Error: "events are append-only: UPDATE operations are not allowed"
-- `DELETE` on `events` → Error: "events are append-only: DELETE operations are not allowed"
-- `INSERT` → Allowed (append-only)
+Events are **immutable** once written. The database enforces this via triggers that block UPDATE and DELETE. Only INSERT is allowed.
 
 **Rationale:** Event sourcing requires immutable history. Allowing mutations would break replay, audit trails, and data integrity guarantees.
 
 ### 2. Atomic Per-Session Sequence Allocation
 
-Each event within a session is assigned a monotonically increasing sequence number. Sequences are allocated atomically to prevent race conditions under concurrent writes.
-
-**Implementation:**
-
-A dedicated `event_sequences` table tracks the next sequence per session:
-
-```sql
-CREATE TABLE event_sequences (
-    session_id UUID PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-    next_sequence INTEGER NOT NULL DEFAULT 1,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-The `allocate_event_sequence(session_id)` function atomically allocates the next sequence:
-
-```sql
-INSERT INTO event_sequences (session_id, next_sequence, updated_at)
-VALUES (p_session_id, 2, NOW())
-ON CONFLICT (session_id) DO UPDATE
-SET next_sequence = event_sequences.next_sequence + 1,
-    updated_at = NOW()
-RETURNING next_sequence - 1;
-```
+Each event within a session is assigned a monotonically increasing sequence number. Sequences are allocated atomically via the `allocate_event_sequence()` function using PostgreSQL's atomic upsert on a dedicated `event_sequences` table. See [migrations](../crates/server/migrations/) for the implementation.
 
 **Guarantees:**
 - No sequence gaps within a session (barring transaction rollbacks)
 - No duplicate sequences within a session
-- Race-free under concurrent inserts (uses PostgreSQL's atomic upsert)
+- Race-free under concurrent inserts
 - Sequences start at 1 for each session
-
-**Previous Approach (Deprecated):**
-The old `MAX(sequence)+1` approach had race conditions when multiple writers inserted events concurrently for the same session.
 
 ### 3. Event Type Consistency Validation
 
@@ -958,15 +309,7 @@ request.event_type == request.data.event_type()
 
 ## Message Reconstruction
 
-Messages are reconstructed from events for the conversation view. The following event types contribute to message reconstruction:
-
-| Event Type | Role | Content Source |
-|------------|------|----------------|
-| `input.message` | `user` | `data.message.content` |
-| `output.message.completed` | `agent` | `data.message.content` (may include tool calls) |
-| `tool.completed` | `tool` | `data.result` (tool execution results) |
-
-**Note:** Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events, not a separate message type.
+Messages are reconstructed from events: `input.message` → user, `output.message.completed` → agent, `tool.completed` → tool results. Tool calls are embedded in `output.message.completed` via `ContentPart::ToolCall`.
 
 ## SSE Streaming
 
@@ -1062,28 +405,7 @@ Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) end
 - Both parameters accept only known event types (see Event Type Registry). Unknown types return 400.
 - Maximum 25 values per parameter to prevent abuse.
 
-### Message Events Filter
-
-A partial index exists for efficient message queries:
-
-```sql
-CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('input.message', 'output.message.completed');
-```
-
-### Turn Events Filter
-
-```sql
-CREATE INDEX idx_events_turns ON events(session_id, sequence)
-WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
-```
-
-### Tool Events Filter
-
-```sql
-CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
-WHERE event_type IN ('tool.started', 'tool.completed');
-```
+Partial indexes exist for efficient filtering by message events, turn events, and tool events. See [migrations](../crates/server/migrations/) for index definitions.
 
 ## Event Listeners
 
@@ -1091,28 +413,7 @@ Event listeners provide a pluggable mechanism for observability backends to reac
 
 ### EventListener Trait
 
-```rust
-#[async_trait]
-pub trait EventListener: Send + Sync {
-    /// Called after an event is persisted
-    async fn on_event(&self, event: &Event);
-
-    /// Optional: filter which event types to receive
-    fn event_types(&self) -> Option<Vec<&'static str>> { None }
-
-    /// Human-readable name for logging
-    fn name(&self) -> &'static str { "EventListener" }
-}
-```
-
-### Listener Registration
-
-Listeners are registered with `EventService` at startup:
-
-```rust
-let otel_listener = Arc::new(OtelEventListener::new());
-let event_service = EventService::with_listeners(db, vec![otel_listener]);
-```
+See [EventListener trait](../crates/core/src/event_listeners.rs) for the trait definition. Listeners are registered with `EventService` at startup.
 
 ### Built-in Listeners
 
@@ -1138,18 +439,7 @@ Listeners are executed in isolation to ensure misbehaving listeners cannot disru
 
 **Rationale:** Event listeners are pluggable integrations (OTel, metrics, audit logs) that should not affect core event processing. A bug in an observability integration should never break the application.
 
-**Implementation:**
-```rust
-// Each listener is spawned in isolation
-let handle = tokio::spawn(async move {
-    listener.on_event(&event).await;
-});
-
-// Panics are caught and logged, not propagated
-if let Err(e) = handle.await {
-    tracing::error!(listener = name, error = %e, "EventListener panicked");
-}
-```
+Each listener is spawned in a separate tokio task. Panics are caught and logged, not propagated.
 
 ### Custom Listeners
 

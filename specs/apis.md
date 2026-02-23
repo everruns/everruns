@@ -6,48 +6,13 @@ This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
 ## Requirements
 
-### Base URL
+### Endpoint Reference
 
-All endpoints are prefixed with `/v1/`.
-
-### Health
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Server health check (includes version and runner mode) |
-
-### Authentication
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/auth/config` | Get authentication configuration |
-| POST | `/v1/auth/login` | Login with email/password |
-| POST | `/v1/auth/register` | Register new user |
-| POST | `/v1/auth/refresh` | Refresh access token |
-| POST | `/v1/auth/logout` | Logout (clear cookies) |
-| GET | `/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
-| GET | `/v1/auth/callback/{provider}` | OAuth callback |
-| GET | `/v1/auth/me` | Get current user info |
-| GET | `/v1/auth/api-keys` | List user's API keys |
-| POST | `/v1/auth/api-keys` | Create API key |
-| DELETE | `/v1/auth/api-keys/{key_id}` | Delete API key |
+All endpoints are prefixed with `/v1/`. For the complete endpoint listing with request/response schemas, see the [OpenAPI spec](../scripts/export-openapi.sh) or the live spec at `/api-doc/openapi.json`.
 
 See [authentication.md](authentication.md) for full authentication specification.
 
 ### Agents
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/agents` | Create agent (optional client-supplied `id`) |
-| GET | `/v1/agents` | List agents (paginated) |
-| GET | `/v1/agents/{id}` | Get agent by ID |
-| PUT | `/v1/agents/{id}` | Upsert agent (create 201, update 200) |
-| PATCH | `/v1/agents/{id}` | Update agent |
-| DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
-| POST | `/v1/agents/import` | Import agent from file content |
-| GET | `/v1/agents/{id}/export` | Export agent as Markdown |
-| POST | `/v1/agents/preview` | Preview final agent shape |
-| POST | `/v1/agents/{id}/copy` | Copy agent (new ID, "{name} (copy)") |
 
 #### Agent Preview
 
@@ -87,31 +52,7 @@ The response shows:
 
 All agent create/update/import endpoints enforce input size limits as last-resort protection against abuse. See [models.md](models.md#agent) for limit details. Validation failures return `400 Bad Request` with generic message "Input exceeds allowed limits".
 
-### Harnesses
-
-Harnesses define the base environment and capabilities for sessions. See [harness-types.md](harness-types.md) for built-in types.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/harnesses` | Create harness |
-| GET | `/v1/harnesses` | List harnesses |
-| GET | `/v1/harnesses/{id}` | Get harness |
-| PATCH | `/v1/harnesses/{id}` | Update harness |
-| DELETE | `/v1/harnesses/{id}` | Delete harness |
-| POST | `/v1/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
-
 ### Sessions
-
-Sessions are top-level entities under organizations. Each session has an agent assigned to work in it.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/sessions` | Create session |
-| GET | `/v1/sessions` | List sessions (paginated) |
-| GET | `/v1/sessions/{session_id}` | Get session |
-| PATCH | `/v1/sessions/{session_id}` | Update session |
-| DELETE | `/v1/sessions/{session_id}` | Delete session |
-| POST | `/v1/sessions/{session_id}/cancel` | Cancel current turn |
 
 #### Create Session
 
@@ -166,100 +107,11 @@ Cancels the currently executing turn in a session. This stops the workflow execu
 
 The user message is emitted immediately by the API, while the agent message and session.idled events are emitted by the worker after it detects the cancellation and stops execution. This ensures the agent message appears after any in-flight events.
 
-### Messages
-
-Messages store all conversation content (user, agent, tool calls, tool results).
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/sessions/{session_id}/messages` | Create message (triggers workflow) |
-| GET | `/v1/sessions/{session_id}/messages` | List messages |
-
-### Images
-
-Org-scoped image storage for message attachments. Images are stored with optional session metadata.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/images` | Upload image (multipart/form-data) |
-| GET | `/v1/images` | List images (paginated) |
-| GET | `/v1/images/{id}` | Get image data |
-| GET | `/v1/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
-| DELETE | `/v1/images/{id}` | Delete image |
-
-**Upload Request (multipart/form-data):**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | file | Yes | Image file (PNG, JPEG, GIF, WebP) |
-| `session_id` | string | No | Optional session ID for metadata |
-
-**Upload Response:**
-
-```json
-{
-  "id": "01933b5a-0000-7000-8000-000000000001",
-  "filename": "screenshot.png",
-  "content_type": "image/png",
-  "size_bytes": 102400,
-  "has_thumbnail": true,
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-**Constraints:**
-- Maximum file size: 100MB
-- Request body limit: 101MB (100MB file + 1MB multipart overhead)
-- Allowed types: image/png, image/jpeg, image/gif, image/webp
-- Thumbnails generated automatically (max 200x200 pixels)
-
-**Usage in Messages:**
-
-Images can be attached to messages using the `image_file` content part type:
-
-```json
-POST /v1/sessions/{session_id}/messages
-{
-  "message": {
-    "content": [
-      { "type": "text", "text": "What's in this image?" },
-      { "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
-    ]
-  }
-}
-```
-
-Images are sent to the LLM when processing messages. The system automatically resolves `image_file` references and converts them to the provider-specific format (OpenAI Vision or Anthropic Vision).
-
-### Session Filesystem
-
-Virtual filesystem scoped to each session. See [session-filesystem.md](session-filesystem.md) for full specification.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/sessions/{session_id}/fs` | List root directory |
-| GET | `/v1/sessions/{session_id}/fs/{path}` | Read file or list directory |
-| POST | `/v1/sessions/{session_id}/fs/{path}` | Create file or directory |
-| PUT | `/v1/sessions/{session_id}/fs/{path}` | Update file content |
-| DELETE | `/v1/sessions/{session_id}/fs/{path}` | Delete file |
-| DELETE | `/v1/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
-| POST | `/v1/sessions/{session_id}/fs/_/stat` | Get file metadata |
-| POST | `/v1/sessions/{session_id}/fs/_/move` | Move/rename file |
-| POST | `/v1/sessions/{session_id}/fs/_/copy` | Copy file |
-| POST | `/v1/sessions/{session_id}/fs/_/grep` | Search files by content |
-
-**Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
-
 ### Events
 
-Server-Sent Events (SSE) for real-time UI updates and event listing.
+See [events.md](events.md) for full event specification.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/sessions/{session_id}/sse` | Stream events (SSE) |
-| GET | `/v1/sessions/{session_id}/events` | List events (JSON) |
-
-**Query Parameters** (both endpoints):
+**SSE/Events query parameters** (`/v1/sessions/{id}/sse` and `/v1/sessions/{id}/events`):
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -267,145 +119,11 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 | `types` | string[] | Positive filter: only return matching event types. Empty = all. Repeated key format: `?types=a&types=b` |
 | `exclude` | string[] | Negative filter: remove matching event types. Applied after `types`. Repeated key format: `?exclude=a&exclude=b` |
 
-When both `types` and `exclude` are provided, `types` narrows first, then `exclude` removes from that set. Both accept only known event types (max 25 per parameter). See [events.md](events.md) for full filtering semantics.
-
-### LLM Provider Configuration
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/llm-providers` | List providers |
-| POST | `/v1/llm-providers` | Create provider |
-| GET | `/v1/llm-providers/{id}` | Get provider |
-| PATCH | `/v1/llm-providers/{id}` | Update provider (API key, base URL) |
-| DELETE | `/v1/llm-providers/{id}` | Delete provider |
-| POST | `/v1/llm-providers/{id}/sync-models` | Sync models from provider API |
-| GET | `/v1/llm-providers/{id}/models` | List models for provider |
-| POST | `/v1/llm-providers/{id}/models` | Create model for provider |
-| GET | `/v1/llm-models` | List all models |
-| GET | `/v1/llm-models/{id}` | Get model |
-| PATCH | `/v1/llm-models/{id}` | Update model |
-| DELETE | `/v1/llm-models/{id}` | Delete model |
-
-#### Model Sync
-
-The sync endpoint discovers available models from a provider's API:
-
-**Request:**
-```
-POST /v1/llm-providers/{id}/sync-models
-```
-
-**Response (success):**
-```json
-{
-  "status": "success",
-  "created": 5,
-  "updated": 10,
-  "stale": 2
-}
-```
-
-**Response (not supported):**
-```json
-{
-  "status": "not_supported"
-}
-```
-
-Providers with custom base URLs or providers that don't support model listing return `not_supported`.
-
-#### List Models Query Parameters
-
-`GET /v1/llm-models` supports:
-- `source` - Filter by source: `manual`, `discovered`, `predefined`
-- `include_stale` - Include stale models (default: `true`)
-- `favorites_only` - Only return favorites (default: `false`)
-
-### User Connections
-
-User-scoped external service accounts (e.g., GitHub) for repo access. See [user-connections.md](user-connections.md) for full specification.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/user/connections` | List user's connected accounts |
-| DELETE | `/v1/user/connections/{provider}` | Disconnect (delete stored token) |
-| GET | `/v1/user/connections/github/authorize` | Start GitHub OAuth flow |
-| GET | `/v1/user/connections/github/callback` | GitHub OAuth callback |
-
-### Agent Capabilities
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/capabilities` | List available capabilities |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
-
-Capabilities are modular functionality units that can be enabled on agents. They provide:
-- **Tool groups**: Sets of related tools (e.g., `session_file_system` provides read/write/grep tools)
-- **System prompt additions**: Context injected into the agent's prompt
-- **Documentation**: User-facing descriptions of what the capability provides
-
-#### Response Format
-
-```json
-{
-  "items": [
-    {
-      "id": "current_time",
-      "name": "Current Time",
-      "description": "Tool to get current date and time",
-      "status": "available",
-      "icon": "clock",
-      "category": "Utilities"
-    }
-  ],
-  "total": 5
-}
-```
-
-Create agent with capabilities:
-```json
-POST /v1/agents
-{
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "web_fetch"]
-}
-```
-
-Update agent capabilities:
-```json
-PATCH /v1/agents/{agent_id}
-{
-  "capabilities": ["current_time", "web_fetch", "session_file_system"]
-}
-```
-
-Agent response includes capabilities:
-```json
-GET /v1/agents/{agent_id}
-{
-  "id": "...",
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "web_fetch"],
-  "status": "active",
-  ...
-}
-```
-
-### API Documentation
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api-doc/openapi.json` | OpenAPI specification |
+When both `types` and `exclude` are provided, `types` narrows first, then `exclude` removes from that set. Both accept only known event types (max 25 per parameter).
 
 ### OpenAPI Spec Generation
 
-The OpenAPI spec is generated from Rust code using `utoipa` derive macros.
-
-#### Export Binary
-
-A standalone binary generates the spec without running the full server:
+The OpenAPI spec is generated from Rust code using `utoipa` derive macros. See [openapi.rs](../crates/server/src/openapi.rs) for the spec definition.
 
 ```bash
 # Generate spec to stdout
@@ -414,56 +132,6 @@ cargo run --bin export-openapi
 # Or use the convenience script
 ./scripts/export-openapi.sh
 ```
-
-The binary is useful for:
-- CI/CD pipelines that need the spec without running services
-- Documentation builds (e.g., Astro Starlight with starlight-openapi)
-- Static spec export for external tools
-
-#### Implementation
-
-The spec is defined in `crates/server/src/openapi.rs`:
-
-```rust
-use utoipa::OpenApi;
-
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        api::agents::create_agent,
-        api::agents::list_agents,
-        // ... all API endpoints
-    ),
-    components(schemas(...)),
-    tags(...)
-)]
-pub struct ApiDoc;
-
-impl ApiDoc {
-    pub fn to_json() -> String {
-        Self::openapi()
-            .to_pretty_json()
-            .expect("Failed to serialize OpenAPI spec")
-    }
-}
-```
-
-### Durable Execution Admin
-
-Administrative endpoints for monitoring and managing the durable execution engine.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/durable/workers` | List registered workers |
-| POST | `/v1/durable/workers/{id}/drain` | Drain worker (stop accepting tasks) |
-| POST | `/v1/durable/workers/{id}/resume` | Resume draining worker |
-| GET | `/v1/durable/workflows` | List workflows |
-| GET | `/v1/durable/workflows/{id}` | Get workflow details |
-| GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
-| GET | `/v1/durable/tasks` | List task queue |
-| GET | `/v1/durable/metrics/timeseries` | Get metrics time series (ring buffer) |
-| GET | `/v1/durable/dlq` | List dead letter queue |
-| GET | `/v1/durable/circuit-breakers` | List circuit breakers |
 
 ### Response Formats
 
@@ -496,43 +164,9 @@ Endpoints that return lists support pagination via query parameters:
 | `offset` | integer | Current offset (echoed from request) |
 | `limit` | integer | Current limit (echoed from request) |
 
-**Endpoints with Pagination:**
-
-| Endpoint | Default Limit | Notes |
-|----------|---------------|-------|
-| `GET /v1/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` filter |
-
-**Non-Paginated List Endpoints:**
-
-These endpoints return all items wrapped in `{"data": [...], "total": N}`:
-- `GET /v1/agents` - Returns all agents
-- `GET /v1/sessions/{session_id}/messages` - Returns all messages
-- `GET /v1/sessions/{session_id}/events` - Returns all events
-- `GET /v1/llm-providers` - Returns all providers
-- `GET /v1/llm-models` - Returns all models
-- `GET /v1/durable/workers` - Returns all workers
-- `GET /v1/durable/workflows` - Returns all workflows
-- `GET /v1/durable/workflows/{id}/events` - Returns workflow events
-- `GET /v1/durable/tasks` - Returns all tasks
-- `GET /v1/durable/metrics/timeseries` - Returns metrics ring buffer (max 360 points)
-- `GET /v1/durable/dlq` - Returns all DLQ entries
-- `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
-- `GET /v1/user/connections` - Returns all user connections (array, no wrapper)
+Currently only `GET /v1/sessions` uses offset/limit pagination. Most list endpoints return all items wrapped in `{"data": [...], "total": N}`.
 
 **Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
-
-**Example Usage:**
-
-```bash
-# First page (default)
-GET /v1/agents/{id}/sessions
-
-# Second page
-GET /v1/agents/{id}/sessions?offset=20&limit=20
-
-# Custom page size
-GET /v1/agents/{id}/sessions?limit=10
-```
 
 ### Error Responses
 

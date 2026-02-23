@@ -54,6 +54,14 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `specs/` contains feature specifications. New code should comply with these or propose changes.
 
+**Spec writing principles:**
+
+- Specs capture **design decisions, rationale, and architecture** — not code.
+- Avoid exhaustive listings of struct fields, enum variants, API endpoints, or tool parameters that can be read from code. These go stale.
+- Instead, link to the source: `See [Agent struct](crates/core/src/agent.rs)` or `See [OpenAPI spec](scripts/export-openapi.sh)`.
+- Keep: diagrams, flow explanations, design decision tables, security considerations, patterns, conventions.
+- Remove: field-by-field tables, complete JSON examples of every variant, inline code blocks that restate trait definitions.
+
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling

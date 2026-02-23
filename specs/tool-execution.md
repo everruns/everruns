@@ -9,20 +9,7 @@ Everruns agents can invoke tools during execution. This specification defines to
 ### Tool Types
 
 #### Built-in Tools
-System-provided tools implemented via the `Tool` trait in `everruns-core`.
-
-**Tool Trait Interface:**
-```rust
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &str;
-    fn display_name(&self) -> Option<&str> { None }
-    fn description(&self) -> &str;
-    fn parameters_schema(&self) -> Value;
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult;
-    fn policy(&self) -> ToolPolicy { ToolPolicy::Auto }
-}
-```
+System-provided tools implemented via the [Tool trait](../crates/core/src/tools.rs) in `everruns-core`.
 
 **Display Names:**
 All tools should provide a human-readable `display_name` for UI rendering (e.g., "Get Current Time" for `get_current_time`). The display name is:
@@ -68,19 +55,7 @@ Tools can also be provided by Capabilities (see [capabilities.md](capabilities.m
 - `FileSystem` capability will provide read/write/search files tools
 
 **ToolRegistry:**
-Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
-```rust
-// Create with default built-in tools (includes get_current_time, echo, math tools, etc.)
-let registry = ToolRegistry::with_defaults();
-
-// Or build a custom registry
-let registry = ToolRegistry::builder()
-    .tool(GetCurrentTime)
-    .tool(MyCustomTool)
-    .build();
-
-let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
-```
+See [ToolRegistry](../crates/core/src/tools.rs) — manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`. Supports builder pattern and `with_defaults()` for default built-in tools.
 
 ### Tool Definition Schema
 

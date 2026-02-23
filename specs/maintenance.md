@@ -45,6 +45,28 @@ Verify all specs in `specs/` reflect current code.
 8. Add specs for features not yet documented
 9. Ensure `AGENTS.md` specs list is complete (all files in `specs/` are listed)
 
+### 2a. Spec Hygiene — Avoid Code Duplication
+
+Specs should capture **design decisions, rationale, and architecture** — not restate code. Content derivable from code goes stale and creates maintenance burden.
+
+**Review each spec for:**
+
+1. **Exhaustive field tables** — Replace struct field listings with a code link: `See [Agent struct](../crates/core/src/agent.rs)`. Keep only fields that need design rationale.
+2. **Enum variant lists** — Replace complete variant enumerations with code links. A summary table is fine; exhaustive listing is not.
+3. **Endpoint tables** — Replace full endpoint listings with: `See [OpenAPI spec](../scripts/export-openapi.sh)`. Keep only endpoint-specific behavior notes (pagination, side effects, non-obvious semantics).
+4. **JSON examples for every variant** — One representative example per pattern is sufficient. Remove exhaustive per-variant JSON blocks.
+5. **Inline Rust code** — Replace trait definitions and code blocks with links to the source file. Keep only when the code illustrates a design decision that isn't obvious from reading the source.
+6. **Tool parameter tables** — Replace detailed parameter listings with code links to the capability implementation in `crates/core/src/capabilities/`.
+7. **SQL schema blocks** — Replace with links to migration files in `crates/server/migrations/`.
+
+**What to keep in specs:**
+- Design decision tables ("Why X instead of Y?")
+- Architecture diagrams and data flow explanations
+- Security considerations and constraints
+- Patterns and conventions (naming, event lifecycle patterns)
+- Behavioral contracts (append-only guarantees, ordering guarantees)
+- Cross-cutting concerns not visible from any single code location
+
 ### 3. Threat Model
 
 Update `specs/threat-model.md` for current state.

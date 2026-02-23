@@ -118,47 +118,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 
 ##### Quick Reference: Built-in Capabilities
 
-| ID | Name | Category | Status |
-|----|------|----------|--------|
-| `agent_instructions` | Agent Instructions | Configuration | Available |
-| `noop` | No-Op | Testing | Available |
-| `current_time` | Current Time | Utilities | Available |
-| `test_math` | Test Math | Testing | Available |
-| `test_weather` | Test Weather | Testing | Available |
-| `session_file_system` | File System | File Operations | Available |
-| `virtual_bash` | Virtual Bash | Execution | Available |
-| `session_storage` | Session Storage | Storage | Available |
-| `session` | Session | Session | Available |
-| `web_fetch` | Web Fetch | Network | Available |
-| `stateless_todo_list` | Task Management | Productivity | Available |
-| `sample_data` | Sample Data | Data | Available |
-| `docker_container` | Docker Container | Development | Available (Dev only, integration plugin) |
-| `session_sql_database` | SQL Database | Data | Available |
-| `skills` | Agent Skills | Skills | Available |
-| `research` | Research | AI | Coming Soon |
-
-```rust
-/// Simple string wrapper - capabilities define their own IDs via id() method
-pub struct CapabilityId(String);
-
-impl CapabilityId {
-    /// Create a new capability ID from a string
-    pub fn new(id: impl Into<String>) -> Self;
-
-    /// Get the ID as a string slice
-    pub fn as_str(&self) -> &str;
-}
-```
-
-#### CapabilityStatus (Enum)
-
-```rust
-pub enum CapabilityStatus {
-    Available,   // Ready for use
-    ComingSoon,  // Not yet implemented
-    Deprecated,  // No longer recommended
-}
-```
+See [CapabilityRegistry::with_builtins()](../crates/core/src/capabilities/mod.rs) for the authoritative list of all registered capabilities and their IDs.
 
 #### AgentCapabilityConfig (Per-agent configuration)
 
@@ -169,21 +129,7 @@ Associates a capability with an agent, including optional per-agent configuratio
 | `ref` | CapabilityId | Reference to the capability |
 | `config` | object | Per-agent configuration (capability-specific) |
 
-```rust
-/// Per-agent capability configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentCapabilityConfig {
-    /// Reference to the capability ID
-    #[serde(rename = "ref")]
-    pub capability_ref: CapabilityId,
-    /// Per-agent configuration for this capability
-    #[serde(default)]
-    pub config: serde_json::Value,
-}
-```
-
-The `config` field is capability-specific and passed to the capability during execution.
-This allows the same capability to behave differently per-agent.
+The `config` field is capability-specific and passed to the capability during execution. This allows the same capability to behave differently per-agent.
 
 **Example usage:**
 ```json
@@ -201,40 +147,12 @@ This allows the same capability to behave differently per-agent.
 
 #### Capability Trait (everruns-core)
 
-Capabilities are defined as trait implementations in the core crate:
-
-```rust
-#[async_trait]
-pub trait Capability: Send + Sync {
-    fn id(&self) -> &str;
-    fn name(&self) -> &str;
-    fn description(&self) -> &str;
-    fn status(&self) -> CapabilityStatus;
-    fn system_prompt_addition(&self) -> Option<&str> { None }
-    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> { ... }
-    fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
-    fn icon(&self) -> Option<&str> { None }
-    fn category(&self) -> Option<&str> { None }
-    fn mounts(&self) -> Vec<MountPoint> { vec![] }
-    fn dependencies(&self) -> Vec<&'static str> { vec![] }
-    fn features(&self) -> Vec<&'static str> { vec![] }
-    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> { None }
-}
-```
-
-The `CapabilityRegistry` in core holds all registered capability implementations. The API layer converts trait objects to DTOs using `Capability::from_core()`.
+See [Capability trait](../crates/core/src/capabilities/mod.rs) for the full trait definition and [CapabilityRegistry](../crates/core/src/capabilities/mod.rs) for the registry. The API layer converts trait objects to DTOs using `Capability::from_core()`.
 
 ##### System Prompt Methods
 
 - **`system_prompt_addition()`** — Sync method returning static `&str`. Used by the sync collection path (tools/mounts only callers).
 - **`system_prompt_contribution(ctx)`** — Async method receiving `SystemPromptContext` with session filesystem access. The default wraps `system_prompt_addition()` in `<capability id="...">` XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override this to read from the session filesystem.
-
-```rust
-pub struct SystemPromptContext {
-    pub session_id: SessionId,
-    pub file_store: Option<Arc<dyn SessionFileStore>>,
-}
-```
 
 ##### Collection Functions
 
@@ -284,23 +202,7 @@ When `sample_data` is selected:
 
 #### Dependency Resolution API
 
-```rust
-/// Result of resolving capability dependencies
-pub struct ResolvedCapabilities {
-    /// All capability IDs after resolving dependencies (in topological order)
-    pub resolved_ids: Vec<String>,
-    /// IDs that were added as dependencies (not in the original selection)
-    pub added_as_dependencies: Vec<String>,
-    /// Original user-selected capability IDs
-    pub user_selected: Vec<String>,
-}
-
-/// Resolve capability dependencies
-pub fn resolve_dependencies(
-    selected_ids: &[String],
-    registry: &CapabilityRegistry,
-) -> Result<ResolvedCapabilities, DependencyError>;
-```
+See `resolve_dependencies()` in [capabilities/mod.rs](../crates/core/src/capabilities/mod.rs). Returns `ResolvedCapabilities` with resolved IDs in topological order, IDs added as dependencies, and original user selection.
 
 #### Built-in Capabilities with Dependencies
 
@@ -361,113 +263,27 @@ When `session_schedule` is selected, the session's `features` will include `"sch
 
 #### compute_features()
 
-```rust
-/// Compute aggregated features from capability IDs.
-/// Resolves dependencies, collects features, deduplicates.
-pub fn compute_features(
-    capability_ids: &[String],
-    registry: &CapabilityRegistry,
-) -> Vec<String>;
-```
+See `compute_features()` in [capabilities/mod.rs](../crates/core/src/capabilities/mod.rs) — resolves dependencies, collects features from all resolved capabilities, deduplicates.
 
 ### Built-in Capabilities
 
-#### Noop
+For tool parameters and detailed implementations, see [capability implementations](../crates/core/src/capabilities/). Each capability file contains the `Capability` trait implementation with tool definitions.
 
-- **Status**: Available
-- **Purpose**: Testing and demonstration
-- **System Prompt**: None
-- **Tools**: None
+#### Noop / CurrentTime / TestMath / TestWeather
 
-#### CurrentTime
-
-- **Status**: Available
-- **Purpose**: Get current date and time in various formats
-- **System Prompt**: None
-- **Tools**:
-  - `get_current_time` - Returns current timestamp
-    - Parameters:
-      - `timezone`: string (e.g., "UTC", "America/New_York")
-      - `format`: enum (iso8601, unix, human)
-    - Policy: Auto
-
-#### TestMath
-
-- **Status**: Available
-- **Purpose**: Testing tool calling with calculator operations
-- **System Prompt**: "You have access to math tools. Use them for calculations: add, subtract, multiply, divide."
-- **Tools**:
-  - `add` - Add two numbers
-  - `subtract` - Subtract second number from first
-  - `multiply` - Multiply two numbers
-  - `divide` - Divide first number by second
-- **Icon**: "calculator"
-- **Category**: "Testing"
-
-#### TestWeather
-
-- **Status**: Available
-- **Purpose**: Testing tool calling with mock weather data
-- **System Prompt**: "You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts."
-- **Tools**:
-  - `get_weather` - Get current weather for a city
-  - `get_forecast` - Get multi-day forecast
-- **Icon**: "cloud-sun"
-- **Category**: "Testing"
+Testing and utility capabilities. See implementations in `crates/core/src/capabilities/`.
 
 #### Research (Coming Soon)
 
-- **Status**: ComingSoon
-- **Purpose**: Deep research with organized findings
-- **System Prompt**: "You have access to a research scratchpad. Use it to organize your thoughts and findings."
-- **Tools**: To be added (scratchpad, web search, etc.)
-- **Icon**: "search"
-- **Category**: "AI"
+Deep research with organized findings. Not yet implemented.
 
 #### FileSystem
 
-- **Status**: Available
 - **ID**: `session_file_system`
 - **Purpose**: Tools to access and manipulate files in the session workspace (`/workspace`)
-- **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations. Explains the `/workspace` mount point.
-- **Workspace Mount**: All paths are relative to `/workspace` (e.g., `/workspace/src/main.rs`). Paths are normalized internally to enable seamless integration with virtual_bash.
-- **Tools**:
-  - `read_file` - Read file content by path. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image content block so the LLM can see it visually.
-    - Parameters:
-      - `path`: string (required) - Absolute path to the file (e.g., '/workspace/docs/readme.txt')
-    - Returns: Object containing path, content, encoding, size_bytes. For base64-encoded image files, returns `SuccessWithImages` with the image as a native `ToolResultImage`.
-    - Policy: Auto
-  - `write_file` - Create or update a file
-    - Parameters:
-      - `path`: string (required) - Absolute path for the file
-      - `content`: string (required) - Content to write
-      - `encoding`: enum (text, base64) - Content encoding, defaults to text
-    - Returns: Object containing path, size_bytes, created status
-    - Policy: Auto
-  - `list_directory` - List files and directories at a path
-    - Parameters:
-      - `path`: string - Directory path to list, defaults to root '/'
-    - Returns: Object containing path, entries array, count
-    - Policy: Auto
-  - `grep_files` - Search file contents using regex
-    - Parameters:
-      - `pattern`: string (required) - Regex pattern to search for
-      - `path_pattern`: string - Optional path pattern filter (e.g., '*.txt')
-    - Returns: Object containing pattern, matches array, match_count
-    - Policy: Auto
-  - `delete_file` - Delete a file or directory
-    - Parameters:
-      - `path`: string (required) - Path to file or directory
-      - `recursive`: boolean - If true, delete directories recursively, defaults to false
-    - Returns: Object containing path, deleted status
-    - Policy: Auto
-  - `stat_file` - Get file or directory metadata
-    - Parameters:
-      - `path`: string (required) - Path to the file or directory
-    - Returns: Object containing path, name, exists, is_directory, is_readonly, size_bytes, timestamps
-    - Policy: Auto
-- **Icon**: "folder"
-- **Category**: "File Operations"
+- **Tools**: `read_file`, `write_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file`
+- **Workspace Mount**: All paths relative to `/workspace`. Paths normalized internally for virtual_bash integration.
+- Image files (PNG, JPEG, GIF, WebP) returned as native image content blocks via `SuccessWithImages`.
 
 ##### Design Decision: Context-Aware Tools
 
@@ -485,32 +301,11 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 
 #### VirtualBash
 
-- **Status**: Available
 - **ID**: `virtual_bash`
 - **Purpose**: Sandboxed bash shell execution for safe code execution and file manipulation
-- **System Prompt**: Guidance on bash capabilities, limitations, and best practices. Explains the `/workspace` mount point and environment.
 - **Dependencies**: `session_file_system` (bash commands operate on the same workspace)
-- **Environment**:
-  - `HOME=/home/agent`
-  - `SHELL=/bin/bash`
-  - `PATH=/usr/local/bin:/usr/bin:/bin`
-  - `WORKSPACE=/workspace`
-  - `USER=everruns`
-- **Workspace Mount**: Session files mounted at `/workspace`. Files created by bash are accessible via FileSystem tools and vice versa.
-- **Tools**:
-  - `bash` - Execute a bash command
-    - Parameters:
-      - `command`: string (required) - The bash command to execute
-      - `working_dir`: string (optional) - Working directory, defaults to `/workspace`
-      - `timeout_ms`: integer (optional) - Command timeout in milliseconds, defaults to 30000
-    - Returns: Object containing exit_code, stdout, stderr, success
-    - Policy: Auto
-- **Limits**:
-  - Max iterations: 1,000,000
-  - Max call depth: 256
-  - Max array size: 10,000
-- **Icon**: "terminal"
-- **Category**: "Execution"
+- **Tools**: `bash` (execute command with optional working_dir and timeout_ms)
+- **Workspace Mount**: Session files at `/workspace`. Files created by bash are accessible via FileSystem tools and vice versa.
 
 ##### Design Decision: bashkit Library
 
@@ -538,27 +333,9 @@ This ensures bash and FileSystem capability share the same file namespace.
 
 #### SessionStorage
 
-- **Status**: Available
 - **ID**: `session_storage`
 - **Purpose**: Session-scoped key/value storage and encrypted secret storage
-- **System Prompt**: Guidance on using storage tools for persisting data and secrets
-- **Tools**:
-  - `kv_store` - Key/value storage operations (plain text)
-    - Parameters:
-      - `operation`: enum (set, get, delete, list) - The operation to perform
-      - `key`: string (max 255 chars) - Required for set, get, delete
-      - `value`: string - Required for set (can be JSON-encoded)
-    - Returns: Object containing operation, key, and result (success/value/deleted/keys)
-    - Policy: Auto
-  - `secret_store` - Encrypted secret storage operations
-    - Parameters:
-      - `operation`: enum (set, get, delete, list) - The operation to perform
-      - `name`: string (max 255 chars) - Required for set, get, delete
-      - `value`: string - Required for set (will be encrypted)
-    - Returns: Object containing operation, name, and result (success/value/deleted/secrets)
-    - Policy: Auto
-- **Icon**: "database"
-- **Category**: "Storage"
+- **Tools**: `kv_store` (plain text set/get/delete/list), `secret_store` (encrypted set/get/delete/list)
 
 ##### Design Decision: Consolidated Tools
 
@@ -586,39 +363,10 @@ Secret operations require the `SECRETS_ENCRYPTION_KEY` environment variable to b
 
 #### WebFetch
 
-- **Status**: Available
 - **ID**: `web_fetch`
 - **Purpose**: Fetch content from URLs and convert HTML to markdown or plain text
-- **System Prompt**: None (this capability does not add to the system prompt)
-- **Timeouts**:
-  - **First byte timeout**: 1 second - If server doesn't respond within 1 second, request fails
-  - **Body timeout**: 30 seconds - If body isn't fully read within 30 seconds, partial content is returned with `[..more content timed out...]` suffix
-- **Tools**:
-  - `web_fetch` - Fetch content from a URL
-    - Parameters:
-      - `url`: string (required) - The URL to fetch, must start with http:// or https://
-      - `method`: enum (GET, HEAD) - HTTP method, defaults to GET
-      - `as_markdown`: boolean - Convert HTML response to markdown format
-      - `as_text`: boolean - Convert HTML response to plain text (ignored if as_markdown is true)
-    - Returns: Object containing:
-      - `url`: The requested URL
-      - `status_code`: HTTP status code
-      - `content_type`: Response content type
-      - `size`: Number of bytes received
-      - `last_modified`: Last-Modified header value (when available)
-      - `filename`: Extracted filename from Content-Disposition header or URL (when available)
-      - `format`: "markdown", "text", or "raw" depending on conversion
-      - `content`: The fetched content (not present for HEAD requests or binary content)
-      - `truncated`: boolean - True if body was truncated due to timeout
-      - `error`: (for binary content) Error message explaining binary content is not supported
-    - Error handling:
-      - Binary content (images, PDFs, etc.) returns success with metadata and error message (not a tool error)
-      - Invalid URLs return validation errors
-      - Network errors return appropriate error messages
-      - First byte timeout returns "server did not respond within 1 second"
-    - Policy: Auto
-- **Icon**: "globe"
-- **Category**: "Network"
+- **Tools**: `web_fetch` (url, method, as_markdown, as_text)
+- **Timeouts**: First byte 1s, body 30s (partial content on timeout)
 
 ##### Design Decision: System Prompt from fetchkit
 
@@ -645,22 +393,9 @@ The capability uses the [fetchkit](https://github.com/everruns/fetchkit) library
 
 #### StatelessTodoList
 
-- **Status**: Available
 - **ID**: `stateless_todo_list`
 - **Purpose**: Enable agents to create and manage structured task lists for tracking multi-step work progress
-- **System Prompt**: Comprehensive guidance on when and how to use task management, including best practices for multi-step workflows
-- **Tools**:
-  - `write_todos` - Create or update a task list
-    - Parameters:
-      - `todos`: array of task objects, each with:
-        - `content`: string (imperative form, e.g., "Run tests", "Fix the bug")
-        - `activeForm`: string (present continuous, e.g., "Running tests", "Fixing the bug")
-        - `status`: enum (pending, in_progress, completed)
-    - Returns: success status with task counts and validated todos
-    - Validation: Warns if no task is in_progress (when pending tasks exist) or if multiple tasks are in_progress
-    - Policy: Auto
-- **Icon**: "list-checks"
-- **Category**: "Productivity"
+- **Tools**: `write_todos` (array of {content, activeForm, status})
 
 ##### Design Decision: Stateless Implementation
 
@@ -718,24 +453,10 @@ The system prompt instructs agents to use task management when:
 
 #### SkillsDiscovery
 
-- **Status**: Available
 - **ID**: `skills`
 - **Purpose**: Discover and activate skills from the session filesystem (VFS-based skill discovery)
 - **Dependencies**: `session_file_system`
-- **System Prompt**: Explains the skills system, `/.agents/skills/` path, and how to use `list_skills`/`activate_skill`
-- **Tools**:
-  - `list_skills` - Scan `/.agents/skills/` in the session VFS for SKILL.md files
-    - Parameters: none
-    - Returns: Array of discovered skills with name, description, path, version
-    - Policy: Auto
-  - `activate_skill` - Load a skill's full instructions by name
-    - Parameters:
-      - `name`: string (required) - Skill directory name (e.g., `pdf-processing`)
-    - Returns: Skill instructions wrapped in `<skill name="...">` XML tags, plus bundled file paths
-    - Validation: Path traversal blocked (`..`, `/`, `\` in name rejected)
-    - Policy: Auto
-- **Icon**: "wand"
-- **Category**: "Skills"
+- **Tools**: `list_skills` (scan `/.agents/skills/`), `activate_skill` (load skill instructions by name)
 
 ##### Design Decision: VFS-Based Discovery
 
@@ -868,143 +589,11 @@ Session capabilities are stored in the `sessions.capabilities` column (JSONB) an
 
 ### API Endpoints
 
-Capabilities are managed as part of the agent resource. When creating or updating an agent, you can specify the capabilities to enable. The agent response includes the list of enabled capabilities.
-
-All endpoints are organization-scoped.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/capabilities` | List all available capabilities |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
-
-Agent capabilities are managed through the agents API:
-- `POST /v1/agents` - Create agent with capabilities
-- `PATCH /v1/agents/{id}` - Update agent capabilities
-- `GET /v1/agents/{id}` - Get agent (includes capabilities)
-
-#### List Capabilities
-
-```http
-GET /v1/capabilities
-
-Response:
-{
-  "items": [
-    {
-      "id": "current_time",
-      "name": "Current Time",
-      "description": "Tool to get current date and time in various formats and timezones.",
-      "status": "available",
-      "icon": "clock",
-      "category": "Utilities"
-    },
-    {
-      "id": "web_fetch",
-      "name": "Web Fetch",
-      "description": "Fetch content from URLs and convert HTML responses to markdown or plain text.",
-      "status": "available",
-      "icon": "globe",
-      "category": "Network"
-    },
-    {
-      "id": "stateless_todo_list",
-      "name": "Task Management",
-      "description": "Enables agents to create and manage structured task lists for tracking multi-step work progress. State is maintained in conversation history.",
-      "status": "available",
-      "icon": "list-checks",
-      "category": "Productivity"
-    },
-    {
-      "id": "research",
-      "name": "Research",
-      "description": "Deep research capability with organized scratchpad.",
-      "status": "coming_soon",
-      "icon": "search",
-      "category": "AI"
-    }
-  ],
-  "total": 9
-}
-```
-
-#### Create Agent with Capabilities
-
-```http
-POST /v1/agents
-Content-Type: application/json
-
-{
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": [
-    { "ref": "current_time", "config": {} },
-    { "ref": "test_math", "config": {} }
-  ]
-}
-
-Response:
-{
-  "id": "...",
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": [
-    { "ref": "current_time", "config": {} },
-    { "ref": "test_math", "config": {} }
-  ],
-  "status": "active",
-  ...
-}
-```
-
-#### Update Agent Capabilities
-
-```http
-PATCH /v1/agents/{agent_id}
-Content-Type: application/json
-
-{
-  "capabilities": [
-    { "ref": "current_time", "config": {} },
-    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } },
-    { "ref": "session_file_system", "config": {} }
-  ]
-}
-
-Response:
-{
-  "id": "...",
-  "name": "Research Assistant",
-  "capabilities": [
-    { "ref": "current_time", "config": {} },
-    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } },
-    { "ref": "session_file_system", "config": {} }
-  ],
-  ...
-}
-```
-
-The array order determines the priority (earlier capabilities' system prompt additions appear first).
+Capabilities are listed via `GET /v1/capabilities` and managed through the agents API (`POST /v1/agents`, `PATCH /v1/agents/{id}`). See [OpenAPI spec](../scripts/export-openapi.sh) for request/response schemas. The capabilities array order determines priority (earlier capabilities' system prompt additions appear first).
 
 ### Database Schema
 
-```sql
-CREATE TABLE agent_capabilities (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    -- Capability ID is a string; validation happens at application layer
-    capability_id VARCHAR(50) NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    -- Per-agent capability configuration (JSON)
-    config JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(agent_id, capability_id)
-);
-
-CREATE INDEX idx_agent_capabilities_agent_id ON agent_capabilities(agent_id);
-CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, position);
-```
-
-**Note**: The `capability_id` column no longer has a CHECK constraint. Validation is performed at the application layer via `CapabilityRegistry`. This allows adding new capabilities without database migrations. The `config` column stores per-agent configuration as JSON, allowing capability-specific settings per agent.
+See [migrations](../crates/server/migrations/) for the `agent_capabilities` table schema. `capability_id` has no CHECK constraint — validation is at the application layer via `CapabilityRegistry`, allowing new capabilities without database migrations.
 
 ### Design Decisions
 
@@ -1019,36 +608,10 @@ CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, pos
 
 ### Adding New Capabilities
 
-To add a new capability:
-
-1. **Implement the Capability trait**:
-   ```rust
-   pub struct MyNewCapability;
-
-   impl Capability for MyNewCapability {
-       fn id(&self) -> &str { "my_new_capability" }
-       fn name(&self) -> &str { "My New Capability" }
-       fn description(&self) -> &str { "Description here" }
-       fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
-       fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
-   }
-   ```
-
-2. **Register in CapabilityRegistry**:
-   ```rust
-   impl CapabilityRegistry {
-       pub fn with_builtins() -> Self {
-           let mut registry = Self::new();
-           // ... existing capabilities
-           registry.register(MyNewCapability);
-           registry
-       }
-   }
-   ```
-
-3. **Add tool implementations** if needed (implement `Tool` trait)
-
-4. **No database migration required** - the capability ID is validated at runtime
+1. Implement the `Capability` trait in a new file under `crates/core/src/capabilities/`
+2. Register in `CapabilityRegistry::with_builtins()` in [capabilities/mod.rs](../crates/core/src/capabilities/mod.rs)
+3. Add tool implementations if needed (implement `Tool` trait from [tools.rs](../crates/core/src/tools.rs))
+4. No database migration required — capability ID is validated at runtime
 
 ### Capability Mount Points
 
@@ -1063,40 +626,7 @@ Capabilities can declare mount points to populate files and directories in the s
 | `source` | MountSource | Content to mount (file or directory) |
 | `capability_id` | string | ID of the capability providing this mount |
 
-#### MountAccess
-
-```rust
-pub enum MountAccess {
-    ReadOnly,   // Files cannot be modified or deleted
-    ReadWrite,  // Files can be read and written
-}
-```
-
-#### MountSource
-
-```rust
-pub enum MountSource {
-    InlineFile {
-        content: String,   // File content
-        encoding: String,  // "text" or "base64"
-    },
-    InlineDirectory {
-        entries: HashMap<String, MountEntry>,
-    },
-}
-```
-
-#### Capability Trait Addition
-
-```rust
-pub trait Capability: Send + Sync {
-    // ... existing methods ...
-
-    /// Returns mount points to populate in the session filesystem.
-    /// Default: empty vector (no mounts).
-    fn mounts(&self) -> Vec<MountPoint> { vec![] }
-}
-```
+See `MountPoint`, `MountAccess`, and `MountSource` in [capabilities/mod.rs](../crates/core/src/capabilities/mod.rs) for the data model. The `Capability` trait's `mounts()` method returns mount points (default: empty).
 
 #### Mount Application Flow
 
@@ -1106,37 +636,10 @@ pub trait Capability: Send + Sync {
 4. Files and directories are created in session filesystem
 5. Files from readonly mounts are marked `is_readonly = true`
 
-#### Example Capability with Mounts
+#### SampleData (Built-in with Mounts)
 
-```rust
-impl Capability for SampleDataCapability {
-    fn id(&self) -> &str { "sample_data" }
-    fn name(&self) -> &str { "Sample Data" }
-
-    fn mounts(&self) -> Vec<MountPoint> {
-        let samples_dir = MountDirectoryBuilder::new()
-            .file("users.json", USERS_JSON)
-            .file("config.yaml", CONFIG_YAML)
-            .build();
-
-        vec![MountPoint::readonly("/samples", samples_dir, self.id())]
-    }
-}
-```
-
-#### Built-in Capabilities with Mounts
-
-##### SampleData
-
-- **Status**: Available
 - **ID**: `sample_data`
-- **Purpose**: Demonstrates capability mounting with sample data files
-- **Mounts**:
-  - `/samples/users.json` - Sample JSON user data (readonly)
-  - `/samples/config.yaml` - Sample YAML configuration (readonly)
-  - `/samples/README.md` - Documentation about sample files (readonly)
-- **Icon**: "database"
-- **Category**: "Data"
+- **Purpose**: Demonstrates capability mounting with sample data files at `/samples/` (readonly)
 
 ### Experimental Capabilities
 
@@ -1144,54 +647,13 @@ Experimental capabilities are available in development environments only (`Deplo
 
 #### DockerContainer
 
-- **Status**: Available (Dev only, integration plugin)
 - **ID**: `docker_container`
-- **Crate**: `integrations/docker/` → `everruns-integrations-docker` (auto-registered via `inventory` plugin system, force-linked via `extern crate` in server and worker — see [architecture.md](architecture.md#integration-plugin-force-linking))
+- **Status**: Available (Dev only, integration plugin)
+- **Crate**: `integrations/docker/` → `everruns-integrations-docker` (auto-registered via `inventory` plugin system)
 - **Purpose**: Run commands and manage files in a Docker container tied to the session
-- **System Prompt**: Guidance on using container tools, best practices for command execution
-- **Container Lifecycle**:
-  - Lazily started on first tool use
-  - Persists for session duration
-  - Uses host networking
-  - Container name: `everruns-{session_id}`
-- **Configuration** (via `AgentCapabilityConfig.config`):
-  - `image`: Docker image to use (default: `mcr.microsoft.com/devcontainers/python:3.11`)
-  - `working_dir`: Working directory inside container (default: `/workspace`)
-- **Tools**:
-  - `docker_exec` - Execute shell command in container
-    - Parameters:
-      - `command`: string (required) - Command to execute
-      - `working_dir`: string - Override working directory
-      - `config`: object - Container configuration
-    - Returns: stdout, stderr, exit_code, success
-    - Policy: Auto
-  - `docker_read_file` - Read file from container filesystem
-    - Parameters:
-      - `path`: string (required) - Absolute path to file
-      - `config`: object - Container configuration
-    - Returns: path, content, size_bytes
-    - Policy: Auto
-  - `docker_write_file` - Write file to container filesystem
-    - Parameters:
-      - `path`: string (required) - Absolute path for file
-      - `content`: string (required) - Content to write
-      - `config`: object - Container configuration
-    - Returns: path, size_bytes, success
-    - Policy: Auto
-  - `docker_logs` - Get logs from container
-    - Parameters:
-      - `tail`: integer - Number of lines from end (default: 100)
-      - `since`: string - Timestamp or relative time (e.g., '10m', '1h')
-      - `timestamps`: boolean - Include timestamps (default: false)
-    - Returns: logs, stdout, stderr, container_name, lines_requested
-    - Policy: Auto
-  - `docker_stop` - Stop and remove container
-    - Parameters:
-      - `force`: boolean - Force kill (default: false)
-    - Returns: stopped, removed, container_name, message
-    - Policy: Auto
-- **Icon**: "container"
-- **Category**: "Development"
+- **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
+- **Container Lifecycle**: Lazily started on first tool use, persists for session duration, uses host networking, named `everruns-{session_id}`
+- **Configuration**: `image` (default: `mcr.microsoft.com/devcontainers/python:3.11`), `working_dir` (default: `/workspace`)
 
 ##### Design Decision: Session-Scoped Containers
 
@@ -1213,67 +675,12 @@ This capability is experimental and only available in development environments d
 
 #### CodeSandbox
 
-- **Status**: Available (Dev only)
 - **ID**: `codesandbox`
-- **Purpose**: Create and manage cloud-based sandbox VMs via CodeSandbox API for isolated code execution
-- **System Prompt**: Guidance on API key setup, sandbox lifecycle, tool usage, best practices
+- **Status**: Available (Dev only)
+- **Purpose**: Cloud-based sandbox VMs via CodeSandbox API for isolated code execution
 - **Architecture**: Two-tier API — Management API for lifecycle, Pint API for in-sandbox operations
-- **State Management**: Sandbox connection info stored in session secrets (encrypted at rest)
-- **Configuration**: API key stored as session secret `CSB_API_KEY`
-- **Dependencies**: `session_storage`
-- **Tools**:
-  - `csb_create_sandbox` - Create a new sandbox VM, optionally upload files
-    - Parameters:
-      - `title`: string - Sandbox title
-      - `template`: string - Template ID to fork from
-      - `upload_files`: array - Files to upload from session storage `[{session_path, sandbox_path}]`
-    - Returns: sandbox_id, status, workspace_path
-    - Policy: Auto
-  - `csb_exec` - Execute shell command in a sandbox (sync or async)
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `command`: string (required) - Shell command
-      - `wait`: boolean (default: true) - Wait for completion
-    - Returns: exec_id, status, exit_code, output
-    - Policy: Auto
-  - `csb_exec_status` - Check execution status and get output
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `exec_id`: string (required) - Execution ID
-    - Returns: exec_id, status, exit_code, output
-    - Policy: Auto
-  - `csb_read_file` - Read file from sandbox filesystem
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `path`: string (required) - File path
-    - Returns: path, content
-    - Policy: Auto
-  - `csb_write_file` - Write content to file in sandbox
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `path`: string (required) - File path
-      - `content`: string (required) - File content
-    - Returns: path, success
-    - Policy: Auto
-  - `csb_download_workspace` - Download entire workspace to session storage
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `sandbox_path`: string - Root path in sandbox (default: workspace_path)
-      - `session_path`: string - Destination in session storage (default: /workspace)
-    - Returns: files_downloaded, files_skipped, errors
-    - Policy: Auto
-  - `csb_list_sandboxes` - List all sandboxes in this session
-    - Parameters: none
-    - Returns: sandboxes array with sandbox_id, started_at
-    - Policy: Auto
-  - `csb_manage_sandbox` - Lifecycle management (shutdown, hibernate, delete)
-    - Parameters:
-      - `sandbox_id`: string (required) - Target sandbox
-      - `action`: string (required) - "shutdown", "hibernate", or "delete"
-    - Returns: sandbox_id, action, success
-    - Policy: Auto
-- **Icon**: "cloud"
-- **Category**: "Execution"
+- **Dependencies**: `session_storage` (API key stored as session secret `CSB_API_KEY`)
+- **Tools**: `csb_create_sandbox`, `csb_exec`, `csb_exec_status`, `csb_read_file`, `csb_write_file`, `csb_download_workspace`, `csb_list_sandboxes`, `csb_manage_sandbox`
 
 ##### Design Decision: Multiple Sandboxes Per Session
 
@@ -1319,86 +726,9 @@ Capabilities can contribute message filters that modify how messages are retriev
 
 #### MessageFilterProvider Trait
 
-```rust
-pub trait MessageFilterProvider: Send + Sync {
-    /// Modify the message query by adding filters and/or injections.
-    fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value);
+See [MessageFilterProvider trait](../crates/core/src/message_filter.rs) for the trait definition, `MessageFilter` types, `InjectionPosition`, and `MessageQuery` builder.
 
-    /// Priority for filter application (lower = earlier). Default is 0.
-    fn priority(&self) -> i32 { 0 }
-}
-```
-
-#### Message Injection
-
-Ephemeral messages can be injected into the result set without persistence:
-
-```rust
-pub enum InjectionPosition {
-    Start,           // Before all messages
-    End,             // After all messages
-    BeforeIndex(usize),
-    AfterIndex(usize),
-}
-
-pub struct InjectedMessage {
-    pub position: InjectionPosition,
-    pub message: Message,
-}
-```
-
-Injections are applied after filtering and are useful for:
-- Adding conversation summaries at the start
-- Inserting system reminders before recent context
-- Appending instructions or context
-
-#### MessageQuery Builder
-
-```rust
-let query = MessageQuery::new(session_id)
-    .with_filter(MessageFilter::TimeRange {
-        from: Some(Utc::now() - Duration::hours(24)),
-        to: None,
-    })
-    .with_filter(MessageFilter::EventTypes(vec!["input.message".to_string()]))
-    .with_injection(InjectedMessage::at_start(Message::system("Summary: ...")))
-    .with_limit(100);
-```
-
-#### Example Capability with Message Filter
-
-```rust
-impl Capability for RecentMessagesCapability {
-    fn id(&self) -> &str { "recent_messages" }
-    fn name(&self) -> &str { "Recent Messages" }
-    fn description(&self) -> &str { "Only load messages from the last 24 hours" }
-
-    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
-        Some(Arc::new(RecentMessagesProvider))
-    }
-}
-
-struct RecentMessagesProvider;
-
-impl MessageFilterProvider for RecentMessagesProvider {
-    fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
-        // Check config for custom hours setting
-        let hours = config.get("hours")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(24);
-
-        let cutoff = Utc::now() - Duration::hours(hours as i64);
-        query.filters.push(MessageFilter::TimeRange {
-            from: Some(cutoff),
-            to: None,
-        });
-    }
-
-    fn priority(&self) -> i32 {
-        -10  // Run early to reduce data loaded
-    }
-}
-```
+Injections are applied after filtering and are useful for adding conversation summaries, system reminders, or additional context.
 
 #### Filter Application Flow
 
