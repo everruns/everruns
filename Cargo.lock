@@ -1446,6 +1446,7 @@ dependencies = [
  "clap",
  "cron",
  "dotenvy",
+ "eventsource-stream",
  "everruns-core",
  "everruns-durable",
  "everruns-integrations-brave-search",

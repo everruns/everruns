@@ -2,7 +2,12 @@
 //!
 //! Uses everruns-sdk for agent/message operations. Raw reqwest for:
 //! - Session creation (SDK lacks harness_id field)
-//! - Event polling (SDK lacks offset/limit pagination)
+//! - SSE streaming for turn completion (no polling)
+//!
+//! Turn completion detection via SSE:
+//!   Subscribes to GET /v1/sessions/{id}/sse after session creation.
+//!   Waits for `session.idled` event after each message send.
+//!   Single SSE connection per session — no polling overhead.
 //!
 //! Usage:
 //!   cargo bench --package everruns-server --bench load_test
@@ -24,6 +29,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
+use eventsource_stream::Eventsource;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use futures::stream::{self, StreamExt};
 use parking_lot::Mutex;
@@ -449,18 +455,6 @@ struct CreateSessionRequest {
 #[derive(Debug, Deserialize)]
 struct Session {
     id: String,
-    #[serde(default)]
-    status: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct MessageResponse {
-    role: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct MessagesListResponse {
-    data: Vec<MessageResponse>,
 }
 
 // ============================================================================
@@ -578,7 +572,7 @@ struct LoadTestRunner {
     config: LoadTestConfig,
     /// SDK client for agent/message operations
     sdk: Everruns,
-    /// Raw reqwest for session creation (needs harness_id) and event polling (needs pagination)
+    /// Raw reqwest for session creation (needs harness_id) and SSE streaming
     http: Client,
     metrics: Arc<Metrics>,
 }
@@ -642,20 +636,19 @@ impl LoadTestRunner {
         Ok(resp.id)
     }
 
-    /// Send message and wait for the agent's response to appear.
-    /// Waits for session to be idle before sending to ensure the server
-    /// creates a new turn (it won't if the session is still active).
+    /// Send message and measure round-trip latency via SSE.
+    ///
+    /// Sends POST /sessions/{id}/messages, then waits for the `session.idled`
+    /// event on the SSE stream to confirm the turn completed.
+    ///
+    /// No pre-send idle check needed: the previous message's `session.idled` event
+    /// already confirmed idle state, and new sessions start idle.
     async fn send_message(
         &self,
         session_id: &str,
         message_num: usize,
-        expected_agent_count: usize,
+        sse_stream: &mut SseSessionStream,
     ) -> anyhow::Result<Duration> {
-        // Ensure session is idle before sending (server ignores messages to active sessions)
-        if message_num > 0 {
-            self.wait_for_session_idle(session_id).await?;
-        }
-
         let start = Instant::now();
 
         let text = format!(
@@ -683,9 +676,8 @@ impl LoadTestRunner {
             .await?
             .error_for_status()?;
 
-        // Wait until the agent's response message appears
-        self.wait_for_agent_response(session_id, expected_agent_count)
-            .await?;
+        // Wait for session.idled event = turn complete
+        self.wait_for_idle_via_sse(session_id, sse_stream).await?;
 
         let duration = start.elapsed();
         self.metrics.record_latency(duration);
@@ -696,67 +688,56 @@ impl LoadTestRunner {
         Ok(duration)
     }
 
-    /// Poll session status until idle.
-    async fn wait_for_session_idle(&self, session_id: &str) -> anyhow::Result<()> {
-        let url = format!("{}/v1/sessions/{}", self.config.api_url, session_id);
-        let timeout = Duration::from_secs(60);
-        let start = Instant::now();
+    /// Open an SSE stream for a session.
+    async fn open_sse_stream(&self, session_id: &str) -> anyhow::Result<SseSessionStream> {
+        let url = format!("{}/v1/sessions/{}/sse", self.config.api_url, session_id);
 
-        loop {
-            if start.elapsed() > timeout {
-                return Err(anyhow::anyhow!("Timeout waiting for session idle"));
-            }
+        let response = self.http.get(&url).send().await?.error_for_status()?;
 
-            let session: Session = self
-                .http
-                .get(&url)
-                .send()
-                .await?
-                .error_for_status()?
-                .json()
-                .await?;
-
-            if session.status == "idle" {
-                return Ok(());
-            }
-
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        let stream = response.bytes_stream().eventsource();
+        Ok(SseSessionStream {
+            stream: Box::pin(stream),
+        })
     }
 
-    /// Poll messages endpoint until we see the expected number of agent messages.
-    async fn wait_for_agent_response(
+    /// Wait for a `session.idled` event on the SSE stream.
+    async fn wait_for_idle_via_sse(
         &self,
         session_id: &str,
-        expected_agent_count: usize,
+        sse_stream: &mut SseSessionStream,
     ) -> anyhow::Result<()> {
-        let url = format!(
-            "{}/v1/sessions/{}/messages",
-            self.config.api_url, session_id
-        );
-        let timeout = Duration::from_secs(60);
-        let start = Instant::now();
+        let timeout = Duration::from_secs(self.config.timeout_secs);
+        let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
-            if start.elapsed() > timeout {
-                return Err(anyhow::anyhow!("Timeout waiting for agent response"));
+            match tokio::time::timeout_at(deadline, sse_stream.stream.next()).await {
+                Ok(Some(Ok(event))) => {
+                    if event.event == "session.idled" {
+                        return Ok(());
+                    }
+                    // Ignore other events (connected, turn.started, etc.)
+                }
+                Ok(Some(Err(e))) => {
+                    return Err(anyhow::anyhow!(
+                        "SSE stream error for session {}: {}",
+                        session_id,
+                        e
+                    ));
+                }
+                Ok(None) => {
+                    return Err(anyhow::anyhow!(
+                        "SSE stream closed for session {}",
+                        session_id
+                    ));
+                }
+                Err(_) => {
+                    return Err(anyhow::anyhow!(
+                        "Timeout ({}s) waiting for session.idled on session {}",
+                        self.config.timeout_secs,
+                        session_id
+                    ));
+                }
             }
-
-            let resp: MessagesListResponse = self
-                .http
-                .get(&url)
-                .send()
-                .await?
-                .error_for_status()?
-                .json()
-                .await?;
-
-            let agent_count = resp.data.iter().filter(|m| m.role == "agent").count();
-            if agent_count >= expected_agent_count {
-                return Ok(());
-            }
-
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
 
@@ -772,11 +753,21 @@ impl LoadTestRunner {
             }
         };
 
-        // Send messages sequentially — each waits for agent response before next
+        // Open SSE stream — single connection for the session lifetime
+        let mut sse_stream = match self.open_sse_stream(&session_id).await {
+            Ok(s) => s,
+            Err(e) => {
+                self.metrics.sessions_failed.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .record_error(format!("Session {} SSE connect failed: {}", session_num, e));
+                return Err(e);
+            }
+        };
+
+        // Send messages sequentially — each waits for session.idled via SSE
         for msg_num in 0..self.config.messages_per_session {
-            let expected_agent_count = msg_num + 1;
             match self
-                .send_message(&session_id, msg_num, expected_agent_count)
+                .send_message(&session_id, msg_num, &mut sse_stream)
                 .await
             {
                 Ok(_duration) => {}
@@ -953,6 +944,27 @@ impl Clone for LoadTestRunner {
             metrics: self.metrics.clone(),
         }
     }
+}
+
+// ============================================================================
+// SSE Stream Wrapper
+// ============================================================================
+
+/// Wraps an SSE stream for a session. One per session, reused across messages.
+///
+/// Uses `eventsource_stream` to parse SSE frames from reqwest's byte stream.
+/// The stream yields `eventsource_stream::Event` with `.event` (type) and `.data` fields.
+struct SseSessionStream {
+    stream: std::pin::Pin<
+        Box<
+            dyn futures::Stream<
+                    Item = Result<
+                        eventsource_stream::Event,
+                        eventsource_stream::EventStreamError<reqwest::Error>,
+                    >,
+                > + Send,
+        >,
+    >,
 }
 
 // ============================================================================
