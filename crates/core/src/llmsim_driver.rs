@@ -11,6 +11,7 @@
 // It can be configured per-test to return specific responses or tool calls.
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,8 +24,8 @@ use crate::llm_driver_registry::{
 use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
-use llmsim::openai::{ChatCompletionRequest, Message, Role};
-use tokio_stream::wrappers::ReceiverStream;
+use llmsim::openai::{ChatCompletionRequest, Message, Role, Usage};
+use llmsim::stream::TokenStreamBuilder;
 
 // ============================================================================
 // Configuration Types
@@ -378,30 +379,16 @@ impl LlmSimDriver {
         }
     }
 
-    /// Get latency profile if enabled
-    fn get_latency_profile(&self) -> LatencyProfile {
-        if self.config.simulate_latency {
-            // Use fast profile for tests - just enough to simulate streaming
+    /// Resolve latency profile for a request.
+    /// Model names containing "-latency" enable realistic streaming simulation
+    /// via LatencyProfile::fast(). The config flag `simulate_latency` also enables it.
+    /// Returns LatencyProfile::instant() when neither is set.
+    fn resolve_latency_profile(&self, model_name: &str) -> LatencyProfile {
+        if self.config.simulate_latency || model_name.contains("-latency") {
             LatencyProfile::fast()
         } else {
             LatencyProfile::instant()
         }
-    }
-
-    /// Get latency profile for a specific model name from the request.
-    /// Model names containing "-latency" enable streaming simulation with
-    /// inter-token delays using LatencyProfile::fast().
-    fn get_request_latency_profile(model_name: &str) -> Option<LatencyProfile> {
-        if model_name.contains("-latency") {
-            Some(LatencyProfile::fast())
-        } else {
-            None
-        }
-    }
-
-    /// Whether a request should use latency simulation based on config or model name.
-    fn should_simulate_latency(&self, model_name: &str) -> bool {
-        self.config.simulate_latency || model_name.contains("-latency")
     }
 
     /// Estimate token count for text
@@ -441,15 +428,7 @@ impl LlmDriver for LlmSimDriver {
         let response_text = self.generate_response(&messages);
         let tool_calls = self.get_tool_calls(&messages);
         let model_name = config.model.clone();
-        let simulate_latency = self.should_simulate_latency(&model_name);
-
-        // Select latency profile: request model name takes priority, then config
-        let latency_profile = if simulate_latency {
-            Self::get_request_latency_profile(&model_name)
-                .unwrap_or_else(|| self.get_latency_profile())
-        } else {
-            self.get_latency_profile()
-        };
+        let latency_profile = self.resolve_latency_profile(&model_name);
 
         // Calculate token estimates
         let prompt_tokens: u32 = messages
@@ -458,69 +437,59 @@ impl LlmDriver for LlmSimDriver {
             .sum();
         let completion_tokens = Self::estimate_tokens(&response_text);
 
-        // Build stream events
-        let mut events = Vec::new();
+        // Use llmsim's TokenStreamBuilder for streaming with latency simulation.
+        // It handles TTFT and inter-token delays natively via LatencyProfile.
+        let usage = Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens: prompt_tokens + completion_tokens,
+        };
 
-        // Stream text in chunks (word by word for realistic streaming)
-        if !response_text.is_empty() {
-            let words: Vec<&str> = response_text.split_whitespace().collect();
-            for (i, word) in words.iter().enumerate() {
-                let delta = if i == 0 {
-                    word.to_string()
-                } else {
-                    format!(" {}", word)
-                };
-                events.push(LlmStreamEvent::TextDelta(delta));
-            }
-        }
+        let chunk_stream = TokenStreamBuilder::new(&model_name, &response_text)
+            .latency(latency_profile)
+            .usage(usage)
+            .build()
+            .into_chunk_stream();
 
-        // Emit tool calls if present
-        if let Some(calls) = tool_calls {
-            events.push(LlmStreamEvent::ToolCalls(calls));
-        }
+        // Map llmsim ChatCompletionChunk -> our LlmStreamEvent, then append
+        // tool calls and metadata after the text stream completes.
+        let tool_calls_tail = tool_calls;
+        let model_name_done = model_name.clone();
+        let event_stream = chunk_stream.flat_map(move |chunk| {
+            let mut events: Vec<Result<LlmStreamEvent>> = Vec::new();
 
-        // Final done event with metadata
-        events.push(LlmStreamEvent::Done(LlmCompletionMetadata {
-            total_tokens: Some(prompt_tokens + completion_tokens),
-            prompt_tokens: Some(prompt_tokens),
-            completion_tokens: Some(completion_tokens),
-            cache_read_tokens: None,
-            cache_creation_tokens: None,
-            model: Some(model_name),
-            finish_reason: Some("stop".to_string()),
-            retry_metadata: None, // LlmSim doesn't implement retry
-        }));
-
-        // When latency simulation is enabled (via config or model name like "llmsim-latency"),
-        // stream events through a channel with realistic TTFT and inter-token delays.
-        // This simulates actual LLM streaming behavior for benchmarking.
-        if simulate_latency {
-            let (tx, rx) = tokio::sync::mpsc::channel(32);
-
-            tokio::spawn(async move {
-                // Simulate time-to-first-token delay
-                let ttft = latency_profile.sample_ttft();
-                tokio::time::sleep(ttft).await;
-
-                for event in events {
-                    let is_text_delta = matches!(&event, LlmStreamEvent::TextDelta(_));
-                    if tx.send(Ok(event)).await.is_err() {
-                        break;
-                    }
-                    // Simulate inter-token delay after each text delta
-                    if is_text_delta {
-                        let tbt = latency_profile.sample_tbt();
-                        tokio::time::sleep(tbt).await;
-                    }
+            for choice in &chunk.choices {
+                if let Some(content) = &choice.delta.content
+                    && !content.is_empty()
+                {
+                    events.push(Ok(LlmStreamEvent::TextDelta(content.clone())));
                 }
-            });
+            }
 
-            Ok(Box::pin(ReceiverStream::new(rx)))
-        } else {
-            // No latency: emit all events instantly
-            let wrapped: Vec<Result<LlmStreamEvent>> = events.into_iter().map(Ok).collect();
-            Ok(Box::pin(stream::iter(wrapped)))
-        }
+            stream::iter(events)
+        });
+
+        // Append tool calls + done after the text stream
+        let done_events: Vec<Result<LlmStreamEvent>> = {
+            let mut tail = Vec::new();
+            if let Some(calls) = tool_calls_tail {
+                tail.push(Ok(LlmStreamEvent::ToolCalls(calls)));
+            }
+            tail.push(Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                total_tokens: Some(prompt_tokens + completion_tokens),
+                prompt_tokens: Some(prompt_tokens),
+                completion_tokens: Some(completion_tokens),
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+                model: Some(model_name_done),
+                finish_reason: Some("stop".to_string()),
+                retry_metadata: None,
+            })));
+            tail
+        };
+
+        let full_stream = event_stream.chain(stream::iter(done_events));
+        Ok(Box::pin(full_stream))
     }
 }
 
@@ -863,8 +832,8 @@ mod tests {
         }
 
         assert!(got_done);
-        // Should stream word by word
-        assert_eq!(text_parts.len(), 3); // "Hello", " world", " test"
+        // llmsim's TokenStream handles chunking; verify full text is correct
+        assert!(!text_parts.is_empty());
         assert_eq!(text_parts.join(""), "Hello world test");
     }
 
@@ -980,24 +949,21 @@ mod tests {
     }
 
     #[test]
-    fn test_should_simulate_latency_from_model_name() {
-        // Config flag off, model name triggers latency
+    fn test_resolve_latency_profile_from_model_name() {
         let driver = LlmSimDriver::new(LlmSimConfig::fixed("test"));
-        assert!(driver.should_simulate_latency("llmsim-latency"));
-        assert!(!driver.should_simulate_latency("llmsim-default"));
 
-        // Config flag on, any model name
+        // "-latency" in model name -> fast profile (non-instant)
+        let profile = driver.resolve_latency_profile("llmsim-latency");
+        assert!(profile.sample_ttft().as_nanos() > 0);
+
+        // default model name -> instant profile
+        let profile = driver.resolve_latency_profile("llmsim-default");
+        assert_eq!(profile.sample_ttft().as_nanos(), 0);
+
+        // config flag also enables fast profile
         let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
-        assert!(driver.should_simulate_latency("llmsim-default"));
-        assert!(driver.should_simulate_latency("llmsim-latency"));
-    }
-
-    #[test]
-    fn test_get_request_latency_profile() {
-        // Model with "-latency" returns a profile
-        assert!(LlmSimDriver::get_request_latency_profile("llmsim-latency").is_some());
-        // Model without "-latency" returns None
-        assert!(LlmSimDriver::get_request_latency_profile("llmsim-default").is_none());
+        let profile = driver.resolve_latency_profile("llmsim-default");
+        assert!(profile.sample_ttft().as_nanos() > 0);
     }
 
     #[tokio::test]
