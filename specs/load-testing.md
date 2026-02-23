@@ -19,14 +19,23 @@ End-to-end load testing framework for the Everruns API. Measures throughput, lat
 
 ## Architecture
 
-Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-sdk` for agent/message operations and raw `reqwest` for session creation and event polling where the SDK lacks support.
+Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-sdk` for agent operations and raw `reqwest` for session creation (SDK lacks `harness_id`) and SSE streaming.
+
+### Turn Completion via SSE
+
+Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after creation. Turn completion is detected by waiting for the `session.idled` event on this stream. No polling — one persistent connection per session replaces the previous approach of polling `GET /sessions/{id}` and `GET /sessions/{id}/messages` every 50ms.
 
 ### Flow
 
 1. Fetch server info from `/health` and `/v1/durable/health`
 2. Create a load test agent with llmsim as default model
 3. Spawn N concurrent sessions (controlled by semaphore)
-4. Each session sends M messages sequentially, waiting for agent response
+4. Each session:
+   a. Creates session via API
+   b. Opens SSE stream (`GET /v1/sessions/{id}/sse`)
+   c. Sends M messages sequentially
+   d. After each message: waits for `session.idled` SSE event (turn complete)
+   e. Measures latency from POST /messages to `session.idled` received
 5. Collect latency, throughput, and error metrics
 6. Optionally save checkpoint with full metadata
 
