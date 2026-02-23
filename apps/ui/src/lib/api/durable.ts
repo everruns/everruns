@@ -20,6 +20,7 @@ import type {
   ScheduleExecutionsResponse,
   ScheduleStats,
   TriggerResponse,
+  MetricsTimeSeriesResponse,
 } from "./types";
 
 // ============================================
@@ -145,6 +146,15 @@ export async function listTasks(params?: ListTasksParams): Promise<TasksResponse
 
 export async function getTaskStats(): Promise<TaskQueueStats> {
   const response = await api.get<TaskQueueStats>("/v1/durable/tasks/stats");
+  return response.data;
+}
+
+// ============================================
+// Metrics Time Series
+// ============================================
+
+export async function getDurableMetrics(): Promise<MetricsTimeSeriesResponse> {
+  const response = await api.get<MetricsTimeSeriesResponse>("/v1/durable/metrics/timeseries");
   return response.data;
 }
 

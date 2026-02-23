@@ -27,7 +27,8 @@ use futures::{
     stream::{self, Stream},
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::VecDeque, convert::Infallible, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 use tokio::time::Instant;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -39,12 +40,18 @@ use super::sse::{DisconnectReason, SseStreamConfig};
 #[derive(Clone)]
 pub struct AppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    metrics: MetricsCollector,
 }
 
 impl AppState {
     /// Create new state with an optional workflow event store
+    ///
+    /// Collector holds 360 points = 1 hour at 10s intervals.
     pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>) -> Self {
-        Self { store }
+        Self {
+            store,
+            metrics: MetricsCollector::new(360),
+        }
     }
 
     /// Get the store, returning an error response if not available
@@ -59,6 +66,84 @@ impl AppState {
                 }),
             )
         })
+    }
+
+    /// Spawn background task that samples health metrics every 10 seconds
+    pub fn spawn_metrics_sampler(&self) {
+        let store = self.store.clone();
+        let metrics = self.metrics.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+
+            tracing::info!(
+                "Started metrics sampler background task (10s interval, 360 max points)"
+            );
+
+            loop {
+                interval.tick().await;
+
+                let point = match &store {
+                    Some(s) => {
+                        let health = match s.get_system_health().await {
+                            Ok(h) => h,
+                            Err(e) => {
+                                tracing::error!("Metrics sampler: failed to get health: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let workers = match s.list_workers(WorkerFilter::default()).await {
+                            Ok(w) => w,
+                            Err(e) => {
+                                tracing::error!("Metrics sampler: failed to list workers: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let tasks_completed_total: u64 =
+                            workers.iter().map(|w| w.tasks_completed).sum();
+                        let tasks_failed_total: u64 = workers.iter().map(|w| w.tasks_failed).sum();
+
+                        let load_percentage = if health.total_capacity > 0 {
+                            (health.current_load as f64 / health.total_capacity as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+
+                        MetricsPoint {
+                            timestamp: Utc::now(),
+                            running_workflows: health.running_workflows,
+                            pending_workflows: health.pending_workflows,
+                            pending_tasks: health.pending_tasks,
+                            claimed_tasks: health.claimed_tasks,
+                            active_workers: health.active_workers,
+                            load_percentage,
+                            dlq_size: health.dlq_size,
+                            tasks_completed_total,
+                            tasks_failed_total,
+                        }
+                    }
+                    None => {
+                        // Dev mode without store: push zeroed data
+                        MetricsPoint {
+                            timestamp: Utc::now(),
+                            running_workflows: 0,
+                            pending_workflows: 0,
+                            pending_tasks: 0,
+                            claimed_tasks: 0,
+                            active_workers: 0,
+                            load_percentage: 0.0,
+                            dlq_size: 0,
+                            tasks_completed_total: 0,
+                            tasks_failed_total: 0,
+                        }
+                    }
+                };
+
+                metrics.push(point).await;
+            }
+        });
     }
 }
 
@@ -100,6 +185,11 @@ pub fn routes(state: AppState) -> Router {
         // DLQ
         .route("/v1/durable/dlq", get(list_dlq))
         .route("/v1/durable/dlq/{dlq_id}/retry", post(retry_dlq))
+        // Metrics
+        .route(
+            "/v1/durable/metrics/timeseries",
+            get(get_metrics_timeseries),
+        )
         // Circuit breakers
         .route("/v1/durable/circuit-breakers", get(list_circuit_breakers))
         .route(
@@ -456,6 +546,62 @@ pub struct CircuitBreakersListResponse {
     pub total: usize,
 }
 
+/// Single metrics data point
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MetricsPoint {
+    pub timestamp: DateTime<Utc>,
+    // Workflow gauges
+    pub running_workflows: usize,
+    pub pending_workflows: usize,
+    // Task gauges
+    pub pending_tasks: usize,
+    pub claimed_tasks: usize,
+    // System gauges
+    pub active_workers: usize,
+    pub load_percentage: f64,
+    pub dlq_size: usize,
+    // Computed totals (from worker stats when available)
+    pub tasks_completed_total: u64,
+    pub tasks_failed_total: u64,
+}
+
+/// Metrics time series response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MetricsTimeSeriesResponse {
+    pub points: Vec<MetricsPoint>,
+    pub resolution_seconds: u64,
+}
+
+/// Background metrics collector maintaining a ring buffer of timestamped health snapshots
+#[derive(Clone)]
+pub struct MetricsCollector {
+    points: Arc<RwLock<VecDeque<MetricsPoint>>>,
+    max_points: usize,
+}
+
+impl MetricsCollector {
+    pub fn new(max_points: usize) -> Self {
+        Self {
+            points: Arc::new(RwLock::new(VecDeque::with_capacity(max_points))),
+            max_points,
+        }
+    }
+
+    /// Push a new metrics point, removing oldest if at capacity
+    pub async fn push(&self, point: MetricsPoint) {
+        let mut points = self.points.write().await;
+        if points.len() >= self.max_points {
+            points.pop_front();
+        }
+        points.push_back(point);
+    }
+
+    /// Get all points
+    pub async fn get_points(&self) -> Vec<MetricsPoint> {
+        self.points.read().await.iter().cloned().collect()
+    }
+}
+
 // ============================================================================
 // Query parameters
 // ============================================================================
@@ -528,6 +674,25 @@ pub async fn get_health(
     })?;
 
     Ok(Json(HealthResponse::from(health)))
+}
+
+/// GET /v1/durable/metrics/timeseries - Get metrics time series
+#[utoipa::path(
+    get,
+    path = "/v1/durable/metrics/timeseries",
+    responses(
+        (status = 200, description = "Metrics time series", body = MetricsTimeSeriesResponse),
+    ),
+    tag = "durable"
+)]
+pub async fn get_metrics_timeseries(
+    State(state): State<AppState>,
+) -> Result<Json<MetricsTimeSeriesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let points = state.metrics.get_points().await;
+    Ok(Json(MetricsTimeSeriesResponse {
+        points,
+        resolution_seconds: 10,
+    }))
 }
 
 /// GET /v1/durable/workers - List workers
@@ -1235,6 +1400,7 @@ struct DurableSnapshot {
     tasks: TasksListResponse,
     dlq: DlqListResponse,
     circuit_breakers: CircuitBreakersListResponse,
+    metrics_history: Vec<MetricsPoint>,
 }
 
 /// SSE snapshot data for a single workflow
@@ -1484,6 +1650,9 @@ pub async fn stream_durable_sse(
                         .collect(),
                 };
 
+                // Fetch metrics history (always succeeds, no store needed)
+                let metrics_history = state.metrics.get_points().await;
+
                 let snapshot = DurableSnapshot {
                     health,
                     workers,
@@ -1491,6 +1660,7 @@ pub async fn stream_durable_sse(
                     tasks,
                     dlq,
                     circuit_breakers,
+                    metrics_history,
                 };
 
                 // Simple hash based on key metrics to detect changes
@@ -1514,6 +1684,31 @@ pub async fn stream_durable_sse(
                 let has_changes = stream_state.last_hash != Some(current_hash);
 
                 if has_changes {
+                    // Push a metrics point for extra granularity while dashboard is open
+                    state
+                        .metrics
+                        .push(MetricsPoint {
+                            timestamp: Utc::now(),
+                            running_workflows: snapshot.health.running_workflows,
+                            pending_workflows: snapshot.health.pending_workflows,
+                            pending_tasks: snapshot.health.pending_tasks,
+                            claimed_tasks: snapshot.health.claimed_tasks,
+                            active_workers: snapshot.health.active_workers,
+                            load_percentage: snapshot.health.load_percentage,
+                            dlq_size: snapshot.health.dlq_size,
+                            tasks_completed_total: snapshot
+                                .workers
+                                .iter()
+                                .map(|w| w.tasks_completed)
+                                .sum(),
+                            tasks_failed_total: snapshot
+                                .workers
+                                .iter()
+                                .map(|w| w.tasks_failed)
+                                .sum(),
+                        })
+                        .await;
+
                     let json =
                         serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
                     let new_backoff = stream_state.config.min_backoff_ms;
@@ -1838,12 +2033,26 @@ mod tests {
                 data: vec![],
                 total: 0,
             },
+            metrics_history: vec![MetricsPoint {
+                timestamp: Utc::now(),
+                running_workflows: 1,
+                pending_workflows: 0,
+                pending_tasks: 5,
+                claimed_tasks: 3,
+                active_workers: 2,
+                load_percentage: 30.0,
+                dlq_size: 0,
+                tasks_completed_total: 42,
+                tasks_failed_total: 1,
+            }],
         };
 
         let json = serde_json::to_string(&snapshot).unwrap();
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"active_workers\":2"));
         assert!(json.contains("\"load_percentage\":30.0"));
+        assert!(json.contains("\"metrics_history\""));
+        assert!(json.contains("\"tasks_completed_total\":42"));
     }
 
     #[test]
@@ -2200,5 +2409,141 @@ mod tests {
         assert_eq!(resp.summary.active, 2);
         assert_eq!(resp.summary.total_capacity, 20);
         assert_eq!(resp.summary.total_load, 0);
+    }
+
+    // ============================================
+    // MetricsCollector tests
+    // ============================================
+
+    #[tokio::test]
+    async fn test_metrics_collector_new_creates_empty() {
+        let collector = MetricsCollector::new(10);
+        let points = collector.get_points().await;
+        assert!(points.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_metrics_collector_push_adds_points() {
+        let collector = MetricsCollector::new(10);
+
+        collector
+            .push(MetricsPoint {
+                timestamp: Utc::now(),
+                running_workflows: 1,
+                pending_workflows: 0,
+                pending_tasks: 0,
+                claimed_tasks: 0,
+                active_workers: 1,
+                load_percentage: 10.0,
+                dlq_size: 0,
+                tasks_completed_total: 0,
+                tasks_failed_total: 0,
+            })
+            .await;
+
+        let points = collector.get_points().await;
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].running_workflows, 1);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_collector_evicts_oldest_when_full() {
+        let collector = MetricsCollector::new(3);
+
+        for i in 0..5 {
+            collector
+                .push(MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: i,
+                    pending_workflows: 0,
+                    pending_tasks: 0,
+                    claimed_tasks: 0,
+                    active_workers: 0,
+                    load_percentage: 0.0,
+                    dlq_size: 0,
+                    tasks_completed_total: 0,
+                    tasks_failed_total: 0,
+                })
+                .await;
+        }
+
+        let points = collector.get_points().await;
+        assert_eq!(points.len(), 3);
+        // Oldest (0, 1) should be evicted; remaining are 2, 3, 4
+        assert_eq!(points[0].running_workflows, 2);
+        assert_eq!(points[1].running_workflows, 3);
+        assert_eq!(points[2].running_workflows, 4);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_collector_get_points_returns_in_order() {
+        let collector = MetricsCollector::new(100);
+
+        for i in 0..5 {
+            collector
+                .push(MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: i,
+                    pending_workflows: 0,
+                    pending_tasks: 0,
+                    claimed_tasks: 0,
+                    active_workers: 0,
+                    load_percentage: 0.0,
+                    dlq_size: 0,
+                    tasks_completed_total: 0,
+                    tasks_failed_total: 0,
+                })
+                .await;
+        }
+
+        let points = collector.get_points().await;
+        assert_eq!(points.len(), 5);
+        for (idx, point) in points.iter().enumerate() {
+            assert_eq!(point.running_workflows, idx);
+        }
+    }
+
+    #[test]
+    fn test_metrics_timeseries_response_serialization() {
+        let response = MetricsTimeSeriesResponse {
+            points: vec![
+                MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: 3,
+                    pending_workflows: 1,
+                    pending_tasks: 5,
+                    claimed_tasks: 2,
+                    active_workers: 4,
+                    load_percentage: 25.5,
+                    dlq_size: 0,
+                    tasks_completed_total: 100,
+                    tasks_failed_total: 2,
+                },
+                MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: 4,
+                    pending_workflows: 0,
+                    pending_tasks: 3,
+                    claimed_tasks: 1,
+                    active_workers: 4,
+                    load_percentage: 30.0,
+                    dlq_size: 1,
+                    tasks_completed_total: 105,
+                    tasks_failed_total: 3,
+                },
+            ],
+            resolution_seconds: 10,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"resolution_seconds\":10"));
+        assert!(json.contains("\"points\""));
+        assert!(json.contains("\"tasks_completed_total\":100"));
+        assert!(json.contains("\"tasks_completed_total\":105"));
+
+        // Verify round-trip deserialization shape
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["resolution_seconds"], 10);
+        assert_eq!(parsed["points"].as_array().unwrap().len(), 2);
     }
 }

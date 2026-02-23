@@ -1305,6 +1305,26 @@ export interface CircuitBreakersResponse {
   total: number;
 }
 
+/** Single metrics data point (timestamped health snapshot) */
+export interface MetricsPoint {
+  timestamp: string;
+  running_workflows: number;
+  pending_workflows: number;
+  pending_tasks: number;
+  claimed_tasks: number;
+  active_workers: number;
+  load_percentage: number;
+  dlq_size: number;
+  tasks_completed_total: number;
+  tasks_failed_total: number;
+}
+
+/** Metrics time series response */
+export interface MetricsTimeSeriesResponse {
+  points: MetricsPoint[];
+  resolution_seconds: number;
+}
+
 // ============================================
 // MCP Server types
 // ============================================
