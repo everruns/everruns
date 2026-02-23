@@ -193,7 +193,7 @@ pub use events::{
     SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
     TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
-    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData,
+    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use harness::{Harness, HarnessStatus};
 pub use llm_model_profiles::get_model_profile;

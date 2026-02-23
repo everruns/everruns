@@ -345,6 +345,7 @@ impl StorageBackend {
         session_id: SessionId,
         since_sequence: Option<i32>,
         since_id: Option<EventId>,
+        filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
         dispatch!(
@@ -353,6 +354,7 @@ impl StorageBackend {
             session_id,
             since_sequence,
             since_id,
+            filter_types,
             exclude_types
         )
     }

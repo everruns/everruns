@@ -1041,6 +1041,27 @@ Events can be filtered by:
 - `sequence`: For pagination and replay (after sequence N)
 - `turn_id`: Filter events for a specific turn
 
+### Query Parameter Filters
+
+Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) endpoints accept:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `since_id` | EventId | Resume after this event ID (UUID v7 monotonic) |
+| `types` | string[] | **Positive filter**: only return events matching these types. Empty = all types. |
+| `exclude` | string[] | **Negative filter**: remove matching types from the result. |
+
+**Semantics when both are provided:** `types` narrows first, then `exclude` removes from that set.
+
+**Examples:**
+- Only turn lifecycle: `?types=turn.started&types=turn.completed`
+- Everything except deltas: `?exclude=output.message.delta&exclude=reason.thinking.delta`
+- Turn events but not failures: `?types=turn.started&types=turn.completed&types=turn.failed&exclude=turn.failed`
+
+**Validation:**
+- Both parameters accept only known event types (see Event Type Registry). Unknown types return 400.
+- Maximum 25 values per parameter to prevent abuse.
+
 ### Message Events Filter
 
 A partial index exists for efficient message queries:

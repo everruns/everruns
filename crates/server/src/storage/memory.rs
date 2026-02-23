@@ -966,6 +966,7 @@ impl InMemoryDatabase {
         session_id: SessionId,
         since_sequence: Option<i32>,
         since_id: Option<EventId>,
+        filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
         let events = self.events.read();
@@ -975,7 +976,11 @@ impl InMemoryDatabase {
                 if e.session_id != session_id {
                     return false;
                 }
-                // Filter out excluded event types
+                // Positive type filter: only include matching types (when non-empty)
+                if !filter_types.is_empty() && !filter_types.contains(&e.event_type) {
+                    return false;
+                }
+                // Negative type filter: exclude matching types
                 if !exclude_types.is_empty() && exclude_types.contains(&e.event_type) {
                     return false;
                 }
@@ -3764,11 +3769,214 @@ mod tests {
             .unwrap();
         }
 
-        let events = db.list_events(session.id, None, None, &[]).await.unwrap();
+        let events = db
+            .list_events(session.id, None, None, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(events.len(), 3);
         assert_eq!(events[0].sequence, 1);
         assert_eq!(events[1].sequence, 2);
         assert_eq!(events[2].sequence, 3);
+    }
+
+    /// Helper: create an agent + session for event filter tests.
+    async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
+                    name: "Filter Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                    tools: serde_json::json!([]),
+                },
+            )
+            .await
+            .unwrap();
+
+        let session = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: Some(agent.id),
+                title: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        // Create events of different types
+        for event_type in [
+            "input.message",
+            "output.message.delta",
+            "output.message.completed",
+            "turn.started",
+            "turn.completed",
+            "reason.thinking.delta",
+        ] {
+            db.create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: Utc::now(),
+                context: serde_json::json!({}),
+                data: serde_json::json!({}),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        session.id
+    }
+
+    #[tokio::test]
+    async fn test_list_events_filter_types_positive() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Positive filter: only turn events
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["turn.started".to_string(), "turn.completed".to_string()],
+                &[],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| e.event_type.starts_with("turn.")));
+    }
+
+    #[tokio::test]
+    async fn test_list_events_filter_types_single() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Positive filter: single type
+        let events = db
+            .list_events(session_id, None, None, &["input.message".to_string()], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "input.message");
+    }
+
+    #[tokio::test]
+    async fn test_list_events_filter_types_empty_returns_all() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Empty types = return all (6 events created)
+        let events = db
+            .list_events(session_id, None, None, &[], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_list_events_filter_types_no_match() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Types that don't exist — empty result
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["nonexistent.type".to_string()],
+                &[],
+            )
+            .await
+            .unwrap();
+
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_events_exclude_only() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Exclude delta events (2 of 6)
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &[],
+                &[
+                    "output.message.delta".to_string(),
+                    "reason.thinking.delta".to_string(),
+                ],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 4);
+        assert!(events.iter().all(|e| !e.event_type.contains("delta")));
+    }
+
+    #[tokio::test]
+    async fn test_list_events_types_and_exclude_combined() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // types narrows to turn.* + input.message (3 events),
+        // then exclude removes turn.completed (1 event) → 2 events remain
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &[
+                    "turn.started".to_string(),
+                    "turn.completed".to_string(),
+                    "input.message".to_string(),
+                ],
+                &["turn.completed".to_string()],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 2);
+        let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+        assert!(types.contains(&"turn.started"));
+        assert!(types.contains(&"input.message"));
+        assert!(!types.contains(&"turn.completed"));
+    }
+
+    #[tokio::test]
+    async fn test_list_events_types_fully_excluded() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // types selects one event, exclude removes that same type → empty
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["input.message".to_string()],
+                &["input.message".to_string()],
+            )
+            .await
+            .unwrap();
+
+        assert!(events.is_empty());
     }
 
     #[tokio::test]

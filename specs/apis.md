@@ -259,6 +259,16 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 | GET | `/v1/sessions/{session_id}/sse` | Stream events (SSE) |
 | GET | `/v1/sessions/{session_id}/events` | List events (JSON) |
 
+**Query Parameters** (both endpoints):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `since_id` | EventId | Resume after this event ID |
+| `types` | string[] | Positive filter: only return matching event types. Empty = all. Repeated key format: `?types=a&types=b` |
+| `exclude` | string[] | Negative filter: remove matching event types. Applied after `types`. Repeated key format: `?exclude=a&exclude=b` |
+
+When both `types` and `exclude` are provided, `types` narrows first, then `exclude` removes from that set. Both accept only known event types (max 25 per parameter). See [events.md](events.md) for full filtering semantics.
+
 ### LLM Provider Configuration
 
 | Method | Path | Description |

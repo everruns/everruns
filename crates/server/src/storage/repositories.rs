@@ -1101,10 +1101,13 @@ impl Database {
         session_id: SessionId,
         since_sequence: Option<i32>,
         since_id: Option<EventId>,
+        filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
-        // Prefer since_id (UUID v7 monotonically increasing) over sequence for filtering
-        // exclude_types filters out unwanted event types (e.g., delta events)
+        // Prefer since_id (UUID v7 monotonically increasing) over sequence for filtering.
+        // filter_types: positive filter — when non-empty, only return matching event types.
+        // exclude_types: negative filter — remove matching event types from results.
+        // When both are provided, filter_types narrows first, then exclude_types removes.
         let rows = match (since_id, since_sequence) {
             (Some(id), _) => {
                 sqlx::query_as::<_, EventRow>(
@@ -1112,12 +1115,14 @@ impl Database {
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
                     FROM events
                     WHERE session_id = $1 AND id > $2
-                      AND (cardinality($3::text[]) = 0 OR event_type <> ALL($3))
+                      AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
+                      AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
                     ORDER BY id ASC
                     "#,
                 )
                 .bind(session_id.uuid())
                 .bind(id.uuid())
+                .bind(filter_types)
                 .bind(exclude_types)
                 .fetch_all(&self.pool)
                 .await?
@@ -1128,12 +1133,14 @@ impl Database {
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
                     FROM events
                     WHERE session_id = $1 AND sequence > $2
-                      AND (cardinality($3::text[]) = 0 OR event_type <> ALL($3))
+                      AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
+                      AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
                     ORDER BY sequence ASC
                     "#,
                 )
                 .bind(session_id.uuid())
                 .bind(seq)
+                .bind(filter_types)
                 .bind(exclude_types)
                 .fetch_all(&self.pool)
                 .await?
@@ -1144,11 +1151,13 @@ impl Database {
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
                     FROM events
                     WHERE session_id = $1
-                      AND (cardinality($2::text[]) = 0 OR event_type <> ALL($2))
+                      AND (cardinality($2::text[]) = 0 OR event_type = ANY($2))
+                      AND (cardinality($3::text[]) = 0 OR event_type <> ALL($3))
                     ORDER BY sequence ASC
                     "#,
                 )
                 .bind(session_id.uuid())
+                .bind(filter_types)
                 .bind(exclude_types)
                 .fetch_all(&self.pool)
                 .await?
