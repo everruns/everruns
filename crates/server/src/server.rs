@@ -1,16 +1,9 @@
-// Server configuration and backward-compatible entrypoint
+// Server configuration and router helpers
 //
 // Decision: ServerConfig stays here; orchestration logic moved to app_builder.rs
-// Decision: run() kept as thin wrapper around ServerAppBuilder for backward compat
 
-use crate::app_builder::ServerAppBuilder;
-use crate::auth::AuthBackend;
-use crate::storage::StorageBackend;
-
-use anyhow::Result;
 use axum::Router;
 use axum::http::HeaderValue;
-use std::sync::Arc;
 
 /// Server configuration loaded from environment
 pub struct ServerConfig {
@@ -49,27 +42,6 @@ impl ServerConfig {
             grpc_addr,
         }
     }
-}
-
-/// Start the Everruns server (backward-compatible wrapper around `ServerAppBuilder`).
-///
-/// Prefer using `ServerAppBuilder` directly for new code — it exposes additional
-/// extension points (event listeners, migrations, background tasks).
-///
-/// `config` — server configuration (dev mode, addresses, CORS, etc.)
-/// `auth_factory` — creates an auth backend given the storage backend.
-///   Use `|db| Arc::new(BuiltinAuthBackend::new(auth_config, db))` for OSS default.
-/// `extra_routes` — additional routes merged into the API router (billing, etc.)
-pub async fn run(
-    config: ServerConfig,
-    auth_factory: impl FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend> + Send + 'static,
-    extra_routes: Option<Router>,
-) -> Result<()> {
-    let mut builder = ServerAppBuilder::new(config).auth(auth_factory);
-    if let Some(routes) = extra_routes {
-        builder = builder.routes(routes);
-    }
-    builder.run().await
 }
 
 /// Build router with optional API prefix
