@@ -73,6 +73,7 @@ prost.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-native-certs", "blocking"] }
 http-body-util = "0.1"
 sysinfo = "0.33"
+serde_html_form = "0.2"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
 
 [[bench]]

@@ -7,11 +7,15 @@ use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
 };
+// Use axum_extra::extract::Query (backed by serde_html_form) instead of axum's
+// built-in Query (backed by serde_urlencoded) because serde_urlencoded does not
+// support deserializing repeated query keys (?exclude=a&exclude=b) into Vec<String>.
+use axum_extra::extract::Query;
 use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Event, EventListener};
 use serde::Deserialize;
@@ -567,11 +571,8 @@ mod tests {
     }
 
     /// Test that EventsQuery JSON deserialization works with prefixed event IDs.
-    /// This simulates what axum Query extractor does when parsing query params.
     #[test]
     fn test_events_query_deserializes_prefixed_event_id() {
-        // axum internally uses serde to deserialize query params
-        // Test JSON deserialization to verify EventId's Deserialize impl works
         let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": []}"#;
         let query: EventsQuery = serde_json::from_str(json)
             .expect("Should deserialize EventsQuery with prefixed event ID");
@@ -585,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn test_events_query_with_exclude() {
+    fn test_events_query_json_with_exclude() {
         let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": ["output.message.delta", "reason.thinking.delta"]}"#;
         let query: EventsQuery =
             serde_json::from_str(json).expect("Should deserialize EventsQuery");
@@ -604,5 +605,64 @@ mod tests {
 
         assert!(query.since_id.is_none());
         assert!(query.exclude.is_empty());
+    }
+
+    // Tests below use serde_html_form (the actual deserializer backing
+    // axum_extra::extract::Query) to verify real URL query string parsing.
+
+    /// Repeated keys (?exclude=a&exclude=b) must deserialize into Vec<String>.
+    /// This was broken with axum's built-in Query (serde_urlencoded) and is
+    /// the primary bug this fix addresses.
+    #[test]
+    fn test_query_string_exclude_repeated_keys() {
+        let qs = "exclude=output.message.delta&exclude=reason.thinking.delta";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("repeated keys should parse");
+
+        assert_eq!(query.exclude.len(), 2);
+        assert_eq!(query.exclude[0], "output.message.delta");
+        assert_eq!(query.exclude[1], "reason.thinking.delta");
+        assert!(query.since_id.is_none());
+    }
+
+    /// Single exclude value should work.
+    #[test]
+    fn test_query_string_exclude_single() {
+        let qs = "exclude=output.message.delta";
+        let query: EventsQuery =
+            serde_html_form::from_str(qs).expect("single exclude should parse");
+
+        assert_eq!(query.exclude.len(), 1);
+        assert_eq!(query.exclude[0], "output.message.delta");
+    }
+
+    /// No exclude param at all should default to empty vec.
+    #[test]
+    fn test_query_string_no_exclude() {
+        let qs = "since_id=event_019c263feac17809a9d442e25317890b";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("no exclude should parse");
+
+        assert!(query.exclude.is_empty());
+        assert!(query.since_id.is_some());
+    }
+
+    /// Empty query string should work (all fields optional/defaulted).
+    #[test]
+    fn test_query_string_empty() {
+        let qs = "";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("empty query should parse");
+
+        assert!(query.since_id.is_none());
+        assert!(query.exclude.is_empty());
+    }
+
+    /// Combined since_id and exclude params.
+    #[test]
+    fn test_query_string_since_id_with_exclude() {
+        let qs = "since_id=event_019c263feac17809a9d442e25317890b&exclude=output.message.delta&exclude=reason.thinking.delta";
+        let query: EventsQuery =
+            serde_html_form::from_str(qs).expect("combined params should parse");
+
+        assert!(query.since_id.is_some());
+        assert_eq!(query.exclude.len(), 2);
     }
 }
