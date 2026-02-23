@@ -1,28 +1,64 @@
 # Ship
 
-Run the full ship flow from AGENTS.md: validate, push, create PR, and merge when CI is green.
+Run the full ship flow: verify quality, ensure test coverage, update artifacts, smoke test, then push, create PR, and merge when CI is green.
+
+This command implements the complete "Shipping" definition and Pre-PR Checklist from AGENTS.md. When the user says "ship" or "fix and ship", execute ALL phases below — not just the push/merge steps.
 
 ## Arguments
 
-- `$ARGUMENTS` - Optional: description of what is being shipped (used for PR title/body context)
+- `$ARGUMENTS` - Optional: description of what is being shipped (used for PR title/body context and to scope the quality checks)
 
 ## Instructions
 
-### 1. Pre-flight checks
+### Phase 1: Pre-flight
 
-- Confirm we're NOT on `main` or `master`
-- Confirm there are no uncommitted changes (`git diff --quiet && git diff --cached --quiet`)
-- If uncommitted changes exist, stop and tell the user
+1. Confirm we're NOT on `main` or `master`
+2. Confirm there are no uncommitted changes (`git diff --quiet && git diff --cached --quiet`)
+3. If uncommitted changes exist, stop and tell the user
 
-### 2. Rebase on latest main
+### Phase 2: Test Coverage
+
+Review the changes on this branch (use `git diff origin/main...HEAD` and `git log origin/main..HEAD`) and ensure comprehensive test coverage:
+
+1. **Identify all changed code paths** — every new/modified function, endpoint, handler, component
+2. **Verify existing tests cover the changes** — run `cargo test --all-features` and check for failures
+3. **Write missing tests** for any uncovered code paths:
+   - **Positive tests**: happy path, valid inputs, expected state transitions
+   - **Negative tests**: invalid inputs, error conditions, boundary cases, permission failures, missing resources
+   - **Backend tests**: unit tests for logic, integration tests for API endpoints and database operations
+   - **UI tests**: if UI code was changed, verify `npm run lint` and `npm run build` pass in `apps/ui/`; add/update component tests as needed
+4. **Run all tests** to confirm green: `cargo test --all-features`
+5. If any test fails, fix the code or test until green
+
+### Phase 3: Artifact Updates
+
+Review the changes and update project artifacts where applicable. Skip items that aren't affected.
+
+1. **Specs** (`specs/`): if the change adds/modifies behavior covered by a spec, update the relevant spec file to stay in sync
+2. **Threat model** (`specs/threat-model.md`): if the change introduces new attack surfaces, external inputs, authentication/authorization changes, or data handling — add or update threat entries using the `TM-<CATEGORY>-<NNN>` format and add `// THREAT[TM-XXX-NNN]` code comments at mitigation points
+3. **AGENTS.md**: if the change adds new specs, skills, or modifies development workflows — update the relevant section
+4. **Test cases** (`test_cases/`): for significant new features or complex flows, add manual test cases following the `TC###_short_description.md` format in `specs/test-cases.md`
+5. **Documentation** (`apps/docs/`): if the change affects user-facing APIs, configuration, or features documented on the docs site — update the relevant docs pages
+6. **OpenAPI spec**: if API endpoints were added/modified, run `./scripts/export-openapi.sh` to regenerate
+
+### Phase 4: Smoke Testing
+
+Smoke test impacted functionality to verify it works end-to-end:
+
+1. **UI changes**: start dev server (`just start-dev --no-watch`), verify the UI loads and changed functionality works. Take UI screenshots if applicable using the `ui-screenshots` skill.
+2. **Backend/API changes**: start full mode (`sudo -E .claude/skills/no-docker-setup/scripts/start.sh` or `just start-all --no-watch`), hit affected endpoints, verify responses.
+3. **Database/migration changes**: test in full mode with PostgreSQL to verify migrations apply and queries work.
+4. Stop any servers started for smoke testing before proceeding.
+
+If smoke testing reveals issues, fix them and loop back to Phase 2 (tests must still pass).
+
+### Phase 5: Quality Gates
 
 ```bash
 git fetch origin main && git rebase origin/main
 ```
 
 - If rebase fails with conflicts, abort and tell the user to resolve manually
-
-### 3. Run `just pre-push` (fast ~30s)
 
 ```bash
 just pre-push
@@ -31,23 +67,19 @@ just pre-push
 - If it fails, run `just fmt` to auto-fix, then retry once
 - If still failing, stop and report
 
-### 4. Run `just pre-pr` (full validation)
-
 ```bash
 just pre-pr
 ```
 
 - If it fails, stop and report the failures
 
-### 5. Push to remote
+### Phase 6: Push and PR
 
 ```bash
 git push -u origin <current-branch>
 ```
 
-### 6. Create PR (if none exists)
-
-Check for existing PR first:
+Check for existing PR:
 
 ```bash
 gh pr view --json url 2>/dev/null
@@ -56,19 +88,19 @@ gh pr view --json url 2>/dev/null
 If no PR exists, create one using the PR template (`.github/pull_request_template.md`):
 
 - **Title**: conventional commit style from the branch commits
-- **Body**: fill in the PR template sections (What, Why, How, Risk, Checklist) based on the actual changes
+- **Body**: fill in the PR template sections (What, Why, How, Risk, Checklist) based on the actual changes. Include what tests were added/verified.
 - Use `gh pr create`
 
-If a PR already exists, report its URL and continue.
+If a PR already exists, update it if needed and report its URL.
 
-### 7. Wait for CI and merge
+### Phase 7: Wait for CI and Merge
 
 - Check CI status with `gh pr checks` (poll every 30s, up to 15 minutes)
 - If CI is green, merge with `gh pr merge --squash --auto`
 - If CI fails, report the failing checks and stop
 - **NEVER** merge when CI is red
 
-### 8. Post-merge cleanup
+### Phase 8: Post-merge
 
 After successful merge:
 
@@ -77,6 +109,7 @@ After successful merge:
 
 ## Notes
 
-- This codifies the "Shipping" section and "Pre-PR Checklist" from AGENTS.md
-- Manual steps (smoke testing, UI screenshots) should be done BEFORE running `/ship`
-- The `$ARGUMENTS` context helps generate a meaningful PR description
+- This is the canonical shipping workflow. It implements the full "Shipping" definition and Pre-PR Checklist from AGENTS.md.
+- Phases 2-4 (tests, artifacts, smoke testing) are the quality core — do NOT skip them.
+- The `$ARGUMENTS` context helps scope which tests, specs, and smoke tests are relevant.
+- For "fix and ship" requests: implement the fix first, then run `/ship` to validate and merge.
