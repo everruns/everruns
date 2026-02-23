@@ -228,11 +228,22 @@ impl From<WorkerInfo> for WorkerResponse {
     }
 }
 
+/// Workers summary stats
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkersSummaryResponse {
+    pub active: usize,
+    pub draining: usize,
+    pub stopped: usize,
+    pub total_capacity: usize,
+    pub total_load: usize,
+}
+
 /// Workers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersListResponse {
     pub data: Vec<WorkerResponse>,
     pub total: usize,
+    pub summary: WorkersSummaryResponse,
 }
 
 /// Workflow response
@@ -556,7 +567,27 @@ pub async fn list_workers(
     let total = workers.len();
     let data: Vec<WorkerResponse> = workers.into_iter().map(WorkerResponse::from).collect();
 
-    Ok(Json(WorkersListResponse { data, total }))
+    let summary = WorkersSummaryResponse {
+        active: data.iter().filter(|w| w.status == "active").count(),
+        draining: data.iter().filter(|w| w.status == "draining").count(),
+        stopped: data.iter().filter(|w| w.status == "stopped").count(),
+        total_capacity: data
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.max_concurrency as usize)
+            .sum(),
+        total_load: data
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.current_load as usize)
+            .sum(),
+    };
+
+    Ok(Json(WorkersListResponse {
+        data,
+        total,
+        summary,
+    }))
 }
 
 /// POST /v1/durable/workers/:worker_id/drain - Drain a worker
@@ -1977,5 +2008,197 @@ mod tests {
         // Client uses reason to log
         let reason = parsed["reason"].as_str().unwrap_or("unknown");
         assert_eq!(reason, "error");
+    }
+
+    // ============================================
+    // WorkersSummaryResponse tests
+    // ============================================
+
+    /// Helper to create a WorkerResponse for testing
+    fn make_worker(
+        id: &str,
+        status: &str,
+        max_concurrency: u32,
+        current_load: u32,
+    ) -> WorkerResponse {
+        WorkerResponse {
+            id: id.to_string(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["run_session".to_string()],
+            max_concurrency,
+            current_load,
+            status: status.to_string(),
+            accepting_tasks: status == "active",
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: Some("host1".to_string()),
+            version: Some("0.8.1".to_string()),
+            metadata: None,
+            tasks_completed: 100,
+            tasks_failed: 2,
+            avg_task_duration_ms: Some(500),
+        }
+    }
+
+    /// Build a WorkersListResponse the same way list_workers() does
+    fn build_workers_list(workers: Vec<WorkerResponse>) -> WorkersListResponse {
+        let total = workers.len();
+        let summary = WorkersSummaryResponse {
+            active: workers.iter().filter(|w| w.status == "active").count(),
+            draining: workers.iter().filter(|w| w.status == "draining").count(),
+            stopped: workers.iter().filter(|w| w.status == "stopped").count(),
+            total_capacity: workers
+                .iter()
+                .filter(|w| w.status == "active")
+                .map(|w| w.max_concurrency as usize)
+                .sum(),
+            total_load: workers
+                .iter()
+                .filter(|w| w.status == "active")
+                .map(|w| w.current_load as usize)
+                .sum(),
+        };
+        WorkersListResponse {
+            data: workers,
+            total,
+            summary,
+        }
+    }
+
+    #[test]
+    fn test_workers_summary_mixed_statuses() {
+        let workers = vec![
+            make_worker("w1", "active", 10, 3),
+            make_worker("w2", "active", 8, 5),
+            make_worker("w3", "draining", 10, 2),
+            make_worker("w4", "stopped", 10, 0),
+        ];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.total, 4);
+        assert_eq!(resp.summary.active, 2);
+        assert_eq!(resp.summary.draining, 1);
+        assert_eq!(resp.summary.stopped, 1);
+        // Only active workers count toward capacity/load
+        assert_eq!(resp.summary.total_capacity, 18); // 10 + 8
+        assert_eq!(resp.summary.total_load, 8); // 3 + 5
+    }
+
+    #[test]
+    fn test_workers_summary_all_active() {
+        let workers = vec![
+            make_worker("w1", "active", 10, 5),
+            make_worker("w2", "active", 10, 3),
+            make_worker("w3", "active", 10, 7),
+        ];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.summary.active, 3);
+        assert_eq!(resp.summary.draining, 0);
+        assert_eq!(resp.summary.stopped, 0);
+        assert_eq!(resp.summary.total_capacity, 30);
+        assert_eq!(resp.summary.total_load, 15);
+    }
+
+    #[test]
+    fn test_workers_summary_no_active_workers() {
+        let workers = vec![
+            make_worker("w1", "draining", 10, 2),
+            make_worker("w2", "stopped", 10, 0),
+        ];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.summary.active, 0);
+        assert_eq!(resp.summary.draining, 1);
+        assert_eq!(resp.summary.stopped, 1);
+        // Draining/stopped workers don't count toward capacity/load
+        assert_eq!(resp.summary.total_capacity, 0);
+        assert_eq!(resp.summary.total_load, 0);
+    }
+
+    #[test]
+    fn test_workers_summary_empty_list() {
+        let resp = build_workers_list(vec![]);
+
+        assert_eq!(resp.total, 0);
+        assert_eq!(resp.summary.active, 0);
+        assert_eq!(resp.summary.draining, 0);
+        assert_eq!(resp.summary.stopped, 0);
+        assert_eq!(resp.summary.total_capacity, 0);
+        assert_eq!(resp.summary.total_load, 0);
+    }
+
+    #[test]
+    fn test_workers_summary_serialization_includes_summary() {
+        let workers = vec![
+            make_worker("w1", "active", 10, 3),
+            make_worker("w2", "draining", 8, 1),
+        ];
+
+        let resp = build_workers_list(workers);
+        let json = serde_json::to_string(&resp).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify summary field exists and has correct values
+        assert!(
+            parsed["summary"].is_object(),
+            "summary must be present in JSON"
+        );
+        assert_eq!(parsed["summary"]["active"], 1);
+        assert_eq!(parsed["summary"]["draining"], 1);
+        assert_eq!(parsed["summary"]["stopped"], 0);
+        assert_eq!(parsed["summary"]["total_capacity"], 10);
+        assert_eq!(parsed["summary"]["total_load"], 3);
+
+        // Verify top-level fields
+        assert_eq!(parsed["total"], 2);
+        assert!(parsed["data"].is_array());
+        assert_eq!(parsed["data"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_workers_summary_only_active_contribute_to_capacity() {
+        // Edge case: a draining worker with high load should NOT inflate totals
+        let workers = vec![
+            make_worker("w1", "active", 5, 2),
+            make_worker("w2", "draining", 100, 80),
+            make_worker("w3", "stopped", 50, 0),
+        ];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.summary.total_capacity, 5); // Only w1
+        assert_eq!(resp.summary.total_load, 2); // Only w1
+    }
+
+    #[test]
+    fn test_workers_summary_single_active_worker() {
+        let workers = vec![make_worker("w1", "active", 20, 15)];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.summary.active, 1);
+        assert_eq!(resp.summary.draining, 0);
+        assert_eq!(resp.summary.stopped, 0);
+        assert_eq!(resp.summary.total_capacity, 20);
+        assert_eq!(resp.summary.total_load, 15);
+    }
+
+    #[test]
+    fn test_workers_summary_zero_load_active_workers() {
+        let workers = vec![
+            make_worker("w1", "active", 10, 0),
+            make_worker("w2", "active", 10, 0),
+        ];
+
+        let resp = build_workers_list(workers);
+
+        assert_eq!(resp.summary.active, 2);
+        assert_eq!(resp.summary.total_capacity, 20);
+        assert_eq!(resp.summary.total_load, 0);
     }
 }
