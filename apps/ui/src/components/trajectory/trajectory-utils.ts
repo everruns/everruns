@@ -139,11 +139,11 @@ function truncate(text: string, maxLen: number): string {
 
 // --- Build trajectory from events ---
 
-interface TurnAccumulator {
+export interface TurnAccumulator {
   turnId: string;
   startTs: string;
   inputMessageId?: string;
-  userMessage?: { eventId: string; text: string; ts: string };
+  userMessage?: { eventId: string; text: string; ts: string; messageId?: string };
   iterations: IterationAccumulator[];
   agentMessage?: { eventId: string; text: string; ts: string; hasToolCalls: boolean };
   completed: boolean;
@@ -153,7 +153,7 @@ interface TurnAccumulator {
   iterationCount?: number;
 }
 
-interface IterationAccumulator {
+export interface IterationAccumulator {
   reasoning?: {
     eventId: string;
     ts: string;
@@ -177,7 +177,7 @@ interface IterationAccumulator {
   };
 }
 
-function buildTurns(events: Event[]): TurnAccumulator[] {
+export function buildTurns(events: Event[]): TurnAccumulator[] {
   const turns: TurnAccumulator[] = [];
   let currentTurn: TurnAccumulator | null = null;
   let currentIteration: IterationAccumulator | null = null;
@@ -196,29 +196,46 @@ function buildTurns(events: Event[]): TurnAccumulator[] {
     switch (event.type) {
       case "turn.started": {
         const data = event.data as TurnStartedData;
-        currentTurn = {
-          turnId: data.turn_id,
-          startTs: event.ts,
-          inputMessageId: data.input_message_id,
-          iterations: [],
-          completed: false,
-          failed: false,
-        };
+
+        // Check if previous turn is an orphan (input.message arrived before turn.started).
+        // Adopt it by updating its turnId instead of creating a duplicate turn.
+        const lastTurn = turns.length > 0 ? turns[turns.length - 1] : null;
+        const isOrphan =
+          lastTurn &&
+          !lastTurn.completed &&
+          lastTurn.turnId.startsWith("orphan-") &&
+          lastTurn.userMessage?.messageId === data.input_message_id;
+
+        if (isOrphan && lastTurn) {
+          lastTurn.turnId = data.turn_id;
+          lastTurn.inputMessageId = data.input_message_id;
+          currentTurn = lastTurn;
+        } else {
+          currentTurn = {
+            turnId: data.turn_id,
+            startTs: event.ts,
+            inputMessageId: data.input_message_id,
+            iterations: [],
+            completed: false,
+            failed: false,
+          };
+          turns.push(currentTurn);
+        }
         currentIteration = null;
-        turns.push(currentTurn);
         break;
       }
 
       case "input.message": {
         const data = event.data as InputMessageData;
         const text = getTextFromContent(data.message?.content || []);
+        const messageId = data.message?.id;
         if (currentTurn) {
-          currentTurn.userMessage = { eventId: event.id, text, ts: event.ts };
+          currentTurn.userMessage = { eventId: event.id, text, ts: event.ts, messageId };
         } else {
           const orphanTurn: TurnAccumulator = {
             turnId: `orphan-${event.id}`,
             startTs: event.ts,
-            userMessage: { eventId: event.id, text, ts: event.ts },
+            userMessage: { eventId: event.id, text, ts: event.ts, messageId },
             iterations: [],
             completed: false,
             failed: false,
