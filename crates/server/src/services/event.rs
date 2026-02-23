@@ -199,11 +199,15 @@ impl EventService {
 
     /// List events for a session, filtering out unsupported events.
     /// Unsupported events are internal and never exposed via API.
+    /// `filter_types`: positive filter — when non-empty, only return matching types.
+    /// `exclude_types`: negative filter — remove matching types from the result.
+    /// When both are provided, `filter_types` narrows first, then `exclude_types` removes.
     pub async fn list(
         &self,
         session_id: Uuid,
         since_sequence: Option<i32>,
         since_id: Option<Uuid>,
+        filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<Event>> {
         let rows = self
@@ -212,6 +216,7 @@ impl EventService {
                 SessionId::from_uuid(session_id),
                 since_sequence,
                 since_id.map(EventId::from_uuid),
+                filter_types,
                 exclude_types,
             )
             .await?;

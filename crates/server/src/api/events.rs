@@ -17,7 +17,7 @@ use axum::{
 // support deserializing repeated query keys (?exclude=a&exclude=b) into Vec<String>.
 use axum_extra::extract::Query;
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventListener};
+use everruns_core::{Event, EventListener, VALID_EVENT_TYPES};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse};
@@ -41,11 +41,58 @@ use utoipa::{IntoParams, ToSchema};
 pub struct EventsQuery {
     /// Filter events with ID greater than this event ID (prefixed format: event_{32-hex})
     pub since_id: Option<EventId>,
+    /// Positive type filter: only return events matching these types (can be specified multiple times).
+    /// When empty, all types are returned. Example: ?types=turn.started&types=turn.completed
+    #[serde(default)]
+    #[param(style = Form, explode = true)]
+    pub types: Vec<String>,
     /// Event types to exclude from the response (can be specified multiple times).
-    /// Common delta events to exclude: output.message.delta, reason.thinking.delta
+    /// Applied after `types` filter. Common delta events to exclude: output.message.delta, reason.thinking.delta
     #[serde(default)]
     #[param(style = Form, explode = true)]
     pub exclude: Vec<String>,
+}
+
+impl EventsQuery {
+    /// Validate types and exclude parameters.
+    /// Rejects unknown event types and limits array size to prevent abuse.
+    fn validate(&self) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+        validate_event_type_list(&self.types, "types")?;
+        validate_event_type_list(&self.exclude, "exclude")?;
+        Ok(())
+    }
+}
+
+/// Max event types per filter parameter. There are ~23 known types; 25 is generous.
+const MAX_EVENT_TYPE_FILTER_SIZE: usize = 25;
+
+/// Validate a list of event type strings: checks size limit and known types.
+fn validate_event_type_list(
+    types: &[String],
+    param_name: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!(
+                    "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
+                    types.len()
+                ),
+            }),
+        ));
+    }
+    for t in types {
+        if !VALID_EVENT_TYPES.contains(&t.as_str()) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("{param_name}: unknown event type '{t}'"),
+                }),
+            ));
+        }
+    }
+    Ok(())
 }
 
 // ============================================
@@ -147,6 +194,13 @@ pub fn routes(state: AppState) -> Router {
 /// Use the `since_id` query parameter to resume from a specific event. The server
 /// will only send events with IDs greater than the specified value. Event IDs are
 /// UUID v7 (monotonically increasing), ensuring reliable ordering.
+///
+/// ## Event Type Filtering
+///
+/// Use `types` for positive filtering (only return these types) and `exclude` for
+/// negative filtering (remove these types). When both are provided, `types` narrows
+/// first, then `exclude` removes from that set. Both accept only known event types
+/// (max 25 per parameter). Unknown types return 400.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/sse",
@@ -169,6 +223,8 @@ pub async fn stream_sse(
     Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
+    query.validate()?;
+
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -222,10 +278,11 @@ pub async fn stream_sse(
             )
         })?;
 
-    tracing::info!(session_id = %session_id, since_id = ?query.since_id, exclude = ?query.exclude, "Starting event stream");
+    tracing::info!(session_id = %session_id, since_id = ?query.since_id, types = ?query.types, exclude = ?query.exclude, "Starting event stream");
 
     let event_service = state.event_service.clone();
     let initial_since_id = query.since_id.map(|id| id.uuid());
+    let filter_types = query.types;
     let exclude_types = query.exclude;
 
     // Use realtime config for session events (fast updates for interactive UX)
@@ -276,6 +333,7 @@ pub async fn stream_sse(
         last_id: Option<Uuid>,
         backoff_ms: u64,
         config: SseStreamConfig,
+        filter_types: Vec<String>,
         exclude_types: Vec<String>,
         connection_start: Instant,
         /// Waker triggered by pg_notify when events arrive for this session
@@ -287,6 +345,7 @@ pub async fn stream_sse(
         last_id: initial_since_id,
         backoff_ms: config.min_backoff_ms,
         config,
+        filter_types,
         exclude_types,
         connection_start,
         event_waker,
@@ -360,7 +419,7 @@ pub async fn stream_sse(
 
                     // Fetch events since last ID
                     tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
-                    match event_service.list(session_id, None, state.last_id, &state.exclude_types).await {
+                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types).await {
                         Ok(events) if !events.is_empty() => {
                             // Get the last event ID for next iteration
                             let new_last_id = Some(events.last().unwrap().id.uuid());
@@ -397,6 +456,7 @@ pub async fn stream_sse(
                                 last_id: new_last_id,
                                 backoff_ms: new_backoff,
                                 config: state.config,
+                                filter_types: state.filter_types,
                                 exclude_types: state.exclude_types,
                                 connection_start: state.connection_start,
                                 event_waker: state.event_waker,
@@ -468,6 +528,11 @@ impl<S: Stream> Stream for GuardedStream<S> {
 // ============================================
 
 /// GET /v1/sessions/{session_id}/events - List events (JSON)
+///
+/// Returns events for a session as a JSON array. Supports filtering by event type
+/// via `types` (positive: only these types) and `exclude` (negative: remove these types).
+/// When both are provided, `types` narrows first, then `exclude` removes from that set.
+/// Both accept only known event types (max 25 per parameter). Unknown types return 400.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/events",
@@ -477,7 +542,7 @@ impl<S: Stream> Stream for GuardedStream<S> {
     ),
     responses(
         (status = 200, description = "Events list", body = ListResponse<Event>),
-        (status = 400, description = "Invalid session ID"),
+        (status = 400, description = "Invalid session ID or invalid event type filter"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -489,6 +554,8 @@ pub async fn list_events(
     Path(session_id): Path<String>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Json<ListResponse<Event>>, (StatusCode, Json<ErrorResponse>)> {
+    query.validate()?;
+
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -523,6 +590,7 @@ pub async fn list_events(
 
     // Fetch events using EventService (converts rows to core::Event)
     // Optional since_id filter for incremental fetching
+    // Optional types filter for positive event type selection
     // Optional exclude filter for filtering out event types (e.g., delta events)
     let events = state
         .event_service
@@ -530,6 +598,7 @@ pub async fn list_events(
             session_id.uuid(),
             None,
             query.since_id.map(|id| id.uuid()),
+            &query.types,
             &query.exclude,
         )
         .await
@@ -664,5 +733,185 @@ mod tests {
 
         assert!(query.since_id.is_some());
         assert_eq!(query.exclude.len(), 2);
+    }
+
+    // ============================================
+    // types (positive filter) query string tests
+    // ============================================
+
+    /// Repeated types keys (?types=a&types=b) parse into Vec<String>.
+    #[test]
+    fn test_query_string_types_repeated_keys() {
+        let qs = "types=turn.started&types=turn.completed";
+        let query: EventsQuery =
+            serde_html_form::from_str(qs).expect("repeated types should parse");
+
+        assert_eq!(query.types.len(), 2);
+        assert_eq!(query.types[0], "turn.started");
+        assert_eq!(query.types[1], "turn.completed");
+        assert!(query.exclude.is_empty());
+    }
+
+    /// Single types value.
+    #[test]
+    fn test_query_string_types_single() {
+        let qs = "types=input.message";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("single types should parse");
+
+        assert_eq!(query.types.len(), 1);
+        assert_eq!(query.types[0], "input.message");
+    }
+
+    /// No types param defaults to empty vec (all types returned).
+    #[test]
+    fn test_query_string_no_types() {
+        let qs = "";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("no types should parse");
+
+        assert!(query.types.is_empty());
+    }
+
+    /// Combined types and exclude params.
+    #[test]
+    fn test_query_string_types_with_exclude() {
+        let qs = "types=turn.started&types=turn.completed&types=turn.failed&exclude=turn.failed";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("types+exclude should parse");
+
+        assert_eq!(query.types.len(), 3);
+        assert_eq!(query.exclude.len(), 1);
+        assert_eq!(query.exclude[0], "turn.failed");
+    }
+
+    /// All three params combined: since_id, types, exclude.
+    #[test]
+    fn test_query_string_all_params() {
+        let qs = "since_id=event_019c263feac17809a9d442e25317890b&types=turn.started&types=turn.completed&exclude=turn.completed";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("all params should parse");
+
+        assert!(query.since_id.is_some());
+        assert_eq!(query.types.len(), 2);
+        assert_eq!(query.exclude.len(), 1);
+    }
+
+    /// JSON deserialization with types field.
+    #[test]
+    fn test_events_query_json_with_types() {
+        let json = r#"{"types": ["turn.started", "turn.completed"], "exclude": []}"#;
+        let query: EventsQuery = serde_json::from_str(json).expect("Should deserialize with types");
+
+        assert_eq!(query.types.len(), 2);
+        assert!(query.types.contains(&"turn.started".to_string()));
+        assert!(query.types.contains(&"turn.completed".to_string()));
+        assert!(query.exclude.is_empty());
+    }
+
+    /// JSON deserialization with both types and exclude.
+    #[test]
+    fn test_events_query_json_types_and_exclude() {
+        let json = r#"{"types": ["turn.started", "turn.completed", "session.idled"], "exclude": ["session.idled"]}"#;
+        let query: EventsQuery =
+            serde_json::from_str(json).expect("Should deserialize types+exclude");
+
+        assert_eq!(query.types.len(), 3);
+        assert_eq!(query.exclude.len(), 1);
+    }
+
+    // ============================================
+    // Validation tests
+    // ============================================
+
+    #[test]
+    fn test_validate_valid_types() {
+        let query = EventsQuery {
+            since_id: None,
+            types: vec!["turn.started".to_string(), "turn.completed".to_string()],
+            exclude: vec![],
+        };
+        assert!(query.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_valid_exclude() {
+        let query = EventsQuery {
+            since_id: None,
+            types: vec![],
+            exclude: vec![
+                "output.message.delta".to_string(),
+                "reason.thinking.delta".to_string(),
+            ],
+        };
+        assert!(query.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty_is_ok() {
+        let query = EventsQuery {
+            since_id: None,
+            types: vec![],
+            exclude: vec![],
+        };
+        assert!(query.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_unknown_type_rejected() {
+        let query = EventsQuery {
+            since_id: None,
+            types: vec!["turn.started".to_string(), "bogus.type".to_string()],
+            exclude: vec![],
+        };
+        let err = query.validate().unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.error.contains("bogus.type"));
+        assert!(err.1.error.contains("types"));
+    }
+
+    #[test]
+    fn test_validate_unknown_exclude_rejected() {
+        let query = EventsQuery {
+            since_id: None,
+            types: vec![],
+            exclude: vec!["not.a.real.type".to_string()],
+        };
+        let err = query.validate().unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.error.contains("not.a.real.type"));
+        assert!(err.1.error.contains("exclude"));
+    }
+
+    #[test]
+    fn test_validate_too_many_types_rejected() {
+        let types: Vec<String> = (0..30).map(|i| format!("type.{i}")).collect();
+        let query = EventsQuery {
+            since_id: None,
+            types,
+            exclude: vec![],
+        };
+        let err = query.validate().unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.error.contains("too many"));
+    }
+
+    #[test]
+    fn test_validate_too_many_exclude_rejected() {
+        let exclude: Vec<String> = (0..30).map(|i| format!("type.{i}")).collect();
+        let query = EventsQuery {
+            since_id: None,
+            types: vec![],
+            exclude,
+        };
+        let err = query.validate().unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.error.contains("too many"));
+    }
+
+    #[test]
+    fn test_validate_all_known_types_accepted() {
+        let query = EventsQuery {
+            since_id: None,
+            types: VALID_EVENT_TYPES.iter().map(|s| s.to_string()).collect(),
+            exclude: vec![],
+        };
+        assert!(query.validate().is_ok());
     }
 }

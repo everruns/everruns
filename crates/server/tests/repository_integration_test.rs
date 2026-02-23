@@ -299,7 +299,7 @@ async fn test_event_crud() {
 
     // List events
     let events = backend
-        .list_events(session.id, None, None, &[])
+        .list_events(session.id, None, None, &[], &[])
         .await
         .expect("Failed to list events");
     assert_eq!(events.len(), 1);
@@ -307,7 +307,7 @@ async fn test_event_crud() {
 
     // List with since_id filter
     let events_since = backend
-        .list_events(session.id, None, Some(event.id), &[])
+        .list_events(session.id, None, Some(event.id), &[], &[])
         .await
         .expect("Failed to list events with since_id");
     assert!(
@@ -386,6 +386,7 @@ async fn test_event_exclude_types() {
             session.id,
             None,
             None,
+            &[],
             &["output.message.delta".to_string()],
         )
         .await
@@ -394,6 +395,118 @@ async fn test_event_exclude_types() {
     assert_eq!(events[0].event_type, "input.message");
 
     // Note: No cleanup - events are append-only so sessions with events cannot be deleted
+}
+
+#[tokio::test]
+async fn test_event_filter_types() {
+    let backend = create_test_backend().await;
+
+    let agent = backend
+        .create_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: "Event Filter Types Agent".to_string(),
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+                tags: vec![],
+                tools: serde_json::json!([]),
+            },
+        )
+        .await
+        .expect("Failed to create agent");
+
+    let session = backend
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            title: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .expect("Failed to create session");
+
+    // Create events of different types
+    for event_type in [
+        "input.message",
+        "output.message.delta",
+        "output.message.completed",
+        "turn.started",
+        "turn.completed",
+    ] {
+        backend
+            .create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: Utc::now(),
+                context: json!({}),
+                data: json!({}),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("Failed to create event");
+    }
+
+    // Positive filter: only turn events
+    let events = backend
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["turn.started".to_string(), "turn.completed".to_string()],
+            &[],
+        )
+        .await
+        .expect("Failed to list events with types filter");
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().all(|e| e.event_type.starts_with("turn.")));
+
+    // Empty types = all events
+    let events = backend
+        .list_events(session.id, None, None, &[], &[])
+        .await
+        .expect("Failed to list all events");
+    assert_eq!(events.len(), 5);
+
+    // types + exclude combined: types selects 3, exclude removes 1
+    let events = backend
+        .list_events(
+            session.id,
+            None,
+            None,
+            &[
+                "input.message".to_string(),
+                "turn.started".to_string(),
+                "turn.completed".to_string(),
+            ],
+            &["turn.completed".to_string()],
+        )
+        .await
+        .expect("Failed to list events with types+exclude");
+    assert_eq!(events.len(), 2);
+    let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+    assert!(types.contains(&"input.message"));
+    assert!(types.contains(&"turn.started"));
+    assert!(!types.contains(&"turn.completed"));
+
+    // types with no match → empty
+    let events = backend
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["nonexistent.type".to_string()],
+            &[],
+        )
+        .await
+        .expect("Failed to list events with unmatched types");
+    assert!(events.is_empty());
 }
 
 // ============================================

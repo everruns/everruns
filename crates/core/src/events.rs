@@ -70,6 +70,35 @@ pub const SESSION_IDLED: &str = "session.idled";
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
 
+/// All valid event types for API filtering validation.
+/// Used by `types` and `exclude` query parameter validation to reject unknown types
+/// and prevent unbounded arrays from reaching the database.
+pub const VALID_EVENT_TYPES: &[&str] = &[
+    INPUT_MESSAGE,
+    OUTPUT_MESSAGE_STARTED,
+    OUTPUT_MESSAGE_DELTA,
+    OUTPUT_MESSAGE_COMPLETED,
+    TURN_STARTED,
+    TURN_COMPLETED,
+    TURN_FAILED,
+    TURN_CANCELLED,
+    REASON_STARTED,
+    REASON_COMPLETED,
+    ACT_STARTED,
+    ACT_COMPLETED,
+    TOOL_STARTED,
+    TOOL_COMPLETED,
+    TOOL_CALL_REQUESTED,
+    LLM_GENERATION,
+    REASON_THINKING_STARTED,
+    REASON_THINKING_DELTA,
+    REASON_THINKING_COMPLETED,
+    SESSION_STARTED,
+    SESSION_ACTIVATED,
+    SESSION_IDLED,
+    SCHEDULE_TRIGGERED,
+];
+
 // ============================================================================
 // Event Context
 // ============================================================================
