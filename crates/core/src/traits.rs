@@ -409,6 +409,9 @@ pub struct ToolContext {
 
     /// Optional session schedule store for scheduling tools.
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
+
+    /// Optional platform store for org-level management tools.
+    pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
 }
 
 impl ToolContext {
@@ -425,6 +428,7 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -441,6 +445,7 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -460,6 +465,7 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -480,6 +486,7 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -527,6 +534,15 @@ impl ToolContext {
         self.schedule_store = Some(store);
         self
     }
+
+    /// Add a platform store to this context.
+    pub fn with_platform_store(
+        mut self,
+        store: Arc<dyn crate::platform_store::PlatformStore>,
+    ) -> Self {
+        self.platform_store = Some(store);
+        self
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -542,6 +558,7 @@ impl std::fmt::Debug for ToolContext {
             .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
+            .field("platform_store", &self.platform_store.is_some())
             .finish()
     }
 }

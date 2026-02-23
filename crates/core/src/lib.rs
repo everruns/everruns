@@ -64,6 +64,7 @@ pub mod message_retriever;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
+pub mod platform_store;
 pub mod runtime_agent;
 pub mod tools;
 pub mod traits;
@@ -103,6 +104,9 @@ pub use traits::{
     SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
     UserConnectionResolver,
 };
+
+// Platform store re-exports
+pub use platform_store::{PlatformMessage, PlatformStore};
 
 // Event listener re-exports
 pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListener};
@@ -150,10 +154,10 @@ pub use capabilities::{
     GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool, GrepFilesTool,
     IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
     McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
-    MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities,
-    SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability, SqlExecuteTool,
-    SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool,
-    TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
+    MultiplyTool, NoopCapability, PlatformManagementCapability, ReadFileTool, ResearchCapability,
+    ResolvedCapabilities, SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability,
+    SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability,
+    SubtractTool, TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
     WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
     compute_features, get_dependencies, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id, resolve_dependencies,

@@ -130,6 +130,8 @@ where
     agent_store: Option<Arc<dyn AgentStore>>,
     /// Optional session schedule store for scheduling tools
     schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
+    /// Optional platform store for org-level management tools
+    platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -150,6 +152,7 @@ where
             session_mutator: None,
             agent_store: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -170,6 +173,7 @@ where
             session_mutator: None,
             agent_store: None,
             schedule_store: None,
+            platform_store: None,
         }
     }
 
@@ -221,6 +225,15 @@ where
         store: Arc<dyn crate::traits::SessionScheduleStore>,
     ) -> Self {
         self.schedule_store = Some(store);
+        self
+    }
+
+    /// Set platform store for org-level management tools.
+    pub fn with_platform_store(
+        mut self,
+        store: Arc<dyn crate::platform_store::PlatformStore>,
+    ) -> Self {
+        self.platform_store = Some(store);
         self
     }
 }
@@ -492,6 +505,7 @@ where
             || self.session_mutator.is_some()
             || self.agent_store.is_some()
             || self.schedule_store.is_some()
+            || self.platform_store.is_some()
         {
             let mut tool_context = if let Some(ref store) = self.file_store {
                 ToolContext::with_file_store(context.session_id, store.clone())
@@ -518,6 +532,9 @@ where
             }
             if let Some(ref store) = self.schedule_store {
                 tool_context.schedule_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.platform_store {
+                tool_context.platform_store = Some(store.clone());
             }
             self.tool_executor
                 .execute_with_context(&tool_call, tool_def, &tool_context)

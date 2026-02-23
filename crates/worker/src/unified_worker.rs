@@ -795,6 +795,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
     if let Some(schedule_store) = adapters.schedule_store() {
         atom = atom.with_schedule_store(schedule_store);
     }
+    if let Some(platform_store) = adapters.platform_store() {
+        atom = atom.with_platform_store(platform_store);
+    }
 
     let result = atom.execute(input.clone()).await?;
 
