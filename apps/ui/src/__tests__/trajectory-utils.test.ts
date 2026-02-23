@@ -1,4 +1,8 @@
-import { buildTurns, buildTrajectory, countStructuralEvents } from "@/components/trajectory/trajectory-utils";
+import {
+  buildTurns,
+  buildTrajectory,
+  countStructuralEvents,
+} from "@/components/trajectory/trajectory-utils";
 import type { Event, EventContext } from "@/lib/api/types";
 
 // --- Helpers ---
@@ -68,9 +72,7 @@ function actStartedEvent(turnId: string, inputMessageId: string): Event {
   return makeEvent(
     "act.started",
     {
-      tool_calls: [
-        { id: "tc-1", name: "bash", display_name: "Bash" },
-      ],
+      tool_calls: [{ id: "tc-1", name: "bash", display_name: "Bash" }],
     },
     turnContext(turnId, inputMessageId),
   );
@@ -113,11 +115,7 @@ function outputMessageCompletedEvent(turnId: string, inputMessageId: string, tex
   );
 }
 
-function turnCompletedEvent(
-  turnId: string,
-  inputMessageId: string,
-  iterations: number = 1,
-): Event {
+function turnCompletedEvent(turnId: string, inputMessageId: string, iterations: number = 1): Event {
   return makeEvent(
     "turn.completed",
     { turn_id: turnId, duration_ms: 500, iterations },
@@ -126,11 +124,7 @@ function turnCompletedEvent(
 }
 
 function turnFailedEvent(turnId: string, inputMessageId: string, error: string): Event {
-  return makeEvent(
-    "turn.failed",
-    { turn_id: turnId, error },
-    turnContext(turnId, inputMessageId),
-  );
+  return makeEvent("turn.failed", { turn_id: turnId, error }, turnContext(turnId, inputMessageId));
 }
 
 // --- Tests ---
