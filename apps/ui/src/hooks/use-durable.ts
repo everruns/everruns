@@ -25,6 +25,7 @@ import {
   deleteCircuitBreaker,
   getDurableSseUrl,
   getWorkflowSseUrl,
+  getDurableMetrics,
   type ListWorkflowsParams,
   type ListTasksParams,
   type ListDlqParams,
@@ -37,6 +38,7 @@ import type {
   DurableTask,
   DlqEntry,
   CircuitBreaker,
+  MetricsPoint,
 } from "@/lib/api/types";
 
 // ============================================
@@ -50,6 +52,7 @@ interface DurableSnapshot {
   tasks: { data: DurableTask[]; total: number };
   dlq: { data: DlqEntry[]; total: number };
   circuit_breakers: { data: CircuitBreaker[]; total: number };
+  metrics_history: MetricsPoint[];
 }
 
 interface WorkflowSnapshot {
@@ -144,6 +147,12 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
           queryClient.setQueryData(["durable", "tasks", undefined], snapshot.tasks);
           queryClient.setQueryData(["durable", "dlq", undefined], snapshot.dlq);
           queryClient.setQueryData(["durable", "circuit-breakers"], snapshot.circuit_breakers);
+          if (snapshot.metrics_history) {
+            queryClient.setQueryData(["durable", "metrics"], {
+              points: snapshot.metrics_history,
+              resolution_seconds: 10,
+            });
+          }
         } catch (e) {
           console.error("Failed to parse durable SSE snapshot:", e);
         }
@@ -404,6 +413,18 @@ export function useTaskStats() {
     queryKey: ["durable", "tasks", "stats"],
     queryFn: getTaskStats,
     staleTime: Infinity,
+  });
+}
+
+// ============================================
+// Metrics Time Series (SSE-backed + REST fallback)
+// ============================================
+
+export function useDurableMetrics() {
+  return useQuery({
+    queryKey: ["durable", "metrics"],
+    queryFn: getDurableMetrics,
+    staleTime: Infinity, // SSE provides updates
   });
 }
 

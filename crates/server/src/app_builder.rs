@@ -394,6 +394,7 @@ impl ServerAppBuilder {
                 })
             };
         let durable_state = api::durable::AppState::new(durable_store.clone());
+        durable_state.spawn_metrics_sampler();
         let scheduler_store = durable_store.clone();
         let schedules_state =
             api::schedules::routes(api::schedules::ScheduleAppState::new(durable_store));

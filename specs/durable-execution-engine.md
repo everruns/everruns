@@ -139,6 +139,23 @@ Latency improvement:
 - Semantic conventions: `durable.workflow.*`, `durable.activity.*`, `durable.worker.*`
 - Metrics: workflows started/completed/failed, activity durations, queue depth
 - Admin API: `/api/durable/workers`, `/api/durable/workflows`, `/api/durable/dlq`
+- Metrics time series: `/v1/durable/metrics/timeseries` — server-side ring buffer (360 points, 10s resolution)
+
+### Metrics Dashboard
+
+Real-time metrics charts on the durable overview page, powered by SSE streaming and a server-side `MetricsCollector`:
+
+1. **Workflow Status** — stacked area: running vs pending over time
+2. **Task Status** — stacked area: pending vs claimed over time
+3. **Throughput** — line chart: completed/failed tasks per interval (delta rates)
+4. **System Load** — line chart: load %, active workers, DLQ size
+
+**Architecture**: Background `tokio::spawn` task samples `SystemHealth` + worker stats every 10 seconds into a `VecDeque<MetricsPoint>` ring buffer (max 360 = 1 hour). Data is:
+- Included in global durable SSE `snapshot` events as `metrics_history` field
+- Available via REST `GET /v1/durable/metrics/timeseries`
+- Rendered with `recharts` (React charting library)
+
+Works in both dev mode (in-memory store) and full mode (PostgreSQL).
 
 ## Decisions
 

@@ -4,7 +4,14 @@ import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDurableHealth, useWorkers, useWorkflows, useSchedules } from "@/hooks";
+import {
+  useDurableHealth,
+  useWorkers,
+  useWorkflows,
+  useSchedules,
+  useDurableMetrics,
+} from "@/hooks";
+import { MetricsCharts } from "@/components/durable/metrics-charts";
 import {
   Server,
   Workflow,
@@ -52,6 +59,7 @@ export default function DurableDashboardPage() {
   const { data: workersData, isLoading: workersLoading } = useWorkers();
   const { data: workflowsData, isLoading: workflowsLoading } = useWorkflows({ limit: 5 });
   const { data: schedulesData, isLoading: schedulesLoading } = useSchedules({ limit: 5 });
+  const { data: metricsData } = useDurableMetrics();
 
   const isLoading = healthLoading || workersLoading || workflowsLoading || schedulesLoading;
 
@@ -198,6 +206,9 @@ export default function DurableDashboardPage() {
               </CardContent>
             </Card>
           )}
+
+        {/* Metrics Charts */}
+        {metricsData && <MetricsCharts points={metricsData.points} />}
 
         {/* Schedules Summary */}
         {schedulesData && schedulesData.data.length > 0 && (

@@ -451,6 +451,7 @@ Administrative endpoints for monitoring and managing the durable execution engin
 | GET | `/v1/durable/workflows/{id}` | Get workflow details |
 | GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
 | GET | `/v1/durable/tasks` | List task queue |
+| GET | `/v1/durable/metrics/timeseries` | Get metrics time series (ring buffer) |
 | GET | `/v1/durable/dlq` | List dead letter queue |
 | GET | `/v1/durable/circuit-breakers` | List circuit breakers |
 
@@ -503,6 +504,7 @@ These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/durable/workflows` - Returns all workflows
 - `GET /v1/durable/workflows/{id}/events` - Returns workflow events
 - `GET /v1/durable/tasks` - Returns all tasks
+- `GET /v1/durable/metrics/timeseries` - Returns metrics ring buffer (max 360 points)
 - `GET /v1/durable/dlq` - Returns all DLQ entries
 - `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
 - `GET /v1/user/connections` - Returns all user connections (array, no wrapper)
