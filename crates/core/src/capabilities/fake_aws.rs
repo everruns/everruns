@@ -212,14 +212,15 @@ const SG_PATH: &str = "/aws/security_groups.json";
 
 fn seed_ec2() -> Vec<Ec2Instance> {
     vec![
+        // --- Healthy production instances ---
         Ec2Instance {
-            instance_id: "i-0123456789abcdef0".into(),
+            instance_id: "i-0a1b2c3d4e5f60001".into(),
             instance_type: "t3.medium".into(),
             state: "running".into(),
             availability_zone: "us-east-1a".into(),
-            private_ip: "10.0.1.100".into(),
-            public_ip: Some("54.123.45.67".into()),
-            launch_time: "2025-01-01T10:00:00Z".into(),
+            private_ip: "10.0.1.10".into(),
+            public_ip: Some("54.200.10.1".into()),
+            launch_time: "2025-06-15T08:00:00Z".into(),
             tags: vec![
                 Tag {
                     key: "Name".into(),
@@ -229,39 +230,194 @@ fn seed_ec2() -> Vec<Ec2Instance> {
                     key: "Environment".into(),
                     value: "production".into(),
                 },
+                Tag {
+                    key: "Team".into(),
+                    value: "platform".into(),
+                },
             ],
         },
         Ec2Instance {
-            instance_id: "i-0987654321fedcba0".into(),
+            instance_id: "i-0a1b2c3d4e5f60002".into(),
+            instance_type: "t3.medium".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1b".into(),
+            private_ip: "10.0.2.10".into(),
+            public_ip: Some("54.200.10.2".into()),
+            launch_time: "2025-06-15T08:05:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "web-server-02".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "production".into(),
+                },
+                Tag {
+                    key: "Team".into(),
+                    value: "platform".into(),
+                },
+            ],
+        },
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60003".into(),
+            instance_type: "t3.large".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1a".into(),
+            private_ip: "10.0.1.20".into(),
+            public_ip: Some("54.200.10.3".into()),
+            launch_time: "2025-07-01T10:00:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "api-server-01".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "production".into(),
+                },
+                Tag {
+                    key: "Team".into(),
+                    value: "backend".into(),
+                },
+            ],
+        },
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60004".into(),
             instance_type: "t3.large".into(),
             state: "running".into(),
             availability_zone: "us-east-1b".into(),
-            private_ip: "10.0.2.100".into(),
-            public_ip: Some("54.123.45.68".into()),
-            launch_time: "2025-01-01T11:00:00Z".into(),
+            private_ip: "10.0.2.20".into(),
+            public_ip: Some("54.200.10.4".into()),
+            launch_time: "2025-07-01T10:05:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "api-server-02".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "production".into(),
+                },
+                Tag {
+                    key: "Team".into(),
+                    value: "backend".into(),
+                },
+            ],
+        },
+        // --- ISSUE: Idle expensive instance (m5.xlarge barely doing anything) ---
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60005".into(),
+            instance_type: "m5.xlarge".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1a".into(),
+            private_ip: "10.0.1.30".into(),
+            public_ip: Some("54.200.10.5".into()),
+            launch_time: "2025-03-10T09:00:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "batch-processor-01".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "production".into(),
+                },
+            ],
+        },
+        // --- ISSUE: Old-gen instance type (m4), missing Environment tag ---
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60006".into(),
+            instance_type: "m4.large".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1a".into(),
+            private_ip: "10.0.1.40".into(),
+            public_ip: Some("54.200.10.6".into()),
+            launch_time: "2024-11-01T12:00:00Z".into(),
             tags: vec![Tag {
                 key: "Name".into(),
-                value: "api-server-01".into(),
+                value: "legacy-app-01".into(),
             }],
+        },
+        // --- ISSUE: Dev instance running for months, wasting money ---
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60007".into(),
+            instance_type: "t3.small".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1a".into(),
+            private_ip: "10.0.1.50".into(),
+            public_ip: Some("54.200.10.7".into()),
+            launch_time: "2025-01-15T14:00:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "test-server-01".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "development".into(),
+                },
+                Tag {
+                    key: "Owner".into(),
+                    value: "intern-temp".into(),
+                },
+            ],
+        },
+        // --- ISSUE: Stopped expensive instance, NO tags at all ---
+        Ec2Instance {
+            instance_id: "i-0a1b2c3d4e5f60008".into(),
+            instance_type: "c5.2xlarge".into(),
+            state: "stopped".into(),
+            availability_zone: "us-east-1b".into(),
+            private_ip: "10.0.2.60".into(),
+            public_ip: None,
+            launch_time: "2025-02-01T08:00:00Z".into(),
+            tags: vec![],
         },
     ]
 }
 
 fn seed_rds() -> Vec<RdsDatabase> {
-    vec![RdsDatabase {
-        db_instance_id: "prod-postgres-01".into(),
-        engine: "postgres".into(),
-        engine_version: "15.4".into(),
-        instance_class: "db.t3.medium".into(),
-        status: "available".into(),
-        endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".into(),
-        port: 5432,
-        storage_gb: 100,
-    }]
+    vec![
+        // Healthy production database
+        RdsDatabase {
+            db_instance_id: "prod-postgres-01".into(),
+            engine: "postgres".into(),
+            engine_version: "15.4".into(),
+            instance_class: "db.t3.medium".into(),
+            status: "available".into(),
+            endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".into(),
+            port: 5432,
+            storage_gb: 100,
+        },
+        // ISSUE: Oversized instance for what is actually a staging workload
+        RdsDatabase {
+            db_instance_id: "staging-mysql-01".into(),
+            engine: "mysql".into(),
+            engine_version: "8.0".into(),
+            instance_class: "db.r5.large".into(),
+            status: "available".into(),
+            endpoint: "staging-mysql-01.abc123.us-east-1.rds.amazonaws.com".into(),
+            port: 3306,
+            storage_gb: 500,
+        },
+        // ISSUE: End-of-life Postgres 11 (EOL Nov 2023)
+        RdsDatabase {
+            db_instance_id: "legacy-pg-11".into(),
+            engine: "postgres".into(),
+            engine_version: "11.22".into(),
+            instance_class: "db.t3.small".into(),
+            status: "available".into(),
+            endpoint: "legacy-pg-11.abc123.us-east-1.rds.amazonaws.com".into(),
+            port: 5432,
+            storage_gb: 20,
+        },
+    ]
 }
 
 fn seed_s3() -> Vec<S3Bucket> {
     vec![
+        // Healthy: properly configured backup bucket
         S3Bucket {
             name: "company-data-backup".into(),
             region: "us-east-1".into(),
@@ -269,11 +425,44 @@ fn seed_s3() -> Vec<S3Bucket> {
             versioning_enabled: true,
             encryption_enabled: true,
         },
+        // ISSUE: Production assets without versioning
         S3Bucket {
             name: "static-assets-prod".into(),
-            region: "us-west-2".into(),
+            region: "us-east-1".into(),
             creation_date: "2024-08-15T00:00:00Z".into(),
             versioning_enabled: false,
+            encryption_enabled: true,
+        },
+        // ISSUE: No encryption AND no versioning — dump bucket
+        S3Bucket {
+            name: "temp-data-dump".into(),
+            region: "us-east-1".into(),
+            creation_date: "2025-04-01T00:00:00Z".into(),
+            versioning_enabled: false,
+            encryption_enabled: false,
+        },
+        // CRITICAL: PII bucket without encryption!
+        S3Bucket {
+            name: "customer-pii-records".into(),
+            region: "us-east-1".into(),
+            creation_date: "2024-09-10T00:00:00Z".into(),
+            versioning_enabled: true,
+            encryption_enabled: false,
+        },
+        // ISSUE: Stale dev bucket, no encryption, no versioning
+        S3Bucket {
+            name: "dev-test-artifacts".into(),
+            region: "us-west-2".into(),
+            creation_date: "2025-01-20T00:00:00Z".into(),
+            versioning_enabled: false,
+            encryption_enabled: false,
+        },
+        // Healthy: well-configured archive
+        S3Bucket {
+            name: "log-archive-2024".into(),
+            region: "us-east-1".into(),
+            creation_date: "2024-01-01T00:00:00Z".into(),
+            versioning_enabled: true,
             encryption_enabled: true,
         },
     ]
@@ -281,6 +470,7 @@ fn seed_s3() -> Vec<S3Bucket> {
 
 fn seed_iam() -> Vec<IamUser> {
     vec![
+        // ISSUE: Human user with full admin — should use roles instead
         IamUser {
             username: "admin-user".into(),
             user_id: "AIDAI23XYZABC123DEF".into(),
@@ -288,6 +478,7 @@ fn seed_iam() -> Vec<IamUser> {
             created_at: "2024-01-15T10:00:00Z".into(),
             permissions: vec!["AdministratorAccess".into()],
         },
+        // ISSUE: Overly broad PowerUserAccess
         IamUser {
             username: "developer-user".into(),
             user_id: "AIDAI23XYZABC456GHI".into(),
@@ -295,33 +486,182 @@ fn seed_iam() -> Vec<IamUser> {
             created_at: "2024-02-20T14:30:00Z".into(),
             permissions: vec!["PowerUserAccess".into()],
         },
+        // CRITICAL: CI bot with AdministratorAccess — massive risk
+        IamUser {
+            username: "ci-deploy-bot".into(),
+            user_id: "AIDAI23XYZABC789JKL".into(),
+            arn: "arn:aws:iam::123456789012:user/ci-deploy-bot".into(),
+            created_at: "2024-06-01T09:00:00Z".into(),
+            permissions: vec!["AdministratorAccess".into(), "IAMFullAccess".into()],
+        },
+        // ISSUE: Temp intern account with excessive permissions
+        IamUser {
+            username: "intern-temp".into(),
+            user_id: "AIDAI23XYZABCMNOPQR".into(),
+            arn: "arn:aws:iam::123456789012:user/intern-temp".into(),
+            created_at: "2025-06-01T10:00:00Z".into(),
+            permissions: vec![
+                "AmazonS3FullAccess".into(),
+                "AmazonEC2FullAccess".into(),
+                "AmazonRDSFullAccess".into(),
+            ],
+        },
+        // Healthy: monitoring service with read-only access
+        IamUser {
+            username: "monitoring-svc".into(),
+            user_id: "AIDAI23XYZABCSTUVWX".into(),
+            arn: "arn:aws:iam::123456789012:user/monitoring-svc".into(),
+            created_at: "2024-03-01T08:00:00Z".into(),
+            permissions: vec!["CloudWatchReadOnlyAccess".into()],
+        },
+        // Mostly OK: analyst with appropriately scoped access
+        IamUser {
+            username: "data-analyst".into(),
+            user_id: "AIDAI23XYZABCYZABCD".into(),
+            arn: "arn:aws:iam::123456789012:user/data-analyst".into(),
+            created_at: "2024-08-15T11:00:00Z".into(),
+            permissions: vec![
+                "AmazonS3ReadOnlyAccess".into(),
+                "AmazonAthenaFullAccess".into(),
+            ],
+        },
     ]
 }
 
 fn seed_security_groups() -> Vec<SecurityGroup> {
-    vec![SecurityGroup {
-        group_id: "sg-0123456789abcdef0".into(),
-        group_name: "web-server-sg".into(),
-        description: "Security group for web servers".into(),
-        vpc_id: "vpc-abc123".into(),
-        inbound_rules: vec![
-            SecurityRule {
-                protocol: "tcp".into(),
-                port_range: "80".into(),
+    vec![
+        // Mostly OK: standard web-facing security group
+        SecurityGroup {
+            group_id: "sg-0a1b2c3d4e5f60001".into(),
+            group_name: "web-server-sg".into(),
+            description: "Security group for web servers".into(),
+            vpc_id: "vpc-abc123".into(),
+            inbound_rules: vec![
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "80".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "443".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+            ],
+            outbound_rules: vec![SecurityRule {
+                protocol: "-1".into(),
+                port_range: "all".into(),
                 source: "0.0.0.0/0".into(),
-            },
-            SecurityRule {
-                protocol: "tcp".into(),
-                port_range: "443".into(),
+            }],
+        },
+        // CRITICAL: Database ports open to the entire internet!
+        SecurityGroup {
+            group_id: "sg-0a1b2c3d4e5f60002".into(),
+            group_name: "database-sg".into(),
+            description: "Security group for databases".into(),
+            vpc_id: "vpc-abc123".into(),
+            inbound_rules: vec![
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "5432".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "3306".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+            ],
+            outbound_rules: vec![SecurityRule {
+                protocol: "-1".into(),
+                port_range: "all".into(),
                 source: "0.0.0.0/0".into(),
-            },
-        ],
-        outbound_rules: vec![SecurityRule {
-            protocol: "-1".into(),
-            port_range: "all".into(),
-            source: "0.0.0.0/0".into(),
-        }],
-    }]
+            }],
+        },
+        // CRITICAL: SSH and RDP open to the world
+        SecurityGroup {
+            group_id: "sg-0a1b2c3d4e5f60003".into(),
+            group_name: "admin-access-sg".into(),
+            description: "Security group for admin access".into(),
+            vpc_id: "vpc-abc123".into(),
+            inbound_rules: vec![
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "22".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+                SecurityRule {
+                    protocol: "tcp".into(),
+                    port_range: "3389".into(),
+                    source: "0.0.0.0/0".into(),
+                },
+            ],
+            outbound_rules: vec![SecurityRule {
+                protocol: "-1".into(),
+                port_range: "all".into(),
+                source: "0.0.0.0/0".into(),
+            }],
+        },
+    ]
+}
+
+// ============================================================================
+// CloudWatch metric profiles for seed resources
+// ============================================================================
+
+/// Per-resource metric base values. Overrides the generic default so seed
+/// instances tell a realistic story the auditor can discover.
+fn metric_profile_base(resource_id: &str, metric: &str) -> Option<f64> {
+    match (resource_id, metric) {
+        // web-server-01: healthy, moderate-high load
+        ("i-0a1b2c3d4e5f60001", "CPUUtilization") => Some(62.0),
+        ("i-0a1b2c3d4e5f60001", "MemoryUtilization") => Some(71.0),
+        ("i-0a1b2c3d4e5f60001", "NetworkIn") => Some(85_000.0),
+
+        // web-server-02: healthy, moderate load
+        ("i-0a1b2c3d4e5f60002", "CPUUtilization") => Some(48.0),
+        ("i-0a1b2c3d4e5f60002", "MemoryUtilization") => Some(55.0),
+        ("i-0a1b2c3d4e5f60002", "NetworkIn") => Some(72_000.0),
+
+        // api-server-01: healthy, moderate load
+        ("i-0a1b2c3d4e5f60003", "CPUUtilization") => Some(45.0),
+        ("i-0a1b2c3d4e5f60003", "MemoryUtilization") => Some(60.0),
+        ("i-0a1b2c3d4e5f60003", "NetworkIn") => Some(95_000.0),
+
+        // api-server-02: healthy, moderate load
+        ("i-0a1b2c3d4e5f60004", "CPUUtilization") => Some(42.0),
+        ("i-0a1b2c3d4e5f60004", "MemoryUtilization") => Some(58.0),
+        ("i-0a1b2c3d4e5f60004", "NetworkIn") => Some(88_000.0),
+
+        // batch-processor-01: IDLE — nearly zero utilization on expensive m5.xlarge
+        ("i-0a1b2c3d4e5f60005", "CPUUtilization") => Some(2.1),
+        ("i-0a1b2c3d4e5f60005", "MemoryUtilization") => Some(5.3),
+        ("i-0a1b2c3d4e5f60005", "NetworkIn") => Some(320.0),
+
+        // legacy-app-01: very low utilization on old-gen m4
+        ("i-0a1b2c3d4e5f60006", "CPUUtilization") => Some(4.8),
+        ("i-0a1b2c3d4e5f60006", "MemoryUtilization") => Some(12.0),
+        ("i-0a1b2c3d4e5f60006", "NetworkIn") => Some(1_200.0),
+
+        // test-server-01: minimal dev traffic
+        ("i-0a1b2c3d4e5f60007", "CPUUtilization") => Some(3.2),
+        ("i-0a1b2c3d4e5f60007", "MemoryUtilization") => Some(9.0),
+        ("i-0a1b2c3d4e5f60007", "NetworkIn") => Some(800.0),
+
+        // prod-postgres-01: healthy RDS
+        ("prod-postgres-01", "CPUUtilization") => Some(38.0),
+        ("prod-postgres-01", "MemoryUtilization") => Some(65.0),
+
+        // staging-mysql-01: underutilized oversized RDS
+        ("staging-mysql-01", "CPUUtilization") => Some(8.5),
+        ("staging-mysql-01", "MemoryUtilization") => Some(15.0),
+
+        // legacy-pg-11: EOL database, low load
+        ("legacy-pg-11", "CPUUtilization") => Some(6.0),
+        ("legacy-pg-11", "MemoryUtilization") => Some(22.0),
+
+        _ => None,
+    }
 }
 
 // ============================================================================
@@ -1234,27 +1574,28 @@ impl Tool for AwsGetCloudWatchMetricsTool {
             }
         }
 
-        // Generate metric datapoints — deterministic from resource_id hash for
-        // reproducible benchmark results
+        // Generate metric datapoints — use per-resource profiles for seed instances
+        // so auditor sees realistic data (idle instances have low CPU, etc.),
+        // with deterministic variation from resource_id hash.
         let hash: u32 = resource_id
             .bytes()
             .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
+        let base = metric_profile_base(resource_id, metric_name).unwrap_or(match metric_name {
+            "CPUUtilization" => 30.0,
+            "MemoryUtilization" => 55.0,
+            "DiskReadOps" => 150.0,
+            "NetworkIn" => 1024.0 * 50.0,
+            _ => 30.0,
+        });
         let datapoints: Vec<Value> = (0..12)
             .map(|i| {
-                let base = match metric_name {
-                    "CPUUtilization" => 30.0,
-                    "MemoryUtilization" => 55.0,
-                    "DiskReadOps" => 150.0,
-                    "NetworkIn" => 1024.0 * 50.0,
-                    _ => 30.0,
-                };
                 let variation = ((hash.wrapping_add(i * 7)) % 200) as f64 / 10.0 - 10.0;
-                let avg = (base + variation + i as f64 * 1.5).max(0.0);
+                let avg = (base + variation * (base / 30.0)).max(0.0);
                 json!({
                     "timestamp": chrono::Utc::now() - chrono::Duration::minutes(i as i64 * 5),
-                    "average": avg,
-                    "minimum": (avg * 0.7).max(0.0),
-                    "maximum": avg * 1.3
+                    "average": (avg * 100.0).round() / 100.0,
+                    "minimum": ((avg * 0.7).max(0.0) * 100.0).round() / 100.0,
+                    "maximum": (avg * 1.3 * 100.0).round() / 100.0
                 })
             })
             .collect();
