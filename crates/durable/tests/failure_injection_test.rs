@@ -1,11 +1,11 @@
 //! Failure injection tests using fail-rs
 //!
 //! These tests verify system behavior under various failure conditions.
-//! Run with: cargo test -p everruns-durable --test failure_injection_test --features failpoints -- --test-threads=1
+//! Run with: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 //!
 //! Requires PostgreSQL running with DATABASE_URL set.
 
-#![cfg(feature = "failpoints")]
+#![cfg(all(feature = "failpoints", feature = "postgres-tests"))]
 
 use fail::FailScenario;
 use serde_json::json;
