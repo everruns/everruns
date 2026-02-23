@@ -39,7 +39,7 @@ All configuration via environment variables, overridden by CLI args where applic
 | `API_URL` | `http://localhost:9300/api` | Server API endpoint |
 | `SESSIONS` | `100` | Number of parallel sessions |
 | `MESSAGES_PER_SESSION` | `50` | Messages per session |
-| `MODEL_ID` | seed llmsim model | Model to use |
+| `MODEL_ID` | seed llmsim-latency model | Model to use (default includes TTFT + streaming delays) |
 | `MAX_CONCURRENT` | `50` | Max concurrent sessions |
 | `TIMEOUT_SECS` | `300` | Per-request timeout |
 | `TARGET` | auto-detected | Target label (e.g., `dev`, `docker-example`) |
@@ -147,3 +147,14 @@ SESSIONS=1 MESSAGES_PER_SESSION=200 just load-test quick --save --bench-name his
 # Heavy load with custom moniker
 just load-test heavy --save --moniker ci-4cpu-8gb
 ```
+
+## Latency Simulation
+
+Load tests default to the `llmsim-latency` seed model, which simulates realistic LLM streaming behavior:
+
+- **TTFT (Time To First Token)**: Sampled from `LatencyProfile::fast()` before the first token
+- **TBT (Time Between Tokens)**: Sampled from `LatencyProfile::fast()` between each streamed word
+
+This measures end-to-end server performance under conditions closer to real LLM usage, where streaming responses arrive over time rather than instantly. The llmsim driver detects the `-latency` suffix in the model name and enables latency simulation automatically.
+
+To bypass latency simulation (e.g., for pure server overhead measurement), override the model: `MODEL_ID=model_01933b5a000070008000000000000401` (the `llmsim-default` instant model).
