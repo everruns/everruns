@@ -336,6 +336,9 @@ pub async fn stream_sse(
         filter_types: Vec<String>,
         exclude_types: Vec<String>,
         connection_start: Instant,
+        /// Jittered max connection duration (computed once per connection to prevent
+        /// thundering herd when many SSE connections cycle simultaneously)
+        max_duration: Duration,
         /// Waker triggered by pg_notify when events arrive for this session
         event_waker: Arc<tokio::sync::Notify>,
     }
@@ -344,6 +347,7 @@ pub async fn stream_sse(
         phase: StreamPhase::SendConnected,
         last_id: initial_since_id,
         backoff_ms: config.min_backoff_ms,
+        max_duration: config.jittered_max_connection_duration(),
         config,
         filter_types,
         exclude_types,
@@ -407,8 +411,8 @@ pub async fn stream_sse(
                 }
 
                 StreamPhase::Polling => {
-                    // Check for connection cycling - graceful close after max duration
-                    if state.connection_start.elapsed() > state.config.max_connection_duration() {
+                    // Check for connection cycling - graceful close after jittered max duration
+                    if state.connection_start.elapsed() > state.max_duration {
                         let new_state = StreamState {
                             phase: StreamPhase::SendDisconnecting,
                             ..state
@@ -455,11 +459,7 @@ pub async fn stream_sse(
                                 phase: StreamPhase::Polling,
                                 last_id: new_last_id,
                                 backoff_ms: new_backoff,
-                                config: state.config,
-                                filter_types: state.filter_types,
-                                exclude_types: state.exclude_types,
-                                connection_start: state.connection_start,
-                                event_waker: state.event_waker,
+                                ..state
                             };
                             Some((stream::iter(sse_events), new_state))
                         }

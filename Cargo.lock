@@ -1459,6 +1459,8 @@ dependencies = [
  "futures",
  "hex",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "image",
  "inventory",
  "jsonwebtoken",

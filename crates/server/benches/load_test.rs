@@ -581,6 +581,11 @@ impl LoadTestRunner {
         let http = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .pool_max_idle_per_host(100)
+            // HTTP/2 flow control: match server's larger window sizes to prevent
+            // stream blocking when server sends SSE events faster than client reads
+            .http2_initial_stream_window_size(2 * 1024 * 1024) // 2 MB (matches server)
+            .http2_initial_connection_window_size(16 * 1024 * 1024) // 16 MB
+            .http2_adaptive_window(true)
             .build()
             .expect("Failed to create HTTP client");
 
@@ -757,7 +762,8 @@ impl LoadTestRunner {
         // Open SSE stream — SDK EventStream handles reconnection transparently
         let mut sse_stream = self.open_sse_stream(&session_id);
 
-        // Send messages sequentially — each waits for session.idled via SSE
+        // Send messages sequentially — each waits for session.idled via SSE.
+        // SDK's EventStream handles reconnection on `disconnecting` events transparently.
         for msg_num in 0..self.config.messages_per_session {
             match self
                 .send_message(&session_id, msg_num, &mut sse_stream)

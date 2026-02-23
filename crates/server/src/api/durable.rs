@@ -1470,6 +1470,8 @@ pub async fn stream_durable_sse(
         backoff_ms: u64,
         config: SseStreamConfig,
         connection_start: Instant,
+        /// Jittered max connection duration (prevents thundering herd reconnections)
+        max_duration: std::time::Duration,
         // Track last snapshot hash to detect changes
         last_hash: Option<u64>,
         // Reason for disconnection (used when phase is SendDisconnecting)
@@ -1479,6 +1481,7 @@ pub async fn stream_durable_sse(
     let initial_state = StreamState {
         phase: StreamPhase::SendConnected,
         backoff_ms: config.min_backoff_ms,
+        max_duration: config.jittered_max_connection_duration(),
         config,
         connection_start,
         last_hash: None,
@@ -1544,10 +1547,8 @@ pub async fn stream_durable_sse(
                     };
                 }
 
-                // Check for connection cycling
-                if stream_state.connection_start.elapsed()
-                    > stream_state.config.max_connection_duration()
-                {
+                // Check for connection cycling (uses jittered duration)
+                if stream_state.connection_start.elapsed() > stream_state.max_duration {
                     let new_state = StreamState {
                         phase: StreamPhase::SendDisconnecting,
                         disconnect_reason: DisconnectReason::ConnectionCycle,
@@ -1825,6 +1826,8 @@ pub async fn stream_workflow_sse(
         backoff_ms: u64,
         config: SseStreamConfig,
         connection_start: Instant,
+        /// Jittered max connection duration (prevents thundering herd reconnections)
+        max_duration: std::time::Duration,
         last_event_count: usize,
         last_status: Option<String>,
         disconnect_reason: DisconnectReason,
@@ -1834,6 +1837,7 @@ pub async fn stream_workflow_sse(
         phase: StreamPhase::SendConnected,
         workflow_id,
         backoff_ms: config.min_backoff_ms,
+        max_duration: config.jittered_max_connection_duration(),
         config,
         connection_start,
         last_event_count: 0,
@@ -1901,8 +1905,8 @@ pub async fn stream_workflow_sse(
                     };
                 }
 
-                // Check for connection cycling
-                if stream_state.connection_start.elapsed() > stream_state.config.max_connection_duration() {
+                // Check for connection cycling (uses jittered duration)
+                if stream_state.connection_start.elapsed() > stream_state.max_duration {
                     let new_state = StreamState {
                         phase: StreamPhase::SendDisconnecting,
                         disconnect_reason: DisconnectReason::ConnectionCycle,
