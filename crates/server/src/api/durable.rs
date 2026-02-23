@@ -228,11 +228,22 @@ impl From<WorkerInfo> for WorkerResponse {
     }
 }
 
+/// Workers summary stats
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkersSummaryResponse {
+    pub active: usize,
+    pub draining: usize,
+    pub stopped: usize,
+    pub total_capacity: usize,
+    pub total_load: usize,
+}
+
 /// Workers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersListResponse {
     pub data: Vec<WorkerResponse>,
     pub total: usize,
+    pub summary: WorkersSummaryResponse,
 }
 
 /// Workflow response
@@ -556,7 +567,27 @@ pub async fn list_workers(
     let total = workers.len();
     let data: Vec<WorkerResponse> = workers.into_iter().map(WorkerResponse::from).collect();
 
-    Ok(Json(WorkersListResponse { data, total }))
+    let summary = WorkersSummaryResponse {
+        active: data.iter().filter(|w| w.status == "active").count(),
+        draining: data.iter().filter(|w| w.status == "draining").count(),
+        stopped: data.iter().filter(|w| w.status == "stopped").count(),
+        total_capacity: data
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.max_concurrency as usize)
+            .sum(),
+        total_load: data
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.current_load as usize)
+            .sum(),
+    };
+
+    Ok(Json(WorkersListResponse {
+        data,
+        total,
+        summary,
+    }))
 }
 
 /// POST /v1/durable/workers/:worker_id/drain - Drain a worker

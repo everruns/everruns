@@ -124,9 +124,21 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
 
           // Update all durable query caches
           queryClient.setQueryData(["durable", "health"], snapshot.health);
+
+          // Compute worker summary from the workers array
+          const activeWorkers = snapshot.workers.filter((w) => w.status === "active");
+          const workersSummary = {
+            active: activeWorkers.length,
+            draining: snapshot.workers.filter((w) => w.status === "draining").length,
+            stopped: snapshot.workers.filter((w) => w.status === "stopped").length,
+            total_capacity: activeWorkers.reduce((sum, w) => sum + w.max_concurrency, 0),
+            total_load: activeWorkers.reduce((sum, w) => sum + w.current_load, 0),
+          };
+
           queryClient.setQueryData(["durable", "workers"], {
             data: snapshot.workers,
             total: snapshot.workers.length,
+            summary: workersSummary,
           });
           queryClient.setQueryData(["durable", "workflows", undefined], snapshot.workflows);
           queryClient.setQueryData(["durable", "tasks", undefined], snapshot.tasks);
