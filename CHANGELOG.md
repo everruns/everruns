@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.1] - 2026-02-22
+
+### Highlights
+
+- **Load Testing Infrastructure** — New load testing framework with llmsim mock LLM server and durable execution race condition fix ([#568](https://github.com/everruns/everruns/pull/568))
+- **Dashboard Stats** — Total sessions count and improved session stats accuracy ([#564](https://github.com/everruns/everruns/pull/564))
+- **CI & Docs Improvements** — Docker publish fix for release tags, SEO fixes, and bashkit docs ([#563](https://github.com/everruns/everruns/pull/563), [#566](https://github.com/everruns/everruns/pull/566), [#567](https://github.com/everruns/everruns/pull/567))
+
+### What's Changed
+
+- feat(load-test): add load testing infrastructure with llmsim and durable race fix ([#568](https://github.com/everruns/everruns/pull/568))
+- docs: fix SEO issues across docs site ([#567](https://github.com/everruns/everruns/pull/567))
+- docs(ecosystem): add bashkit overview and hide SRE sidebar ([#566](https://github.com/everruns/everruns/pull/566))
+- chore(specs): add performance impact guidelines to pre-PR and maintenance checklists ([#565](https://github.com/everruns/everruns/pull/565))
+- feat(dashboard): add total sessions count and fix session stats accuracy ([#564](https://github.com/everruns/everruns/pull/564))
+- fix(ci): trigger Docker Publish for release tags via workflow_dispatch ([#563](https://github.com/everruns/everruns/pull/563))
+
 ## [0.8.0] - 2026-02-21
 
 ### Highlights
