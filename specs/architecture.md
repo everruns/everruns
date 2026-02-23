@@ -132,30 +132,32 @@ Without step 3, the crate compiles but its capabilities are never registered. Th
 
 ### Server Entrypoint
 
-The server binary (`main.rs`) is a thin wrapper that calls `server::run()` from the library crate. This enables SaaS wrappers to build their own binary with a custom auth backend.
+The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers to compose their own binary with custom auth, routes, event listeners, and background tasks.
 
-**`server::run()` signature:**
+**`ServerAppBuilder` usage:**
 ```rust
-pub async fn run(
-    config: ServerConfig,
-    auth_factory: impl FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend>,
-    extra_routes: Option<Router>,
-) -> anyhow::Result<()>
+ServerAppBuilder::new(config)
+    .auth(move |db| Arc::new(BuiltinAuthBackend::new(auth_config, db)))
+    .routes(extra_routes)       // optional: billing, admin, etc.
+    .run()
+    .await
 ```
 
-- `auth_factory` — Receives the initialized `StorageBackend` and returns an auth backend. OSS passes `|db| Arc::new(BuiltinAuthBackend::new(config, db))`.
-- `extra_routes` — Optional additional routes merged into the router. SaaS wrappers use this for billing, admin, etc.
-- `ServerConfig` — Contains CLI args, API prefix, and other server configuration.
+- `auth()` — Sets the auth factory. Receives `StorageBackend`, returns `Arc<dyn AuthBackend>`.
+- `routes()` — Merges additional routes into the API router.
+- `ServerConfig` — Contains CLI args, API prefix, CORS origins, and addresses.
 
 **Key modules in lib crate:**
-- `server::run()` — Full server bootstrap (storage, auth, routes, CORS, gRPC, dev worker, HTTP server)
+- `app_builder` — `ServerAppBuilder` for composable server bootstrap
+- `server` — `ServerConfig` and router helpers
 - `seed` — Database seeding (moved from binary to lib for reuse)
 - `grpc_service` — gRPC WorkerService (moved from binary to lib for reuse)
 
 **Public exports from `everruns-server` lib:**
 ```rust
 pub use auth::{AuthBackend, BuiltinAuthBackend};
-pub use server::{ServerConfig, run};
+pub use server::ServerConfig;
+pub use app_builder::{ServerAppBuilder, ServerContext};
 ```
 
 ### Data Layer

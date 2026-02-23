@@ -1,12 +1,13 @@
 // Everruns API server
-// Decision: Thin binary — delegates to server::run() for reuse by SaaS binary
+// Decision: Uses ServerAppBuilder for composable server setup
 
 use clap::Parser;
 
 use anyhow::Result;
 use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
+use everruns_server::ServerAppBuilder;
 use everruns_server::auth;
-use everruns_server::server::{ServerConfig, run};
+use everruns_server::server::ServerConfig;
 use std::sync::Arc;
 
 /// CLI arguments for everruns-server
@@ -39,10 +40,8 @@ async fn main() -> Result<()> {
 
     // Start server with built-in auth backend (OSS default)
     let auth_config = auth::AuthConfig::from_env();
-    run(
-        config,
-        |db| Arc::new(auth::BuiltinAuthBackend::new(auth_config, db)),
-        None,
-    )
-    .await
+    ServerAppBuilder::new(config)
+        .auth(move |db| Arc::new(auth::BuiltinAuthBackend::new(auth_config, db)))
+        .run()
+        .await
 }
