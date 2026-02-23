@@ -71,7 +71,6 @@ prost.workspace = true
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking"] }
-eventsource-stream.workspace = true
 futures.workspace = true
 http-body-util = "0.1"
 sysinfo = "0.33"

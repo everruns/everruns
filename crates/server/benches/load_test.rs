@@ -1,13 +1,12 @@
 //! Everruns Load Test
 //!
-//! Uses everruns-sdk for agent/message operations. Raw reqwest for:
-//! - Session creation (SDK lacks harness_id field)
-//! - SSE streaming for turn completion (no polling)
+//! Uses everruns-sdk for agent/message operations and SSE streaming.
+//! Raw reqwest only for session creation (SDK lacks harness_id field).
 //!
 //! Turn completion detection via SSE:
-//!   Subscribes to GET /v1/sessions/{id}/sse after session creation.
-//!   Waits for `session.idled` event after each message send.
-//!   Single SSE connection per session — no polling overhead.
+//!   Uses SDK's `EventStream` which handles automatic reconnection on
+//!   server-initiated `disconnecting` events (5-min connection cycling),
+//!   exponential backoff on errors, and resume via `since_id`.
 //!
 //! Usage:
 //!   cargo bench --package everruns-server --bench load_test
@@ -29,7 +28,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use eventsource_stream::Eventsource;
+use everruns_sdk::sse::StreamOptions;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use futures::stream::{self, StreamExt};
 use parking_lot::Mutex;
@@ -647,7 +646,7 @@ impl LoadTestRunner {
         &self,
         session_id: &str,
         message_num: usize,
-        sse_stream: &mut SseSessionStream,
+        sse_stream: &mut everruns_sdk::sse::EventStream,
     ) -> anyhow::Result<Duration> {
         let start = Instant::now();
 
@@ -688,34 +687,36 @@ impl LoadTestRunner {
         Ok(duration)
     }
 
-    /// Open an SSE stream for a session.
-    async fn open_sse_stream(&self, session_id: &str) -> anyhow::Result<SseSessionStream> {
-        let url = format!("{}/v1/sessions/{}/sse", self.config.api_url, session_id);
-
-        let response = self.http.get(&url).send().await?.error_for_status()?;
-
-        let stream = response.bytes_stream().eventsource();
-        Ok(SseSessionStream {
-            stream: Box::pin(stream),
-        })
+    /// Open an SSE stream for a session using the SDK's EventStream.
+    ///
+    /// The SDK handles automatic reconnection on `disconnecting` events,
+    /// exponential backoff on errors, and resume via `since_id`.
+    fn open_sse_stream(&self, session_id: &str) -> everruns_sdk::sse::EventStream {
+        self.sdk.events().stream_with_options(
+            session_id,
+            StreamOptions::exclude_deltas().with_max_retries(5),
+        )
     }
 
     /// Wait for a `session.idled` event on the SSE stream.
+    ///
+    /// The SDK's `EventStream` handles reconnection transparently —
+    /// `disconnecting` events, stream errors, and backoff are all managed internally.
     async fn wait_for_idle_via_sse(
         &self,
         session_id: &str,
-        sse_stream: &mut SseSessionStream,
+        sse_stream: &mut everruns_sdk::sse::EventStream,
     ) -> anyhow::Result<()> {
         let timeout = Duration::from_secs(self.config.timeout_secs);
         let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
-            match tokio::time::timeout_at(deadline, sse_stream.stream.next()).await {
+            match tokio::time::timeout_at(deadline, sse_stream.next()).await {
                 Ok(Some(Ok(event))) => {
-                    if event.event == "session.idled" {
+                    if event.event_type == "session.idled" {
                         return Ok(());
                     }
-                    // Ignore other events (connected, turn.started, etc.)
+                    // Ignore other events (turn.started, output.message.completed, etc.)
                 }
                 Ok(Some(Err(e))) => {
                     return Err(anyhow::anyhow!(
@@ -726,7 +727,7 @@ impl LoadTestRunner {
                 }
                 Ok(None) => {
                     return Err(anyhow::anyhow!(
-                        "SSE stream closed for session {}",
+                        "SSE stream closed for session {} (retries exhausted)",
                         session_id
                     ));
                 }
@@ -753,16 +754,8 @@ impl LoadTestRunner {
             }
         };
 
-        // Open SSE stream — single connection for the session lifetime
-        let mut sse_stream = match self.open_sse_stream(&session_id).await {
-            Ok(s) => s,
-            Err(e) => {
-                self.metrics.sessions_failed.fetch_add(1, Ordering::Relaxed);
-                self.metrics
-                    .record_error(format!("Session {} SSE connect failed: {}", session_num, e));
-                return Err(e);
-            }
-        };
+        // Open SSE stream — SDK EventStream handles reconnection transparently
+        let mut sse_stream = self.open_sse_stream(&session_id);
 
         // Send messages sequentially — each waits for session.idled via SSE
         for msg_num in 0..self.config.messages_per_session {
@@ -944,27 +937,6 @@ impl Clone for LoadTestRunner {
             metrics: self.metrics.clone(),
         }
     }
-}
-
-// ============================================================================
-// SSE Stream Wrapper
-// ============================================================================
-
-/// Wraps an SSE stream for a session. One per session, reused across messages.
-///
-/// Uses `eventsource_stream` to parse SSE frames from reqwest's byte stream.
-/// The stream yields `eventsource_stream::Event` with `.event` (type) and `.data` fields.
-struct SseSessionStream {
-    stream: std::pin::Pin<
-        Box<
-            dyn futures::Stream<
-                    Item = Result<
-                        eventsource_stream::Event,
-                        eventsource_stream::EventStreamError<reqwest::Error>,
-                    >,
-                > + Send,
-        >,
-    >,
 }
 
 // ============================================================================
