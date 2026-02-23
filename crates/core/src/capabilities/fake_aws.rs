@@ -1,7 +1,9 @@
-//! Fake AWS Tools Capability - demo tools for AWS infrastructure management
+//! Fake AWS Tools Capability - mock AWS infrastructure management
 //!
-//! This capability provides mock AWS management tools that store state
-//! in the session file system. Perfect for demos and testing.
+//! All state is persisted in the session file system under `/aws/`.
+//! Every tool call simulates realistic AWS API latency (configurable via
+//! `FAKE_AWS_LATENCY_MS` env var; default 0 = no delay, set e.g. 200 for
+//! benchmarking long-running agents).
 //!
 //! Tools provided:
 //! - `aws_list_ec2_instances`: List EC2 instances
@@ -17,90 +19,127 @@
 //! - `aws_get_cloudwatch_metrics`: Get CloudWatch metrics
 
 use super::{Capability, CapabilityStatus};
+use crate::SessionId;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{SessionFileStore, ToolContext};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::sync::OnceLock;
+use std::time::Duration;
 
-/// Fake AWS Tools capability - mock AWS infrastructure management for demos
-pub struct FakeAwsCapability;
+// ============================================================================
+// Latency simulation
+// ============================================================================
 
-impl Capability for FakeAwsCapability {
-    fn id(&self) -> &str {
-        "fake_aws"
-    }
+/// Base latency loaded once from `FAKE_AWS_LATENCY_MS` (default: 0).
+fn base_latency_ms() -> u64 {
+    static BASE: OnceLock<u64> = OnceLock::new();
+    *BASE.get_or_init(|| {
+        std::env::var("FAKE_AWS_LATENCY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    })
+}
 
-    fn name(&self) -> &str {
-        "Fake AWS Tools"
-    }
+/// Operation-type multipliers applied to the base latency.
+#[derive(Clone, Copy)]
+enum OpKind {
+    /// List / describe operations (~1x base)
+    List,
+    /// Create / launch operations (~3x base)
+    Create,
+    /// Modify / stop operations (~2x base)
+    Modify,
+    /// Metrics / query operations (~1.5x base)
+    Query,
+}
 
-    fn description(&self) -> &str {
-        "Demo capability: AWS infrastructure management tools (EC2, RDS, S3, IAM, CloudWatch). State stored in session filesystem."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::Available
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("cloud")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Demo Tools")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"You have access to AWS infrastructure management tools. All AWS data is stored in /aws/ directory.
-
-Available tools:
-- `aws_list_ec2_instances`: List all EC2 instances with their status
-- `aws_create_ec2_instance`: Launch a new EC2 instance
-- `aws_stop_ec2_instance`: Stop a running EC2 instance
-- `aws_list_rds_databases`: List RDS database instances
-- `aws_create_rds_database`: Create a new RDS database
-- `aws_list_s3_buckets`: List all S3 buckets
-- `aws_create_s3_bucket`: Create a new S3 bucket
-- `aws_list_iam_users`: List IAM users and their permissions
-- `aws_create_iam_user`: Create a new IAM user
-- `aws_list_security_groups`: List security groups and rules
-- `aws_get_cloudwatch_metrics`: Get CloudWatch metrics for resources
-
-Data structure:
-- /aws/ec2_instances.json - EC2 instance records
-- /aws/rds_databases.json - RDS database records
-- /aws/s3_buckets.json - S3 bucket records
-- /aws/iam_users.json - IAM user records
-- /aws/security_groups.json - Security group records
-- /aws/cloudwatch_metrics.json - CloudWatch metrics data"#,
-        )
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
-            Box::new(AwsListEc2InstancesTool),
-            Box::new(AwsCreateEc2InstanceTool),
-            Box::new(AwsStopEc2InstanceTool),
-            Box::new(AwsListRdsDatabasesTool),
-            Box::new(AwsCreateRdsDatabaseTool),
-            Box::new(AwsListS3BucketsTool),
-            Box::new(AwsCreateS3BucketTool),
-            Box::new(AwsListIamUsersTool),
-            Box::new(AwsCreateIamUserTool),
-            Box::new(AwsListSecurityGroupsTool),
-            Box::new(AwsGetCloudWatchMetricsTool),
-        ]
+impl OpKind {
+    fn multiplier(self) -> f64 {
+        match self {
+            OpKind::List => 1.0,
+            OpKind::Create => 3.0,
+            OpKind::Modify => 2.0,
+            OpKind::Query => 1.5,
+        }
     }
 }
 
-// Helper structs for AWS data
+/// Deterministic jitter derived from current timestamp sub-micros (no rand dep).
+fn jitter_factor() -> f64 {
+    let nanos = chrono::Utc::now().timestamp_subsec_nanos();
+    // Produces a value in [0.8, 1.2)
+    0.8 + (nanos % 400) as f64 / 1000.0
+}
+
+/// Sleep to simulate AWS API latency. No-op when base is 0.
+async fn simulate_latency(op: OpKind) {
+    let base = base_latency_ms();
+    if base == 0 {
+        return;
+    }
+    let ms = (base as f64 * op.multiplier() * jitter_factor()) as u64;
+    tokio::time::sleep(Duration::from_millis(ms)).await;
+}
+
+// ============================================================================
+// Persistence helpers
+// ============================================================================
+
+/// Read a JSON collection from the session file store, returning seed data on
+/// first access and persisting it.
+async fn read_or_seed<T: Serialize + for<'de> Deserialize<'de>>(
+    store: &dyn SessionFileStore,
+    session_id: SessionId,
+    path: &str,
+    seed: impl FnOnce() -> Vec<T>,
+) -> Vec<T> {
+    if let Ok(Some(file)) = store.read_file(session_id, path).await
+        && let Ok(items) = serde_json::from_str::<Vec<T>>(file.content.as_deref().unwrap_or(""))
+    {
+        return items;
+    }
+    // First access — persist seed data
+    let items = seed();
+    if let Ok(json) = serde_json::to_string_pretty(&items) {
+        let _ = store.write_file(session_id, path, &json, "text").await;
+    }
+    items
+}
+
+/// Persist a collection back to the session file store.
+async fn persist<T: Serialize>(
+    store: &dyn SessionFileStore,
+    session_id: SessionId,
+    path: &str,
+    items: &[T],
+) -> Result<(), anyhow::Error> {
+    let json = serde_json::to_string_pretty(items)?;
+    store.write_file(session_id, path, &json, "text").await?;
+    Ok(())
+}
+
+/// Extract the file store from context or return a tool error.
+macro_rules! require_file_store {
+    ($ctx:expr) => {
+        match &$ctx.file_store {
+            Some(s) => s.as_ref(),
+            None => return ToolExecutionResult::tool_error("File system not available"),
+        }
+    };
+}
+
+// ============================================================================
+// Data model structs
+// ============================================================================
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Ec2Instance {
     instance_id: String,
     instance_type: String,
-    state: String, // running, stopped, terminated
+    state: String,
     availability_zone: String,
     private_ip: String,
     public_ip: Option<String>,
@@ -162,6 +201,207 @@ struct SecurityRule {
 }
 
 // ============================================================================
+// Seed data factories
+// ============================================================================
+
+const EC2_PATH: &str = "/aws/ec2_instances.json";
+const RDS_PATH: &str = "/aws/rds_databases.json";
+const S3_PATH: &str = "/aws/s3_buckets.json";
+const IAM_PATH: &str = "/aws/iam_users.json";
+const SG_PATH: &str = "/aws/security_groups.json";
+
+fn seed_ec2() -> Vec<Ec2Instance> {
+    vec![
+        Ec2Instance {
+            instance_id: "i-0123456789abcdef0".into(),
+            instance_type: "t3.medium".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1a".into(),
+            private_ip: "10.0.1.100".into(),
+            public_ip: Some("54.123.45.67".into()),
+            launch_time: "2025-01-01T10:00:00Z".into(),
+            tags: vec![
+                Tag {
+                    key: "Name".into(),
+                    value: "web-server-01".into(),
+                },
+                Tag {
+                    key: "Environment".into(),
+                    value: "production".into(),
+                },
+            ],
+        },
+        Ec2Instance {
+            instance_id: "i-0987654321fedcba0".into(),
+            instance_type: "t3.large".into(),
+            state: "running".into(),
+            availability_zone: "us-east-1b".into(),
+            private_ip: "10.0.2.100".into(),
+            public_ip: Some("54.123.45.68".into()),
+            launch_time: "2025-01-01T11:00:00Z".into(),
+            tags: vec![Tag {
+                key: "Name".into(),
+                value: "api-server-01".into(),
+            }],
+        },
+    ]
+}
+
+fn seed_rds() -> Vec<RdsDatabase> {
+    vec![RdsDatabase {
+        db_instance_id: "prod-postgres-01".into(),
+        engine: "postgres".into(),
+        engine_version: "15.4".into(),
+        instance_class: "db.t3.medium".into(),
+        status: "available".into(),
+        endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".into(),
+        port: 5432,
+        storage_gb: 100,
+    }]
+}
+
+fn seed_s3() -> Vec<S3Bucket> {
+    vec![
+        S3Bucket {
+            name: "company-data-backup".into(),
+            region: "us-east-1".into(),
+            creation_date: "2024-06-01T00:00:00Z".into(),
+            versioning_enabled: true,
+            encryption_enabled: true,
+        },
+        S3Bucket {
+            name: "static-assets-prod".into(),
+            region: "us-west-2".into(),
+            creation_date: "2024-08-15T00:00:00Z".into(),
+            versioning_enabled: false,
+            encryption_enabled: true,
+        },
+    ]
+}
+
+fn seed_iam() -> Vec<IamUser> {
+    vec![
+        IamUser {
+            username: "admin-user".into(),
+            user_id: "AIDAI23XYZABC123DEF".into(),
+            arn: "arn:aws:iam::123456789012:user/admin-user".into(),
+            created_at: "2024-01-15T10:00:00Z".into(),
+            permissions: vec!["AdministratorAccess".into()],
+        },
+        IamUser {
+            username: "developer-user".into(),
+            user_id: "AIDAI23XYZABC456GHI".into(),
+            arn: "arn:aws:iam::123456789012:user/developer-user".into(),
+            created_at: "2024-02-20T14:30:00Z".into(),
+            permissions: vec!["PowerUserAccess".into()],
+        },
+    ]
+}
+
+fn seed_security_groups() -> Vec<SecurityGroup> {
+    vec![SecurityGroup {
+        group_id: "sg-0123456789abcdef0".into(),
+        group_name: "web-server-sg".into(),
+        description: "Security group for web servers".into(),
+        vpc_id: "vpc-abc123".into(),
+        inbound_rules: vec![
+            SecurityRule {
+                protocol: "tcp".into(),
+                port_range: "80".into(),
+                source: "0.0.0.0/0".into(),
+            },
+            SecurityRule {
+                protocol: "tcp".into(),
+                port_range: "443".into(),
+                source: "0.0.0.0/0".into(),
+            },
+        ],
+        outbound_rules: vec![SecurityRule {
+            protocol: "-1".into(),
+            port_range: "all".into(),
+            source: "0.0.0.0/0".into(),
+        }],
+    }]
+}
+
+// ============================================================================
+// Capability
+// ============================================================================
+
+pub struct FakeAwsCapability;
+
+impl Capability for FakeAwsCapability {
+    fn id(&self) -> &str {
+        "fake_aws"
+    }
+
+    fn name(&self) -> &str {
+        "Fake AWS Tools"
+    }
+
+    fn description(&self) -> &str {
+        "Mock AWS infrastructure tools (EC2, RDS, S3, IAM, CloudWatch). \
+         All state persisted in session filesystem. Latency emulation via FAKE_AWS_LATENCY_MS."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("cloud")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Demo Tools")
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some(
+            r#"You have access to AWS infrastructure management tools. All AWS data is stored in /aws/ directory.
+
+Available tools:
+- `aws_list_ec2_instances`: List all EC2 instances with their status
+- `aws_create_ec2_instance`: Launch a new EC2 instance
+- `aws_stop_ec2_instance`: Stop a running EC2 instance
+- `aws_list_rds_databases`: List RDS database instances
+- `aws_create_rds_database`: Create a new RDS database
+- `aws_list_s3_buckets`: List all S3 buckets
+- `aws_create_s3_bucket`: Create a new S3 bucket
+- `aws_list_iam_users`: List IAM users and their permissions
+- `aws_create_iam_user`: Create a new IAM user
+- `aws_list_security_groups`: List security groups and rules
+- `aws_get_cloudwatch_metrics`: Get CloudWatch metrics for resources
+
+Data structure:
+- /aws/ec2_instances.json - EC2 instance records
+- /aws/rds_databases.json - RDS database records
+- /aws/s3_buckets.json - S3 bucket records
+- /aws/iam_users.json - IAM user records
+- /aws/security_groups.json - Security group records
+
+API calls have realistic latency. All mutations are persisted."#,
+        )
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(AwsListEc2InstancesTool),
+            Box::new(AwsCreateEc2InstanceTool),
+            Box::new(AwsStopEc2InstanceTool),
+            Box::new(AwsListRdsDatabasesTool),
+            Box::new(AwsCreateRdsDatabaseTool),
+            Box::new(AwsListS3BucketsTool),
+            Box::new(AwsCreateS3BucketTool),
+            Box::new(AwsListIamUsersTool),
+            Box::new(AwsCreateIamUserTool),
+            Box::new(AwsListSecurityGroupsTool),
+            Box::new(AwsGetCloudWatchMetricsTool),
+        ]
+    }
+}
+
+// ============================================================================
 // Tool: aws_list_ec2_instances
 // ============================================================================
 
@@ -204,87 +444,12 @@ impl Tool for AwsListEc2InstancesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let file_store = match &context.file_store {
-            Some(store) => store,
-            None => return ToolExecutionResult::tool_error("File system not available"),
-        };
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::List).await;
 
         let state_filter = arguments.get("state").and_then(|v| v.as_str());
+        let instances = read_or_seed(store, context.session_id, EC2_PATH, seed_ec2).await;
 
-        // Read EC2 instances
-        let instances: Vec<Ec2Instance> = match file_store
-            .read_file(context.session_id, "/aws/ec2_instances.json")
-            .await
-        {
-            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
-                .unwrap_or_else(|_| {
-                    // Initialize with sample data
-                    vec![
-                        Ec2Instance {
-                            instance_id: "i-0123456789abcdef0".to_string(),
-                            instance_type: "t3.medium".to_string(),
-                            state: "running".to_string(),
-                            availability_zone: "us-east-1a".to_string(),
-                            private_ip: "10.0.1.100".to_string(),
-                            public_ip: Some("54.123.45.67".to_string()),
-                            launch_time: "2025-01-01T10:00:00Z".to_string(),
-                            tags: vec![
-                                Tag {
-                                    key: "Name".to_string(),
-                                    value: "web-server-01".to_string(),
-                                },
-                                Tag {
-                                    key: "Environment".to_string(),
-                                    value: "production".to_string(),
-                                },
-                            ],
-                        },
-                        Ec2Instance {
-                            instance_id: "i-0987654321fedcba0".to_string(),
-                            instance_type: "t3.large".to_string(),
-                            state: "running".to_string(),
-                            availability_zone: "us-east-1b".to_string(),
-                            private_ip: "10.0.2.100".to_string(),
-                            public_ip: Some("54.123.45.68".to_string()),
-                            launch_time: "2025-01-01T11:00:00Z".to_string(),
-                            tags: vec![Tag {
-                                key: "Name".to_string(),
-                                value: "api-server-01".to_string(),
-                            }],
-                        },
-                    ]
-                }),
-            _ => {
-                // Create initial data
-                let initial = vec![Ec2Instance {
-                    instance_id: "i-0123456789abcdef0".to_string(),
-                    instance_type: "t3.medium".to_string(),
-                    state: "running".to_string(),
-                    availability_zone: "us-east-1a".to_string(),
-                    private_ip: "10.0.1.100".to_string(),
-                    public_ip: Some("54.123.45.67".to_string()),
-                    launch_time: chrono::Utc::now().to_rfc3339(),
-                    tags: vec![Tag {
-                        key: "Name".to_string(),
-                        value: "web-server-01".to_string(),
-                    }],
-                }];
-
-                let content = serde_json::to_string_pretty(&initial).unwrap();
-                let _ = file_store
-                    .write_file(
-                        context.session_id,
-                        "/aws/ec2_instances.json",
-                        &content,
-                        "text",
-                    )
-                    .await;
-
-                initial
-            }
-        };
-
-        // Apply filter
         let filtered: Vec<_> = if let Some(state) = state_filter {
             instances.into_iter().filter(|i| i.state == state).collect()
         } else {
@@ -353,10 +518,8 @@ impl Tool for AwsCreateEc2InstanceTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let file_store = match &context.file_store {
-            Some(store) => store,
-            None => return ToolExecutionResult::tool_error("File system not available"),
-        };
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Create).await;
 
         let instance_type = match arguments.get("instance_type").and_then(|v| v.as_str()) {
             Some(t) => t,
@@ -366,30 +529,21 @@ impl Tool for AwsCreateEc2InstanceTool {
                 );
             }
         };
-
         let name = match arguments.get("name").and_then(|v| v.as_str()) {
             Some(n) => n,
             None => return ToolExecutionResult::tool_error("Missing required parameter: name"),
         };
-
-        let availability_zone = arguments
+        let az = arguments
             .get("availability_zone")
             .and_then(|v| v.as_str())
             .unwrap_or("us-east-1a");
 
-        // Read current instances
-        let mut instances: Vec<Ec2Instance> = match file_store
-            .read_file(context.session_id, "/aws/ec2_instances.json")
-            .await
-        {
-            Ok(Some(file)) => {
-                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
-            }
-            _ => vec![],
-        };
+        let mut instances = read_or_seed(store, context.session_id, EC2_PATH, seed_ec2).await;
 
-        // Create new instance
-        let instance_id = format!("i-{:016x}", chrono::Utc::now().timestamp() as u64);
+        let instance_id = format!(
+            "i-{:016x}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64
+        );
         let private_ip = format!("10.0.{}.{}", (instances.len() % 254) + 1, 100);
         let public_ip = format!(
             "54.{}.{}.{}",
@@ -401,38 +555,27 @@ impl Tool for AwsCreateEc2InstanceTool {
         let instance = Ec2Instance {
             instance_id: instance_id.clone(),
             instance_type: instance_type.to_string(),
-            state: "running".to_string(),
-            availability_zone: availability_zone.to_string(),
-            private_ip,
+            state: "running".into(),
+            availability_zone: az.to_string(),
+            private_ip: private_ip.clone(),
             public_ip: Some(public_ip.clone()),
             launch_time: chrono::Utc::now().to_rfc3339(),
             tags: vec![Tag {
-                key: "Name".to_string(),
+                key: "Name".into(),
                 value: name.to_string(),
             }],
         };
+        instances.push(instance);
 
-        instances.push(instance.clone());
-
-        // Save instances
-        let content = serde_json::to_string_pretty(&instances).unwrap();
-        match file_store
-            .write_file(
-                context.session_id,
-                "/aws/ec2_instances.json",
-                &content,
-                "text",
-            )
-            .await
-        {
+        match persist(store, context.session_id, EC2_PATH, &instances).await {
             Ok(_) => ToolExecutionResult::success(json!({
                 "instance_id": instance_id,
                 "state": "running",
-                "private_ip": instance.private_ip,
+                "private_ip": private_ip,
                 "public_ip": public_ip,
                 "message": "EC2 instance launched successfully"
             })),
-            Err(e) => ToolExecutionResult::internal_error(e),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to persist: {e}")),
         }
     }
 
@@ -484,10 +627,8 @@ impl Tool for AwsStopEc2InstanceTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let file_store = match &context.file_store {
-            Some(store) => store,
-            None => return ToolExecutionResult::tool_error("File system not available"),
-        };
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Modify).await;
 
         let instance_id = match arguments.get("instance_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -496,18 +637,8 @@ impl Tool for AwsStopEc2InstanceTool {
             }
         };
 
-        // Read instances
-        let mut instances: Vec<Ec2Instance> = match file_store
-            .read_file(context.session_id, "/aws/ec2_instances.json")
-            .await
-        {
-            Ok(Some(file)) => {
-                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
-            }
-            _ => vec![],
-        };
+        let mut instances = read_or_seed(store, context.session_id, EC2_PATH, seed_ec2).await;
 
-        // Find and stop instance
         let instance = match instances.iter_mut().find(|i| i.instance_id == instance_id) {
             Some(i) => i,
             None => {
@@ -519,25 +650,15 @@ impl Tool for AwsStopEc2InstanceTool {
         };
 
         let old_state = instance.state.clone();
-        instance.state = "stopped".to_string();
+        instance.state = "stopped".into();
 
-        // Save updated instances
-        let content = serde_json::to_string_pretty(&instances).unwrap();
-        match file_store
-            .write_file(
-                context.session_id,
-                "/aws/ec2_instances.json",
-                &content,
-                "text",
-            )
-            .await
-        {
+        match persist(store, context.session_id, EC2_PATH, &instances).await {
             Ok(_) => ToolExecutionResult::success(json!({
                 "instance_id": instance_id,
                 "old_state": old_state,
                 "new_state": "stopped"
             })),
-            Err(e) => ToolExecutionResult::internal_error(e),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to persist: {e}")),
         }
     }
 
@@ -547,7 +668,7 @@ impl Tool for AwsStopEc2InstanceTool {
 }
 
 // ============================================================================
-// Remaining tools (simplified implementations)
+// Tool: aws_list_rds_databases
 // ============================================================================
 
 pub struct AwsListRdsDatabasesTool;
@@ -579,30 +700,10 @@ impl Tool for AwsListRdsDatabasesTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let file_store = match &context.file_store {
-            Some(store) => store,
-            None => return ToolExecutionResult::tool_error("File system not available"),
-        };
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::List).await;
 
-        let databases: Vec<RdsDatabase> = match file_store
-            .read_file(context.session_id, "/aws/rds_databases.json")
-            .await
-        {
-            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
-                .unwrap_or_else(|_| {
-                    vec![RdsDatabase {
-                        db_instance_id: "prod-postgres-01".to_string(),
-                        engine: "postgres".to_string(),
-                        engine_version: "15.4".to_string(),
-                        instance_class: "db.t3.medium".to_string(),
-                        status: "available".to_string(),
-                        endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".to_string(),
-                        port: 5432,
-                        storage_gb: 100,
-                    }]
-                }),
-            _ => vec![],
-        };
+        let databases = read_or_seed(store, context.session_id, RDS_PATH, seed_rds).await;
 
         ToolExecutionResult::success(
             json!({"databases": databases, "total_count": databases.len()}),
@@ -613,6 +714,10 @@ impl Tool for AwsListRdsDatabasesTool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_create_rds_database
+// ============================================================================
 
 pub struct AwsCreateRdsDatabaseTool;
 
@@ -651,24 +756,81 @@ impl Tool for AwsCreateRdsDatabaseTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let db_id = arguments
-            .get("db_instance_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Create).await;
 
-        ToolExecutionResult::success(json!({
-            "db_instance_id": db_id,
-            "status": "creating",
-            "message": "RDS database creation initiated"
-        }))
+        let db_id = match arguments.get("db_instance_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "Missing required parameter: db_instance_id",
+                );
+            }
+        };
+        let engine = match arguments.get("engine").and_then(|v| v.as_str()) {
+            Some(e) => e,
+            None => return ToolExecutionResult::tool_error("Missing required parameter: engine"),
+        };
+        let instance_class = match arguments.get("instance_class").and_then(|v| v.as_str()) {
+            Some(c) => c,
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "Missing required parameter: instance_class",
+                );
+            }
+        };
+        let storage_gb = arguments
+            .get("storage_gb")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(20) as i32;
+
+        let engine_version = match engine {
+            "postgres" => "15.4",
+            "mysql" => "8.0",
+            "mariadb" => "10.11",
+            _ => "unknown",
+        };
+        let port = match engine {
+            "postgres" => 5432,
+            "mysql" | "mariadb" => 3306,
+            _ => 5432,
+        };
+
+        let mut databases = read_or_seed(store, context.session_id, RDS_PATH, seed_rds).await;
+
+        let db = RdsDatabase {
+            db_instance_id: db_id.to_string(),
+            engine: engine.to_string(),
+            engine_version: engine_version.to_string(),
+            instance_class: instance_class.to_string(),
+            status: "creating".into(),
+            endpoint: format!("{}.abc123.us-east-1.rds.amazonaws.com", db_id),
+            port,
+            storage_gb,
+        };
+        databases.push(db);
+
+        match persist(store, context.session_id, RDS_PATH, &databases).await {
+            Ok(_) => ToolExecutionResult::success(json!({
+                "db_instance_id": db_id,
+                "status": "creating",
+                "endpoint": format!("{}.abc123.us-east-1.rds.amazonaws.com", db_id),
+                "message": "RDS database creation initiated"
+            })),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to persist: {e}")),
+        }
     }
 
     fn requires_context(&self) -> bool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_list_s3_buckets
+// ============================================================================
 
 pub struct AwsListS3BucketsTool;
 
@@ -697,24 +859,12 @@ impl Tool for AwsListS3BucketsTool {
     async fn execute_with_context(
         &self,
         _arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let buckets = vec![
-            S3Bucket {
-                name: "company-data-backup".to_string(),
-                region: "us-east-1".to_string(),
-                creation_date: "2024-06-01T00:00:00Z".to_string(),
-                versioning_enabled: true,
-                encryption_enabled: true,
-            },
-            S3Bucket {
-                name: "static-assets-prod".to_string(),
-                region: "us-west-2".to_string(),
-                creation_date: "2024-08-15T00:00:00Z".to_string(),
-                versioning_enabled: false,
-                encryption_enabled: true,
-            },
-        ];
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::List).await;
+
+        let buckets = read_or_seed(store, context.session_id, S3_PATH, seed_s3).await;
 
         ToolExecutionResult::success(json!({"buckets": buckets, "total_count": buckets.len()}))
     }
@@ -723,6 +873,10 @@ impl Tool for AwsListS3BucketsTool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_create_s3_bucket
+// ============================================================================
 
 pub struct AwsCreateS3BucketTool;
 
@@ -761,24 +915,59 @@ impl Tool for AwsCreateS3BucketTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let bucket_name = arguments
-            .get("bucket_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Create).await;
 
-        ToolExecutionResult::success(json!({
-            "bucket_name": bucket_name,
-            "status": "created",
-            "region": "us-east-1"
-        }))
+        let bucket_name = match arguments.get("bucket_name").and_then(|v| v.as_str()) {
+            Some(n) => n,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: bucket_name");
+            }
+        };
+        let region = arguments
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("us-east-1");
+        let versioning = arguments
+            .get("versioning_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let encryption = arguments
+            .get("encryption_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let mut buckets = read_or_seed(store, context.session_id, S3_PATH, seed_s3).await;
+
+        let bucket = S3Bucket {
+            name: bucket_name.to_string(),
+            region: region.to_string(),
+            creation_date: chrono::Utc::now().to_rfc3339(),
+            versioning_enabled: versioning,
+            encryption_enabled: encryption,
+        };
+        buckets.push(bucket);
+
+        match persist(store, context.session_id, S3_PATH, &buckets).await {
+            Ok(_) => ToolExecutionResult::success(json!({
+                "bucket_name": bucket_name,
+                "status": "created",
+                "region": region
+            })),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to persist: {e}")),
+        }
     }
 
     fn requires_context(&self) -> bool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_list_iam_users
+// ============================================================================
 
 pub struct AwsListIamUsersTool;
 
@@ -807,24 +996,12 @@ impl Tool for AwsListIamUsersTool {
     async fn execute_with_context(
         &self,
         _arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let users = vec![
-            IamUser {
-                username: "admin-user".to_string(),
-                user_id: "AIDAI23XYZABC123DEF".to_string(),
-                arn: "arn:aws:iam::123456789012:user/admin-user".to_string(),
-                created_at: "2024-01-15T10:00:00Z".to_string(),
-                permissions: vec!["AdministratorAccess".to_string()],
-            },
-            IamUser {
-                username: "developer-user".to_string(),
-                user_id: "AIDAI23XYZABC456GHI".to_string(),
-                arn: "arn:aws:iam::123456789012:user/developer-user".to_string(),
-                created_at: "2024-02-20T14:30:00Z".to_string(),
-                permissions: vec!["PowerUserAccess".to_string()],
-            },
-        ];
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::List).await;
+
+        let users = read_or_seed(store, context.session_id, IAM_PATH, seed_iam).await;
 
         ToolExecutionResult::success(json!({"users": users, "total_count": users.len()}))
     }
@@ -833,6 +1010,10 @@ impl Tool for AwsListIamUsersTool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_create_iam_user
+// ============================================================================
 
 pub struct AwsCreateIamUserTool;
 
@@ -873,24 +1054,60 @@ impl Tool for AwsCreateIamUserTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let username = arguments
-            .get("username")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Create).await;
 
-        ToolExecutionResult::success(json!({
-            "username": username,
-            "user_id": format!("AIDAI{:016x}", chrono::Utc::now().timestamp()),
-            "status": "created"
-        }))
+        let username = match arguments.get("username").and_then(|v| v.as_str()) {
+            Some(u) => u,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: username");
+            }
+        };
+        let permissions: Vec<String> = arguments
+            .get("permissions")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut users = read_or_seed(store, context.session_id, IAM_PATH, seed_iam).await;
+
+        let user_id = format!(
+            "AIDAI{:016x}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64
+        );
+        let user = IamUser {
+            username: username.to_string(),
+            user_id: user_id.clone(),
+            arn: format!("arn:aws:iam::123456789012:user/{}", username),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            permissions,
+        };
+        users.push(user);
+
+        match persist(store, context.session_id, IAM_PATH, &users).await {
+            Ok(_) => ToolExecutionResult::success(json!({
+                "username": username,
+                "user_id": user_id,
+                "status": "created"
+            })),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to persist: {e}")),
+        }
     }
 
     fn requires_context(&self) -> bool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_list_security_groups
+// ============================================================================
 
 pub struct AwsListSecurityGroupsTool;
 
@@ -919,34 +1136,15 @@ impl Tool for AwsListSecurityGroupsTool {
     async fn execute_with_context(
         &self,
         _arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let security_groups = vec![SecurityGroup {
-            group_id: "sg-0123456789abcdef0".to_string(),
-            group_name: "web-server-sg".to_string(),
-            description: "Security group for web servers".to_string(),
-            vpc_id: "vpc-abc123".to_string(),
-            inbound_rules: vec![
-                SecurityRule {
-                    protocol: "tcp".to_string(),
-                    port_range: "80".to_string(),
-                    source: "0.0.0.0/0".to_string(),
-                },
-                SecurityRule {
-                    protocol: "tcp".to_string(),
-                    port_range: "443".to_string(),
-                    source: "0.0.0.0/0".to_string(),
-                },
-            ],
-            outbound_rules: vec![SecurityRule {
-                protocol: "-1".to_string(),
-                port_range: "all".to_string(),
-                source: "0.0.0.0/0".to_string(),
-            }],
-        }];
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::List).await;
+
+        let groups = read_or_seed(store, context.session_id, SG_PATH, seed_security_groups).await;
 
         ToolExecutionResult::success(
-            json!({"security_groups": security_groups, "total_count": security_groups.len()}),
+            json!({"security_groups": groups, "total_count": groups.len()}),
         )
     }
 
@@ -954,6 +1152,10 @@ impl Tool for AwsListSecurityGroupsTool {
         true
     }
 }
+
+// ============================================================================
+// Tool: aws_get_cloudwatch_metrics
+// ============================================================================
 
 pub struct AwsGetCloudWatchMetricsTool;
 
@@ -998,25 +1200,61 @@ impl Tool for AwsGetCloudWatchMetricsTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> ToolExecutionResult {
-        let resource_id = arguments
-            .get("resource_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let metric_name = arguments
-            .get("metric_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("CPUUtilization");
+        let store = require_file_store!(context);
+        simulate_latency(OpKind::Query).await;
 
-        // Generate mock metric data
+        let resource_id = match arguments.get("resource_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: resource_id");
+            }
+        };
+        let metric_name = match arguments.get("metric_name").and_then(|v| v.as_str()) {
+            Some(m) => m,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: metric_name");
+            }
+        };
+
+        // Verify the resource actually exists (check EC2 instances)
+        let instances = read_or_seed(store, context.session_id, EC2_PATH, seed_ec2).await;
+        let instance_exists = instances.iter().any(|i| i.instance_id == resource_id);
+
+        if !instance_exists {
+            // Also check RDS
+            let databases = read_or_seed(store, context.session_id, RDS_PATH, seed_rds).await;
+            let rds_exists = databases.iter().any(|d| d.db_instance_id == resource_id);
+            if !rds_exists {
+                return ToolExecutionResult::tool_error(format!(
+                    "Resource not found: {}",
+                    resource_id
+                ));
+            }
+        }
+
+        // Generate metric datapoints — deterministic from resource_id hash for
+        // reproducible benchmark results
+        let hash: u32 = resource_id
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
         let datapoints: Vec<Value> = (0..12)
             .map(|i| {
+                let base = match metric_name {
+                    "CPUUtilization" => 30.0,
+                    "MemoryUtilization" => 55.0,
+                    "DiskReadOps" => 150.0,
+                    "NetworkIn" => 1024.0 * 50.0,
+                    _ => 30.0,
+                };
+                let variation = ((hash.wrapping_add(i * 7)) % 200) as f64 / 10.0 - 10.0;
+                let avg = (base + variation + i as f64 * 1.5).max(0.0);
                 json!({
-                    "timestamp": chrono::Utc::now() - chrono::Duration::minutes(i * 5),
-                    "average": 30.0 + (i as f64 * 2.5),
-                    "minimum": 20.0,
-                    "maximum": 80.0
+                    "timestamp": chrono::Utc::now() - chrono::Duration::minutes(i as i64 * 5),
+                    "average": avg,
+                    "minimum": (avg * 0.7).max(0.0),
+                    "maximum": avg * 1.3
                 })
             })
             .collect();

@@ -48,6 +48,7 @@ mod seed_ids {
     pub const CODESANDBOX_CODER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
+    pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -675,6 +676,59 @@ You can run multiple sandboxes in parallel for different tasks.
 Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
         capabilities: &["daytona", "session_storage", "session_file_system"],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::CLOUD_INFRA_AGENT,
+        name: "Cloud Infrastructure Manager",
+        description: "Manages mock AWS infrastructure (EC2, RDS, S3, IAM, CloudWatch) with persistent state and latency emulation. Designed for benchmarking long-running agents.",
+        system_prompt: r#"You are a Cloud Infrastructure Manager responsible for managing AWS cloud
+infrastructure. You handle EC2 instances, RDS databases, S3 buckets, IAM users,
+security groups, and monitor resources with CloudWatch.
+
+All resources are persistent — changes you make are saved and visible in future
+tool calls within the same session.
+
+## Your Responsibilities
+
+1. **Compute Resources (EC2)**
+   - Launch and manage EC2 instances
+   - Monitor instance health and performance
+   - Stop or terminate unused instances
+   - Optimize instance types for cost and performance
+
+2. **Database Management (RDS)**
+   - Create and manage RDS database instances
+   - Monitor database performance and storage
+   - Choose appropriate engines (postgres, mysql, mariadb)
+
+3. **Storage (S3)**
+   - Create and manage S3 buckets
+   - Configure versioning and encryption
+   - Monitor storage usage
+
+4. **Access Management (IAM)**
+   - Create and manage IAM users
+   - Assign appropriate permissions (principle of least privilege)
+
+5. **Security (Security Groups)**
+   - Review security group rules
+   - Audit inbound/outbound access
+
+6. **Monitoring (CloudWatch)**
+   - Track resource metrics (CPU, memory, disk, network)
+   - Analyze trends for capacity planning
+   - Investigate performance issues
+
+## Best Practices
+
+- Always tag resources appropriately
+- Enable encryption for sensitive data
+- Monitor costs and optimize resource usage
+- Document infrastructure changes
+- Verify changes by listing resources after mutations"#,
+        tags: &["aws", "infrastructure", "benchmark", "demo", "seed"],
+        capabilities: &["fake_aws", "current_time", "session_file_system"],
         dev_only: false,
     },
 ];
