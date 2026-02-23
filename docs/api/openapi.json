@@ -2746,6 +2746,7 @@
           "events"
         ],
         "summary": "GET /v1/sessions/{session_id}/events - List events (JSON)",
+        "description": "Returns events for a session as a JSON array. Supports filtering by event type\nvia `types` (positive: only these types) and `exclude` (negative: remove these types).\nWhen both are provided, `types` narrows first, then `exclude` removes from that set.\nBoth accept only known event types (max 25 per parameter). Unknown types return 400.",
         "operationId": "list_events",
         "parameters": [
           {
@@ -2774,9 +2775,23 @@
             }
           },
           {
+            "name": "types",
+            "in": "query",
+            "description": "Positive type filter: only return events matching these types (can be specified multiple times).\nWhen empty, all types are returned. Example: ?types=turn.started&types=turn.completed",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
             "name": "exclude",
             "in": "query",
-            "description": "Event types to exclude from the response (can be specified multiple times).\nCommon delta events to exclude: output.message.delta, reason.thinking.delta",
+            "description": "Event types to exclude from the response (can be specified multiple times).\nApplied after `types` filter. Common delta events to exclude: output.message.delta, reason.thinking.delta",
             "required": false,
             "schema": {
               "type": "array",
@@ -2800,7 +2815,7 @@
             }
           },
           "400": {
-            "description": "Invalid session ID"
+            "description": "Invalid session ID or invalid event type filter"
           },
           "404": {
             "description": "Session not found"
@@ -3448,7 +3463,7 @@
           "events"
         ],
         "summary": "GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)",
-        "description": "Establishes a Server-Sent Events (SSE) connection for real-time event streaming.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n  Data: `{\"status\":\"connected\"}`\n\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":100}`\n  Clients should reconnect immediately using the `since_id` of the last received event.\n\n## Connection Cycling\n\nConnections are automatically cycled every 5 minutes to prevent stale connections\nthrough proxies and load balancers. Before closing, the server sends a `disconnecting`\nevent so clients can reconnect seamlessly without missing events.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints how long\nclients should wait before reconnecting if the connection is lost:\n- During active streaming: 100ms (fast reconnect)\n- During idle periods: increases with backoff up to 500ms\n- After `disconnecting` event: 100ms (immediate reconnect)\n\n## Resuming Streams\n\nUse the `since_id` query parameter to resume from a specific event. The server\nwill only send events with IDs greater than the specified value. Event IDs are\nUUID v7 (monotonically increasing), ensuring reliable ordering.",
+        "description": "Establishes a Server-Sent Events (SSE) connection for real-time event streaming.\n\n## Connection Lifecycle Events\n\n- **connected**: Sent immediately when the stream is established.\n  Data: `{\"status\":\"connected\"}`\n\n- **disconnecting**: Sent before the server closes the connection for graceful cycling.\n  Data: `{\"reason\":\"connection_cycle\",\"retry_ms\":100}`\n  Clients should reconnect immediately using the `since_id` of the last received event.\n\n## Connection Cycling\n\nConnections are automatically cycled every 5 minutes to prevent stale connections\nthrough proxies and load balancers. Before closing, the server sends a `disconnecting`\nevent so clients can reconnect seamlessly without missing events.\n\n## Retry Hints\n\nEach SSE event includes a `retry:` field (in milliseconds) that hints how long\nclients should wait before reconnecting if the connection is lost:\n- During active streaming: 100ms (fast reconnect)\n- During idle periods: increases with backoff up to 500ms\n- After `disconnecting` event: 100ms (immediate reconnect)\n\n## Resuming Streams\n\nUse the `since_id` query parameter to resume from a specific event. The server\nwill only send events with IDs greater than the specified value. Event IDs are\nUUID v7 (monotonically increasing), ensuring reliable ordering.\n\n## Event Type Filtering\n\nUse `types` for positive filtering (only return these types) and `exclude` for\nnegative filtering (remove these types). When both are provided, `types` narrows\nfirst, then `exclude` removes from that set. Both accept only known event types\n(max 25 per parameter). Unknown types return 400.",
         "operationId": "stream_sse",
         "parameters": [
           {
@@ -3477,9 +3492,23 @@
             }
           },
           {
+            "name": "types",
+            "in": "query",
+            "description": "Positive type filter: only return events matching these types (can be specified multiple times).\nWhen empty, all types are returned. Example: ?types=turn.started&types=turn.completed",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
             "name": "exclude",
             "in": "query",
-            "description": "Event types to exclude from the response (can be specified multiple times).\nCommon delta events to exclude: output.message.delta, reason.thinking.delta",
+            "description": "Event types to exclude from the response (can be specified multiple times).\nApplied after `types` filter. Common delta events to exclude: output.message.delta, reason.thinking.delta",
             "required": false,
             "schema": {
               "type": "array",
