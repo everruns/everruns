@@ -24,6 +24,7 @@ use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message, Role};
+use tokio_stream::wrappers::ReceiverStream;
 
 // ============================================================================
 // Configuration Types
@@ -387,6 +388,22 @@ impl LlmSimDriver {
         }
     }
 
+    /// Get latency profile for a specific model name from the request.
+    /// Model names containing "-latency" enable streaming simulation with
+    /// inter-token delays using LatencyProfile::fast().
+    fn get_request_latency_profile(model_name: &str) -> Option<LatencyProfile> {
+        if model_name.contains("-latency") {
+            Some(LatencyProfile::fast())
+        } else {
+            None
+        }
+    }
+
+    /// Whether a request should use latency simulation based on config or model name.
+    fn should_simulate_latency(&self, model_name: &str) -> bool {
+        self.config.simulate_latency || model_name.contains("-latency")
+    }
+
     /// Estimate token count for text
     fn estimate_tokens(text: &str) -> u32 {
         // Simple estimation: ~4 chars per token
@@ -423,8 +440,16 @@ impl LlmDriver for LlmSimDriver {
 
         let response_text = self.generate_response(&messages);
         let tool_calls = self.get_tool_calls(&messages);
-        let latency_profile = self.get_latency_profile();
         let model_name = config.model.clone();
+        let simulate_latency = self.should_simulate_latency(&model_name);
+
+        // Select latency profile: request model name takes priority, then config
+        let latency_profile = if simulate_latency {
+            Self::get_request_latency_profile(&model_name)
+                .unwrap_or_else(|| self.get_latency_profile())
+        } else {
+            self.get_latency_profile()
+        };
 
         // Calculate token estimates
         let prompt_tokens: u32 = messages
@@ -436,12 +461,6 @@ impl LlmDriver for LlmSimDriver {
         // Build stream events
         let mut events = Vec::new();
 
-        // Simulate time-to-first-token if latency enabled
-        if self.config.simulate_latency {
-            let ttft = latency_profile.sample_ttft();
-            tokio::time::sleep(ttft).await;
-        }
-
         // Stream text in chunks (word by word for realistic streaming)
         if !response_text.is_empty() {
             let words: Vec<&str> = response_text.split_whitespace().collect();
@@ -451,17 +470,17 @@ impl LlmDriver for LlmSimDriver {
                 } else {
                     format!(" {}", word)
                 };
-                events.push(Ok(LlmStreamEvent::TextDelta(delta)));
+                events.push(LlmStreamEvent::TextDelta(delta));
             }
         }
 
         // Emit tool calls if present
         if let Some(calls) = tool_calls {
-            events.push(Ok(LlmStreamEvent::ToolCalls(calls)));
+            events.push(LlmStreamEvent::ToolCalls(calls));
         }
 
         // Final done event with metadata
-        events.push(Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+        events.push(LlmStreamEvent::Done(LlmCompletionMetadata {
             total_tokens: Some(prompt_tokens + completion_tokens),
             prompt_tokens: Some(prompt_tokens),
             completion_tokens: Some(completion_tokens),
@@ -470,9 +489,38 @@ impl LlmDriver for LlmSimDriver {
             model: Some(model_name),
             finish_reason: Some("stop".to_string()),
             retry_metadata: None, // LlmSim doesn't implement retry
-        })));
+        }));
 
-        Ok(Box::pin(stream::iter(events)))
+        // When latency simulation is enabled (via config or model name like "llmsim-latency"),
+        // stream events through a channel with realistic TTFT and inter-token delays.
+        // This simulates actual LLM streaming behavior for benchmarking.
+        if simulate_latency {
+            let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+            tokio::spawn(async move {
+                // Simulate time-to-first-token delay
+                let ttft = latency_profile.sample_ttft();
+                tokio::time::sleep(ttft).await;
+
+                for event in events {
+                    let is_text_delta = matches!(&event, LlmStreamEvent::TextDelta(_));
+                    if tx.send(Ok(event)).await.is_err() {
+                        break;
+                    }
+                    // Simulate inter-token delay after each text delta
+                    if is_text_delta {
+                        let tbt = latency_profile.sample_tbt();
+                        tokio::time::sleep(tbt).await;
+                    }
+                }
+            });
+
+            Ok(Box::pin(ReceiverStream::new(rx)))
+        } else {
+            // No latency: emit all events instantly
+            let wrapped: Vec<Result<LlmStreamEvent>> = events.into_iter().map(Ok).collect();
+            Ok(Box::pin(stream::iter(wrapped)))
+        }
     }
 }
 
@@ -929,5 +977,86 @@ mod tests {
         assert_eq!(parse_ttft_from_model_name("llmsim-model"), None);
         assert_eq!(parse_ttft_from_model_name("llmsim-ttft-0"), None);
         assert_eq!(parse_ttft_from_model_name("llmsim-ttft-abc"), None);
+    }
+
+    #[test]
+    fn test_should_simulate_latency_from_model_name() {
+        // Config flag off, model name triggers latency
+        let driver = LlmSimDriver::new(LlmSimConfig::fixed("test"));
+        assert!(driver.should_simulate_latency("llmsim-latency"));
+        assert!(!driver.should_simulate_latency("llmsim-default"));
+
+        // Config flag on, any model name
+        let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
+        assert!(driver.should_simulate_latency("llmsim-default"));
+        assert!(driver.should_simulate_latency("llmsim-latency"));
+    }
+
+    #[test]
+    fn test_get_request_latency_profile() {
+        // Model with "-latency" returns a profile
+        assert!(LlmSimDriver::get_request_latency_profile("llmsim-latency").is_some());
+        // Model without "-latency" returns None
+        assert!(LlmSimDriver::get_request_latency_profile("llmsim-default").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_latency_streaming_from_model_name() {
+        // Default driver (simulate_latency=false) but model name triggers latency
+        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
+        let messages = vec![user_message("test")];
+
+        let mut config = make_config();
+        config.model = "llmsim-latency".to_string();
+
+        let start = std::time::Instant::now();
+        let mut stream = driver
+            .chat_completion_stream(messages, &config)
+            .await
+            .unwrap();
+
+        let mut text_parts = Vec::new();
+        let mut got_done = false;
+
+        while let Some(event) = stream.next().await {
+            match event.unwrap() {
+                LlmStreamEvent::TextDelta(text) => text_parts.push(text),
+                LlmStreamEvent::Done(meta) => {
+                    got_done = true;
+                    assert_eq!(meta.model, Some("llmsim-latency".to_string()));
+                }
+                _ => {}
+            }
+        }
+
+        assert!(got_done);
+        assert_eq!(text_parts.join(""), "Hello world");
+        // With latency simulation, streaming should take non-zero time
+        // (TTFT + inter-token delays)
+        assert!(
+            start.elapsed().as_millis() > 0,
+            "latency simulation should introduce delays"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_latency_streaming_is_instant() {
+        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
+        let messages = vec![user_message("test")];
+
+        let mut config = make_config();
+        config.model = "llmsim-default".to_string();
+
+        let start = std::time::Instant::now();
+        let response = driver.chat_completion(messages, &config).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(response.text, "Hello world");
+        // Without latency, should complete nearly instantly (under 50ms)
+        assert!(
+            elapsed.as_millis() < 50,
+            "instant mode should have no delays, took {}ms",
+            elapsed.as_millis()
+        );
     }
 }

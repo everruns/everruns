@@ -13,7 +13,7 @@
 //!   API_URL=http://localhost:9300/api   # API endpoint
 //!   SESSIONS=100                    # Number of parallel sessions
 //!   MESSAGES_PER_SESSION=50         # Messages per session
-//!   MODEL_ID=llmsim                 # Model to use (llmsim, llmsim-ttft-500, etc.)
+//!   MODEL_ID=<model_id>             # Model to use (default: llmsim-latency seed model)
 //!   TARGET=docker-example           # Target label (auto-detected if unset)
 
 use std::fs;
@@ -35,8 +35,9 @@ use tokio::sync::Semaphore;
 /// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
 const DEFAULT_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
 
-/// Seed llmsim model ID from seed.rs (LLMSIM_DEFAULT = 0x01933b5a_0000_7000_8000_000000000401)
-const DEFAULT_LLMSIM_MODEL_ID: &str = "model_01933b5a000070008000000000000401";
+/// Seed llmsim-latency model ID from seed.rs (LLMSIM_LATENCY = 0x01933b5a_0000_7000_8000_000000000402)
+/// Uses LatencyProfile::fast() with TTFT and inter-token delays for realistic streaming simulation.
+const DEFAULT_LLMSIM_MODEL_ID: &str = "model_01933b5a000070008000000000000402";
 
 // ============================================================================
 // Configuration

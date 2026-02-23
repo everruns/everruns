@@ -102,6 +102,7 @@ mod seed_ids {
 
     // LlmSim Models (0x400-0x4FF)
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
+    pub const LLMSIM_LATENCY: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000402);
 
     // Gemini Models (0x600-0x6FF)
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
@@ -1187,6 +1188,14 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::LLMSIM_PROVIDER,
         model_id: "llmsim-default",
         display_name: "LlmSim Default",
+        is_default: false,
+        is_favorite: false,
+    },
+    SeedModel {
+        id: seed_ids::LLMSIM_LATENCY,
+        provider_id: seed_ids::LLMSIM_PROVIDER,
+        model_id: "llmsim-latency",
+        display_name: "LlmSim Latency",
         is_default: false,
         is_favorite: false,
     },
