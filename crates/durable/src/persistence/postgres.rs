@@ -779,6 +779,29 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             );
         }
 
+        // Also mark workers with stale heartbeats as stopped.
+        // This cleans up workers that crashed without calling deregister_worker.
+        let stale_workers = sqlx::query(
+            r#"
+            UPDATE durable_workers
+            SET status = 'stopped'
+            WHERE status = 'active'
+              AND last_heartbeat_at < NOW() - INTERVAL '60 seconds'
+            RETURNING id
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to mark stale workers as stopped: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if !stale_workers.is_empty() {
+            let ids: Vec<String> = stale_workers.iter().map(|r| r.get("id")).collect();
+            info!(count = stale_workers.len(), worker_ids = ?ids, "marked stale workers as stopped");
+        }
+
         Ok(reclaimed)
     }
 
@@ -1670,14 +1693,16 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     #[instrument(skip(self))]
     async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
         // Single query to get all health stats
+        // Only count workers with recent heartbeats (within 60s) as active,
+        // matching the filter used in list_workers to avoid counting stale workers.
         let row = sqlx::query(
             r#"
             SELECT
                 (SELECT COUNT(*) FROM durable_workers) as total_workers,
-                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active') as active_workers,
-                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND accepting_tasks = true) as workers_accepting,
-                (SELECT COALESCE(SUM(max_concurrency), 0) FROM durable_workers WHERE status = 'active') as total_capacity,
-                (SELECT COALESCE(SUM(current_load), 0) FROM durable_workers WHERE status = 'active') as current_load,
+                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > NOW() - INTERVAL '60 seconds') as active_workers,
+                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND accepting_tasks = true AND last_heartbeat_at > NOW() - INTERVAL '60 seconds') as workers_accepting,
+                (SELECT COALESCE(SUM(max_concurrency), 0) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > NOW() - INTERVAL '60 seconds') as total_capacity,
+                (SELECT COALESCE(SUM(current_load), 0) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > NOW() - INTERVAL '60 seconds') as current_load,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'pending') as pending_tasks,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed') as claimed_tasks,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'running') as running_workflows,
