@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document defines the core data models for Everruns - a durable agentic harness engine.
+This document defines the core data models for Everruns - a durable agentic harness engine. For full field definitions, see the Rust source types linked below.
 
 ## Requirements
 
@@ -10,21 +10,12 @@ This document defines the core data models for Everruns - a durable agentic harn
 
 Configuration for an agentic loop. An agent can have many concurrent sessions.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` (public_id) | AgentId | Typed ID with `agent_` prefix. Client-supplied or auto-generated. API-facing. |
-| `internal_id` | UUID | Internal PK. Used for FK references. Never exposed in API. |
-| `name` | string | Display name |
-| `description` | string? | Optional description (supports markdown) |
-| `system_prompt` | string | System prompt for the LLM |
-| `default_model_id` | ModelId? | Reference to llm_models table |
-| `tags` | string[] | Tags for organization/filtering |
-| `capabilities` | CapabilityId[] | Enabled capabilities |
-| `status` | enum | `active` or `archived` |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
+See `crates/core/src/agent.rs` for full field definitions.
 
-**Note:** All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md` for details.
+Key design points:
+- All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md`.
+- `capabilities` field stores enabled capability references (resolved at runtime from registry)
+- `status`: `active` or `archived` (soft delete)
 
 **Input Validation Limits:**
 
@@ -42,597 +33,169 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 
 An instance of agentic loop execution. Sessions are top-level entities under organizations, with an agent assigned to work in each session.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | SessionId | Typed ID with `session_` prefix (UUIDv7) |
-| `organization_id` | OrgId | Parent organization |
-| `agent_id` | AgentId | Agent working in this session |
-| `title` | string? | Session title (user-provided or auto-generated) |
-| `tags` | string[] | Tags for organization/filtering |
-| `model_id` | ModelId? | Override model (null = use agent default) |
-| `capabilities` | CapabilityConfig[] | Session-level capabilities (additive to agent) |
-| `status` | enum | `started`, `active`, `idle` |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time (auto-updated on any change) |
-| `started_at` | timestamp? | Execution start time |
-| `finished_at` | timestamp? | Completion time |
-| `features` | string[] | Aggregated UI features (computed at read time, not stored) |
+See `crates/core/src/session.rs` for full field definitions.
 
-**Session Features:** The `features` field is computed at read time by aggregating `features()` from all active capabilities (harness + agent + session-level), after resolving dependencies. It is not stored in the database. See `specs/capabilities.md#capability-features`.
-
-**Session Capabilities:** The `capabilities` field allows setting session-level capabilities that are additive to the agent's capabilities. When building the RuntimeAgent, agent capabilities are applied first, then session capabilities are applied after. This enables temporarily extending an agent's capabilities for specific sessions.
-
-**Note:** Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned to work in the session. This allows for organization-wide session management and future flexibility to reassign agents.
-
-Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
-
-Sessions work indefinitely - after processing a message, status returns to `idle` (ready for more messages).
+Key design points:
+- Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.
+- `capabilities` allows session-level capabilities additive to the agent's. Agent capabilities applied first, then session capabilities.
+- Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
+- Sessions work indefinitely — after processing, status returns to `idle`.
 
 ### Message
 
-Conversation data stored as events in the `events` table with `event_type` prefixed by `message.`. Messages are reconstructed from events when loaded.
+Conversation data stored as events in the `events` table. Messages are reconstructed from events when loaded.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | MessageId | Typed ID with `message_` prefix (stored in event.data.message_id) |
-| `session_id` | SessionId | Parent session reference (from event.session_id) |
-| `sequence` | integer | Order within session (from event.sequence) |
-| `role` | enum | `user`, `agent`, `tool_result` |
-| `content` | ContentPart[] | Array of content parts (see below) |
-| `thinking` | string? | Extended thinking content from reasoning models (Anthropic Claude) |
-| `thinking_signature` | string? | Cryptographic signature for thinking (required for multi-turn with Anthropic) |
-| `controls` | Controls? | Runtime controls for message processing |
-| `metadata` | object? | Message-level metadata (e.g., locale) |
-| `tags` | string[] | Tags for organization/filtering |
-| `created_at` | timestamp | Creation time (from event.created_at) |
+See `crates/core/src/message.rs` for `Message`, `ContentPart`, `Controls`, and `InputContentPart` types.
 
-**Note:** Messages are stored as events with types `input.message`, `output.message.completed`. Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results are stored as `tool.completed` events. System messages are handled internally and not persisted to events.
+Key design points:
+- Messages stored as events with types `input.message`, `output.message.completed`. Tool calls embedded in `output.message.completed` via `ContentPart::ToolCall`. Tool results from `tool.completed` events.
+- System messages handled internally, not persisted.
+- `ContentPart` variants: `text`, `image`, `image_file`, `tool_call`, `tool_result`. Users can only send `text`, `image`, `image_file` via API.
 
-**ContentPart types (discriminated by `type` field):**
+**Controls:**
 
-```json
-// type=text
-{ "type": "text", "text": "Hello, how are you?" }
-
-// type=image (inline image data)
-{ "type": "image", "url": "https://..." }
-// or
-{ "type": "image", "base64": "...", "media_type": "image/png" }
-
-// type=image_file (reference to uploaded image)
-{ "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
-
-// type=tool_call (agent requesting tool execution)
-{
-  "type": "tool_call",
-  "id": "call_abc123",
-  "name": "search",
-  "arguments": { "query": "test" }
-}
-
-// type=tool_result (result of tool execution)
-{
-  "type": "tool_result",
-  "tool_call_id": "call_abc123",
-  "result": { "matches": [...] },
-  "error": null
-}
-```
-
-**Note:** `image_file` content parts reference uploaded images (see Images API). During LLM calls, these references are resolved to actual image data using the `ImageResolver` trait. See [Image Resolution](#image-resolution) for details.
-
-**Controls structure:**
-
-```json
-{
-  "model_id": "550e8400-e29b-41d4-a716-446655440000",
-  "reasoning": {
-    "effort": "medium"
-  }
-}
-```
-
-Controls are optional and allow per-message overrides for model selection and reasoning configuration.
+Optional per-message overrides for model selection and reasoning configuration.
 
 **Extended Thinking:**
 
-When `controls.reasoning.effort` is set, models that support extended thinking (e.g., Anthropic Claude) will generate internal reasoning before producing a response. This thinking content is stored in the `thinking` field of agent messages.
-
-- `thinking`: The model's chain-of-thought reasoning (can be lengthy)
-- `thinking_signature`: Cryptographic signature required by Anthropic for multi-turn conversations
-
-Both fields must be preserved and sent back to the Anthropic API in subsequent turns when thinking is enabled. See [LLM Drivers spec](llm-drivers.md) for provider-specific requirements.
+When `controls.reasoning.effort` is set, reasoning models generate chain-of-thought before responding. The `thinking` and `thinking_signature` fields must be preserved for multi-turn conversations. See [LLM Drivers spec](llm-drivers.md) for provider-specific requirements.
 
 **Model resolution priority:**
 
-The model used for processing is determined using this priority chain:
 1. `controls.model_id` (from the last user message) - highest priority
 2. `session.model_id` - session-level override
 3. `agent.default_model_id` - agent's default model
 4. System default model - fallback if no model is configured above
 
-Each level references a UUID that points to a configured model in the `llm_models` table.
-
-**CreateMessageRequest structure:**
-
-```json
-{
-  "message": {
-    "role": "user",
-    "content": [
-      { "type": "text", "text": "Compare these two images." },
-      { "type": "image", "url": "https://example.com/image1.png" }
-    ]
-  },
-  "controls": {
-    "model_id": "550e8400-e29b-41d4-a716-446655440000",
-    "reasoning": { "effort": "medium" }
-  },
-  "metadata": {
-    "locale": "en-US",
-    "request_id": "req_123"
-  },
-  "tags": ["important", "review"]
-}
-```
-
-**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `agent`, `tool_result`, and `system` messages are created internally by the system.
-
-**InputContentPart types (allowed in user messages):**
-
-Only text, image, and image_file content can be sent by users:
-- `{ "type": "text", "text": "..." }`
-- `{ "type": "image", "url": "..." }` or `{ "type": "image", "base64": "...", "media_type": "image/png" }`
-- `{ "type": "image_file", "image_id": "...", "filename": "..." }` (reference to uploaded image)
-
-Tool calls and tool results are system-generated and cannot be created via the API.
-
-**Database storage:**
-
-Messages are stored in the `events` table with the full content in the `data` JSONB field:
-
-```json
-// Event for a user message (event_type: "input.message")
-{
-  "message_id": "01234567-89ab-cdef-0123-456789abcdef",
-  "role": "user",
-  "content": [{"type": "text", "text": "Hello, how are you?"}],
-  "controls": null,
-  "metadata": null,
-  "tags": []
-}
-
-// Event for an agent message with tool calls (event_type: "output.message.completed")
-{
-  "message_id": "...",
-  "role": "agent",
-  "content": [
-    {"type": "text", "text": "Let me search for that."},
-    {"type": "tool_call", "id": "call_abc123", "name": "search", "arguments": {"query": "test"}}
-  ],
-  "controls": null,
-  "metadata": null,
-  "tags": []
-}
-```
-
 ### Image
 
 Global storage for uploaded images. Images can be attached to messages via the `image_file` content part type.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `filename` | string | Original filename |
-| `content_type` | string | MIME type (image/png, image/jpeg, image/gif, image/webp) |
-| `size_bytes` | integer | File size in bytes |
-| `data` | bytes | Full image data |
-| `thumbnail_data` | bytes? | Thumbnail image data (max 200x200) |
-| `thumbnail_content_type` | string? | Thumbnail MIME type |
-| `metadata` | object | Arbitrary metadata (e.g., session_id) |
-| `created_at` | timestamp | Upload time |
+See `crates/server/src/storage/models.rs` for the `ImageRow` type.
 
 **Constraints:**
-- Maximum file size: 100MB
-- Request body limit: 101MB (100MB file + 1MB multipart overhead)
+- Maximum file size: 100MB (body limit: 101MB including multipart overhead)
 - Allowed content types: image/png, image/jpeg, image/gif, image/webp
-- Thumbnails generated automatically using Lanczos3 scaling
+- Thumbnails generated automatically (max 200x200, Lanczos3 scaling)
 
 **Storage:**
-- PostgreSQL: Full images stored in BYTEA columns
-- In-memory (DEV_MODE): Images lost on restart
+- PostgreSQL: Full images in BYTEA columns
+- In-memory (DEV_MODE): Lost on restart
 - Future: S3 storage planned
 
 ### Image Resolution
 
-When messages containing `image_file` content parts are sent to an LLM, the system resolves these references to actual image data. This is handled by the `ImageResolver` trait, implemented by `GrpcImageResolver` in the worker.
+When messages containing `image_file` content parts are sent to an LLM, the system resolves references to actual image data via the `ImageResolver` trait (`GrpcImageResolver` in worker).
 
 **Resolution Process:**
-
-1. **Extract IDs**: All unique `image_id` values are extracted from message content parts
-2. **Batch Resolve**: Images are resolved via gRPC (worker → control-plane)
-3. **Convert to Data URLs**: Resolved images are converted to `data:` URLs
-4. **Provider Formatting**: Each LLM provider converts data URLs to their native format
-
-**Provider-Specific Formats:**
-
-OpenAI Vision:
-```json
-{
-  "type": "image_url",
-  "image_url": { "url": "data:image/png;base64,..." }
-}
-```
-
-Anthropic Vision:
-```json
-{
-  "type": "image",
-  "source": {
-    "type": "base64",
-    "media_type": "image/png",
-    "data": "..."
-  }
-}
-```
+1. Extract unique `image_id` values from content parts
+2. Batch resolve via gRPC (worker → control-plane)
+3. Convert to `data:` URLs
+4. Each LLM provider formats for its vision API
 
 **gRPC Transfer:**
 
-Image data is transferred from control-plane to worker via gRPC. The gRPC message size limit is increased from 4MB (default) to 150MB to accommodate base64-encoded images (100MB raw + ~33% encoding overhead + metadata).
+Image data transferred via gRPC with 150MB message limit (100MB raw + ~33% encoding overhead).
 
-> **Warning:** The 150MB gRPC limit is a temporary workaround and should be removed in favor of a proper solution. Transferring large images inline via gRPC is inefficient and increases memory pressure on both control-plane and worker.
->
-> **Recommended future approach:**
-> - Presigned URLs: Worker fetches images directly from S3/blob storage
-> - Streaming: Transfer images in chunks rather than single large messages
-> - Direct storage access: Worker has read access to image storage
->
-> When implementing one of these solutions, revert gRPC limit to default 4MB.
+> **Warning:** The 150MB gRPC limit is a temporary workaround. Future: presigned URLs, streaming, or direct storage access. Revert to default 4MB when implemented.
 
 **Error Handling:**
-
-- Missing images: Replaced with placeholder text `[Image not found: {id}]`
-- Resolution failures: Logged as warnings, image treated as missing
-- The LLM call proceeds even if some images cannot be resolved
+- Missing images: Replaced with `[Image not found: {id}]`
+- Resolution failures: Logged as warnings, LLM call proceeds
 
 ### Event
 
-The primary data store for conversation messages and SSE notifications.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID v7 | Parent session reference |
-| `sequence` | integer | Order within session (atomically allocated) |
-| `event_type` | string | Type of notification (see below) |
-| `data` | JSON | Event-specific payload |
-| `context` | JSON | Correlation context (turn_id, input_message_id, exec_id) |
-| `metadata` | JSON | Arbitrary metadata |
-| `tags` | string[] | Tags for filtering |
-| `ts` | timestamp | Event timestamp |
-| `created_at` | timestamp | Storage time |
+The primary data store for conversation messages and SSE notifications. See `crates/core/src/events.rs` for `Event` and `EventData` types.
 
 **Storage Guarantees:**
 
-1. **Append-Only** - Events are immutable. UPDATE and DELETE operations are blocked at the database level via triggers. Any attempt to modify existing events will fail with error "events are append-only".
+1. **Append-Only** — Events are immutable. UPDATE and DELETE blocked via database triggers.
+2. **Atomic Per-Session Sequence** — Sequence numbers allocated atomically per session via `event_sequences` table (prevents race conditions).
+3. **Event Type Consistency** — `event_type` field must match `data` payload type. Validated at service layer.
 
-2. **Atomic Per-Session Sequence** - Sequence numbers are allocated atomically per session using a dedicated `event_sequences` table. This prevents race conditions during concurrent writes that could occur with `MAX(sequence)+1` approach.
-
-3. **Event Type Consistency** - The `event_type` field must match the type indicated by the `data` payload. This is validated at the service layer before storage. Raw/legacy events are exempt from this check.
-
-**Event Type Naming Convention:**
-
-Event types follow the pattern `{entity}.{action}` where:
-- `entity` - The domain entity (e.g., `message`, `step`, `tool`, `session`)
-- `action` - The action or state (e.g., `user`, `agent`, `started`, `completed`)
-
-This convention ensures consistent, predictable event type names across the system.
-
-**Event Types:**
-
-1. **Input Events** - User input data
-   - `input.message` - User message
-
-2. **Output Events** - Agent output lifecycle
-   - `output.message.started` - LLM started generating (UI can show "thinking" indicator)
-   - `output.message.delta` - Streaming text delta (batched ~100ms)
-   - `output.message.completed` - Agent response complete (may contain tool calls in content)
-
-3. **Turn Events** - Turn lifecycle notifications
-   - `turn.started` - Turn execution started
-   - `turn.completed` - Turn completed successfully
-   - `turn.failed` - Turn failed
-
-4. **Atom Events** - Atom lifecycle notifications
-   - `reason.started` - ReasonAtom started (LLM inference began)
-   - `reason.completed` - ReasonAtom completed (LLM response received)
-   - `act.started` - ActAtom started (tool batch execution)
-   - `act.completed` - ActAtom completed
-
-5. **Tool Events** - Individual tool execution
-   - `tool.started` - Tool execution began
-   - `tool.completed` - Tool execution finished (includes result, used for message reconstruction)
-
-5. **LLM Events** - LLM API visibility
-   - `llm.generation` - Full LLM API call with messages and response
-
-6. **Session Events** - Session lifecycle
-   - `session.started` - Session began processing
-   - `session.activated` - Session activated for processing
-   - `session.idled` - Session returned to idle state
+**Event Type Naming Convention:** `{entity}.{action}` pattern (e.g., `input.message`, `turn.completed`). See `specs/events.md` for the full event type registry and lifecycle details.
 
 **Message Reconstruction:**
 
-Messages are reconstructed from events with types: `input.message`, `output.message.completed`, `tool.completed`. Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events.
+Messages reconstructed from events: `input.message`, `output.message.completed`, `tool.completed`. Tool calls embedded in output messages via `ContentPart::ToolCall`.
 
 ## Flow Example
 
 ```
 User sends: "How much is 2+2?"
 
-1. POST /v1/agents/{id}/sessions/{id}/messages
-   → Creates Message(role=user, content: { text: "How much is 2+2?" })
-   → Emits Event(input.message)
-   → Triggers session workflow
+1. POST /v1/sessions/{id}/messages
+   → Creates Message(role=user) → Emits input.message → Triggers workflow
 
-2. Workflow starts
-   → Updates Session(status=running)
-   → Emits Event(session.started)
+2. Workflow starts → Session(status=active) → session.started
 
-3. Turn starts
-   → Emits Event(turn.started)
+3. Turn starts → turn.started
 
 4. LLM call (ReasonAtom)
-   → Emits Event(reason.started)
-   → Emits Event(output.message.started)
-   → LLM streams response
-   → Emits Event(output.message.delta) (batched)
-   → Creates Message(role=agent, content: { text: "The answer is 4" })
-   → Emits Event(reason.completed)
-   → Emits Event(llm.generation)
-   → Emits Event(output.message.completed)
+   → reason.started → output.message.started
+   → Streams output.message.delta (batched)
+   → Creates Message(role=agent, "The answer is 4")
+   → reason.completed → llm.generation → output.message.completed
 
-5. Turn complete
-   → Emits Event(turn.completed)
-   → Updates Session(status=pending)
+5. Turn complete → turn.completed → Session(status=idle)
 
 User can send another message to continue the conversation.
 ```
 
 ### Capability
 
-Modular functionality that can be enabled on Agents. Capabilities contribute to system prompts, provide tools, and modify agent behavior.
+Modular functionality that can be enabled on Agents. See `crates/core/src/capability_types.rs` for `CapabilityStatus`, `AgentCapabilityConfig`, and `MountPoint` types. See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | CapabilityId | Unique identifier (enum) |
-| `name` | string | Display name |
-| `description` | string | Description of functionality |
-| `status` | enum | `available`, `coming_soon`, `deprecated` |
-| `icon` | string? | Icon name for UI rendering |
-| `category` | string? | Category for grouping in UI |
-
-**Built-in Capability IDs:**
-
-| ID | Status | Description |
-|----|--------|-------------|
-| `noop` | available | No-op capability for testing |
-| `current_time` | available | Tool to get current date/time |
-| `research` | coming_soon | Deep research with scratchpad |
-| `file_system` | coming_soon | File system access tools |
-
-### AgentCapability
-
-Junction table linking Agents to Capabilities with ordering.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `agent_id` | UUID v7 | Parent agent reference |
-| `capability_id` | CapabilityId | Capability identifier |
-| `position` | integer | Order in capability chain (lower = earlier) |
-| `created_at` | timestamp | Creation time |
-
-**Constraints:**
-- Each agent can have each capability at most once (`UNIQUE(agent_id, capability_id)`)
-- Capabilities are applied in `position` order when building agent configuration
+See `specs/capabilities.md` for the full capabilities specification.
 
 ### LLM Provider
 
-Configuration for LLM API providers. Stores encrypted API keys and provider-specific settings.
+Configuration for LLM API providers. See `crates/core/src/llm_models.rs` for full type definitions.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `name` | string | Display name |
-| `provider_type` | string | `openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim` |
-| `base_url` | string? | Custom API endpoint (for proxies) |
-| `api_key_encrypted` | bytes? | AES-256-GCM encrypted API key |
-| `api_key_set` | boolean | Whether API key is configured (database or DEFAULT_ env var) |
-| `is_default` | boolean | Default provider for new agents |
-| `status` | enum | `active` or `disabled` |
-| `settings` | JSON | Provider-specific settings |
-| `last_synced_at` | timestamp? | Last time models were synced from provider API |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
-
-**Supported Provider Types:**
-- `openai` - OpenAI API using Open Responses API (recommended)
-- `openai_completions` - OpenAI API using Chat Completions API (legacy)
-- `anthropic` - Anthropic API (Claude models)
-- `gemini` - Google Gemini API
-- `llmsim` - Built-in simulator provider for development/testing
-
-**Note:** Ollama and Custom provider types are no longer supported.
-
-**Validation Note:** `provider_type` is intentionally stored as a plain string without a database CHECK constraint. Provider validation and graceful unknown-provider handling are implemented in the application layer for forward compatibility. LLM provider API keys are primarily configured in the database (via Settings > Providers UI), but environment variables can be used as fallbacks for development convenience.
-
-**Default Providers:**
-
-Default providers (OpenAI, Anthropic, Gemini, LlmSim) and their models are seeded on startup via the service seeding system (`server/src/seed.rs`). Seeding is idempotent (uses `ON CONFLICT DO NOTHING`) and runs in a background task. These providers have well-known UUIDs:
-
-- OpenAI: `01933b5a-0000-7000-8000-000000000001`
-- Anthropic: `01933b5a-0000-7000-8000-000000000002`
-- LlmSim: `01933b5a-0000-7000-8000-000000000003`
-- Gemini: `01933b5a-0000-7000-8000-000000000004`
-
-Model UUIDs follow a range allocation scheme:
-- `0x001-0x0FF`: LLM Providers
-- `0x100-0x1FF`: Agents (seed agents like Dad Jokes Agent, Research Agent)
-- `0x200-0x2FF`: OpenAI Models
-- `0x300-0x3FF`: Anthropic Models
-- `0x400-0x4FF`: LlmSim Models
-- `0x600-0x6FF`: Gemini Models
+Key design points:
+- `provider_type` stored as plain string without CHECK constraint (forward compatibility)
+- Supported types: `openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
+- API keys encrypted with AES-256-GCM envelope encryption (see `specs/encryption.md`)
 
 **API Key Resolution Order:**
-1. **Database** (priority): Encrypted API key stored in `llm_providers.api_key_encrypted`
+1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
 2. **Environment Variable** (fallback): `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY`
 
-API keys can be configured via:
-1. The Settings > Providers UI (stores in database)
-2. The `scripts/patch-provider-keys.sh` script (patches database from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
-3. Environment variables for development: `DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY` (used only when database key is not set)
+Default providers and models seeded on startup via `crates/server/src/seed.rs` (idempotent, well-known UUIDs).
 
 ### LLM Model
 
-Configuration for a specific model within a provider.
+Configuration for a specific model within a provider. See `crates/core/src/llm_models.rs`.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `provider_id` | UUID v7 | Parent provider reference |
-| `model_id` | string | Model identifier (e.g., "gpt-4o") |
-| `display_name` | string | Display name |
-| `features` | string[] | Model features (e.g., vision, function_calling, streaming) |
-| `context_window` | integer? | Context window size |
-| `is_default` | boolean | Default model for this provider |
-| `is_favorite` | boolean | User-marked favorite for quick access |
-| `status` | enum | `active` or `disabled` |
-| `source` | enum | How model was added: `manual`, `discovered`, `predefined` |
-| `last_seen_at` | timestamp? | Last time model was seen in provider API (discovered models only) |
-| `provider_metadata` | JSON? | Raw metadata from provider API response |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
-
-**Model Sources:**
-
-- `manual` - Added by user via API/UI
-- `discovered` - Automatically discovered from provider's models API
-- `predefined` - Seeded on startup (default models for providers)
-
-**Stale Model Detection:**
-
-Discovered models become "stale" when they are no longer returned by the provider's models API. A model is considered stale when `last_seen_at < provider.last_synced_at`. Stale models are kept in the database (not deleted) to preserve any user customizations.
+Key design points:
+- `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
+- Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
 
 ### LLM Model Profile
 
-Read-only metadata describing model capabilities, costs, and limits. Profiles are computed at runtime (not stored in database) and attached to model responses.
+Read-only metadata describing model capabilities, costs, and limits. Computed at runtime (not stored in database).
 
 **Data Source:** https://models.dev/api.json
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Display name (e.g., "GPT-4o") |
-| `family` | string | Model family (e.g., "gpt-4o") |
-| `release_date` | string? | Release date (YYYY-MM-DD) |
-| `last_updated` | string? | Last update date (YYYY-MM-DD) |
-| `attachment` | boolean | Supports file attachments |
-| `reasoning` | boolean | Is a reasoning model |
-| `temperature` | boolean | Supports temperature parameter |
-| `knowledge` | string? | Knowledge cutoff date |
-| `tool_call` | boolean | Supports tool/function calling |
-| `structured_output` | boolean | Supports structured output |
-| `open_weights` | boolean | Has open weights |
-| `cost` | LlmModelCost? | Pricing per million tokens |
-| `limits` | LlmModelLimits? | Context and output limits |
-| `modalities` | LlmModelModalities? | Input/output modalities |
-| `reasoning_effort` | ReasoningEffortConfig? | Reasoning effort options |
+See `crates/core/src/llm_models.rs` for `LlmModelProfile`, `LlmModelCost`, `LlmModelLimits`, and `ReasoningEffortConfig` types.
 
-**LlmModelCost:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `input` | float | Input cost per million tokens (USD) |
-| `output` | float | Output cost per million tokens (USD) |
-| `cache_read` | float? | Cached input cost per million tokens |
-
-**LlmModelLimits:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `context` | integer | Maximum context window tokens |
-| `output` | integer | Maximum output tokens |
-
-**LlmModelModalities:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `input` | Modality[] | Supported input types (text, image, audio, video) |
-| `output` | Modality[] | Supported output types |
-
-**ReasoningEffortConfig:**
-
-Configuration for reasoning models (OpenAI o1, o1-mini, o3-mini, o1-pro).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `values` | ReasoningEffortValue[] | Available effort levels |
-| `default` | ReasoningEffort | Default effort level |
-
-**ReasoningEffort enum:** `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
-
-**Supported Models:**
-
-- **OpenAI:** gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini
-- **Anthropic:** claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku
-
-Profiles are matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
+Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
 
 ### Model Discovery
 
-Automatic discovery of available models from provider APIs.
+Automatic discovery of available models from provider APIs (OpenAI, Anthropic).
 
-**Supported Providers:**
-- OpenAI - via `GET /v1/models`
-- Anthropic - via `GET /v1/models`
-
-**Discovery Flow:**
-
-1. **Background Sync** - Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, set to 0 to disable)
-2. **Manual Sync** - `POST /v1/llm-providers/:id/sync-models`
-
-**Sync Behavior:**
-
-- Only providers with standard base URLs are synced (custom URLs are skipped)
-- OpenAI models are filtered to chat/completion models only (excludes embeddings, TTS, image models)
-- New models are automatically added with `source: "discovered"`
-- Existing discovered models have `last_seen_at` updated
-- Models not seen in sync become stale (detected via `last_seen_at < last_synced_at`)
-
-**Listing Models:**
-
-`GET /v1/llm-models` supports query parameters:
-- `source` - Filter by source (`manual`, `discovered`, `predefined`)
-- `include_stale` - Include stale models (default: true)
-- `favorites_only` - Only return favorites (default: false)
+- **Background Sync** — Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, 0 to disable)
+- **Manual Sync** — `POST /v1/llm-providers/:id/sync-models`
+- Only providers with standard base URLs synced (custom URLs skipped)
+- New models added as `discovered`; existing models have `last_seen_at` updated
 
 ### UserConnection
 
 A linked external service account. User-scoped (not org-scoped). See [user-connections.md](user-connections.md) for full specification.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Internal primary key |
-| `user_id` | UUID | FK to users.id |
-| `provider` | string | `github`, `gitlab`, `bitbucket` |
-| `provider_user_id` | string? | Provider's user ID |
-| `provider_username` | string? | Display name (e.g., `octocat`) |
-| `access_token_encrypted` | bytes | Encrypted with envelope encryption |
-| `refresh_token_encrypted` | bytes? | For providers that support refresh |
-| `scopes` | string? | Granted scopes (e.g., `repo,read:user`) |
-| `expires_at` | timestamp? | NULL = no expiry (GitHub OAuth App tokens) |
-| `created_at` | timestamp | |
-| `updated_at` | timestamp | |
+See `crates/server/src/storage/models.rs` for the `UserConnectionRow` type.
 
 ## Design Decisions
 
@@ -642,8 +205,8 @@ A linked external service account. User-scoped (not org-scoped). See [user-conne
 | What are Events for? | Primary data store for messages AND SSE notifications |
 | Where are tool calls stored? | In `output.message.completed` events as `ContentPart::ToolCall` |
 | Where are tool results stored? | Events with `event_type` = `tool.completed` |
-| Session status? | Explicit status field (pending, running, failed) |
+| Session status? | Explicit status field (started, active, idle) |
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
-| Where are API keys stored? | Encrypted in database (llm_providers.api_key_encrypted), decrypted at runtime |
-| Environment variables for API keys? | Yes - `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY` serve as fallbacks when database key is not set |
+| Where are API keys stored? | Encrypted in database, decrypted at runtime |
+| Environment variables for API keys? | `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY` as fallbacks |

@@ -148,7 +148,34 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 5. No TODO/FIXME items that should be resolved before release
 6. CHANGELOG.md has entries for all changes since last release
 
-### 13. Code Simplification
+### 13. Spec Hygiene — Avoid Code Duplication
+
+Specs should capture design intent, rationale, and constraints — not duplicate what's readable from code. Code-derivable details drift out of sync and create maintenance burden.
+
+**What to remove or replace with links:**
+- Exhaustive struct field listings → link to the Rust source file
+- Exact enum variant lists → link to the enum definition
+- Full API request/response JSON shapes → reference OpenAPI spec or handler code
+- SQL DDL / migration contents → link to migration files
+- Config file formats reproduced verbatim → link to the config file or example
+- Function signatures or trait method listings → link to the trait definition
+
+**What to keep in specs:**
+- Design rationale ("why this approach over alternatives")
+- Architectural constraints and invariants
+- Relationships between concepts (how pieces fit together)
+- Security considerations and threat boundaries
+- Behavioral contracts not obvious from types alone
+- Diagrams showing data/control flow
+
+**Link format:** Use relative paths from repo root, e.g., "See `crates/core/src/models/agent.rs` for full field list."
+
+**Review process:**
+1. For each spec, check whether sections could be replaced by "see `path/to/file.rs`"
+2. Keep the *purpose* and *constraints* of each field/endpoint; remove the exhaustive listing
+3. Ensure any remaining examples are illustrative (showing pattern), not exhaustive (listing all cases)
+
+### 14. Code Simplification
 
 Run the [code-simplifier](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md) agent against recently modified code to clean up clarity, consistency, and maintainability issues while preserving exact functionality.
 

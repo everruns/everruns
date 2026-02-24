@@ -54,6 +54,8 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `specs/` contains feature specifications. New code should comply with these or propose changes.
 
+**Spec content principle:** Specs capture *design intent, rationale, and constraints* — the "why" and "what", not exhaustive "how". Don't duplicate what's readable from code (struct fields, enum variants, exact API shapes, SQL DDL). Instead, link to the source file. Example: "See `crates/core/src/models/agent.rs` for full field list." This keeps specs maintainable and prevents drift.
+
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling

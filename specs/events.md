@@ -857,25 +857,7 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 
 ## Database Storage
 
-Events are stored in the `events` table:
-
-```sql
-CREATE TABLE events (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id),
-    sequence INTEGER NOT NULL,
-    event_type VARCHAR(100) NOT NULL,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    context JSONB NOT NULL DEFAULT '{}',
-    data JSONB NOT NULL DEFAULT '{}',
-    metadata JSONB,
-    tags TEXT[],
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(session_id, sequence)
-);
-```
-
-The `data` column contains the event-specific payload. The `event_type` column is denormalized for efficient filtering. The `context` column holds correlation data (turn_id, input_message_id, exec_id). The `metadata` and `tags` columns provide additional filtering and categorization capabilities.
+See `crates/server/migrations/001_base_schema.sql` for the `events` table DDL. Key columns: `data` (JSONB, event-specific payload), `event_type` (denormalized for filtering), `context` (JSONB, correlation data).
 
 ## Storage Guarantees
 
@@ -883,22 +865,7 @@ The event store provides three key guarantees:
 
 ### 1. Append-Only Immutability
 
-Events are **immutable** once written. The database enforces this via triggers:
-
-```sql
-CREATE TRIGGER events_append_only_update
-    BEFORE UPDATE ON events
-    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
-
-CREATE TRIGGER events_append_only_delete
-    BEFORE DELETE ON events
-    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
-```
-
-**Behavior:**
-- `UPDATE` on `events` → Error: "events are append-only: UPDATE operations are not allowed"
-- `DELETE` on `events` → Error: "events are append-only: DELETE operations are not allowed"
-- `INSERT` → Allowed (append-only)
+Events are **immutable** once written. Database triggers block UPDATE and DELETE operations (see migrations for trigger DDL).
 
 **Rationale:** Event sourcing requires immutable history. Allowing mutations would break replay, audit trails, and data integrity guarantees.
 
@@ -906,28 +873,7 @@ CREATE TRIGGER events_append_only_delete
 
 Each event within a session is assigned a monotonically increasing sequence number. Sequences are allocated atomically to prevent race conditions under concurrent writes.
 
-**Implementation:**
-
-A dedicated `event_sequences` table tracks the next sequence per session:
-
-```sql
-CREATE TABLE event_sequences (
-    session_id UUID PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-    next_sequence INTEGER NOT NULL DEFAULT 1,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-The `allocate_event_sequence(session_id)` function atomically allocates the next sequence:
-
-```sql
-INSERT INTO event_sequences (session_id, next_sequence, updated_at)
-VALUES (p_session_id, 2, NOW())
-ON CONFLICT (session_id) DO UPDATE
-SET next_sequence = event_sequences.next_sequence + 1,
-    updated_at = NOW()
-RETURNING next_sequence - 1;
-```
+**Implementation:** A dedicated `event_sequences` table with an atomic upsert function (`allocate_event_sequence`). See `crates/server/migrations/001_base_schema.sql` for DDL.
 
 **Guarantees:**
 - No sequence gaps within a session (barring transaction rollbacks)
@@ -1062,28 +1008,9 @@ Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) end
 - Both parameters accept only known event types (see Event Type Registry). Unknown types return 400.
 - Maximum 25 values per parameter to prevent abuse.
 
-### Message Events Filter
+### Partial Indexes
 
-A partial index exists for efficient message queries:
-
-```sql
-CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('input.message', 'output.message.completed');
-```
-
-### Turn Events Filter
-
-```sql
-CREATE INDEX idx_events_turns ON events(session_id, sequence)
-WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
-```
-
-### Tool Events Filter
-
-```sql
-CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
-WHERE event_type IN ('tool.started', 'tool.completed');
-```
+Partial indexes exist for efficient queries on message events, turn events, and tool events. See `crates/server/migrations/001_base_schema.sql` for index DDL.
 
 ## Event Listeners
 
@@ -1091,28 +1018,7 @@ Event listeners provide a pluggable mechanism for observability backends to reac
 
 ### EventListener Trait
 
-```rust
-#[async_trait]
-pub trait EventListener: Send + Sync {
-    /// Called after an event is persisted
-    async fn on_event(&self, event: &Event);
-
-    /// Optional: filter which event types to receive
-    fn event_types(&self) -> Option<Vec<&'static str>> { None }
-
-    /// Human-readable name for logging
-    fn name(&self) -> &'static str { "EventListener" }
-}
-```
-
-### Listener Registration
-
-Listeners are registered with `EventService` at startup:
-
-```rust
-let otel_listener = Arc::new(OtelEventListener::new());
-let event_service = EventService::with_listeners(db, vec![otel_listener]);
-```
+See `crates/core/src/event_listeners.rs` for the `EventListener` trait definition. Listeners are registered with `EventService` at startup (see `crates/server/src/services/event.rs`).
 
 ### Built-in Listeners
 
@@ -1137,19 +1043,6 @@ Listeners are executed in isolation to ensure misbehaving listeners cannot disru
 - **Sequential execution**: Despite isolation, listeners are awaited sequentially to preserve ordering semantics.
 
 **Rationale:** Event listeners are pluggable integrations (OTel, metrics, audit logs) that should not affect core event processing. A bug in an observability integration should never break the application.
-
-**Implementation:**
-```rust
-// Each listener is spawned in isolation
-let handle = tokio::spawn(async move {
-    listener.on_event(&event).await;
-});
-
-// Panics are caught and logged, not propagated
-if let Err(e) = handle.await {
-    tracing::error!(listener = name, error = %e, "EventListener panicked");
-}
-```
 
 ### Custom Listeners
 

@@ -38,30 +38,11 @@ graph TD
 
 ### LlmDriver Trait
 
-1. **Trait Definition** (`everruns-core::llm_driver_registry`):
-   ```rust
-   #[async_trait]
-   pub trait LlmDriver: Send + Sync {
-       async fn chat_completion_stream(
-           &self,
-           messages: Vec<LlmMessage>,
-           config: &LlmCallConfig,
-       ) -> Result<LlmResponseStream>;
-   }
-   ```
+1. **Trait Definition**: See `crates/core/src/llm_driver_registry.rs` for `LlmDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
-2. **Streaming Response**: Drivers MUST return a stream of `LlmStreamEvent`:
-   - `TextDelta(String)` - Incremental text content
-   - `ToolCalls(Vec<ToolCall>)` - Tool calls from the LLM
-   - `Done(LlmCompletionMetadata)` - Stream completed with metadata
-   - `Error(String)` - Error during streaming
+2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
-3. **Provider Types**: Supported provider types are defined in `ProviderType` enum:
-   - `OpenAI` - OpenAI API using Open Responses API (recommended)
-   - `OpenAICompletions` - OpenAI API using Chat Completions API (legacy)
-   - `Anthropic` - Anthropic Claude API
-   - `Gemini` - Google Gemini API
-   - `LlmSim` - Testing simulator (llmsim crate)
+3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `LlmSim` (testing).
 
 ### Error Types (Contract)
 
@@ -109,21 +90,7 @@ Detect `RequestTooLarge` for:
 
 ### Driver Registry
 
-1. **Registration**: Provider crates register factories at startup:
-   ```rust
-   pub fn register_driver(registry: &mut DriverRegistry) {
-       registry.register(ProviderType::OpenAI, |api_key, base_url| {
-           Box::new(OpenAILlmDriver::new(api_key, base_url))
-       });
-   }
-   ```
-
-2. **Creation**: Drivers are created on-demand from `ProviderConfig`:
-   ```rust
-   let driver = registry.create_driver(&config)?;
-   ```
-
-3. **API Key Requirement**: All real providers require API keys. `LlmSim` is exempted for testing.
+Provider crates register factories at startup. Drivers created on-demand from `ProviderConfig`. All real providers require API keys; `LlmSim` exempted for testing. See `crates/core/src/llm_driver_registry.rs` for `DriverRegistry`.
 
 ### Message Types
 
@@ -361,22 +328,7 @@ Drivers parse provider-specific headers to determine retry timing:
 
 ### Retry Metadata
 
-On successful completion after retries, `LlmCompletionMetadata` includes:
-```rust
-pub struct RetryMetadata {
-    pub attempts: u32,              // Total attempts (1 = no retries)
-    pub total_retry_wait: Duration, // Total time spent waiting
-    pub last_rate_limit_info: Option<RateLimitInfo>,
-}
-```
-
-The `llm.generation` event includes retry info when retries occurred:
-```rust
-pub struct LlmRetryInfo {
-    pub attempts: u32,
-    pub total_wait_ms: u64,
-}
-```
+On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/core/src/llm_driver_registry.rs` for `RetryMetadata`.
 
 ### Implementation Details
 
@@ -396,84 +348,9 @@ The `/v1/responses/compact` endpoint is a context-compression feature for the Op
    - Prior assistant messages, tool calls/results, and encrypted reasoning are replaced by one encrypted **compaction item**
 3. Use the returned `output` array as the `input` for the next `/v1/responses` call
 
-### LlmDriver Trait Methods
+### LlmDriver Compact Methods
 
-```rust
-#[async_trait]
-pub trait LlmDriver: Send + Sync {
-    // ... existing methods ...
-
-    /// Check if this driver supports the compact endpoint
-    fn supports_compact(&self) -> bool {
-        false // Default: not supported
-    }
-
-    /// Compact a conversation to reduce context size
-    async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
-        Ok(None) // Default: not supported
-    }
-}
-```
-
-### Request Types
-
-```rust
-pub struct CompactRequest {
-    pub model: String,                     // Required
-    pub input: Vec<CompactInputItem>,      // Conversation items
-    pub previous_response_id: Option<String>, // Alternative to input
-    pub instructions: Option<String>,      // Optional system prompt
-}
-
-pub enum CompactInputItem {
-    Message { role: String, content: CompactContent },
-    FunctionCall { call_id: String, name: String, arguments: String },
-    FunctionCallOutput { call_id: String, output: String },
-    Compaction { encrypted_content: String }, // From previous compact
-}
-```
-
-### Response Types
-
-```rust
-pub struct CompactResponse {
-    pub output: Vec<CompactOutputItem>,
-    pub usage: Option<CompactUsage>,
-}
-
-pub enum CompactOutputItem {
-    Message { role: String, content: CompactContent }, // User messages kept
-    Compaction { encrypted_content: String },          // Encrypted context
-}
-```
-
-### Usage Example
-
-```rust
-use everruns_core::{CompactRequest, CompactInputItem, CompactContent};
-
-// Build compact request from conversation history
-let request = CompactRequest {
-    model: "gpt-4o".to_string(),
-    input: vec![
-        CompactInputItem::Message {
-            role: "user".to_string(),
-            content: CompactContent::Text("Hello!".to_string()),
-        },
-        // ... more conversation items
-    ],
-    previous_response_id: None,
-    instructions: None,
-};
-
-// Check if driver supports compact
-if driver.supports_compact() {
-    let response = driver.compact(request).await?;
-    if let Some(compact_response) = response {
-        // Use compact_response.output as input for next /v1/responses call
-    }
-}
-```
+The `LlmDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/llm_driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
 ### Provider Support
 

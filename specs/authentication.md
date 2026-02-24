@@ -91,56 +91,11 @@ Account linking by email is supported (same email = same account).
 
 ### Database Schema
 
-#### users table additions
-
-```sql
-ALTER TABLE users ADD COLUMN password_hash TEXT;
-ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN auth_provider TEXT;  -- 'google', 'github', or NULL for password
-ALTER TABLE users ADD COLUMN auth_provider_id TEXT;
-```
-
-#### api_keys table
-
-```sql
-CREATE TABLE api_keys (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    key_hash TEXT NOT NULL,
-    key_prefix TEXT NOT NULL,
-    scopes JSONB NOT NULL DEFAULT '["*"]'::jsonb,
-    expires_at TIMESTAMPTZ,
-    last_used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-#### refresh_tokens table
-
-```sql
-CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+See `crates/server/migrations/001_base_schema.sql` for `users`, `api_keys`, and `refresh_tokens` table DDL.
 
 #### Anonymous User (seeded at startup)
 
-For `auth=none` mode, a well-known anonymous user is seeded programmatically via `seed.rs` (not SQL migration):
-
-| Field | Value |
-|-------|-------|
-| `id` | `00000000-0000-0000-0000-000000000001` (`ANONYMOUS_USER_ID`) |
-| `email` | `anonymous@local` |
-| `name` | `Anonymous` |
-| `roles` | `["admin"]` |
-| `auth_provider` | `none` |
-
-The anonymous user is added to the default organization (`org_id = 1`) via `ensure_membership`. Constants defined in `crates/core/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`.
+For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/core/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
 ### Security Considerations
 
@@ -166,16 +121,7 @@ The anonymous user is added to the default organization (`org_id = 1`) via `ensu
 
 ### Configuration Discovery
 
-The UI fetches authentication configuration from `GET /v1/auth/config` on startup:
-
-```typescript
-interface AuthConfigResponse {
-  mode: "none" | "admin" | "full" | "external";
-  password_auth_enabled: boolean;
-  oauth_providers: string[];  // ["google", "github"]
-  signup_enabled: boolean;
-}
-```
+The UI fetches authentication configuration from `GET /v1/auth/config` on startup (returns mode, password/OAuth/signup status).
 
 ### Conditional Rendering
 
@@ -244,15 +190,7 @@ Authentication state is managed via:
 
 ### API Client Configuration
 
-```typescript
-// All requests go through /api prefix and include credentials for cookie-based auth
-fetch('/api/v1/agents', {
-  credentials: "include",
-  headers: { "Content-Type": "application/json" }
-});
-```
-
-The `/api` prefix is stripped by the proxy (Next.js in dev, reverse proxy in prod) before reaching the backend.
+All requests go through `/api` prefix with `credentials: "include"` for cookie-based auth. The `/api` prefix is stripped by the proxy (Next.js in dev, reverse proxy in prod) before reaching the backend.
 
 ## Pluggable Authentication Backend
 
@@ -260,79 +198,21 @@ The auth system uses a trait-based pluggable backend so external auth providers 
 
 ### AuthBackend Trait
 
-```rust
-#[async_trait]
-pub trait AuthBackend: Send + Sync + 'static {
-    /// Validate a Bearer token (JWT or opaque) and return the authenticated user.
-    async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError>;
-
-    /// Validate an API key and return the authenticated user.
-    async fn validate_api_key(&self, key: &str) -> Result<AuthUser, AuthError>;
-
-    /// Return auth-specific HTTP routes (login, register, OAuth callbacks, API key CRUD).
-    /// Returns `None` if auth is handled externally (e.g., PropelAuth hosted UI).
-    fn auth_routes(&self) -> Option<Router>;
-
-    /// Return the auth configuration for the `/v1/auth/config` endpoint.
-    fn auth_config_response(&self) -> AuthConfigResponse;
-}
-```
-
-**Location:** `crates/server/src/auth/backend.rs`
+See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods: `validate_token()`, `validate_api_key()`, `auth_routes()`, `auth_config_response()`.
 
 ### BuiltinAuthBackend (OSS Default)
 
-The default implementation wrapping existing JWT + password + API key logic:
-
-```rust
-#[derive(Clone)]
-pub struct BuiltinAuthBackend {
-    pub config: AuthConfig,
-    pub jwt_service: Arc<JwtService>,
-    pub db: Arc<StorageBackend>,
-}
-```
-
-**Location:** `crates/server/src/auth/builtin.rs`
-
-- `validate_token()` — Decodes JWT, fetches user + org memberships from DB
-- `validate_api_key()` — Validates `evr_` prefix, hashes key, looks up in DB
-- `auth_routes()` — Returns login, register, OAuth, refresh, API key CRUD routes
-- `auth_config_response()` — Returns mode, password/signup/OAuth status from `AuthConfig`
-
-Auth route handlers use `BuiltinAuthBackend` as axum state directly (not `AuthState`), with a `FromRef<BuiltinAuthBackend> for AuthState` implementation so the `AuthUser` extractor continues to work.
+See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + API key logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
 
 ### AuthState
 
-`AuthState` holds an `Arc<dyn AuthBackend>` instead of concrete fields:
-
-```rust
-pub struct AuthState {
-    pub config: AuthConfig,
-    pub backend: Arc<dyn AuthBackend>,
-}
-```
-
-The `extract_auth_user()` middleware delegates to `backend.validate_token()` and `backend.validate_api_key()`.
-
-Convenience constructor for OSS: `AuthState::builtin(config, db)` creates a `BuiltinAuthBackend` internally.
+`AuthState` holds `Arc<dyn AuthBackend>`. The `extract_auth_user()` middleware delegates to `backend.validate_token()` and `backend.validate_api_key()`. OSS convenience: `AuthState::builtin(config, db)`.
 
 ### External Identity Support
 
-Migration `004_external_identity.sql` adds nullable `external_id` columns to `users` and `organizations` tables:
+Migration `004_external_identity.sql` adds nullable `external_id` columns to `users` and `organizations` tables, mapping external provider IDs to internal IDs. OSS: unused (NULL). SaaS: populated by auth backend sync.
 
-```sql
-ALTER TABLE users ADD COLUMN external_id TEXT UNIQUE;
-ALTER TABLE organizations ADD COLUMN external_id TEXT UNIQUE;
-```
-
-These map external provider user/org IDs to internal IDs. OSS users: unused (NULL). SaaS: populated by auth backend sync.
-
-**New storage methods:**
-- `get_user_by_external_id(external_id)` — Look up user by external provider ID
-- `get_organization_by_external_id(external_id)` — Look up org by external provider ID
-- `upsert_org_by_external_id(external_id, name)` — Create or update org by external ID
-- `ensure_membership(org_id, user_id)` — Idempotent org membership creation
+See `crates/server/src/storage/` for lookup/upsert methods: `get_user_by_external_id()`, `get_organization_by_external_id()`, `upsert_org_by_external_id()`, `ensure_membership()`.
 
 ### UI Context Exports
 

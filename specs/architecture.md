@@ -115,13 +115,7 @@ graph TD
 
 Integration crates (`codesandbox`, `docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
 
-**Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate:**
-
-```rust
-extern crate everruns_integrations_codesandbox;
-extern crate everruns_integrations_daytona;
-extern crate everruns_integrations_docker;
-```
+**Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate** (see those files for the current list).
 
 Adding a new integration crate requires:
 1. Create the crate under `integrations/`
@@ -134,31 +128,7 @@ Without step 3, the crate compiles but its capabilities are never registered. Th
 
 The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers to compose their own binary with custom auth, routes, event listeners, and background tasks.
 
-**`ServerAppBuilder` usage:**
-```rust
-ServerAppBuilder::new(config)
-    .auth(move |db| Arc::new(BuiltinAuthBackend::new(auth_config, db)))
-    .routes(extra_routes)       // optional: billing, admin, etc.
-    .run()
-    .await
-```
-
-- `auth()` — Sets the auth factory. Receives `StorageBackend`, returns `Arc<dyn AuthBackend>`.
-- `routes()` — Merges additional routes into the API router.
-- `ServerConfig` — Contains CLI args, API prefix, CORS origins, and addresses.
-
-**Key modules in lib crate:**
-- `app_builder` — `ServerAppBuilder` for composable server bootstrap
-- `server` — `ServerConfig` and router helpers
-- `seed` — Database seeding (moved from binary to lib for reuse)
-- `grpc_service` — gRPC WorkerService (moved from binary to lib for reuse)
-
-**Public exports from `everruns-server` lib:**
-```rust
-pub use auth::{AuthBackend, BuiltinAuthBackend};
-pub use server::ServerConfig;
-pub use app_builder::{ServerAppBuilder, ServerContext};
-```
+See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `routes()`, `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService).
 
 ### Data Layer
 
@@ -368,22 +338,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**Driver Selection**:
-```rust
-use everruns_openai::{OpenAILlmDriver, OpenAICompletionsLlmDriver};
-
-// Open Responses API (recommended for new projects)
-let driver = OpenAILlmDriver::new("api-key");
-
-// Chat Completions API (for backward compatibility)
-let driver = OpenAICompletionsLlmDriver::new("api-key");
-```
-
-**Implementation**:
-- `OpenResponsesProtocolLlmDriver` in `everruns-core` - Open Responses protocol
-- `OpenAIProtocolLlmDriver` in `everruns-core` - Chat Completions protocol
-- `OpenAILlmDriver` - Wraps Open Responses for `ProviderType::OpenAI`
-- `OpenAICompletionsLlmDriver` - Wraps Chat Completions for `ProviderType::OpenAICompletions`
+**Driver Selection**: `OpenAILlmDriver` (Responses API, recommended) or `OpenAICompletionsLlmDriver` (Chat Completions). See `crates/openai/src/driver.rs` and the protocol implementations in `crates/core/src/`.
 
 ### LlmSim Driver (Testing)
 
@@ -395,15 +350,7 @@ For integration testing without real API keys, Everruns uses [llmsim](https://gi
 4. **Latency Simulation**: Optional latency profiles for realistic timing
 5. **Usage**: Create an `llmsim` provider and model in tests, then use it as the agent's default model
 
-Example test setup:
-```rust
-// Create LlmSim provider (no API key needed)
-let provider = create_provider("llmsim", "Test Provider");
-let model = create_model(provider.id, "llmsim-test", "LlmSim Test Model");
-
-// Create agent with LlmSim model
-let agent = create_agent("Test Agent", model.id);
-```
+See integration tests in `crates/core/tests/` for usage examples.
 
 ### Capabilities System
 
@@ -478,21 +425,12 @@ See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) fo
 
 #### Event-Listener Architecture
 
-Observability is decoupled from business logic through the `EventListener` trait:
-
-```rust
-#[async_trait]
-pub trait EventListener: Send + Sync {
-    async fn on_event(&self, event: &Event);
-    fn event_types(&self) -> Option<Vec<&'static str>> { None }
-    fn name(&self) -> &'static str { "EventListener" }
-}
-```
+Observability is decoupled from business logic through the `EventListener` trait (see `crates/core/src/event_listeners.rs`).
 
 **Key components**:
-- `EventListener` trait (`core/src/traits.rs`) - Interface for observability backends
-- `OtelEventListener` (`core/src/otel_listener.rs`) - Generates OTel spans from events
-- `EventService` (`server/src/services/event.rs`) - Notifies listeners after event persistence
+- `EventListener` trait — Interface for observability backends
+- `OtelEventListener` (`core/src/otel_listener.rs`) — Generates OTel spans from events
+- `EventService` (`server/src/services/event.rs`) — Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
