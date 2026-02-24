@@ -7,6 +7,8 @@
 //!   Uses SDK's `EventStream` which handles automatic reconnection on
 //!   server-initiated `disconnecting` events (5-min connection cycling),
 //!   exponential backoff on errors, and resume via `since_id`.
+//!   The SSE stream is eagerly connected before the first message send
+//!   to avoid missing fast `session.idled` events from the worker.
 //!
 //! Usage:
 //!   cargo bench --package everruns-server --bench load_test
@@ -694,6 +696,9 @@ impl LoadTestRunner {
 
     /// Open an SSE stream for a session using the SDK's EventStream.
     ///
+    /// Returns a lazily-connected stream. Callers must poll it once (eager connect)
+    /// before sending messages to ensure the HTTP connection is live.
+    ///
     /// The SDK handles automatic reconnection on `disconnecting` events,
     /// exponential backoff on errors, and resume via `since_id`.
     fn open_sse_stream(&self, session_id: &str) -> everruns_sdk::sse::EventStream {
@@ -759,8 +764,40 @@ impl LoadTestRunner {
             }
         };
 
-        // Open SSE stream — SDK EventStream handles reconnection transparently
+        // Open SSE stream and eagerly connect before sending any messages.
+        //
+        // EventStream connects lazily: the HTTP connection is only established on
+        // first poll_next(). If we defer that to wait_for_idle_via_sse(), a fast
+        // worker may emit session.idled before the stream is live, missing the event.
+        // Polling here triggers connect() → HTTP GET → server sends `connected`
+        // (consumed internally by SDK) → Pending (no business events yet).
         let mut sse_stream = self.open_sse_stream(&session_id);
+        match tokio::time::timeout(Duration::from_secs(5), sse_stream.next()).await {
+            Err(_) => {
+                // Timeout — expected: connection is live, no business events yet.
+            }
+            Ok(Some(Ok(event))) => {
+                // Unexpected business event on a fresh session — not harmful,
+                // but log for visibility.
+                tracing::debug!(
+                    session_id,
+                    event_type = %event.event_type,
+                    "Received event during eager SSE connect"
+                );
+            }
+            Ok(Some(Err(e))) => {
+                self.metrics.record_error(format!(
+                    "Session {} SSE eager connect error: {}",
+                    session_num, e
+                ));
+            }
+            Ok(None) => {
+                self.metrics.record_error(format!(
+                    "Session {} SSE stream closed during eager connect",
+                    session_num
+                ));
+            }
+        }
 
         // Send messages sequentially — each waits for session.idled via SSE.
         // SDK's EventStream handles reconnection on `disconnecting` events transparently.
