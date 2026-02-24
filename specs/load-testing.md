@@ -53,6 +53,8 @@ All configuration via environment variables, overridden by CLI args where applic
 | `TIMEOUT_SECS` | `300` | Per-request timeout |
 | `TARGET` | auto-detected | Target label (e.g., `dev`, `docker-example`) |
 
+The HTTP client is configured with HTTP/2 flow control windows matching the server defaults (2 MB per-stream, 16 MB per-connection, adaptive window enabled) to prevent flow control exhaustion under high SSE concurrency.
+
 ### CLI Arguments
 
 | Argument | Description |

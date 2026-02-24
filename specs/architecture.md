@@ -518,6 +518,7 @@ The control-plane follows a strict layered architecture:
 │  │   HTTP API (axum)   │  │   gRPC Server (tonic)   │  │
 │  │     Port 9000       │  │       Port 9001         │  │
 │  │   (Public REST)     │  │   (Internal Workers)    │  │
+│  │  HTTP/2 flow ctrl   │  │                         │  │
 │  └──────────┬──────────┘  └────────────┬────────────┘  │
 └─────────────│──────────────────────────│───────────────┘
               │                          │
@@ -546,6 +547,16 @@ The control-plane follows a strict layered architecture:
 
 **Key Principle**: Both HTTP API and gRPC handlers access storage ONLY through services.
 No direct database access from transport layer handlers.
+
+**HTTP/2 Flow Control**: The HTTP server uses `hyper_util::server::conn::auto::Builder` instead of `axum::serve` to expose HTTP/2 configuration knobs. This is critical for high-concurrency SSE: the default 65 KB per-stream flow control window exhausts under many slow-reading clients, blocking streams and causing cascade timeouts. Configuration:
+
+| Env Variable | Default | Description |
+|---|---|---|
+| `HTTP2_STREAM_WINDOW_SIZE` | 2 MB | Per-stream flow control window |
+| `HTTP2_CONNECTION_WINDOW_SIZE` | 16 MB | Per-connection flow control window |
+| `HTTP2_MAX_CONCURRENT_STREAMS` | 256 | Max concurrent streams per connection |
+
+Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput). HTTP/2 PING keepalive runs every 20s to detect dead connections.
 
 1. **Storage Layer** (`server/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)

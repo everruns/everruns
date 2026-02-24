@@ -678,7 +678,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 |----|--------|----------|------------|--------|
 | TM-DOS-001 | Large API request body | High | Input size limits on all fields; multipart upload capped at 101 MB | MITIGATED |
 | TM-DOS-002 | Agent loop infinite iteration | High | Max 10 iterations per turn; configurable | MITIGATED |
-| TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) SSE connection limits via SseConnectionTracker | MITIGATED |
+| TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) RAII connection limits via `SseConnectionTracker`; HTTP/2 flow control windows tuned (2 MB/stream, 16 MB/connection) with adaptive sizing; connection cycling with ±20% jitter prevents thundering herd; HTTP/2 PING keepalive detects dead connections | MITIGATED |
 | TM-DOS-004 | Database connection pool exhaustion | Medium | sqlx connection pool with max_connections; timeouts on acquisition | MITIGATED |
 | TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
