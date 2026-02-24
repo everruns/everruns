@@ -6,9 +6,10 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel in-progress runs for the same PR/branch on new pushes
+# Cancel in-progress runs for the same PR/branch on new pushes.
+# On main, let every run finish so merged commits aren't silently skipped.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 permissions:
