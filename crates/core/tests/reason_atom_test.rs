@@ -11,6 +11,7 @@ use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::harness::{Harness, HarnessStatus};
+use everruns_core::llm_driver_registry::LlmCallConfigBuilder;
 use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
@@ -18,6 +19,7 @@ use everruns_core::memory::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore, InMemoryMessageRetriever,
     InMemorySessionStore,
 };
+use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
@@ -1026,4 +1028,187 @@ async fn test_reason_atom_handles_model_not_available() {
         reason_completed.is_some(),
         "Should emit reason.completed event"
     );
+}
+
+// ============================================================================
+// response_id / previous_response_id chaining tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_reason_atom_returns_response_id_from_driver() {
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello")])
+        .await;
+
+    // Configure driver to return a response_id
+    let config = LlmSimConfig::fixed("Hello from response-id test").with_response_id("resp_abc123");
+    let driver_registry = create_custom_driver_registry(config);
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        NoopEventEmitter,
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert_eq!(
+        result.response_id.as_deref(),
+        Some("resp_abc123"),
+        "ReasonResult should carry the driver's response_id"
+    );
+}
+
+#[tokio::test]
+async fn test_reason_atom_response_id_none_when_driver_omits_it() {
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello")])
+        .await;
+
+    // Default driver has no response_id
+    let config = LlmSimConfig::fixed("No response id");
+    let driver_registry = create_custom_driver_registry(config);
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        NoopEventEmitter,
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert_eq!(
+        result.response_id, None,
+        "ReasonResult.response_id should be None when driver omits it"
+    );
+}
+
+#[tokio::test]
+async fn test_previous_response_id_round_trips_through_serde() {
+    // ReasonInput with previous_response_id
+    let input = ReasonInput {
+        context: AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
+        harness_id: HarnessId::new(),
+        agent_id: None,
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: Some("resp_xyz789".to_string()),
+    };
+    let json = serde_json::to_value(&input).unwrap();
+    assert_eq!(json["previous_response_id"], "resp_xyz789");
+    let deserialized: ReasonInput = serde_json::from_value(json).unwrap();
+    assert_eq!(
+        deserialized.previous_response_id.as_deref(),
+        Some("resp_xyz789")
+    );
+
+    // ReasonInput without previous_response_id (omitted via skip_serializing_if)
+    let input_none = ReasonInput {
+        context: AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
+        harness_id: HarnessId::new(),
+        agent_id: None,
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+    };
+    let json_none = serde_json::to_value(&input_none).unwrap();
+    assert!(
+        json_none.get("previous_response_id").is_none(),
+        "None should be omitted from serialization"
+    );
+
+    // ReasonResult with response_id
+    let result = everruns_core::atoms::ReasonResult {
+        text: "test".to_string(),
+        tool_calls: vec![],
+        tool_definitions: vec![],
+        has_tool_calls: false,
+        success: true,
+        max_iterations: 10,
+        error: None,
+        usage: None,
+        response_id: Some("resp_out_456".to_string()),
+    };
+    let result_json = serde_json::to_value(&result).unwrap();
+    assert_eq!(result_json["response_id"], "resp_out_456");
+    let result_rt: everruns_core::atoms::ReasonResult =
+        serde_json::from_value(result_json).unwrap();
+    assert_eq!(result_rt.response_id.as_deref(), Some("resp_out_456"));
+}
+
+#[tokio::test]
+async fn test_llm_call_config_previous_response_id() {
+    let agent = RuntimeAgent::new("test prompt", "test-model");
+
+    // Builder sets previous_response_id
+    let config = LlmCallConfigBuilder::from(&agent)
+        .previous_response_id(Some("resp_prev_001".to_string()))
+        .build();
+    assert_eq!(
+        config.previous_response_id.as_deref(),
+        Some("resp_prev_001")
+    );
+
+    // Builder defaults to None
+    let config_default = LlmCallConfigBuilder::from(&agent).build();
+    assert_eq!(config_default.previous_response_id, None);
 }
