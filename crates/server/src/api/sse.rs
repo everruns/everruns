@@ -136,7 +136,7 @@ impl Default for SseConnectionLimits {
         Self {
             global_max: 10_000,
             per_session_max: 5,
-            per_org_max: 50,
+            per_org_max: 1_000,
         }
     }
 }
@@ -594,7 +594,7 @@ mod tests {
         let limits = SseConnectionLimits::default();
         assert_eq!(limits.global_max, 10_000);
         assert_eq!(limits.per_session_max, 5);
-        assert_eq!(limits.per_org_max, 50);
+        assert_eq!(limits.per_org_max, 1_000);
     }
 
     #[test]
