@@ -1072,9 +1072,10 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
-        // 20 core built-in capabilities
+        assert!(registry.has("platform_management"));
+        // 21 core built-in capabilities
         // (integration plugins like docker_container, codesandbox add more when linked)
-        assert!(registry.len() >= 20);
+        assert!(registry.len() >= 21);
     }
 
     #[test]
@@ -1102,9 +1103,10 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
+        assert!(registry.has("platform_management"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 20);
+        assert_eq!(registry.len(), 21);
     }
 
     #[test]

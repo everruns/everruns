@@ -1041,6 +1041,7 @@ fn event_to_message(event: Event) -> Option<Message> {
 // =============================================================================
 
 /// Direct PlatformStore backed by StorageBackend + EventService + AgentRunner.
+// THREAT[TM-AGENT-017]: All ops org-scoped via org_id field
 pub struct DirectPlatformStore {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,

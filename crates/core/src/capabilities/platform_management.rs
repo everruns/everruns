@@ -1,4 +1,5 @@
 // Platform Management capability
+// THREAT[TM-AGENT-017]: Agents with this capability can manage org-wide entities
 //
 // Decision: Four tools grouped by entity (harnesses, agents, sessions, session_interact)
 // Decision: Each tool uses an `operation` parameter for CRUD dispatch
@@ -1517,5 +1518,339 @@ mod tests {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
             other => panic!("expected tool error, got: {other:?}"),
         }
+    }
+
+    // =========================================================================
+    // Additional negative tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn harness_get_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageHarnessesTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "get", "harness_id": HarnessId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "Test Harness");
+                assert!(v["system_prompt"].as_str().is_some());
+                assert!(v["ui_link"].as_str().unwrap().contains("/harnesses/"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn harness_update_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageHarnessesTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "update", "harness_id": HarnessId::new().to_string(), "name": "Updated"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "Updated");
+                assert!(v["message"].as_str().unwrap().contains("updated"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_get_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "get", "agent_id": AgentId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "Test Agent");
+                assert!(v["ui_link"].as_str().unwrap().contains("/agents/"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_update_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "update", "agent_id": AgentId::new().to_string(), "name": "Renamed"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "Renamed");
+                assert!(v["message"].as_str().unwrap().contains("updated"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_delete_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "delete", "agent_id": AgentId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert!(v["message"].as_str().unwrap().contains("archived"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_invalid_operation_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "clone"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Unknown operation")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "get", "agent_id": "not-valid"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid agent_id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_create_missing_name_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "system_prompt": "test"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_get_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "get", "session_id": SessionId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["title"], "Test Session");
+                assert!(v["ui_link"].as_str().unwrap().contains("/chat"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_delete_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "delete", "session_id": SessionId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert!(v["message"].as_str().unwrap().contains("archived"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_invalid_operation_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "update"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Unknown operation")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "get", "session_id": "nope"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session_id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_create_missing_harness_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "create"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interact_invalid_operation_returns_error() {
+        let ctx = mock_context();
+        let tool = SessionInteractTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "delete", "session_id": SessionId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Unknown operation")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interact_send_message_missing_content_returns_error() {
+        let ctx = mock_context();
+        let tool = SessionInteractTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "send_message", "session_id": SessionId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interact_invalid_session_id_returns_error() {
+        let ctx = mock_context();
+        let tool = SessionInteractTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "get_messages", "session_id": "bad-id"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session_id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn interact_missing_session_id_returns_error() {
+        let ctx = mock_context();
+        let tool = SessionInteractTool;
+        let result = tool
+            .execute_with_context(json!({"operation": "get_messages"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn all_tools_require_context() {
+        // All four tools should have requires_context = true
+        assert!(ManageHarnessesTool.requires_context());
+        assert!(ManageAgentsTool.requires_context());
+        assert!(ManageSessionsTool.requires_context());
+        assert!(SessionInteractTool.requires_context());
+    }
+
+    #[tokio::test]
+    async fn all_tools_without_context_return_error() {
+        // execute() (no context) should fail for all tools
+        for tool_name in [
+            "manage_harnesses",
+            "manage_agents",
+            "manage_sessions",
+            "session_interact",
+        ] {
+            let result = match tool_name {
+                "manage_harnesses" => {
+                    ManageHarnessesTool
+                        .execute(json!({"operation": "list"}))
+                        .await
+                }
+                "manage_agents" => ManageAgentsTool.execute(json!({"operation": "list"})).await,
+                "manage_sessions" => {
+                    ManageSessionsTool
+                        .execute(json!({"operation": "list"}))
+                        .await
+                }
+                "session_interact" => {
+                    SessionInteractTool
+                        .execute(json!({"operation": "get_messages", "session_id": "x"}))
+                        .await
+                }
+                _ => unreachable!(),
+            };
+            match result {
+                ToolExecutionResult::ToolError(msg) => {
+                    assert!(msg.contains("requires context"), "tool {tool_name}: {msg}");
+                }
+                other => panic!("{tool_name}: expected tool error, got: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn capability_has_system_prompt_addition() {
+        let cap = PlatformManagementCapability;
+        let prompt = cap.system_prompt_addition().expect("should have prompt");
+        assert!(prompt.contains("manage_harnesses"));
+        assert!(prompt.contains("manage_agents"));
+        assert!(prompt.contains("manage_sessions"));
+        assert!(prompt.contains("session_interact"));
     }
 }
