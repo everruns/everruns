@@ -11,33 +11,18 @@ Everruns agents can invoke tools during execution. This specification defines to
 #### Built-in Tools
 System-provided tools implemented via the `Tool` trait in `everruns-core`.
 
-**Tool Trait Interface:**
-```rust
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &str;
-    fn display_name(&self) -> Option<&str> { None }
-    fn description(&self) -> &str;
-    fn parameters_schema(&self) -> Value;
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult;
-    fn policy(&self) -> ToolPolicy { ToolPolicy::Auto }
-}
-```
+See `crates/core/src/tools.rs` for the `Tool` trait, `ToolExecutionResult`, and `ToolPolicy` types.
 
 **Display Names:**
-All tools should provide a human-readable `display_name` for UI rendering (e.g., "Get Current Time" for `get_current_time`). The display name is:
-- Returned by `fn display_name(&self) -> Option<&str>` on the `Tool` trait
-- Included in `BuiltinTool` and `ClientSideTool` as `display_name: Option<String>`
-- Propagated through events (`act.started`, `tool.started`, `tool.completed`) so the UI can render it
-- The UI falls back to the technical `name` if `display_name` is absent
+Tools should provide a human-readable `display_name` for UI rendering. Propagated through events; UI falls back to technical `name` if absent.
 
 **Error Handling Contract:**
-- `ToolExecutionResult::Success(Value)` - Successful result returned to LLM as `result` field
-- `ToolExecutionResult::SuccessWithImages { result, images }` - Successful result with images. Images are sent as native image content blocks to the LLM, enabling visual understanding (not stringified JSON).
-- `ToolExecutionResult::ToolError(String)` - User-visible error packaged as `{"error": "..."}` in `result` field (e.g., `{"error": "City not found"}`)
-- `ToolExecutionResult::InternalError` - System error logged, generic message packaged as `{"error": "..."}` in `result` field (security)
+- `Success(Value)` — Result returned to LLM
+- `SuccessWithImages { result, images }` — Result with native image content blocks
+- `ToolError(String)` — User-visible error as `{"error": "..."}`
+- `InternalError` — System error logged, generic message (security)
 
-All error types continue the agent loop the same way as success - they are all packaged in the `result` field with no `error` field set. The LLM can interpret the `{"error": "..."}` payload and decide how to proceed.
+All error types continue the agent loop — packaged in `result` field, LLM decides how to proceed.
 
 **Image Support in Tool Results:**
 
@@ -67,42 +52,7 @@ Tools can also be provided by Capabilities (see [capabilities.md](capabilities.m
 - `Sandbox` capability will provide `execute_code` tool
 - `FileSystem` capability will provide read/write/search files tools
 
-**ToolRegistry:**
-Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
-```rust
-// Create with default built-in tools (includes get_current_time, echo, math tools, etc.)
-let registry = ToolRegistry::with_defaults();
-
-// Or build a custom registry
-let registry = ToolRegistry::builder()
-    .tool(GetCurrentTime)
-    .tool(MyCustomTool)
-    .build();
-
-let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
-```
-
-### Tool Definition Schema
-
-```json
-{
-  "type": "builtin",
-  "name": "tool_name",
-  "display_name": "Tool Name",
-  "description": "What the tool does",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "param1": {
-        "type": "string",
-        "description": "Parameter description"
-      }
-    },
-    "required": ["param1"]
-  },
-  "policy": "auto"
-}
-```
+**ToolRegistry:** Manages multiple tools and implements `ToolExecutor` trait. See `crates/core/src/tools.rs` for `ToolRegistry` and its builder pattern.
 
 ### Tool Policies
 

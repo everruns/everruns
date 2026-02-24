@@ -106,85 +106,12 @@ All endpoints under `/v1/sessions/{session_id}/fs`
 
 **Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
 
-### Request/Response Examples
+### Request/Response
 
-**Create File:**
-```json
-POST /v1/sessions/{id}/fs/src/main.rs
-{
-  "content": "fn main() {}",
-  "encoding": "text"
-}
-```
-
-Response:
-```json
-{
-  "id": "...",
-  "session_id": "...",
-  "path": "/src/main.rs",
-  "name": "main.rs",
-  "content": "fn main() {}",
-  "encoding": "text",
-  "is_directory": false,
-  "is_readonly": false,
-  "size_bytes": 12,
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
-**Create Directory:**
-```json
-POST /v1/agents/{id}/sessions/{id}/fs/docs
-{
-  "is_directory": true
-}
-```
-
-**List Directory:**
-```json
-GET /v1/agents/{id}/sessions/{id}/fs/src
-{
-  "data": [
-    {
-      "id": "...",
-      "path": "/src/main.rs",
-      "name": "main.rs",
-      "is_directory": false,
-      "size_bytes": 12,
-      ...
-    }
-  ]
-}
-```
-
-**Grep Search:**
-```json
-POST /v1/agents/{id}/sessions/{id}/fs/_/grep
-{
-  "pattern": "fn\\s+\\w+",
-  "path_pattern": "*.rs"
-}
-```
-
-Response:
-```json
-{
-  "data": [
-    {
-      "path": "/src/main.rs",
-      "matches": [
-        {
-          "path": "/src/main.rs",
-          "line_number": 1,
-          "line": "fn main() {}"
-        }
-      ]
-    }
-  ]
-}
-```
+See the OpenAPI spec (`./scripts/export-openapi.sh`) for detailed request/response schemas. Key patterns:
+- Create: `POST /fs/{path}` with `{ "content": "...", "encoding": "text" }`
+- Directory: `POST /fs/{path}` with `{ "is_directory": true }`
+- Grep: `POST /fs/_/grep` with `{ "pattern": "...", "path_pattern": "*.rs" }`
 
 ### Behavior
 
@@ -196,25 +123,7 @@ Response:
 
 ### Database Schema
 
-```sql
-CREATE TABLE session_files (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    path TEXT NOT NULL,
-    content BYTEA,
-    is_directory BOOLEAN NOT NULL DEFAULT FALSE,
-    is_readonly BOOLEAN NOT NULL DEFAULT FALSE,
-    size_bytes BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT session_files_unique_path UNIQUE (session_id, path),
-    CONSTRAINT session_files_path_check CHECK (path ~ '^/([^/\0]+(/[^/\0]+)*)?$'),
-    CONSTRAINT session_files_directory_no_content CHECK (NOT is_directory OR content IS NULL)
-);
-
-CREATE INDEX session_files_session_idx ON session_files(session_id);
-CREATE INDEX session_files_path_prefix_idx ON session_files(session_id, path text_pattern_ops);
-```
+See `crates/server/migrations/001_base_schema.sql` for the `session_files` table DDL (includes path validation, unique constraints, and indexes).
 
 ### UI Integration
 
