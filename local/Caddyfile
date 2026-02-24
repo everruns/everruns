@@ -1,3 +1,18 @@
+# HTTP/2 flow control mitigation for high-concurrency SSE
+#
+# HTTP/2 multiplexes streams over a single TCP connection with 65KB per-stream
+# flow control windows. With many concurrent SSE streams, windows exhaust when
+# the server sends faster than the client reads → streams block → timeout.
+#
+# Fix: Force HTTP/1.1 downstream. Each SSE stream gets its own TCP connection,
+# avoiding flow control entirely. HTTP/2 provides no benefit for long-lived
+# unidirectional SSE streams.
+{
+	servers :9300 {
+		protocols h1
+	}
+}
+
 # Local development reverse proxy
 # Unifies API (9000) and UI (9100) behind a single port (9300)
 #
@@ -11,6 +26,14 @@
 		reverse_proxy localhost:9000 {
 			# Disable response buffering for SSE streaming
 			flush_interval -1
+
+			# Upstream transport tuned for high SSE connection count.
+			# Each SSE stream holds a connection to the backend; with 1000s
+			# of concurrent streams we need adequate pooling.
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 100
+			}
 		}
 	}
 	handle /api-doc/* {

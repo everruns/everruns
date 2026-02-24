@@ -181,6 +181,10 @@ The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse p
 - Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*` to the API server
 - Strip the `/api` prefix when forwarding
 - Disable response buffering for SSE endpoints
+- **Force HTTP/1.1** for SSE-heavy traffic — HTTP/2 multiplexes streams over one TCP
+  connection with 65KB per-stream flow control windows; with many concurrent SSE
+  streams, windows exhaust → streams block → timeout. HTTP/1.1 gives each stream
+  its own connection, avoiding this entirely.
 - Example Caddy config: see `local/Caddyfile`
 
 ## Worker Configuration

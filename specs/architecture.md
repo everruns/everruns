@@ -496,6 +496,8 @@ No direct database access from transport layer handlers.
 
 Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput). HTTP/2 PING keepalive runs every 20s to detect dead connections.
 
+**Caddy Reverse Proxy**: Caddy is configured with `protocols h1` to force HTTP/1.1 downstream. This prevents HTTP/2 flow control issues at the proxy layer — each SSE stream gets its own TCP connection instead of multiplexing over a shared HTTP/2 connection. The `flush_interval -1` setting disables response buffering for real-time SSE delivery. Upstream transport uses connection pooling (`keepalive 120s`, `keepalive_idle_conns 100`) for high SSE connection counts.
+
 1. **Storage Layer** (`server/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)

@@ -170,6 +170,14 @@ services:
 configs:
   caddyfile:
     content: |
+      # Force HTTP/1.1 to avoid HTTP/2 flow control window exhaustion
+      # with many concurrent SSE streams (65KB per-stream window limit).
+      {
+        servers :9300 {
+          protocols h1
+        }
+      }
+
       # Reverse proxy routes:
       #   /api/*     -> API (strips prefix)
       #   /api-doc/* -> API
@@ -180,6 +188,12 @@ configs:
           reverse_proxy server:9000 {
             # Disable response buffering for SSE streaming
             flush_interval -1
+
+            # Upstream transport tuned for high SSE connection count
+            transport http {
+              keepalive 120s
+              keepalive_idle_conns 100
+            }
           }
         }
         handle /api-doc/* {
