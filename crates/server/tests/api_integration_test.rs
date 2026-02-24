@@ -24,9 +24,9 @@ const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
 /// Seed harness ID from seed.rs (GENERIC_HARNESS = 0x01933b5a_0000_7000_8000_000000000602)
 const SEED_GENERIC_HARNESS_ID: &str = "harness_01933b5a000070008000000000000602";
 
-// ============================================
+// --------------------------------------------
 // Health Endpoint Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_health_endpoint() {
@@ -40,9 +40,9 @@ async fn test_health_endpoint() {
     assert_eq!(body["status"], "ok");
 }
 
-// ============================================
+// --------------------------------------------
 // Agent CRUD Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_agent() {
@@ -190,9 +190,9 @@ async fn test_delete_agent() {
     assert_eq!(archived_agent.status, everruns_core::AgentStatus::Archived);
 }
 
-// ============================================
+// --------------------------------------------
 // Session CRUD Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_session() {
@@ -335,9 +335,9 @@ async fn test_sessions_pagination() {
     assert_eq!(body["data"].as_array().unwrap().len(), 5); // Only 5 remaining
 }
 
-// ============================================
+// --------------------------------------------
 // Message Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_user_message() {
@@ -441,9 +441,9 @@ async fn test_list_messages() {
     assert_eq!(messages.len(), 1);
 }
 
-// ============================================
+// --------------------------------------------
 // Events Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_list_events() {
@@ -500,9 +500,9 @@ async fn test_list_events() {
     assert!(data["data"].is_array());
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_llm_provider_crud() {
@@ -589,9 +589,9 @@ async fn test_llm_model_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
-// ============================================
+// --------------------------------------------
 // Session Model Inheritance Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_inherits_agent_default_model() {
@@ -671,9 +671,9 @@ async fn test_session_inherits_agent_default_model() {
         .await;
 }
 
-// ============================================
+// --------------------------------------------
 // Session Filesystem Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_filesystem() {
@@ -771,9 +771,9 @@ async fn test_session_filesystem() {
     assert_eq!(result["deleted"], true);
 }
 
-// ============================================
+// --------------------------------------------
 // Harness Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_list_harnesses_includes_base_and_generic() {
@@ -900,9 +900,9 @@ async fn test_create_session_with_generic_harness() {
     assert_eq!(session.title.as_deref(), Some("Generic Harness Session"));
 }
 
-// ============================================
+// --------------------------------------------
 // Copy Agent Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_copy_agent() {
@@ -957,9 +957,9 @@ async fn test_copy_agent_not_found() {
         .assert_status(StatusCode::NOT_FOUND);
 }
 
-// ============================================
+// --------------------------------------------
 // Copy Harness Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_copy_harness() {
@@ -1040,9 +1040,9 @@ async fn test_copy_seed_generic_harness() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Capabilities Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_list_capabilities() {
@@ -1090,9 +1090,9 @@ async fn test_agent_with_capabilities() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Session SQL Database Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_databases_crud() {
@@ -1300,9 +1300,9 @@ async fn test_session_databases_invalid_name() {
         .assert_status(StatusCode::BAD_REQUEST);
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Session Features Tests
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn test_session_features_base_harness_empty() {

@@ -25,9 +25,9 @@ import type {
   TokenUsage,
 } from "@/lib/api/types";
 
-// ============================================
+// --------------------------------------------
 // Content Part Renderers
-// ============================================
+// --------------------------------------------
 
 function TextContentPart({ text }: { text: string }) {
   return <p className="text-sm whitespace-pre-wrap">{text}</p>;
@@ -146,9 +146,9 @@ function ContentPartRenderer({ part }: { part: ContentPart }) {
   }
 }
 
-// ============================================
+// --------------------------------------------
 // Message Components
-// ============================================
+// --------------------------------------------
 
 function MessageCard({ message, index }: { message: Message; index: number }) {
   const roleConfig = {
@@ -195,9 +195,9 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Output Section
-// ============================================
+// --------------------------------------------
 
 function OutputSection({ output }: { output: LlmGenerationOutput }) {
   return (
@@ -235,9 +235,9 @@ function OutputSection({ output }: { output: LlmGenerationOutput }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Metadata Section
-// ============================================
+// --------------------------------------------
 
 function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
   return (
@@ -334,9 +334,9 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Main Component
-// ============================================
+// --------------------------------------------
 
 export interface LlmHistoryViewerProps {
   /** The llm.generation event data */

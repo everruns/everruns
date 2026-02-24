@@ -1,9 +1,9 @@
 // TypeScript types mirroring Rust types from everruns-core
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
-// ============================================
+// --------------------------------------------
 // Agent types (M2)
-// ============================================
+// --------------------------------------------
 
 export type AgentStatus = "active" | "archived";
 
@@ -59,9 +59,9 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
-// ============================================
+// --------------------------------------------
 // Harness types
-// ============================================
+// --------------------------------------------
 
 export type HarnessStatus = "active" | "archived";
 
@@ -124,9 +124,9 @@ export interface AgentPreviewResponse {
   tools: ToolDefinition[];
 }
 
-// ============================================
+// --------------------------------------------
 // Session types (M2)
-// ============================================
+// --------------------------------------------
 
 // Session status values:
 // - "started": Session just created, no turn executed yet
@@ -190,9 +190,9 @@ export interface UpdateSessionRequest {
   model_id?: string;
 }
 
-// ============================================
+// --------------------------------------------
 // Session Schedule types
-// ============================================
+// --------------------------------------------
 
 export type ScheduleType = "oneshot" | "recurring";
 
@@ -216,9 +216,9 @@ export interface UpdateSessionScheduleRequest {
   enabled?: boolean;
 }
 
-// ============================================
+// --------------------------------------------
 // Message types (M2) - PRIMARY data
-// ============================================
+// --------------------------------------------
 
 /**
  * Message role (API layer)
@@ -366,9 +366,9 @@ export function getToolCallsFromContent(
   }));
 }
 
-// ============================================
+// --------------------------------------------
 // Event types - SSE notifications following standard event protocol
-// ============================================
+// --------------------------------------------
 
 /** Event context for correlation */
 export interface EventContext {
@@ -393,9 +393,9 @@ export interface Event {
   sequence?: number;
 }
 
-// ============================================
+// --------------------------------------------
 // Event Data Types - Typed payloads for each event type
-// ============================================
+// --------------------------------------------
 
 /** Model metadata for generation events */
 export interface ModelMetadata {
@@ -637,9 +637,9 @@ export interface CreateEventRequest {
   data: Record<string, unknown>;
 }
 
-// ============================================
+// --------------------------------------------
 // List response wrappers
-// ============================================
+// --------------------------------------------
 
 export interface ListResponse<T> {
   data: T[];
@@ -657,9 +657,9 @@ export interface PaginationParams {
   limit?: number;
 }
 
-// ============================================
+// --------------------------------------------
 // Tool types
-// ============================================
+// --------------------------------------------
 
 export type ToolPolicy = "auto" | "requires_approval";
 
@@ -694,9 +694,9 @@ export interface ClientSideTool {
 /** Tool definition - builtin or client-side */
 export type ToolDefinition = BuiltinTool | ClientSideTool;
 
-// ============================================
+// --------------------------------------------
 // Health check
-// ============================================
+// --------------------------------------------
 
 export interface HealthResponse {
   status: string;
@@ -704,9 +704,9 @@ export interface HealthResponse {
   runner_mode: string;
 }
 
-// ============================================
+// --------------------------------------------
 // Authentication types
-// ============================================
+// --------------------------------------------
 
 export type AuthMode = "none" | "admin" | "full" | "external";
 
@@ -803,9 +803,9 @@ export interface RefreshTokenRequest {
   refresh_token: string;
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider types
-// ============================================
+// --------------------------------------------
 
 export type LlmProviderType = "openai" | "openai_completions" | "anthropic" | "gemini";
 
@@ -843,10 +843,10 @@ export interface LlmModelWithProvider extends LlmModel {
   profile?: LlmModelProfile;
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Model Profile types
 // Based on models.dev structure
-// ============================================
+// --------------------------------------------
 
 /** Cost information for the model (per million tokens in USD) */
 export interface LlmModelCost {
@@ -970,9 +970,9 @@ export type SyncModelsResponse =
   | { status: "success"; created: number; updated: number; stale: number }
   | { status: "not_supported" };
 
-// ============================================
+// --------------------------------------------
 // Capability types
-// ============================================
+// --------------------------------------------
 
 // NOTE: CapabilityId is defined with Agent types above for proper ordering
 
@@ -997,9 +997,9 @@ export interface Capability {
   features?: string[];
 }
 
-// ============================================
+// --------------------------------------------
 // User types (for members management)
-// ============================================
+// --------------------------------------------
 
 export interface User {
   id: string;
@@ -1015,9 +1015,9 @@ export interface ListUsersQuery {
   search?: string;
 }
 
-// ============================================
+// --------------------------------------------
 // Session File types (Virtual Filesystem)
-// ============================================
+// --------------------------------------------
 
 /** File metadata without content */
 export interface FileInfo {
@@ -1104,9 +1104,9 @@ export interface DeleteFileResponse {
   deleted: boolean;
 }
 
-// ============================================
+// --------------------------------------------
 // Durable Execution types
-// ============================================
+// --------------------------------------------
 
 /** Worker status */
 export type WorkerStatus = "active" | "draining" | "stopped" | "stale";
@@ -1325,9 +1325,9 @@ export interface MetricsTimeSeriesResponse {
   resolution_seconds: number;
 }
 
-// ============================================
+// --------------------------------------------
 // MCP Server types
-// ============================================
+// --------------------------------------------
 
 /** MCP Server transport type */
 export type McpServerTransportType = "http";
@@ -1370,9 +1370,9 @@ export interface UpdateMcpServerRequest {
   headers?: Record<string, string>;
 }
 
-// ============================================
+// --------------------------------------------
 // Skill types (Agent Skills registry)
-// ============================================
+// --------------------------------------------
 
 /** Skill source type */
 export type SkillSourceType = "markdown" | "archive";
@@ -1433,9 +1433,9 @@ export interface ValidateSkillRequest {
   skill_md: string;
 }
 
-// ============================================
+// --------------------------------------------
 // Image types (for message attachments)
-// ============================================
+// --------------------------------------------
 
 /** Image metadata (returned from upload) */
 export interface ImageInfo {
@@ -1464,9 +1464,9 @@ export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 /** Maximum image size in bytes (100 MB) */
 export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;
 
-// ============================================
+// --------------------------------------------
 // Session Storage types (Key-Value & Secrets)
-// ============================================
+// --------------------------------------------
 
 /** Key-value entry info */
 export interface KeyValueInfo {
@@ -1490,9 +1490,9 @@ export interface SecretInfo {
   updated_at: string;
 }
 
-// ============================================
+// --------------------------------------------
 // Durable Schedule types
-// ============================================
+// --------------------------------------------
 
 /** Schedule target type */
 export type ScheduleTargetType = "workflow" | "activity";
@@ -1595,9 +1595,9 @@ export interface TriggerResponse {
   execution_id: string;
 }
 
-// ============================================
+// --------------------------------------------
 // User Connection types
-// ============================================
+// --------------------------------------------
 
 export interface UserConnection {
   provider: string;

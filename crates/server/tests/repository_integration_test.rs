@@ -42,9 +42,9 @@ async fn create_test_backend() -> StorageBackend {
 /// Test organization ID (default org)
 const TEST_ORG_ID: i64 = 1;
 
-// ============================================
+// --------------------------------------------
 // Agent Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_agent_crud() {
@@ -151,9 +151,9 @@ async fn test_agent_get_by_name() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // Session Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_crud() {
@@ -242,9 +242,9 @@ async fn test_session_crud() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // Event Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_event_crud() {
@@ -509,9 +509,9 @@ async fn test_event_filter_types() {
     assert!(events.is_empty());
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_llm_provider_crud() {
@@ -576,9 +576,9 @@ async fn test_llm_provider_crud() {
     assert!(deleted);
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Model Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_llm_model_crud() {
@@ -668,9 +668,9 @@ async fn test_llm_model_crud() {
         .unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // Session File Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_file_crud() {
@@ -782,9 +782,9 @@ async fn test_session_file_crud() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // MCP Server Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_mcp_server_crud() {
@@ -841,9 +841,9 @@ async fn test_mcp_server_crud() {
     assert!(deleted);
 }
 
-// ============================================
+// --------------------------------------------
 // Agent Capability Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_agent_capabilities() {
@@ -931,9 +931,9 @@ async fn test_agent_capabilities() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // Organization Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_organization_crud() {
@@ -997,9 +997,9 @@ async fn test_organization_crud() {
     assert!(deleted);
 }
 
-// ============================================
+// --------------------------------------------
 // Image Repository Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_image_crud() {
@@ -1059,9 +1059,9 @@ async fn test_image_crud() {
     assert!(deleted);
 }
 
-// ============================================
+// --------------------------------------------
 // Session Usage Tracking Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_usage_tracking() {
@@ -1137,9 +1137,9 @@ async fn test_session_usage_tracking() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-// ============================================
+// --------------------------------------------
 // Session Preview Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_session_previews() {
@@ -1234,9 +1234,9 @@ async fn test_session_previews() {
     // Note: No cleanup - events are append-only so sessions with events cannot be deleted
 }
 
-// ============================================
+// --------------------------------------------
 // Organization Isolation Tests (PostgreSQL)
-// ============================================
+// --------------------------------------------
 
 /// Helper to create a new org for isolation testing
 async fn create_test_org(backend: &StorageBackend, name: &str) -> i64 {

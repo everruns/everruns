@@ -118,9 +118,9 @@ fn test_tool_call_completed_error_serialization() {
     assert_eq!(data["error"], "File not found");
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Events API Contract Tests
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Verify that unsupported events cannot be serialized (serde skip)
 /// This ensures they can never leak to API responses.

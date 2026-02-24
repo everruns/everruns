@@ -153,9 +153,9 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Standalone Favorite Toggle Component
-// ============================================
+// --------------------------------------------
 
 interface FavoriteToggleProps {
   model: LlmModelWithProvider;

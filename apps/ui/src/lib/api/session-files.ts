@@ -35,9 +35,9 @@ function fsPath(sessionId: string, path?: string): string {
   return `${base}/${normalizedPath}`;
 }
 
-// ============================================
+// --------------------------------------------
 // File CRUD Operations
-// ============================================
+// --------------------------------------------
 
 /** List files in a directory */
 export async function listFiles(
@@ -93,9 +93,9 @@ export async function deleteFile(
   return response.data.deleted;
 }
 
-// ============================================
+// --------------------------------------------
 // Directory Operations
-// ============================================
+// --------------------------------------------
 
 /** Create a directory */
 export async function mkdir(sessionId: string, path: string): Promise<SessionFile> {
@@ -103,9 +103,9 @@ export async function mkdir(sessionId: string, path: string): Promise<SessionFil
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // File Management Operations
-// ============================================
+// --------------------------------------------
 
 /** Move/rename a file or directory */
 export async function moveFile(sessionId: string, request: MoveFileRequest): Promise<SessionFile> {
@@ -119,9 +119,9 @@ export async function copyFile(sessionId: string, request: CopyFileRequest): Pro
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Search Operations
-// ============================================
+// --------------------------------------------
 
 /** Search files using grep-like pattern matching */
 export async function grepFiles(sessionId: string, request: GrepRequest): Promise<GrepResult[]> {
@@ -132,9 +132,9 @@ export async function grepFiles(sessionId: string, request: GrepRequest): Promis
   return response.data.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Utility Functions
-// ============================================
+// --------------------------------------------
 
 /** Format file size in human-readable format */
 export function formatFileSize(bytes: number): string {

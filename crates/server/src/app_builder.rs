@@ -36,9 +36,9 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 
-// =========================================================================
+// -------------------------------------------------------------------------
 // Types
-// =========================================================================
+// -------------------------------------------------------------------------
 
 type AuthFactoryFn = Box<dyn FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend> + Send>;
 
@@ -48,9 +48,9 @@ type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-// =========================================================================
+// -------------------------------------------------------------------------
 // ServerContext
-// =========================================================================
+// -------------------------------------------------------------------------
 
 /// Shared infrastructure context passed to custom background tasks.
 ///
@@ -65,9 +65,9 @@ pub struct ServerContext {
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
 }
 
-// =========================================================================
+// -------------------------------------------------------------------------
 // Health endpoint (moved from server.rs)
-// =========================================================================
+// -------------------------------------------------------------------------
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -89,9 +89,9 @@ struct HealthState {
     auth_mode: String,
 }
 
-// =========================================================================
+// -------------------------------------------------------------------------
 // ServerAppBuilder
-// =========================================================================
+// -------------------------------------------------------------------------
 
 /// Builder for composing server applications.
 ///
@@ -200,9 +200,9 @@ impl ServerAppBuilder {
     pub async fn run(self) -> Result<()> {
         tracing::info!("everrun-api starting...");
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 1: Storage backend & runner
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let (db, runner, shared_durable_store) = if self.config.dev_mode {
             tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
 
@@ -253,9 +253,9 @@ impl ServerAppBuilder {
             (Arc::new(backend), runner, None)
         };
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 2: Seed & infrastructure services
-        // =====================================================================
+        // ---------------------------------------------------------------------
         seed::spawn_seed_task(db.clone());
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
@@ -278,9 +278,9 @@ impl ServerAppBuilder {
             }
         };
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 3: Authentication
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let auth_config = auth::AuthConfig::from_env();
         tracing::info!(
             mode = ?auth_config.mode,
@@ -298,9 +298,9 @@ impl ServerAppBuilder {
         };
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 4: Event listeners & services
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
         let usage_listener: Arc<dyn EventListener> =
             Arc::new(services::UsageTrackingListener::new(db.clone()));
@@ -335,9 +335,9 @@ impl ServerAppBuilder {
             None
         };
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 5: API state construction
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let sessions_state =
             api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
         let messages_state =
@@ -433,9 +433,9 @@ impl ServerAppBuilder {
             );
         }
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 6: Build API router
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
             .merge(api::harnesses::routes(harnesses_state))
@@ -509,9 +509,9 @@ impl ServerAppBuilder {
 
         let app = app.layer(TraceLayer::new_for_http());
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 7: Background tasks
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let server_context = ServerContext {
             db: db.clone(),
             event_service: event_service.clone(),
@@ -788,9 +788,9 @@ impl ServerAppBuilder {
             tokio::spawn(task_fn(ctx));
         }
 
-        // =====================================================================
+        // ---------------------------------------------------------------------
         // Phase 8: Start HTTP server
-        // =====================================================================
+        // ---------------------------------------------------------------------
         let listener = tokio::net::TcpListener::bind(&self.config.addr)
             .await
             .context("Failed to bind to address")?;

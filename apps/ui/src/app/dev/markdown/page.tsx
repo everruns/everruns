@@ -11,9 +11,9 @@ import { StreamingMessage } from "@/components/streaming-message";
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -44,9 +44,9 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Markdown Content Samples
-// ============================================
+// --------------------------------------------
 
 const sampleMarkdownContent = {
   basicFormatting: `**Bold text**, *italic text*, and \`inline code\`.
@@ -161,9 +161,9 @@ export function Feature({ title, enabled = true }: FeatureProps) {
 Let me know if you need any modifications!`,
 };
 
-// ============================================
+// --------------------------------------------
 // Streaming Demo Component
-// ============================================
+// --------------------------------------------
 
 function StreamingDemo() {
   const [streamedText, setStreamedText] = useState("");
@@ -230,9 +230,9 @@ function StreamingDemo() {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Incomplete Markdown Demo
-// ============================================
+// --------------------------------------------
 
 function IncompleteMarkdownDemo() {
   const incompleteExamples = [
@@ -263,9 +263,9 @@ function IncompleteMarkdownDemo() {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevMarkdownPage() {
   // Show 404-like message in production

@@ -11,9 +11,9 @@ import type { Session, LlmModelWithProvider } from "@/lib/api/types";
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -44,9 +44,9 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Sample Data for SessionCard
-// ============================================
+// --------------------------------------------
 
 const sampleSessions = {
   running: {
@@ -194,9 +194,9 @@ const sampleModels = {
   } satisfies LlmModelWithProvider,
 };
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevSessionCardPage() {
   // Show 404-like message in production

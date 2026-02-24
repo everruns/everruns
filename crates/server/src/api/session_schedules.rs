@@ -18,9 +18,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-// ============================================
+// --------------------------------------------
 // App State
-// ============================================
+// --------------------------------------------
 
 #[derive(Clone)]
 pub struct AppState {
@@ -43,9 +43,9 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-// ============================================
+// --------------------------------------------
 // Request/Response types
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateScheduleRequest {
@@ -53,9 +53,9 @@ pub struct UpdateScheduleRequest {
     pub enabled: Option<bool>,
 }
 
-// ============================================
+// --------------------------------------------
 // Routes
-// ============================================
+// --------------------------------------------
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -73,9 +73,9 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-// ============================================
+// --------------------------------------------
 // Handlers
-// ============================================
+// --------------------------------------------
 
 /// List all schedules for a session.
 #[utoipa::path(

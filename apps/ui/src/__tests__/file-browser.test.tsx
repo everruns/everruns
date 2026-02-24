@@ -74,9 +74,9 @@ const renderWithProviders = (ui: React.ReactElement) => {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 };
 
-// ============================================
+// --------------------------------------------
 // Loading and Empty States
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser States", () => {
   beforeEach(() => {
@@ -110,9 +110,9 @@ describe("FileBrowser States", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // Toolbar Tests
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser Toolbar", () => {
   beforeEach(() => {
@@ -155,9 +155,9 @@ describe("FileBrowser Toolbar", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // File Tree Tests
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser FileTree", () => {
   const mockFile = {
@@ -300,9 +300,9 @@ describe("FileBrowser FileTree", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // File Type Icons
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser File Icons", () => {
   beforeEach(() => {
@@ -354,11 +354,11 @@ describe("FileBrowser File Icons", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // Create File Dialog
 // Note: Dialog tests are skipped as they require complex Radix UI portal mocking.
 // The dialog functionality is covered by E2E tests.
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser Create File Dialog", () => {
   beforeEach(() => {
@@ -378,10 +378,10 @@ describe("FileBrowser Create File Dialog", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // Create Folder Dialog
 // Note: Dialog tests are skipped as they require complex Radix UI portal mocking.
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser Create Folder Dialog", () => {
   beforeEach(() => {
@@ -401,9 +401,9 @@ describe("FileBrowser Create Folder Dialog", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // Delete Functionality
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser Delete", () => {
   const mockFile = {
@@ -474,9 +474,9 @@ describe("FileBrowser Delete", () => {
   // by adding an actions prop to FileTreeFolder that renders in the trigger row.
 });
 
-// ============================================
+// --------------------------------------------
 // Directory Expansion
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser Directory Expansion", () => {
   const mockDirectory = {
@@ -576,9 +576,9 @@ describe("FileBrowser Directory Expansion", () => {
   });
 });
 
-// ============================================
+// --------------------------------------------
 // Recursion Guard & Edge Cases
-// ============================================
+// --------------------------------------------
 
 describe("FileBrowser recursion guard", () => {
   const makeFile = (

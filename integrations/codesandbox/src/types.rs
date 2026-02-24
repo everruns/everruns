@@ -3,9 +3,9 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Constants
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 pub const CSB_API_BASE: &str = "https://api.codesandbox.io";
 pub const CSB_API_KEY_SECRET: &str = "CSB_API_KEY";
@@ -18,9 +18,9 @@ pub const PINT_READY_MAX_WAIT: Duration = Duration::from_secs(30);
 /// Auto-hibernate after 5 minutes of inactivity (safety net)
 pub const HIBERNATE_TIMEOUT_SECS: u64 = 300;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // API Response Types
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxInfo {
@@ -76,9 +76,9 @@ pub struct DirListResponse {
     pub files: Vec<DirEntry>,
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Persisted Sandbox State (stored in session secrets as JSON)
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreviewTokenResponse {
@@ -107,9 +107,9 @@ pub struct SandboxState {
 // caused 500 errors from their API for most template IDs (tested 2026-02-15).
 // Sandboxes created without a template work fine. See specs/codesandbox.md for details.
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Utility Functions
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// URL-encode a file path for use in Pint API URLs, preserving slash separators.
 pub fn encode_path(path: &str) -> String {

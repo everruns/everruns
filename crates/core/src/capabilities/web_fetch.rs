@@ -56,9 +56,9 @@ impl Capability for WebFetchCapability {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Tool: web_fetch
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Tool that fetches content from a URL using fetchkit
 ///
@@ -829,7 +829,7 @@ mod tests {
         }
     }
 
-    // ========================================================================
+    // ------------------------------------------------------------------------
     // SSRF security tests (TM-API-008 through TM-API-012)
     //
     // fetchkit v0.1.2 blocks private/internal IPs by default via
@@ -837,7 +837,7 @@ mod tests {
     // private/internal URLs are blocked by policy.
     //
     // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_ssrf
-    // ========================================================================
+    // ------------------------------------------------------------------------
 
     // Helper: asserts that a private/internal URL IS blocked by fetchkit's
     // DNS policy (SSRF protection). The tool should return a ToolError
@@ -912,9 +912,9 @@ mod tests {
         }
     }
 
-    // ========================================================================
+    // ------------------------------------------------------------------------
     // Integration tests using wiremock (no network access needed)
-    // ========================================================================
+    // ------------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_fetch_html_page() {

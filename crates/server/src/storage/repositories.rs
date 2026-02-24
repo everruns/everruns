@@ -91,9 +91,9 @@ impl Database {
         &self.pool
     }
 
-    // ============================================
+    // --------------------------------------------
     // Users
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         let roles_json = serde_json::to_value(&input.roles)?;
@@ -266,9 +266,9 @@ impl Database {
         Ok(rows)
     }
 
-    // ============================================
+    // --------------------------------------------
     // API Keys
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
         let scopes_json = serde_json::to_value(&input.scopes)?;
@@ -342,9 +342,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Refresh Tokens
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_refresh_token(
         &self,
@@ -410,9 +410,9 @@ impl Database {
         Ok(result.rows_affected())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agents (configuration for agentic loop)
-    // ============================================
+    // --------------------------------------------
 
     /// Standard agent column list for SELECT queries
     #[allow(dead_code)]
@@ -667,9 +667,9 @@ impl Database {
         Ok(row.map(|r| r.0))
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harnesses (base configuration for sessions)
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let row = sqlx::query_as::<_, HarnessRow>(
@@ -816,9 +816,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Sessions (instance of agentic loop)
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
@@ -1004,9 +1004,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Pinned Sessions
-    // ============================================
+    // --------------------------------------------
 
     /// Pin a session for a user
     pub async fn pin_session(
@@ -1066,9 +1066,9 @@ impl Database {
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Events (source of truth for messages)
-    // ============================================
+    // --------------------------------------------
     //
     // Messages are stored as events with type "message.*"
     // Use list_message_events() to load conversation messages.
@@ -1461,9 +1461,9 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Providers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_llm_provider(
         &self,
@@ -1700,9 +1700,9 @@ impl Database {
         })
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Models
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_llm_model(
         &self,
@@ -1929,9 +1929,9 @@ impl Database {
         Ok(row)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agent Capabilities
-    // ============================================
+    // --------------------------------------------
 
     /// Get capabilities for an agent, ordered by position
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
@@ -2028,9 +2028,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harness Capabilities
-    // ============================================
+    // --------------------------------------------
 
     /// Get capabilities for a harness, ordered by position
     pub async fn get_harness_capabilities(
@@ -2086,9 +2086,9 @@ impl Database {
         self.get_harness_capabilities(harness_id).await
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Files (virtual filesystem)
-    // ============================================
+    // --------------------------------------------
 
     /// Create a new file or directory in the session virtual filesystem
     pub async fn create_session_file(&self, input: CreateSessionFileRow) -> Result<SessionFileRow> {
@@ -2433,9 +2433,9 @@ impl Database {
         Ok(result.is_some())
     }
 
-    // ============================================
+    // --------------------------------------------
     // MCP Servers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_mcp_server(
         &self,
@@ -2688,9 +2688,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skills
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
         let row = sqlx::query_as::<_, SkillRow>(
@@ -2820,9 +2820,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skill Files
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
         let row = sqlx::query_as::<_, SkillFileRow>(
@@ -2869,9 +2869,9 @@ impl Database {
         Ok(result.rows_affected())
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Generations (Usage Tracking)
-    // ============================================
+    // --------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
@@ -2978,9 +2978,9 @@ impl Database {
         Ok(())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Images
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
         let row = sqlx::query_as::<_, ImageRow>(
@@ -3070,9 +3070,9 @@ impl Database {
         Ok(rows)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organizations
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_organization(
         &self,
@@ -3198,9 +3198,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organization Members
-    // ============================================
+    // --------------------------------------------
 
     pub async fn add_organization_member(
         &self,
@@ -3442,9 +3442,9 @@ impl Database {
         Ok(())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Key/Value Storage
-    // ============================================
+    // --------------------------------------------
 
     /// Upsert a session key/value (insert or update)
     pub async fn upsert_session_key_value(
@@ -3523,9 +3523,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Secret Storage (Encrypted)
-    // ============================================
+    // --------------------------------------------
 
     /// Upsert a session secret (insert or update)
     pub async fn upsert_session_secret(
@@ -3607,9 +3607,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // User Connections
-    // ============================================
+    // --------------------------------------------
 
     /// Create or replace a user connection for a provider.
     /// Deletes any existing connection for the same (user_id, provider) first.
@@ -3752,9 +3752,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Schedules
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session_schedule(
         &self,

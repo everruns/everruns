@@ -115,9 +115,9 @@ impl InMemoryDatabase {
         Utc::now()
     }
 
-    // ============================================
+    // --------------------------------------------
     // Users
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         let now = Self::now();
@@ -243,9 +243,9 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    // ============================================
+    // --------------------------------------------
     // API Keys
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
         let now = Self::now();
@@ -304,9 +304,9 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Refresh Tokens
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_refresh_token(
         &self,
@@ -370,9 +370,9 @@ impl InMemoryDatabase {
         Ok(count)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agents
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let now = Self::now();
@@ -607,9 +607,9 @@ impl InMemoryDatabase {
             .map(|a| a.public_id.clone()))
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harnesses
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let now = Self::now();
@@ -747,9 +747,9 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Sessions
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let now = Self::now();
@@ -929,9 +929,9 @@ impl InMemoryDatabase {
         Ok(self.sessions.write().remove(&id).is_some())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Events
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         let now = Self::now();
@@ -1226,9 +1226,9 @@ impl InMemoryDatabase {
         Ok(previews)
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Providers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_llm_provider(
         &self,
@@ -1429,9 +1429,9 @@ impl InMemoryDatabase {
         })
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Models
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_default_llm_model(
         &self,
@@ -1739,9 +1739,9 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agent Capabilities
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
         let agent_id = AgentId::from_uuid(agent_id);
@@ -1824,9 +1824,9 @@ impl InMemoryDatabase {
             .is_some())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harness Capabilities
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_harness_capabilities(
         &self,
@@ -1880,9 +1880,9 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Files
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session_file(&self, input: CreateSessionFileRow) -> Result<SessionFileRow> {
         let now = Self::now();
@@ -2172,9 +2172,9 @@ impl InMemoryDatabase {
             .any(|f| f.session_id == session_id && f.path.starts_with(&prefix)))
     }
 
-    // ============================================
+    // --------------------------------------------
     // MCP Servers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_mcp_server(
         &self,
@@ -2396,9 +2396,9 @@ impl InMemoryDatabase {
         Ok(servers.remove(&id).is_some())
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Generations (Usage Tracking)
-    // ============================================
+    // --------------------------------------------
     //
     // In-memory implementations for dev mode.
     // Note: llm_generations table is not stored in memory since it's only
@@ -2464,9 +2464,9 @@ impl InMemoryDatabase {
         Ok(())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Images
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
         let now = Self::now();
@@ -2577,9 +2577,9 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skills
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
         if self
@@ -2714,9 +2714,9 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skill Files
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
         let now = Self::now();
@@ -2754,9 +2754,9 @@ impl InMemoryDatabase {
         Ok((before - files.len()) as u64)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organizations
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_organization(
         &self,
@@ -2846,9 +2846,9 @@ impl InMemoryDatabase {
         Ok(self.organizations.write().remove(&org_id).is_some())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organization Members
-    // ============================================
+    // --------------------------------------------
 
     pub async fn add_organization_member(
         &self,
@@ -3061,9 +3061,9 @@ impl InMemoryDatabase {
         Ok(())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Storage (Key-Value & Secrets)
-    // ============================================
+    // --------------------------------------------
 
     pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
         let session_id = SessionId::from_uuid(session_id);
@@ -3142,9 +3142,9 @@ impl InMemoryDatabase {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SessionStorageStore implementation for in-memory backend
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[async_trait::async_trait]
 impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
@@ -3275,9 +3275,9 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
 }
 
 impl InMemoryDatabase {
-    // ============================================
+    // --------------------------------------------
     // User Connections
-    // ============================================
+    // --------------------------------------------
 
     pub async fn upsert_user_connection(
         &self,
@@ -3418,9 +3418,9 @@ impl InMemoryDatabase {
         Ok(connections.len() < before)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Pinned Sessions
-    // ============================================
+    // --------------------------------------------
 
     pub async fn pin_session(
         &self,
@@ -3454,9 +3454,9 @@ impl InMemoryDatabase {
         Ok(entries.into_iter().map(|(sid, _)| sid).collect())
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Schedules
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session_schedule(
         &self,

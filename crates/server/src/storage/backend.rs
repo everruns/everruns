@@ -70,9 +70,9 @@ impl StorageBackend {
         }
     }
 
-    // ============================================
+    // --------------------------------------------
     // Users
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         dispatch!(self, create_user, input)
@@ -112,9 +112,9 @@ impl StorageBackend {
         dispatch!(self, list_users, search)
     }
 
-    // ============================================
+    // --------------------------------------------
     // API Keys
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
         dispatch!(self, create_api_key, input)
@@ -136,9 +136,9 @@ impl StorageBackend {
         dispatch!(self, delete_api_key, id, user_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Refresh Tokens
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_refresh_token(
         &self,
@@ -166,9 +166,9 @@ impl StorageBackend {
         dispatch!(self, delete_user_refresh_tokens, user_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agents
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         dispatch!(self, create_agent, org_id, input)
@@ -228,9 +228,9 @@ impl StorageBackend {
         dispatch!(self, get_agent_public_id, org_id, id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harnesses
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         dispatch!(self, create_harness, org_id, input)
@@ -266,9 +266,9 @@ impl StorageBackend {
         dispatch!(self, delete_harness, org_id, id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Sessions
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         dispatch!(self, create_session, input)
@@ -307,9 +307,9 @@ impl StorageBackend {
         dispatch!(self, delete_session, org_id, id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Pinned Sessions
-    // ============================================
+    // --------------------------------------------
 
     pub async fn pin_session(
         &self,
@@ -332,9 +332,9 @@ impl StorageBackend {
         dispatch!(self, list_pinned_session_ids, user_id, org_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Events
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         dispatch!(self, create_event, input)
@@ -404,9 +404,9 @@ impl StorageBackend {
         dispatch!(self, get_session_output_previews, session_ids)
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Providers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_llm_provider(
         &self,
@@ -477,9 +477,9 @@ impl StorageBackend {
         }
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Models
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_default_llm_model(
         &self,
@@ -556,9 +556,9 @@ impl StorageBackend {
         dispatch!(self, get_llm_model_by_model_id, org_id, model_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Agent Capabilities
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
         dispatch!(self, get_agent_capabilities, agent_id)
@@ -587,9 +587,9 @@ impl StorageBackend {
         dispatch!(self, remove_agent_capability, agent_id, capability_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Harness Capabilities
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_harness_capabilities(
         &self,
@@ -606,9 +606,9 @@ impl StorageBackend {
         dispatch!(self, set_harness_capabilities, harness_id, capabilities)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Files
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session_file(&self, input: CreateSessionFileRow) -> Result<SessionFileRow> {
         dispatch!(self, create_session_file, input)
@@ -697,9 +697,9 @@ impl StorageBackend {
         dispatch!(self, session_directory_has_children, session_id, path)
     }
 
-    // ============================================
+    // --------------------------------------------
     // MCP Servers
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_mcp_server(
         &self,
@@ -769,9 +769,9 @@ impl StorageBackend {
         dispatch!(self, delete_mcp_server, org_id, id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skills
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
         dispatch!(self, create_skill, org_id, input)
@@ -802,9 +802,9 @@ impl StorageBackend {
         dispatch!(self, delete_skill, org_id, id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Skill Files
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
         dispatch!(self, create_skill_file, input)
@@ -818,9 +818,9 @@ impl StorageBackend {
         dispatch!(self, delete_skill_files, skill_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // LLM Generations (Usage Tracking)
-    // ============================================
+    // --------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
@@ -896,9 +896,9 @@ impl StorageBackend {
         )
     }
 
-    // ============================================
+    // --------------------------------------------
     // Images
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
         dispatch!(self, create_image, org_id, input)
@@ -925,9 +925,9 @@ impl StorageBackend {
         dispatch!(self, list_images, org_id, limit, offset)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organizations
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_organization(
         &self,
@@ -973,9 +973,9 @@ impl StorageBackend {
         dispatch!(self, delete_organization, org_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Organization Members
-    // ============================================
+    // --------------------------------------------
 
     pub async fn add_organization_member(
         &self,
@@ -1036,9 +1036,9 @@ impl StorageBackend {
         dispatch!(self, is_organization_member, org_id, user_id)
     }
 
-    // ============================================
+    // --------------------------------------------
     // External Identity (for SaaS auth providers)
-    // ============================================
+    // --------------------------------------------
 
     pub async fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>> {
         dispatch!(self, get_user_by_external_id, external_id)
@@ -1070,9 +1070,9 @@ impl StorageBackend {
         dispatch!(self, ensure_membership, user_id, org_id, role)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Storage (Key-Value & Secrets)
-    // ============================================
+    // --------------------------------------------
 
     pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
         dispatch!(self, list_session_keys, session_id)
@@ -1100,9 +1100,9 @@ impl StorageBackend {
         dispatch!(self, upsert_session_secret, input)
     }
 
-    // ============================================
+    // --------------------------------------------
     // User Connections
-    // ============================================
+    // --------------------------------------------
 
     pub async fn upsert_user_connection(
         &self,
@@ -1143,9 +1143,9 @@ impl StorageBackend {
         dispatch!(self, get_installation_id_for_session, session_id, provider)
     }
 
-    // ============================================
+    // --------------------------------------------
     // Session Schedules
-    // ============================================
+    // --------------------------------------------
 
     pub async fn create_session_schedule(
         &self,

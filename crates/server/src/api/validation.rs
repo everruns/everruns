@@ -8,9 +8,9 @@ use super::common::ErrorResponse;
 use axum::Json;
 use axum::http::StatusCode;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Input Size Limits
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Maximum size for agent name field.
 /// 2 KB should accommodate any reasonable agent name.
@@ -36,9 +36,9 @@ pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 /// Intentionally vague to avoid leaking which field exceeded limits.
 pub const VALIDATION_ERROR_MESSAGE: &str = "Input exceeds allowed limits";
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Validation Functions
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Validation error - returns generic message to avoid leaking details
 pub struct ValidationError;

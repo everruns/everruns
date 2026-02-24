@@ -26,9 +26,9 @@ use crate::grpc_adapters::{
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // GrpcWorkerAdapters Implementation
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// gRPC-backed worker adapters for external workers
 #[derive(Clone)]
@@ -56,9 +56,9 @@ impl GrpcWorkerAdapters {
 
 #[async_trait]
 impl WorkerAdapters for GrpcWorkerAdapters {
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Agent Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
         let store = GrpcAgentStore::new(self.client.clone(), org_id);
@@ -71,9 +71,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Session Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>> {
         let store = GrpcSessionStore::new(self.client.clone(), org_id);
@@ -103,9 +103,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Message Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         let retriever = GrpcMessageRetriever::new(self.client.clone());
@@ -122,18 +122,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         everruns_core::MessageRetriever::load(&retriever, SessionId::from_uuid(session_id)).await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Event Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn emit_event(&self, request: EventRequest) -> Result<Event> {
         let emitter = GrpcEventEmitter::new(self.client.clone());
         everruns_core::traits::EventEmitter::emit(&emitter, request).await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // LLM Provider Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn get_model_with_provider(
         &self,
@@ -165,9 +165,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         }))
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Image Resolution Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         let resolver = GrpcImageResolver::new(self.client.clone());
@@ -185,9 +185,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve images: {}", e)))
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Session File Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
@@ -274,9 +274,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // MCP Server Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn get_mcp_server_by_prefix(
         &self,
@@ -288,9 +288,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Turn Context (batch operation)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
         let ctx = crate::grpc_adapters::load_turn_context(
@@ -313,9 +313,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         })
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Factory Methods
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     fn capability_registry(&self) -> CapabilityRegistry {
         CapabilityRegistry::with_builtins()

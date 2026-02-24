@@ -13,9 +13,9 @@ use regex::Regex;
 use super::models::{CreateSessionFileRow, UpdateSessionFile};
 use super::repositories::Database;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // DbSessionFileStore - Stores session files in database
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Database-backed session file store
 ///
@@ -470,9 +470,9 @@ impl SessionFileStore for DbSessionFileStore {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Factory functions
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Create a database-backed session file store
 pub fn create_db_session_file_store(db: Database) -> DbSessionFileStore {

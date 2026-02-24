@@ -127,9 +127,9 @@ async fn register_user(
     (access_token, refresh_token, cookies)
 }
 
-// ============================================
+// --------------------------------------------
 // Positive path tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_refresh_via_json_body() {
@@ -263,9 +263,9 @@ async fn test_refresh_sets_cookie_with_root_path() {
     assert!(lower.contains("httponly"), "should be HttpOnly");
 }
 
-// ============================================
+// --------------------------------------------
 // Negative path tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_refresh_no_token_returns_401() {
@@ -385,9 +385,9 @@ async fn test_refresh_with_access_token_returns_401() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Login flow tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_login_sets_cookies_with_root_path() {
@@ -493,9 +493,9 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Auth config endpoint test
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_auth_config_returns_full_mode() {

@@ -26,9 +26,9 @@ use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scenario: basic completion (no tools)
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
@@ -58,9 +58,9 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
     assert_eq!(result.tool_calls_count, 0, "No tools should be called");
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scenario: tool calling (CurrentTime capability)
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
@@ -97,9 +97,9 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
     );
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scenario: model not available error handling
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[rstest]
 #[case::anthropic_nonexistent(

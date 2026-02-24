@@ -12,9 +12,9 @@ use super::encryption::EncryptionService;
 use super::models::{UpsertSessionKeyValue, UpsertSessionSecret};
 use super::repositories::Database;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // DbSessionStorageStore - Stores session data in database
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Database-backed session storage store
 ///
@@ -56,9 +56,9 @@ impl DbSessionStorageStore {
 
 #[async_trait]
 impl SessionStorageStore for DbSessionStorageStore {
-    // ========================================================================
+    // ------------------------------------------------------------------------
     // Key/Value operations (plain text)
-    // ========================================================================
+    // ------------------------------------------------------------------------
 
     async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
         let input = UpsertSessionKeyValue {
@@ -109,9 +109,9 @@ impl SessionStorageStore for DbSessionStorageStore {
             .collect())
     }
 
-    // ========================================================================
+    // ------------------------------------------------------------------------
     // Secret operations (encrypted)
-    // ========================================================================
+    // ------------------------------------------------------------------------
 
     async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
         let encryption = self.encryption()?;
@@ -181,9 +181,9 @@ impl SessionStorageStore for DbSessionStorageStore {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Factory functions
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Create a database-backed session storage store with encryption
 pub fn create_db_session_storage_store(

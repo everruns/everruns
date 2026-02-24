@@ -15,9 +15,9 @@ import type { PendingImage } from "@/lib/api/images";
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -48,10 +48,10 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Message Rendering (Minimal + Icon style)
 // These match the new styling in sessions/[sessionId]/chat/page.tsx
-// ============================================
+// --------------------------------------------
 
 function UserMessage({ content }: { content: string }) {
   return (
@@ -72,9 +72,9 @@ function AssistantMessage({ content }: { content: string }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Sample Data for ToolCallCard
-// ============================================
+// --------------------------------------------
 
 const sampleToolCallMessages = {
   // List files tool - completed with result
@@ -448,9 +448,9 @@ const sampleEvents = {
   } satisfies Event,
 };
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevChatComponentsPage() {
   // Show 404-like message in production

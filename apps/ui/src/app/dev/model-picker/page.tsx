@@ -14,9 +14,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -47,9 +47,9 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Model List Component
-// ============================================
+// --------------------------------------------
 
 function ModelList() {
   const { data: models = [], isLoading } = useLlmModels();
@@ -129,9 +129,9 @@ function ModelList() {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevModelPickerPage() {
   const [selectedModel1, setSelectedModel1] = useState<string>("");

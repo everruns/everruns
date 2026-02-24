@@ -11,9 +11,9 @@ use uuid::Uuid;
 
 use everruns_server::storage::{CreateOrganizationRow, InMemoryDatabase};
 
-// ============================================
+// --------------------------------------------
 // Creation Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_organization_assigns_public_id() {
@@ -61,9 +61,9 @@ async fn test_create_organization_multiple() {
     assert_eq!(org2.name, "Org B");
 }
 
-// ============================================
+// --------------------------------------------
 // Membership Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_add_member_and_check() {
@@ -213,9 +213,9 @@ async fn test_remove_member() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Lookup Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_get_organization_by_public_id() {
@@ -255,9 +255,9 @@ async fn test_default_org_exists() {
     assert_eq!(org.name, "Default Organization");
 }
 
-// ============================================
+// --------------------------------------------
 // Update & Delete Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_update_organization_name() {
@@ -306,9 +306,9 @@ async fn test_delete_organization() {
     assert!(gone.is_none());
 }
 
-// ============================================
+// --------------------------------------------
 // Validation Tests (core)
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_validate_org_public_id() {

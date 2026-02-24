@@ -23,9 +23,9 @@ use uuid::Uuid;
 
 use crate::mcp_executor::McpServerInfo;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // WorkerAdapters Trait
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Unified adapter trait for worker data operations
 ///
@@ -35,9 +35,9 @@ use crate::mcp_executor::McpServerInfo;
 /// - Direct adapters (for in-process workers)
 #[async_trait]
 pub trait WorkerAdapters: Send + Sync + Clone + 'static {
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Agent Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get agent by ID
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>>;
@@ -45,9 +45,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get harness by ID
     async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Session Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get session by ID
     async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>>;
@@ -72,9 +72,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         ))
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Message Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get a specific message by ID
     async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>>;
@@ -82,16 +82,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Load all messages for a session
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Event Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Emit an event
     async fn emit_event(&self, request: EventRequest) -> Result<Event>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // LLM Provider Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get model with provider configuration
     async fn get_model_with_provider(
@@ -103,9 +103,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get default model configuration
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Image Resolution Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Resolve a single image by ID
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
@@ -116,9 +116,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Session File Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Read a file from session filesystem
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>>;
@@ -152,9 +152,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Create a directory
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // MCP Server Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get MCP server info by name prefix (for MCP tool execution)
     async fn get_mcp_server_by_prefix(
@@ -163,17 +163,17 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         server_prefix: &str,
     ) -> Result<McpServerInfo>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Turn Context (batch operation for efficiency)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Load turn context in one batch call
     /// Returns agent, session, messages, model, and MCP tool definitions
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Factory Methods for Core Types
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Get the capability registry
     fn capability_registry(&self) -> CapabilityRegistry;
@@ -243,9 +243,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Supporting Types
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Model with provider configuration
 #[derive(Debug, Clone)]
@@ -267,9 +267,9 @@ pub struct TurnContext {
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Adapter-based trait implementations for core traits
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Adapter-based AgentStore implementation
 pub struct AdapterAgentStore<A: WorkerAdapters> {

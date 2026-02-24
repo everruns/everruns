@@ -31,9 +31,9 @@ async fn create_second_org(db: &InMemoryDatabase) -> i64 {
 
 const ORG1: i64 = 1; // Default org
 
-// ============================================
+// --------------------------------------------
 // MCP Server Isolation Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_mcp_server_positive_own_org() {
@@ -148,9 +148,9 @@ async fn test_mcp_server_negative_cross_org() {
     assert_eq!(original.name, "Org1 Server");
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider Isolation Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_llm_provider_positive_own_org() {
@@ -263,9 +263,9 @@ async fn test_llm_provider_negative_cross_org() {
     assert_eq!(original.name, "Org1 Provider");
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Model Isolation Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_llm_model_positive_own_org() {
@@ -421,9 +421,9 @@ async fn test_llm_model_negative_cross_org() {
     assert_eq!(original.display_name, "GPT-4");
 }
 
-// ============================================
+// --------------------------------------------
 // Image Isolation Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_image_positive_own_org() {
@@ -495,9 +495,9 @@ async fn test_image_negative_cross_org() {
     assert!(db.get_image(ORG1, image.id.uuid()).await.unwrap().is_some());
 }
 
-// ============================================
+// --------------------------------------------
 // Cross-Entity Isolation: Multi-org scenario
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_multi_org_full_isolation() {
@@ -693,9 +693,9 @@ async fn test_multi_org_full_isolation() {
     );
 }
 
-// ============================================
+// --------------------------------------------
 // Default model isolation
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_default_model_org_isolation() {
@@ -741,9 +741,9 @@ async fn test_default_model_org_isolation() {
     assert!(db.get_default_llm_model(org2).await.unwrap().is_none());
 }
 
-// ============================================
+// --------------------------------------------
 // Update does not leak across orgs
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_update_mcp_server_tools_cross_org() {

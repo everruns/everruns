@@ -17,9 +17,9 @@ import {
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -50,9 +50,9 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Sample File Contents
-// ============================================
+// --------------------------------------------
 
 const sampleCode = {
   typescript: `import { useState, useEffect } from 'react';
@@ -316,9 +316,9 @@ See the [full documentation](https://docs.example.com) for more details.
 const sampleImageBase64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAABSklEQVR4nO3dwQ2DMBBFUdKROqAPrUOfpoO0YC9YJSJyYmbu3xhZT8ssPgAAAAAAAAAAAABgqftah2HYv8p6us4D0C5lPAAAAACAi5nZ+xWuZd2WMu1wLS2Eg/qjPAD4K89hqF8/R7bHOTQchYOCQMOVIBDwLqshqCEckJ4hdQ/pnKD3FwIAAAAAAAAAgB9qjlJlqThKCKC8tJZeRlDjLAEAAPi/3hdqSKPWhX68UEMaiW2dhkDDbWHbPwIAAAAA4Bfc96OktG7BuicIBNxTSwgH3U8IQAAAAAAAAAAAAAD4qOaofq8/anPUvD4OAO+YK/8V";
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevFilePreviewsPage() {
   // Show 404-like message in production

@@ -15,9 +15,9 @@ import type {
 export { createMessage, listMessages, sendUserMessage } from "./messages";
 export { listEvents } from "./events";
 
-// ============================================
+// --------------------------------------------
 // Session CRUD
-// ============================================
+// --------------------------------------------
 
 /**
  * Create a new session for an agent.
@@ -89,9 +89,9 @@ export async function cancelTurn(sessionId: string): Promise<void> {
   await api.post(`/v1/sessions/${sessionId}/cancel`);
 }
 
-// ============================================
+// --------------------------------------------
 // Session Pinning
-// ============================================
+// --------------------------------------------
 
 /** Pin a session for the current user */
 export async function pinSession(sessionId: string): Promise<void> {

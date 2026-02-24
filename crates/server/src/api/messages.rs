@@ -35,9 +35,9 @@ pub use everruns_core::{
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
 
-// ============================================
+// --------------------------------------------
 // Message API Contracts
-// ============================================
+// --------------------------------------------
 
 /// Message role (API layer)
 ///
@@ -143,9 +143,9 @@ impl CreateMessageRequest {
     }
 }
 
-// ============================================
+// --------------------------------------------
 // App State and Routes
-// ============================================
+// --------------------------------------------
 
 /// App state for messages routes
 #[derive(Clone)]
@@ -181,9 +181,9 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-// ============================================
+// --------------------------------------------
 // HTTP Handlers
-// ============================================
+// --------------------------------------------
 
 /// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
@@ -352,9 +352,9 @@ pub async fn list_messages(
     Ok(Json(ListResponse::new(messages)))
 }
 
-// ============================================
+// --------------------------------------------
 // Tests
-// ============================================
+// --------------------------------------------
 
 #[cfg(test)]
 mod tests {

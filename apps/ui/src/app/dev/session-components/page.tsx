@@ -10,9 +10,9 @@ import type { TokenUsage } from "@/lib/api/types";
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
-// ============================================
+// --------------------------------------------
 // Showcase Section Components
-// ============================================
+// --------------------------------------------
 
 function ShowcaseSection({
   title,
@@ -43,9 +43,9 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Token Usage Display
-// ============================================
+// --------------------------------------------
 
 // Helper function to format token counts in a compact way
 function formatTokens(tokens: number): string {
@@ -118,9 +118,9 @@ function TokenUsageBadge({ usage }: { usage: TokenUsage }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Main Page Component
-// ============================================
+// --------------------------------------------
 
 export default function DevSessionComponentsPage() {
   // Show 404-like message in production

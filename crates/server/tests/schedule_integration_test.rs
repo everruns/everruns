@@ -11,9 +11,9 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-// ============================================
+// --------------------------------------------
 // Schedule CRUD Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_schedule() {
@@ -229,9 +229,9 @@ async fn test_delete_schedule() {
         .assert_status(StatusCode::NOT_FOUND);
 }
 
-// ============================================
+// --------------------------------------------
 // Pause / Resume Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_pause_and_resume_schedule() {
@@ -270,9 +270,9 @@ async fn test_pause_and_resume_schedule() {
     assert!(resumed["enabled"].as_bool().unwrap());
 }
 
-// ============================================
+// --------------------------------------------
 // Manual Trigger Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_manual_trigger() {
@@ -313,9 +313,9 @@ async fn test_manual_trigger() {
     assert_eq!(exec["schedule_id"].as_str().unwrap(), id);
 }
 
-// ============================================
+// --------------------------------------------
 // Execution History Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_execution_history() {
@@ -357,9 +357,9 @@ async fn test_execution_history() {
     assert_eq!(execs["data"].as_array().unwrap().len(), 2);
 }
 
-// ============================================
+// --------------------------------------------
 // Schedule Stats Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_schedule_stats() {
@@ -404,9 +404,9 @@ async fn test_schedule_stats() {
     assert_eq!(stats["total_executions"], 1);
 }
 
-// ============================================
+// --------------------------------------------
 // Activity Target Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_activity_schedule() {
@@ -437,9 +437,9 @@ async fn test_create_activity_schedule() {
     assert!(body["catch_up_missed"].as_bool().unwrap());
 }
 
-// ============================================
+// --------------------------------------------
 // Disabled Schedule Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_disabled_schedule() {
@@ -464,9 +464,9 @@ async fn test_create_disabled_schedule() {
     assert!(body["next_trigger_at"].is_null());
 }
 
-// ============================================
+// --------------------------------------------
 // List Filtering Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_list_schedules_filter_by_target_type() {

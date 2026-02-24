@@ -12,9 +12,9 @@
 
 use serde_json::json;
 
-// ============================================
+// --------------------------------------------
 // Agent with Client-Side Tools
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_agent_with_client_side_tools_serialization() {
@@ -110,9 +110,9 @@ fn test_agent_with_no_tools_omits_field() {
     assert!(serialized.get("tools").is_none());
 }
 
-// ============================================
+// --------------------------------------------
 // SubmitToolResultsRequest Serialization
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_submit_tool_results_request_success() {
@@ -205,9 +205,9 @@ fn test_submit_tool_results_response_serialization() {
     assert_eq!(json["status"], "active");
 }
 
-// ============================================
+// --------------------------------------------
 // ToolCallRequestedData Serialization
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_tool_call_requested_data_serialization() {
@@ -271,9 +271,9 @@ fn test_tool_call_requested_data_empty_tool_calls() {
     assert_eq!(json["tool_calls"].as_array().unwrap().len(), 0);
 }
 
-// ============================================
+// --------------------------------------------
 // Client-Side Tool Definition in Session Context
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_client_side_tool_in_session_tools_json() {
@@ -311,9 +311,9 @@ fn test_client_side_tool_in_session_tools_json() {
     assert_eq!(serialized, tools_json);
 }
 
-// ============================================
+// --------------------------------------------
 // ToolCall + ToolResult Correlation
-// ============================================
+// --------------------------------------------
 
 #[test]
 fn test_tool_call_and_result_correlation() {

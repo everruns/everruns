@@ -2794,9 +2794,9 @@ async fn test_mcp_server_crud() {
     println!("MCP server CRUD test passed!");
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Agent Execution Tests with Tool Calls
-// =============================================================================
+// -----------------------------------------------------------------------------
 // These tests verify end-to-end agent execution with tool calls for each provider.
 // The "dad jokes agent" pattern: ask for current time, use it in a joke.
 
@@ -4936,9 +4936,9 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("Anthropic extended thinking with tools test passed!");
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Events API Contract Tests
-// ============================================================================
+// ----------------------------------------------------------------------------
 // These tests verify that the events API responses match the public contract.
 
 /// Test events list endpoint returns correct JSON structure
@@ -5138,9 +5138,9 @@ async fn test_events_sse_contract() {
     println!("SSE contract test passed!");
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Durable SSE In-Process Integration Tests
-// =============================================================================
+// -----------------------------------------------------------------------------
 //
 // These tests use in-process testing with tower::ServiceExt for regular endpoints.
 // For SSE endpoints (infinite streams), we spawn a TCP server and use reqwest

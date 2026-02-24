@@ -9,9 +9,9 @@
 use async_trait::async_trait;
 use serde::Serialize;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Plugin Registration
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Plugin registration point for connection provider crates.
 ///
@@ -38,9 +38,9 @@ pub struct ConnectionProviderPlugin {
 
 inventory::collect!(ConnectionProviderPlugin);
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // ConnectionProvider Trait
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// How the user provides credentials for this connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -78,9 +78,9 @@ pub trait ConnectionProvider: Send + Sync {
     async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Form Schema Types
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Describes the form fields and instructions for an API key connection.
 #[derive(Debug, Clone, Serialize)]

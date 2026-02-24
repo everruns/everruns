@@ -107,9 +107,9 @@ async fn cleanup_workflow(store: &PostgresWorkflowEventStore, workflow_id: Uuid)
         .ok();
 }
 
-// ============================================
+// --------------------------------------------
 // Workflow Lifecycle Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_create_and_get_workflow() {
@@ -225,9 +225,9 @@ async fn test_workflow_not_found() {
     assert!(matches!(result, Err(StoreError::WorkflowNotFound(_))));
 }
 
-// ============================================
+// --------------------------------------------
 // Event Sourcing Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_append_and_load_events() {
@@ -323,9 +323,9 @@ async fn test_optimistic_concurrency_conflict() {
     cleanup_workflow(&store, workflow_id).await;
 }
 
-// ============================================
+// --------------------------------------------
 // Task Queue Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_task_enqueue_and_claim() {
@@ -707,9 +707,9 @@ async fn test_reclaim_stale_tasks() {
     cleanup_worker(&store, "new-worker").await;
 }
 
-// ============================================
+// --------------------------------------------
 // Signal Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_signals() {
@@ -763,9 +763,9 @@ async fn test_signals() {
     cleanup_workflow(&store, workflow_id).await;
 }
 
-// ============================================
+// --------------------------------------------
 // Worker Registry Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_worker_registration() {
@@ -1058,9 +1058,9 @@ async fn test_worker_stats_avg_duration_type() {
         .ok();
 }
 
-// ============================================
+// --------------------------------------------
 // DLQ Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_dlq_operations() {
@@ -1143,9 +1143,9 @@ async fn test_dlq_operations() {
     cleanup_worker(&store, "worker").await;
 }
 
-// ============================================
+// --------------------------------------------
 // Concurrent Claiming Tests (SKIP LOCKED)
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_concurrent_task_claiming() {
@@ -1213,9 +1213,9 @@ async fn test_concurrent_task_claiming() {
     cleanup_worker(&store, "worker-3").await;
 }
 
-// ============================================
+// --------------------------------------------
 // Task Completion Ownership Tests (Duplicate Prevention)
-// ============================================
+// --------------------------------------------
 
 /// Test that task completion fails when task was reclaimed by another worker
 ///
@@ -1503,9 +1503,9 @@ async fn test_duplicate_scheduling_prevention() {
     cleanup_worker(&store, "worker-C").await;
 }
 
-// ============================================
+// --------------------------------------------
 // Stale Task Reclaim Max Attempts Tests
-// ============================================
+// --------------------------------------------
 
 /// Test that tasks cannot be claimed after exhausting max_attempts via stale reclaim
 ///

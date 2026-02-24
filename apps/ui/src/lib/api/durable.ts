@@ -23,9 +23,9 @@ import type {
   MetricsTimeSeriesResponse,
 } from "./types";
 
-// ============================================
+// --------------------------------------------
 // SSE URLs
-// ============================================
+// --------------------------------------------
 
 /**
  * Get SSE URL for global durable state streaming.
@@ -43,18 +43,18 @@ export function getWorkflowSseUrl(workflowId: string): string {
   return `${getApiBaseUrl()}/v1/durable/workflows/${workflowId}/sse`;
 }
 
-// ============================================
+// --------------------------------------------
 // System Health
-// ============================================
+// --------------------------------------------
 
 export async function getDurableHealth(): Promise<DurableSystemHealth> {
   const response = await api.get<DurableSystemHealth>("/v1/durable/health");
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Workers
-// ============================================
+// --------------------------------------------
 
 export async function listWorkers(): Promise<WorkersResponse> {
   const response = await api.get<WorkersResponse>("/v1/durable/workers");
@@ -69,9 +69,9 @@ export async function resumeWorker(workerId: string): Promise<void> {
   await api.post(`/v1/durable/workers/${encodeURIComponent(workerId)}/resume`);
 }
 
-// ============================================
+// --------------------------------------------
 // Workflows
-// ============================================
+// --------------------------------------------
 
 export interface ListWorkflowsParams {
   status?: string;
@@ -120,9 +120,9 @@ export async function signalWorkflow(
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Tasks
-// ============================================
+// --------------------------------------------
 
 export interface ListTasksParams {
   status?: string;
@@ -149,18 +149,18 @@ export async function getTaskStats(): Promise<TaskQueueStats> {
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Metrics Time Series
-// ============================================
+// --------------------------------------------
 
 export async function getDurableMetrics(): Promise<MetricsTimeSeriesResponse> {
   const response = await api.get<MetricsTimeSeriesResponse>("/v1/durable/metrics/timeseries");
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Dead Letter Queue
-// ============================================
+// --------------------------------------------
 
 export interface ListDlqParams {
   activity_type?: string;
@@ -194,9 +194,9 @@ export async function purgeDlq(): Promise<{ deleted: number }> {
   return response.data;
 }
 
-// ============================================
+// --------------------------------------------
 // Circuit Breakers
-// ============================================
+// --------------------------------------------
 
 export async function listCircuitBreakers(): Promise<CircuitBreakersResponse> {
   const response = await api.get<CircuitBreakersResponse>("/v1/durable/circuit-breakers");
@@ -226,9 +226,9 @@ export async function deleteCircuitBreaker(key: string): Promise<void> {
   await api.delete(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}`);
 }
 
-// ============================================
+// --------------------------------------------
 // Schedules
-// ============================================
+// --------------------------------------------
 
 export interface ListSchedulesParams {
   enabled?: boolean;

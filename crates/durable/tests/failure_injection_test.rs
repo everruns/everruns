@@ -18,9 +18,9 @@ use everruns_durable::persistence::{
 };
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
 
-// ============================================
+// --------------------------------------------
 // Test Helpers
-// ============================================
+// --------------------------------------------
 
 fn get_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -104,9 +104,9 @@ async fn cleanup_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
         .ok();
 }
 
-// ============================================
+// --------------------------------------------
 // Transaction Failure Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_append_events_failure_after_insert_rolls_back() {
@@ -219,9 +219,9 @@ async fn test_append_events_single_failure_then_success() {
     scenario.teardown();
 }
 
-// ============================================
+// --------------------------------------------
 // Task Claiming Failure Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_claim_task_failure_after_db_commit_preserves_state() {
@@ -284,9 +284,9 @@ async fn test_claim_task_failure_after_db_commit_preserves_state() {
     scenario.teardown();
 }
 
-// ============================================
+// --------------------------------------------
 // Task Completion Failure Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_complete_task_failure_after_db_commit_is_idempotent() {
@@ -349,9 +349,9 @@ async fn test_complete_task_failure_after_db_commit_is_idempotent() {
     scenario.teardown();
 }
 
-// ============================================
+// --------------------------------------------
 // Heartbeat Failure Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_heartbeat_failure_does_not_lose_task() {
@@ -403,9 +403,9 @@ async fn test_heartbeat_failure_does_not_lose_task() {
     scenario.teardown();
 }
 
-// ============================================
+// --------------------------------------------
 // Circuit Breaker Failure Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_circuit_breaker_state_fetch_failure() {

@@ -111,9 +111,9 @@ mod seed_ids {
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 }
 
-// ============================================
+// --------------------------------------------
 // Seeder Result
-// ============================================
+// --------------------------------------------
 
 /// Result of running a seeder
 #[derive(Debug, Default)]
@@ -183,9 +183,9 @@ async fn sync_harness_capabilities(
     Ok(true)
 }
 
-// ============================================
+// --------------------------------------------
 // Default Organization Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed the default organization (must run first).
 /// Orgs use DO NOTHING since their seed data is static.
@@ -223,9 +223,9 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // Anonymous User Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed anonymous user for auth=none mode.
 /// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
@@ -263,9 +263,9 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // Harness Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed harness definition
 struct SeedHarness {
@@ -350,9 +350,9 @@ async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // Agent Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed agent definition
 struct SeedAgent {
@@ -820,9 +820,9 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed LLM provider definition
 struct SeedProvider {
@@ -891,9 +891,9 @@ async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Model Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed LLM model definition
 struct SeedModel {
@@ -1321,9 +1321,9 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // MCP Server Seeder
-// ============================================
+// --------------------------------------------
 
 /// Seed MCP server definition
 struct SeedMcpServer {
@@ -1393,9 +1393,9 @@ async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     Ok(result)
 }
 
-// ============================================
+// --------------------------------------------
 // Seeding Orchestration
-// ============================================
+// --------------------------------------------
 
 /// Maximum number of retries for transient errors
 const MAX_RETRIES: u32 = 5;

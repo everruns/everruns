@@ -915,9 +915,9 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
     }
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Helper Functions for Generating Content
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Generate realistic file paths
 fn generate_realistic_filename(seed: usize) -> String {
@@ -1358,9 +1358,9 @@ pub struct DatabaseConfig {
 /// used throughout the application. Values are organized by category
 /// and documented with their purpose and valid ranges.
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Network Configuration
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Maximum number of retry attempts for network operations
 pub const MAX_RETRIES: u32 = 3;
@@ -1377,9 +1377,9 @@ pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 30;
 /// TCP nodelay setting (disable Nagle's algorithm)
 pub const TCP_NODELAY: bool = true;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Rate Limiting
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Maximum requests per second per client
 pub const RATE_LIMIT_RPS: u32 = 100;
@@ -1390,9 +1390,9 @@ pub const RATE_LIMIT_BURST: u32 = 200;
 /// Rate limit window duration in seconds
 pub const RATE_LIMIT_WINDOW_SECS: u64 = 1;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Caching
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Default cache TTL in seconds
 pub const CACHE_TTL_SECS: u64 = 300;
@@ -1403,9 +1403,9 @@ pub const MAX_CACHE_SIZE_BYTES: usize = 100 * 1024 * 1024; // 100 MB
 /// Cache eviction check interval
 pub const CACHE_EVICTION_INTERVAL_SECS: u64 = 60;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Database
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Maximum database connection pool size
 pub const DB_POOL_MAX_SIZE: u32 = 20;
@@ -1419,9 +1419,9 @@ pub const DB_CONNECTION_TIMEOUT_MS: u64 = 3000;
 /// Maximum query execution time before timeout
 pub const DB_QUERY_TIMEOUT_MS: u64 = 30000;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // Security
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// JWT token expiration time in seconds
 pub const JWT_EXPIRATION_SECS: u64 = 3600;

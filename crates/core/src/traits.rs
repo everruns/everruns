@@ -23,9 +23,9 @@ fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition
 
 use crate::error::Result;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // AgentStore - For retrieving agent configurations
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Trait for retrieving agent configurations
 ///
@@ -39,9 +39,9 @@ pub trait AgentStore: Send + Sync {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // HarnessStore - For retrieving harness configurations
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Trait for retrieving harness configurations
 ///
@@ -54,9 +54,9 @@ pub trait HarnessStore: Send + Sync {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SessionStore - For retrieving session information
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 use crate::session::Session;
 
@@ -78,9 +78,9 @@ pub trait SessionMutator: Send + Sync {
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // LlmProviderStore - For retrieving LLM provider configurations
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Model information with provider details needed for LLM calls
 #[derive(Debug, Clone)]
@@ -119,9 +119,9 @@ pub trait LlmProviderStore: Send + Sync {
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // ToolExecutor - For executing tool calls
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Trait for executing tool calls
 ///
@@ -206,9 +206,9 @@ pub trait ToolExecutor: Send + Sync {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SessionFileStore - For session filesystem operations
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Trait for session filesystem operations
 ///
@@ -252,9 +252,9 @@ pub trait SessionFileStore: Send + Sync {
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SessionStorageStore - For session key/value and secret storage
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Info about a stored key (without its value)
 #[derive(Debug, Clone)]
@@ -312,9 +312,9 @@ pub trait SessionStorageStore: Send + Sync {
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SessionScheduleStore - For session-scoped schedule operations
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 use crate::session_schedule::SessionSchedule;
 use crate::typed_id::ScheduleId;
@@ -348,9 +348,9 @@ pub trait SessionScheduleStore: Send + Sync {
     async fn count_active_schedules(&self, session_id: SessionId) -> Result<u32>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // ToolContext - Runtime context for tool execution
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Type alias for the session SQL DB store trait object.
 pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
@@ -546,9 +546,9 @@ impl std::fmt::Debug for ToolContext {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // EventEmitter - For emitting events
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 use crate::events::{Event, EventRequest};
 
@@ -588,9 +588,9 @@ impl EventEmitter for NoopEventEmitter {
 // Note: EventListener trait has been moved to event_listeners.rs module.
 // Use `everruns_core::EventListener` or `everruns_core::event_listeners::EventListener`.
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // ImageResolver - For resolving image_file content to actual image data
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Resolved image data for LLM consumption
 ///
@@ -662,9 +662,9 @@ pub trait ImageResolver: Send + Sync {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Tests
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

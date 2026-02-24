@@ -227,9 +227,9 @@ const thinkingConversation: ConversationItem[] = [
   { role: "thinking", model: "claude-3-5-sonnet" },
 ];
 
-// ============================================
+// --------------------------------------------
 // Current Style (Option A)
-// ============================================
+// --------------------------------------------
 
 function CurrentUserMessage({
   content,
@@ -364,9 +364,9 @@ function CurrentThinking({ model }: { model?: string }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Option B: Flat Agent, Boxed User
-// ============================================
+// --------------------------------------------
 
 function FlatUserMessage({
   content,
@@ -481,9 +481,9 @@ function FlatThinking({ model }: { model?: string }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Option C: Minimal - subtle everything
-// ============================================
+// --------------------------------------------
 
 function MinimalUserMessage({
   content,
@@ -590,9 +590,9 @@ function MinimalThinking({ model }: { model?: string }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Option D: Minimal + Icon
-// ============================================
+// --------------------------------------------
 
 function MinimalIconUserMessage({
   content,
@@ -712,9 +712,9 @@ function MinimalIconThinking({ model }: { model?: string }) {
   );
 }
 
-// ============================================
+// --------------------------------------------
 // Render helpers
-// ============================================
+// --------------------------------------------
 
 type StyleOption = "current" | "flat" | "minimal" | "minimal-icon";
 
@@ -768,9 +768,9 @@ function renderConversation(conversation: ConversationItem[], style: StyleOption
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Main Page
-// ============================================
+// --------------------------------------------
 
 export default function ChatStylesPage() {
   const [selectedStyle, setSelectedStyle] = useState<StyleOption>("flat");

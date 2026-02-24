@@ -11,9 +11,9 @@ use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::traits::ModelWithProvider;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Provider + Model configuration
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// One cell in the test matrix: a (provider, model, env-var) tuple.
 #[derive(Clone, Debug)]
@@ -68,9 +68,9 @@ impl std::fmt::Display for ProviderModelConfig {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Provider catalogue — add new providers/models here
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     LlmProviderType::Anthropic,
@@ -96,9 +96,9 @@ pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
     "GEMINI_API_KEY",
 );
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Unified driver registry
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Registry with all real providers registered.
 pub fn all_providers_registry() -> DriverRegistry {

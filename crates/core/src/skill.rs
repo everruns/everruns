@@ -162,9 +162,9 @@ pub struct SkillValidationResult {
     pub warnings: Vec<String>,
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // SKILL.md Parser
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Parse a SKILL.md string into structured data
 pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {

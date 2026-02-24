@@ -41,9 +41,9 @@ import type {
   MetricsPoint,
 } from "@/lib/api/types";
 
-// ============================================
+// --------------------------------------------
 // SSE Snapshot Types (match backend response)
-// ============================================
+// --------------------------------------------
 
 interface DurableSnapshot {
   health: DurableSystemHealth;
@@ -60,9 +60,9 @@ interface WorkflowSnapshot {
   events: WorkflowEvent[];
 }
 
-// ============================================
+// --------------------------------------------
 // Global Durable SSE Hook
-// ============================================
+// --------------------------------------------
 
 /**
  * Connect to global durable SSE stream and update React Query cache.
@@ -179,9 +179,9 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
   return { isConnected, error };
 }
 
-// ============================================
+// --------------------------------------------
 // Per-Workflow SSE Hook
-// ============================================
+// --------------------------------------------
 
 /**
  * Connect to workflow-specific SSE stream for real-time workflow updates.
@@ -279,9 +279,9 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
   return { isConnected, error };
 }
 
-// ============================================
+// --------------------------------------------
 // System Health (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useDurableHealth() {
   return useQuery({
@@ -292,9 +292,9 @@ export function useDurableHealth() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Workers (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useWorkers() {
   return useQuery({
@@ -330,9 +330,9 @@ export function useResumeWorker() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Workflows (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useWorkflows(params?: ListWorkflowsParams) {
   return useQuery({
@@ -396,9 +396,9 @@ export function useSignalWorkflow() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Tasks (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useTasks(params?: ListTasksParams) {
   return useQuery({
@@ -416,9 +416,9 @@ export function useTaskStats() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Metrics Time Series (SSE-backed + REST fallback)
-// ============================================
+// --------------------------------------------
 
 export function useDurableMetrics() {
   return useQuery({
@@ -428,9 +428,9 @@ export function useDurableMetrics() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Dead Letter Queue (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useDlq(params?: ListDlqParams) {
   return useQuery({
@@ -477,9 +477,9 @@ export function usePurgeDlq() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Circuit Breakers (SSE-backed)
-// ============================================
+// --------------------------------------------
 
 export function useCircuitBreakers() {
   return useQuery({
@@ -525,9 +525,9 @@ export function useDeleteCircuitBreaker() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Schedules
-// ============================================
+// --------------------------------------------
 
 import {
   listSchedules,

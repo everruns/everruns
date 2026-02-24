@@ -22,9 +22,9 @@ use everruns_core::llm_models::LlmProviderType;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scenario: extended thinking (reasoning)
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
@@ -98,9 +98,9 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scenario: thinking + tool calling
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]

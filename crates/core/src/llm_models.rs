@@ -177,10 +177,10 @@ pub struct LlmModelWithProvider {
     pub profile: Option<LlmModelProfile>,
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Model Profile types
 // Based on models.dev structure
-// ============================================
+// --------------------------------------------
 
 /// Cost information for the model (per million tokens)
 #[derive(Debug, Clone, Serialize, Deserialize)]

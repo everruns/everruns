@@ -378,9 +378,9 @@ pub struct WorkflowInfo {
 /// Implementations must be thread-safe and support concurrent access.
 #[async_trait]
 pub trait WorkflowEventStore: Send + Sync + 'static {
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Workflow Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Create a new workflow instance
     async fn create_workflow(
@@ -420,9 +420,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         error: Option<crate::workflow::WorkflowError>,
     ) -> Result<(), StoreError>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Task Queue Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Enqueue an activity task
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError>;
@@ -469,9 +469,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn reclaim_stale_tasks(&self, stale_threshold: Duration)
     -> Result<Vec<Uuid>, StoreError>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Signal Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Send a signal to a workflow
     async fn send_signal(
@@ -493,9 +493,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         count: usize,
     ) -> Result<(), StoreError>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Worker Registry Operations (optional, default no-op)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Register a worker
     async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
@@ -523,9 +523,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(0)
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Dead Letter Queue Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Move task to DLQ
     async fn move_to_dlq(
@@ -544,9 +544,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         pagination: Pagination,
     ) -> Result<Vec<DlqEntry>, StoreError>;
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Circuit Breaker Operations (FUTURE FEATURE - optional, default no-op)
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // These operations are implemented in PostgresWorkflowEventStore but not yet
     // used in production. The DistributedCircuitBreaker struct in reliability/
     // is ready for integration when needed.
@@ -580,9 +580,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(())
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Utility Operations (optional, default no-op)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Count active (non-terminal) workflows
     async fn count_active_workflows(&self) -> Result<i64, StoreError> {
@@ -678,9 +678,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             .collect())
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Schedule Operations (optional, default no-op)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Create a new schedule
     async fn create_schedule(&self, _schedule: CreateScheduleRow) -> Result<Uuid, StoreError> {
@@ -716,9 +716,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(())
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Scheduler Operations (for DurableScheduler component)
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Claim due schedules for processing (uses SKIP LOCKED for multi-instance)
     /// Returns schedules with next_trigger_at <= now
@@ -745,9 +745,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(())
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Schedule Execution Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Create a schedule execution record
     async fn create_schedule_execution(
@@ -810,9 +810,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(ScheduleStats::default())
     }
 
-    // =========================================================================
+    // -------------------------------------------------------------------------
     // Scheduler Instance Operations
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     /// Register a scheduler instance
     async fn register_scheduler_instance(
@@ -855,9 +855,9 @@ pub struct CircuitBreakerState {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-// =========================================================================
+// -------------------------------------------------------------------------
 // Schedule Types
-// =========================================================================
+// -------------------------------------------------------------------------
 
 /// Target type for a schedule
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

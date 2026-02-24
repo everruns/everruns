@@ -184,9 +184,9 @@ export function useSendMessage() {
   });
 }
 
-// ============================================
+// --------------------------------------------
 // Events hook - REST batch load + SSE for live updates
-// ============================================
+// --------------------------------------------
 
 // SSE event types to listen for
 const SSE_EVENT_TYPES = [

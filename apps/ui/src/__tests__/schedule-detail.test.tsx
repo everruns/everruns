@@ -190,9 +190,9 @@ describe("ScheduleDetailPage", () => {
     mockConfirm.mockReturnValue(true);
   });
 
-  // ============================================
+  // --------------------------------------------
   // Loading State Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Loading State", () => {
     it("shows skeleton loading state while schedule is loading", () => {
@@ -210,9 +210,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Error State Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Error State", () => {
     it("shows error message when schedule fails to load", () => {
@@ -255,9 +255,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Schedule Details Rendering Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Schedule Details", () => {
     it("renders schedule name as page title", () => {
@@ -328,9 +328,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Statistics Card Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Statistics", () => {
     it("renders total executions count", () => {
@@ -377,9 +377,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Execution History Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Execution History", () => {
     it("renders execution history section", () => {
@@ -442,9 +442,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Execution History Filtering Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Execution History Filtering", () => {
     it("renders status filter dropdown", () => {
@@ -456,9 +456,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Action Button Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Action Buttons", () => {
     it("renders Trigger button", () => {
@@ -586,9 +586,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Edit Schedule Dialog Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Edit Schedule Dialog", () => {
     it("opens dialog when Edit button is clicked", async () => {
@@ -641,9 +641,9 @@ describe("ScheduleDetailPage", () => {
     });
   });
 
-  // ============================================
+  // --------------------------------------------
   // Navigation Tests
-  // ============================================
+  // --------------------------------------------
 
   describe("Navigation", () => {
     it("renders Back to Schedules link", () => {

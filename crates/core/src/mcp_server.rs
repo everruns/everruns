@@ -114,9 +114,9 @@ pub struct McpServer {
     pub updated_at: DateTime<Utc>,
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // MCP Tool Types (following MCP specification)
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// MCP Tool definition as returned by tools/list.
 /// Follows the MCP specification for tool discovery.

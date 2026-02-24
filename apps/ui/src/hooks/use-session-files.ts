@@ -34,9 +34,9 @@ const fileKeys = {
     [...fileKeys.all(org, sessionId), "stat", path] as const,
 };
 
-// ============================================
+// --------------------------------------------
 // Query Hooks
-// ============================================
+// --------------------------------------------
 
 /** List files in a directory */
 export function useFiles(
@@ -96,9 +96,9 @@ export function useFileStat(sessionId: string | undefined, path: string | undefi
   };
 }
 
-// ============================================
+// --------------------------------------------
 // Mutation Hooks
-// ============================================
+// --------------------------------------------
 
 /** Create a file */
 export function useCreateFile() {

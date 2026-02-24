@@ -12,9 +12,9 @@ const VALID_SKILL_MD: &str = "---\nname: test-skill\ndescription: A test skill f
 
 const VALID_SKILL_MD_2: &str = "---\nname: data-analysis\ndescription: Analyze datasets and generate reports.\n---\n\n# Data Analysis\n\nUse pandas to analyze the provided dataset.\n";
 
-// ============================================================
+// ------------------------------------------------------------
 // Skill CRUD Tests
-// ============================================================
+// ------------------------------------------------------------
 
 #[tokio::test]
 async fn test_create_skill() {
@@ -196,9 +196,9 @@ async fn test_validate_skill() {
     assert_eq!(body["valid"], false);
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // Error Cases
-// ============================================================
+// ------------------------------------------------------------
 
 #[tokio::test]
 async fn test_create_skill_duplicate_name() {
@@ -250,9 +250,9 @@ async fn test_get_nonexistent_skill() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // Skills as Capabilities Integration
-// ============================================================
+// ------------------------------------------------------------
 
 #[tokio::test]
 async fn test_skill_appears_in_capabilities_listing() {

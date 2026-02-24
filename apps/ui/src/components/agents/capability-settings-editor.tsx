@@ -59,9 +59,9 @@ export function hasCapabilitySettings(capabilityId: CapabilityId): boolean {
   return capabilityId === DOCKER_CONTAINER_ID;
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Docker Container Config Editor
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 const DEFAULT_DOCKER_IMAGE = "mcr.microsoft.com/devcontainers/python:3.11";
 const DEFAULT_WORKING_DIR = "/workspace";

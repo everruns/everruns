@@ -92,9 +92,9 @@ async fn cleanup_circuit_breaker(store: &PostgresWorkflowEventStore, key: &str) 
         .ok();
 }
 
-// ============================================
+// --------------------------------------------
 // Workflow Query Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_list_workflows_empty() {
@@ -302,9 +302,9 @@ async fn test_get_workflow_events() {
     cleanup_workflow(&store, workflow_id).await;
 }
 
-// ============================================
+// --------------------------------------------
 // Task Query Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_get_task() {
@@ -414,9 +414,9 @@ async fn test_list_tasks_with_filter() {
     cleanup_workflow(&store, workflow_id).await;
 }
 
-// ============================================
+// --------------------------------------------
 // Circuit Breaker Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_circuit_breaker_lifecycle() {
@@ -540,9 +540,9 @@ async fn test_force_close_circuit_breaker() {
     cleanup_circuit_breaker(&store, &cb_key).await;
 }
 
-// ============================================
+// --------------------------------------------
 // Worker Query Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_drain_and_resume_worker() {
@@ -596,9 +596,9 @@ async fn test_drain_and_resume_worker() {
     cleanup_worker(&store, &worker_id).await;
 }
 
-// ============================================
+// --------------------------------------------
 // System Health Tests
-// ============================================
+// --------------------------------------------
 
 #[tokio::test]
 async fn test_get_system_health() {

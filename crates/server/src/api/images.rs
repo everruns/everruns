@@ -26,9 +26,9 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-// ============================================
+// --------------------------------------------
 // Constants
-// ============================================
+// --------------------------------------------
 
 /// Maximum image size in bytes (100 MB)
 const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
@@ -39,9 +39,9 @@ const THUMBNAIL_MAX_DIM: u32 = 200;
 /// Allowed MIME types
 const ALLOWED_CONTENT_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
-// ============================================
+// --------------------------------------------
 // API Types
-// ============================================
+// --------------------------------------------
 
 /// Image metadata (without binary data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -84,9 +84,9 @@ pub struct UploadImageQuery {
     pub session_id: Option<Uuid>,
 }
 
-// ============================================
+// --------------------------------------------
 // App State and Routes
-// ============================================
+// --------------------------------------------
 
 /// App state for images routes
 #[derive(Clone)]
@@ -122,9 +122,9 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-// ============================================
+// --------------------------------------------
 // Helper Functions
-// ============================================
+// --------------------------------------------
 
 /// Validate content type is allowed
 fn is_valid_content_type(content_type: &str) -> bool {
@@ -159,9 +159,9 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     Some((output.into_inner(), "image/jpeg".to_string()))
 }
 
-// ============================================
+// --------------------------------------------
 // HTTP Handlers
-// ============================================
+// --------------------------------------------
 
 /// POST /v1/images - Upload an image
 #[utoipa::path(
@@ -483,9 +483,9 @@ pub async fn delete_image(
     }
 }
 
-// ============================================
+// --------------------------------------------
 // Tests
-// ============================================
+// --------------------------------------------
 
 #[cfg(test)]
 mod tests {

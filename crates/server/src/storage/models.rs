@@ -8,9 +8,9 @@ use everruns_core::{
 use sqlx::FromRow;
 use uuid::Uuid;
 
-// ============================================
+// --------------------------------------------
 // Organization models
-// ============================================
+// --------------------------------------------
 
 /// Organization row from database
 #[derive(Debug, Clone, FromRow)]
@@ -78,9 +78,9 @@ pub struct CreateOrganizationMemberRow {
     pub user_id: Uuid,
 }
 
-// ============================================
+// --------------------------------------------
 // Auth models
-// ============================================
+// --------------------------------------------
 
 /// User row from database
 #[derive(Debug, Clone, FromRow)]
@@ -189,9 +189,9 @@ pub struct CreateRefreshTokenRow {
     pub expires_at: DateTime<Utc>,
 }
 
-// ============================================
+// --------------------------------------------
 // Agent models (configuration for agentic loop)
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
@@ -246,9 +246,9 @@ pub struct UpdateAgent {
     pub tools: Option<serde_json::Value>,
 }
 
-// ============================================
+// --------------------------------------------
 // Harness models (base configuration for sessions)
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct HarnessRow {
@@ -301,9 +301,9 @@ pub struct CreateHarnessCapabilityRow {
     pub config: serde_json::Value,
 }
 
-// ============================================
+// --------------------------------------------
 // Session models (instance of agentic loop)
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionRow {
@@ -364,9 +364,9 @@ pub struct UpdateSession {
     pub finished_at: Option<DateTime<Utc>>,
 }
 
-// ============================================
+// --------------------------------------------
 // Event models (source of truth for messages)
-// ============================================
+// --------------------------------------------
 //
 // Messages are stored as events with type "message.*"
 // The events table is the sole source of truth for conversation data.
@@ -396,9 +396,9 @@ pub struct CreateEventRow {
     pub tags: Option<Vec<String>>,
 }
 
-// ============================================
+// --------------------------------------------
 // LLM Provider types
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmProviderRow {
@@ -521,9 +521,9 @@ pub struct UpdateLlmModel {
     pub provider_metadata: Option<serde_json::Value>,
 }
 
-// ============================================
+// --------------------------------------------
 // Agent Capability models
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentCapabilityRow {
@@ -546,9 +546,9 @@ pub struct CreateAgentCapabilityRow {
     pub config: serde_json::Value,
 }
 
-// ============================================
+// --------------------------------------------
 // Session File models (virtual filesystem)
-// ============================================
+// --------------------------------------------
 
 /// Session file row from database
 #[derive(Debug, Clone, FromRow)]
@@ -594,9 +594,9 @@ pub struct SessionFileInfoRow {
     pub updated_at: DateTime<Utc>,
 }
 
-// ============================================
+// --------------------------------------------
 // MCP Server models
-// ============================================
+// --------------------------------------------
 
 /// MCP Server row from database
 #[derive(Debug, Clone, FromRow)]
@@ -645,9 +645,9 @@ pub struct UpdateMcpServer {
     pub settings: Option<serde_json::Value>,
 }
 
-// ============================================
+// --------------------------------------------
 // Image models (global image storage)
-// ============================================
+// --------------------------------------------
 
 /// Image row from database
 #[derive(Debug, Clone, FromRow)]
@@ -695,9 +695,9 @@ pub struct UpdateMcpServerTools {
     pub cached_tools: serde_json::Value,
 }
 
-// ============================================
+// --------------------------------------------
 // Session Key/Value Storage models
-// ============================================
+// --------------------------------------------
 
 /// Session key/value row from database
 #[derive(Debug, Clone, FromRow)]
@@ -726,9 +726,9 @@ pub struct SessionKeyInfoRow {
     pub updated_at: DateTime<Utc>,
 }
 
-// ============================================
+// --------------------------------------------
 // Session Secret Storage models (encrypted)
-// ============================================
+// --------------------------------------------
 
 /// Session secret row from database
 #[derive(Debug, Clone, FromRow)]
@@ -757,9 +757,9 @@ pub struct SessionSecretInfoRow {
     pub updated_at: DateTime<Utc>,
 }
 
-// ============================================
+// --------------------------------------------
 // Skill models (Agent Skills registry)
-// ============================================
+// --------------------------------------------
 
 /// Skill row from database
 #[derive(Debug, Clone, FromRow)]
@@ -838,9 +838,9 @@ pub struct CreateSkillFileRow {
     pub size_bytes: i64,
 }
 
-// ============================================
+// --------------------------------------------
 // User Connection models
-// ============================================
+// --------------------------------------------
 
 /// User connection row from database
 #[derive(Debug, Clone, FromRow)]
@@ -879,9 +879,9 @@ pub struct CreateUserConnectionRow {
     pub installation_id: Option<i64>,
 }
 
-// ============================================
+// --------------------------------------------
 // Session Schedule models
-// ============================================
+// --------------------------------------------
 
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionScheduleRow {
