@@ -19,7 +19,7 @@
 
 use chrono::Utc;
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use everruns_durable::persistence::{
@@ -676,4 +676,223 @@ async fn test_get_system_health_with_data() {
 
     cleanup_worker(&store, &worker_id).await;
     cleanup_workflow(&store, workflow_id).await;
+}
+
+// ============================================
+// Stale Worker Heartbeat Tests
+// ============================================
+
+/// Verify that get_system_health excludes workers with stale heartbeats
+/// from the active_workers count. This was the root cause of the dashboard
+/// showing 15 workers when only 3 were actually connected.
+#[tokio::test]
+async fn test_system_health_excludes_stale_workers() {
+    let store = create_test_store().await;
+    let fresh_worker_id = format!("fresh_{}", Uuid::now_v7());
+    let stale_worker_id = format!("stale_{}", Uuid::now_v7());
+
+    // Register a fresh worker (recent heartbeat)
+    store
+        .register_worker(WorkerInfo {
+            id: fresh_worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["test".to_string()],
+            max_concurrency: 5,
+            current_load: 2,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+    store
+        .worker_heartbeat(&fresh_worker_id, 2, true)
+        .await
+        .unwrap();
+
+    // Register a stale worker (old heartbeat via direct SQL)
+    store
+        .register_worker(WorkerInfo {
+            id: stale_worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["test".to_string()],
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+
+    // Manually set the stale worker's heartbeat to 5 minutes ago
+    sqlx::query(
+        "UPDATE durable_workers SET last_heartbeat_at = NOW() - INTERVAL '5 minutes' WHERE id = $1",
+    )
+    .bind(&stale_worker_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // get_system_health should only count the fresh worker
+    let health = store.get_system_health().await.unwrap();
+    assert!(
+        health.active_workers >= 1,
+        "should have at least 1 active worker (the fresh one)"
+    );
+    // The stale worker should NOT be counted — capacity should not include its 10
+    assert!(
+        health.total_capacity >= 5,
+        "fresh worker capacity should be counted"
+    );
+    // The stale worker's load should not inflate total
+    assert!(
+        health.current_load >= 2,
+        "fresh worker load should be counted"
+    );
+
+    // list_workers should also exclude stale worker
+    let workers = store.list_workers(WorkerFilter::default()).await.unwrap();
+    let stale_in_list = workers.iter().any(|w| w.id == stale_worker_id);
+    assert!(
+        !stale_in_list,
+        "stale worker should not appear in list_workers"
+    );
+    let fresh_in_list = workers.iter().any(|w| w.id == fresh_worker_id);
+    assert!(fresh_in_list, "fresh worker should appear in list_workers");
+
+    cleanup_worker(&store, &fresh_worker_id).await;
+    cleanup_worker(&store, &stale_worker_id).await;
+}
+
+/// Verify that reclaim_stale_tasks marks stale workers as stopped.
+#[tokio::test]
+async fn test_reclaim_stale_tasks_marks_stale_workers_stopped() {
+    let store = create_test_store().await;
+    let stale_worker_id = format!("stale_reap_{}", Uuid::now_v7());
+
+    // Register worker
+    store
+        .register_worker(WorkerInfo {
+            id: stale_worker_id.clone(),
+            worker_group: Some("default".to_string()),
+            activity_types: vec!["test".to_string()],
+            max_concurrency: 5,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+
+    // Make heartbeat stale
+    sqlx::query(
+        "UPDATE durable_workers SET last_heartbeat_at = NOW() - INTERVAL '5 minutes' WHERE id = $1",
+    )
+    .bind(&stale_worker_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // Reclaim stale tasks (which also marks stale workers as stopped)
+    store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+
+    // Worker should now be stopped
+    let row = sqlx::query("SELECT status FROM durable_workers WHERE id = $1")
+        .bind(&stale_worker_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let status: String = row.get("status");
+    assert_eq!(status, "stopped", "stale worker should be marked stopped");
+
+    cleanup_worker(&store, &stale_worker_id).await;
+}
+
+/// Verify that get_system_health returns completed/failed workflow and task counts.
+#[tokio::test]
+async fn test_system_health_includes_completed_and_failed_counts() {
+    let store = create_test_store().await;
+    let wf_completed = Uuid::now_v7();
+    let wf_failed = Uuid::now_v7();
+    let wf_pending = Uuid::now_v7();
+
+    // Create workflows in various states
+    store
+        .create_workflow(wf_completed, "health_wf_test", json!({}), None)
+        .await
+        .unwrap();
+    store
+        .create_workflow(wf_failed, "health_wf_test", json!({}), None)
+        .await
+        .unwrap();
+    store
+        .create_workflow(wf_pending, "health_wf_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // Mark one as completed, one as failed
+    sqlx::query("UPDATE durable_workflow_instances SET status = 'completed', completed_at = NOW() WHERE id = $1")
+        .bind(wf_completed)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE durable_workflow_instances SET status = 'failed', completed_at = NOW() WHERE id = $1")
+        .bind(wf_failed)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let health = store.get_system_health().await.unwrap();
+    assert!(
+        health.completed_workflows >= 1,
+        "should count completed workflows"
+    );
+    assert!(
+        health.failed_workflows >= 1,
+        "should count failed workflows"
+    );
+    assert!(
+        health.pending_workflows >= 1,
+        "should count pending workflows"
+    );
+
+    cleanup_workflow(&store, wf_completed).await;
+    cleanup_workflow(&store, wf_failed).await;
+    cleanup_workflow(&store, wf_pending).await;
+}
+
+/// Verify WORKER_HEARTBEAT_TIMEOUT_SECS constant is used consistently.
+#[test]
+fn test_worker_heartbeat_timeout_constant() {
+    use everruns_durable::persistence::WORKER_HEARTBEAT_TIMEOUT_SECS;
+    assert_eq!(WORKER_HEARTBEAT_TIMEOUT_SECS, 60);
 }

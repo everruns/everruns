@@ -17,6 +17,6 @@ pub use store::{
     ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
     ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
     TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
-    WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
-    WorkflowInfoExtended, WorkflowStatus, event_type_name,
+    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
+    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, event_type_name,
 };
