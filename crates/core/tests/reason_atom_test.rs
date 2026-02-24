@@ -188,6 +188,7 @@ async fn test_reason_atom_with_fixed_response() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -270,6 +271,7 @@ async fn test_reason_atom_with_tool_calls() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -327,6 +329,7 @@ async fn test_reason_atom_with_echo_response() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -382,6 +385,7 @@ async fn test_reason_atom_with_different_configs() {
             agent_id: Some(agent_id.into()),
             org_id: 0,
             mcp_tool_definitions: vec![],
+            previous_response_id: None,
         })
         .await
         .expect("First call should succeed");
@@ -439,6 +443,7 @@ async fn test_reason_atom_with_different_configs() {
             agent_id: Some(agent_id.into()),
             org_id: 0,
             mcp_tool_definitions: vec![],
+            previous_response_id: None,
         })
         .await
         .expect("Second call should succeed");
@@ -497,6 +502,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -586,6 +592,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -639,6 +646,7 @@ async fn test_reason_atom_with_lorem_response() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -696,6 +704,7 @@ async fn test_reason_atom_handles_llm_error() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -797,6 +806,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom
@@ -890,6 +900,7 @@ async fn test_driver_registry_integration() {
         tools: vec![],
         reasoning_effort: None,
         metadata: std::collections::HashMap::new(),
+        previous_response_id: None,
     };
 
     let response = driver
@@ -944,6 +955,7 @@ async fn test_reason_atom_handles_model_not_available() {
         agent_id: Some(agent_id.into()),
         org_id: 0,
         mcp_tool_definitions: vec![],
+        previous_response_id: None,
     };
 
     let result = atom

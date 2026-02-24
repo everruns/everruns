@@ -484,6 +484,7 @@ impl LlmDriver for LlmSimDriver {
                 model: Some(model_name_done),
                 finish_reason: Some("stop".to_string()),
                 retry_metadata: None,
+                response_id: None,
             })));
             tail
         };
@@ -585,6 +586,7 @@ mod tests {
             tools: vec![],
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
         }
     }
 

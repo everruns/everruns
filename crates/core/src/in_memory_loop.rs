@@ -592,6 +592,8 @@ impl InMemoryAgenticLoop {
 
         // Track last reason result for ActAtom
         let mut last_reason_result: Option<crate::atoms::ReasonResult> = None;
+        // Track response_id from last reason call for chaining
+        let mut previous_response_id: Option<String> = None;
 
         // Execute the turn using the state machine
         loop {
@@ -624,10 +626,12 @@ impl InMemoryAgenticLoop {
                             agent_id: Some(self.agent_id),
                             org_id: 0,
                             mcp_tool_definitions: vec![],
+                            previous_response_id: previous_response_id.take(),
                         })
                         .await?;
 
                     let tool_call_count = reason_result.tool_calls.len();
+                    previous_response_id = reason_result.response_id.clone();
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
                         reason_result.has_tool_calls,

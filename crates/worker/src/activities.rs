@@ -422,6 +422,7 @@ mod tests {
             ),
             org_id: 1,
             mcp_tool_definitions: vec![],
+            previous_response_id: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -472,6 +473,7 @@ mod tests {
             max_iterations: 10,
             error: None,
             usage: None,
+            response_id: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

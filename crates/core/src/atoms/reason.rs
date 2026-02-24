@@ -111,6 +111,10 @@ pub struct ReasonInput {
     /// are not in the CapabilityRegistry.
     #[serde(default)]
     pub mcp_tool_definitions: Vec<ToolDefinition>,
+    /// Previous LLM response ID for stateful continuation.
+    /// Enables server-side context caching across reason iterations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_response_id: Option<String>,
 }
 
 /// Result of the ReasonAtom
@@ -137,6 +141,9 @@ pub struct ReasonResult {
     /// Token usage from the LLM call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+    /// LLM provider's response ID for chaining with `previous_response_id`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
 }
 
 fn default_max_iterations() -> usize {
@@ -273,6 +280,7 @@ where
             agent_id,
             org_id,
             mcp_tool_definitions,
+            previous_response_id,
         } = input;
 
         tracing::info!(
@@ -338,6 +346,7 @@ where
                 &mcp_tool_definitions,
                 &trace_id,
                 &reason_span_id,
+                previous_response_id,
             )
             .await
         {
@@ -464,6 +473,7 @@ where
                     max_iterations: default_max_iterations(),
                     error: Some(error_msg),
                     usage: None,
+                    response_id: None,
                 }
             }
         };
@@ -493,6 +503,7 @@ where
         mcp_tool_definitions: &[ToolDefinition],
         trace_id: &str,
         reason_span_id: &str,
+        previous_response_id: Option<String>,
     ) -> Result<ReasonResult> {
         // 1. Retrieve harness
         let harness = self
@@ -686,7 +697,9 @@ where
             llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
         }
 
-        let llm_config = llm_config_builder.build();
+        let llm_config = llm_config_builder
+            .previous_response_id(previous_response_id.clone())
+            .build();
 
         tracing::debug!(
             session_id = %session_id,
@@ -798,7 +811,7 @@ where
                 let compact_request = CompactRequest {
                     model: runtime_agent.model.clone(),
                     input: compact_input,
-                    previous_response_id: None,
+                    previous_response_id: previous_response_id.clone(),
                     instructions: if has_system_prompt {
                         Some(runtime_agent.system_prompt.clone())
                     } else {
@@ -1097,6 +1110,11 @@ where
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
+        // Extract response_id from completion metadata for chaining and OTel
+        let response_id = completion_metadata
+            .as_ref()
+            .and_then(|meta| meta.response_id.clone());
+
         // 15. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
@@ -1145,7 +1163,7 @@ where
             Some(llm_duration_ms),
             time_to_first_token_ms,
             finish_reasons,
-            None, // response_id
+            response_id.clone(),
             retry_info,
         );
 
@@ -1234,6 +1252,7 @@ where
             max_iterations: runtime_agent.max_iterations,
             error: None,
             usage,
+            response_id,
         })
     }
 

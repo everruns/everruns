@@ -695,6 +695,12 @@ impl DurableWorker {
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActTaskInput: {}", e))?;
                 // Create DurableTurnInput from ActInput context for scheduling next activity
                 // Include turn_id from act_input context for trace correlation
+                // Extract previous_response_id injected by reason→act scheduling
+                let previous_response_id = task
+                    .input
+                    .get("previous_response_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let turn_input = DurableTurnInput {
                     org_id: act_task_input.org_id,
                     session_id: act_task_input.act_input.context.session_id,
@@ -702,6 +708,7 @@ impl DurableWorker {
                     agent_id: act_task_input.act_input.agent_id,
                     input_message_id: act_task_input.act_input.context.input_message_id,
                     turn_id: Some(act_task_input.act_input.context.turn_id),
+                    previous_response_id,
                 };
                 let res = self
                     .execute_act_activity(
@@ -891,6 +898,7 @@ impl DurableWorker {
             agent_id: input.agent_id,
             org_id: input.org_id,
             mcp_tool_definitions: turn_context.mcp_tool_definitions,
+            previous_response_id: input.previous_response_id.clone(),
         };
 
         // Use the existing reason_activity function with gRPC adapters
@@ -961,7 +969,8 @@ impl DurableWorker {
         input: &DurableTurnInput,
         output: &serde_json::Value,
     ) -> Result<()> {
-        let input_json = serde_json::to_value(input)?;
+        // Clone input so we can update previous_response_id for chaining
+        let mut chained_input = input.clone();
         let mut store = self.store.lock().await;
 
         // Check if workflow is cancelled before scheduling next activity
@@ -1006,6 +1015,7 @@ impl DurableWorker {
                     agent_id: input.agent_id,
                     input_message_id: input.input_message_id,
                     turn_id,
+                    previous_response_id: None,
                 };
                 let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -1026,6 +1036,9 @@ impl DurableWorker {
                 // After reasoning, check if there are tool calls
                 let reason_result: ReasonResult = serde_json::from_value(output.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
+
+                // Carry response_id forward for next reason iteration
+                chained_input.previous_response_id = reason_result.response_id.clone();
 
                 if reason_result.has_tool_calls && reason_result.success {
                     // Schedule act activity to execute the tool calls
@@ -1050,7 +1063,11 @@ impl DurableWorker {
                             tool_definitions: reason_result.tool_definitions,
                         },
                     };
-                    let act_input_json = serde_json::to_value(&act_task_input)?;
+                    let mut act_input_json = serde_json::to_value(&act_task_input)?;
+                    // Carry response_id through act task for next reason iteration
+                    if let Some(rid) = &chained_input.previous_response_id {
+                        act_input_json["previous_response_id"] = serde_json::json!(rid);
+                    }
 
                     store
                         .enqueue_task(
@@ -1079,12 +1096,14 @@ impl DurableWorker {
             }
             "act" => {
                 // After action, schedule another reason activity (continue the loop)
+                // Use chained_input which carries previous_response_id from last reason
+                let chained_json = serde_json::to_value(&chained_input)?;
                 store
                     .enqueue_task(
                         workflow_id,
                         format!("reason_{}", Uuid::now_v7()),
                         "reason".to_string(),
-                        input_json,
+                        chained_json,
                     )
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;

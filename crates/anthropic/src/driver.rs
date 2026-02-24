@@ -706,6 +706,7 @@ impl LlmDriver for AnthropicLlmDriver {
                                     finish_reason: Some("stop".to_string()),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
+                                    response_id: None,
                                 }))
                             }
                             "error" => Ok(LlmStreamEvent::Error(format!(

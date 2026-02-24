@@ -497,6 +497,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             model: config.model.clone(),
             input: input_items,
             instructions,
+            previous_response_id: config.previous_response_id.clone(),
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
             stream: true,
@@ -828,6 +829,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
+                                            response_id: None,
                                         }))
                                     }
 
@@ -1034,6 +1036,7 @@ fn handle_streaming_event(
                 model: Some(model),
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
+                response_id: Some(response.id),
             })
         }
 
@@ -1378,6 +1381,8 @@ struct ResponsesRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    previous_response_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_output_tokens: Option<u32>,
@@ -1508,6 +1513,7 @@ mod tests {
                 content: ResponsesContent::Text("Hello".to_string()),
             }],
             instructions: Some("You are helpful".to_string()),
+            previous_response_id: None,
             temperature: None,
             max_output_tokens: None,
             stream: true,
@@ -1533,6 +1539,7 @@ mod tests {
                 content: ResponsesContent::Text("Think about this".to_string()),
             }],
             instructions: None,
+            previous_response_id: None,
             temperature: None,
             max_output_tokens: None,
             stream: true,
@@ -1563,6 +1570,7 @@ mod tests {
                 content: ResponsesContent::Text("Hello".to_string()),
             }],
             instructions: None,
+            previous_response_id: None,
             temperature: None,
             max_output_tokens: None,
             stream: true,
@@ -2257,6 +2265,7 @@ mod tests {
             tools: vec![],
             reasoning_effort: Some("none".to_string()),
             metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
         };
 
         // Simulate the driver's filter logic
@@ -2285,6 +2294,7 @@ mod tests {
             tools: vec![],
             reasoning_effort: Some("high".to_string()),
             metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
         };
 
         let reasoning = config
