@@ -44,10 +44,10 @@ Administrative interface for platform operators. **Not required for production u
 - Session monitoring
 - LLM provider settings
 
-See [Management UI](/features/ui) for details.
+See [Management UI](/features/ui/) for details.
 
 ## Further Reading
 
-- [Introduction](/getting-started/introduction) - Getting started
-- [API Reference](/api) - Full API documentation
-- [Capabilities](/features/capabilities) - Extend agent functionality
+- [Introduction](/getting-started/introduction/) - Getting started
+- [API Reference](/api/) - Full API documentation
+- [Capabilities](/features/capabilities/) - Extend agent functionality

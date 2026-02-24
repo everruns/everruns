@@ -76,7 +76,7 @@ A Capability is a modular, reusable configuration unit that extends the behavior
 - MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs
 - Capabilities can depend on other capabilities, resolved in topological order
 
-See [Capabilities](/features/capabilities) for a full list and configuration details.
+See [Capabilities](/features/capabilities/) for a full list and configuration details.
 
 ### Tool
 
@@ -132,7 +132,7 @@ An Event is an immutable, append-only record. Events are the primary data store 
 - Cannot be updated or deleted
 - Carries correlation context: turn ID, input message ID, execution ID
 
-See [Events](/features/events) for the full event reference.
+See [Events](/features/events/) for the full event reference.
 
 ### File System
 
