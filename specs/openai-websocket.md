@@ -74,6 +74,51 @@ Each Reason iteration:
 5. Turn state machine loops Reason→Act→Reason, threading `ReasonResult` between iterations
 6. `LlmCallConfig.metadata` HashMap carries `session_id`, `turn_id`, `exec_id` per call
 
+## Horizontal Scaling Analysis
+
+### Worker model (current)
+
+Workers are **stateless and interchangeable**. Activities within a turn (Input → Reason → Act → Reason → ...) are individually queued in PostgreSQL and claimed via `SKIP LOCKED`. Any worker can claim any activity. There is **no session affinity**.
+
+```
+Turn: [Reason₁] → [Act₁] → [Reason₂] → [Act₂] → [Reason₃]
+       Worker A    Worker C   Worker A    Worker B   Worker C
+       (random)    (random)   (random)    (random)   (random)
+```
+
+### Implications for WebSocket connections
+
+WebSocket connections are **process-local state**. A connection opened by Worker A is invisible to Worker B. This creates a fundamental tension:
+
+| Scenario | `store=true` (default) | `store=false` |
+|---|---|---|
+| Same worker, consecutive activities | WebSocket reuse + incremental input | WebSocket reuse + incremental input |
+| Different workers, consecutive activities | `previous_response_id` works via HTTP (OpenAI persists to disk) | `previous_response_not_found` → HTTP fallback with full context |
+
+**Key insight:** With `store=true`, `previous_response_id` works across any HTTP request from any worker — OpenAI hydrates from persisted state. WebSocket is an **additional** latency optimization on top of this, not a requirement.
+
+### Scaling numbers (1000s of sessions)
+
+| Concern | Impact | Mitigation |
+|---|---|---|
+| WebSocket connections per worker | ~333 if 1000 turns across 3 workers | OS fd limits (default 1024, raise to 65535) |
+| Memory per connection | ~50KB (tungstenite buffer + TLS state) | 333 conns × 50KB = ~17MB — negligible |
+| Connection establishment overhead | One TLS+WS handshake per turn per worker | Amortized across 5-20 iterations per turn |
+| OpenAI connection rate limits | Undocumented | Burst-then-pool; fall back to HTTP on 429 |
+| Cross-worker activity dispatch | WebSocket benefits lost when activities hop | `store=true` still gets `previous_response_id` benefit via HTTP |
+
+### Decision: Two-tier strategy
+
+**Tier 1 — `previous_response_id` over HTTP (all workers, all modes)**
+Phase 1 plumbing enables this. Every Reason activity sends `previous_response_id` from the previous Reason's response. OpenAI server-side caching (`store=true`) means this works regardless of which worker runs each activity. Benefit: reduced prompt processing (server skips re-encoding cached context).
+
+**Tier 2 — WebSocket transport (same-worker bonus)**
+When consecutive Reason activities happen to land on the same worker, the driver reuses an existing WebSocket connection. Benefit: no HTTP overhead + incremental input (only new items sent). When activities hop workers: automatic HTTP fallback, still using `previous_response_id`.
+
+This means WebSocket is a **probabilistic optimization** — it helps proportionally to how often consecutive activities land on the same worker. With N workers: probability ≈ 1/N per hop. For a turn with K iterations, expected WebSocket-eligible hops ≈ K/N.
+
+**No architectural changes needed** — the stateless worker model is preserved. No affinity routing, no shared connection pool, no coordination.
+
 ## Design
 
 ### Approach: Transport-Layer Optimization
@@ -97,14 +142,24 @@ The caller (reason atom / turn loop) threads `response_id` from the previous cal
                     │         ╱            ╲            │
                     │       Yes             No          │
                     │        │               │          │
-                    │   ┌────▼────┐    ┌────▼────┐     │
-                    │   │WebSocket│    │  HTTP   │     │
-                    │   │transport│    │transport│     │
-                    │   └────┬────┘    └────┬────┘     │
-                    │        │               │          │
-                    │    Same LlmStreamEvent output     │
+                    │   WS connection       HTTP POST   │
+                    │   in local map?       (always     │
+                    │      ╱     ╲          works)      │
+                    │    Yes      No          │          │
+                    │     │       │           │          │
+                    │  ┌──▼──┐ ┌─▼──────┐ ┌──▼──┐      │
+                    │  │Reuse│ │HTTP w/  │ │HTTP │      │
+                    │  │ WS  │ │prev_id  │ │     │      │
+                    │  └──┬──┘ └──┬─────┘ └──┬──┘      │
+                    │     │       │           │          │
+                    │    Same LlmStreamEvent output      │
                     └──────────────────────────────────┘
 ```
+
+Three paths:
+1. **No `previous_response_id`** → HTTP POST (first call in turn, always)
+2. **Has `previous_response_id`, WebSocket available locally** → reuse WS, incremental input
+3. **Has `previous_response_id`, no local WebSocket** → HTTP POST with `previous_response_id` + full input (cross-worker hop)
 
 ### Why not a separate driver or new trait?
 
@@ -222,17 +277,18 @@ tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 4. **Transport selection in `chat_completion_stream`**
    - If `ws_config.enabled` AND `config.previous_response_id.is_some()` AND `api_url` starts with `https://api.openai.com`:
      - Look up existing WebSocket by `turn_id` from `config.metadata`
-     - If none or expired: establish new connection to `wss://api.openai.com/v1/responses`
-     - Send `{"type": "response.create", "response": {body_with_previous_response_id}}` with only new input
-     - Return event stream from WebSocket text frames
-   - Otherwise: existing HTTP path (no behavior change)
+     - **If WebSocket found** (same worker): reuse connection, send incremental input
+     - **If no WebSocket** (cross-worker hop or first eligible call): HTTP POST with `previous_response_id` + full input. Optionally open a new WebSocket for the *next* call.
+     - Return event stream from either transport
+   - If `config.previous_response_id.is_none()`: HTTP POST (first call in turn)
    - On **any** WebSocket error: close connection, fall back to HTTP with full context
 
 5. **Connection lifecycle**
-   - Create on first WebSocket-eligible call in a turn
-   - Reuse across Reason iterations within same turn (keyed by `turn_id`)
+   - Create on first WebSocket-eligible call in a turn (after first HTTP call returns response_id)
+   - Reuse across Reason iterations within same turn **if same worker** (keyed by `turn_id`)
    - Remove when turn completes (Done event) or on error
    - Background cleanup task: prune connections older than 55 min
+   - Cross-worker hops: no WebSocket available → HTTP path used transparently
 
 **Files touched:**
 - NEW: `crates/core/src/openresponses_ws.rs` — connection, event adapter
@@ -351,9 +407,45 @@ Decision is automatic: first call in a turn always uses HTTP (no `previous_respo
 4. Flip flag to `true` after validation in staging
 5. **Phase 4** items are post-GA hardening
 
+## Scaling Guidance
+
+### Resource budget per 1000 concurrent sessions
+
+Assume 3 workers, `MAX_CONCURRENT_TASKS=1000` each.
+
+| Resource | Per Worker | Total (3 workers) |
+|---|---|---|
+| Concurrent activities | ~1000 | ~3000 |
+| Active WebSocket connections (local) | ~100-300 (probabilistic) | ~300-900 |
+| Memory for WebSocket connections | ~5-15 MB | ~15-45 MB |
+| File descriptors for WebSocket | ~100-300 | ~300-900 |
+| HTTP connections (reqwest pool) | ~50-100 | ~150-300 |
+
+WebSocket connections are a **subset** of total activities — only same-worker Reason continuations get one. Most cross-worker hops use HTTP with `previous_response_id`.
+
+### In-memory loop vs durable loop
+
+| | In-memory loop | Durable loop |
+|---|---|---|
+| All iterations on same worker? | **Yes** (single process) | No (SKIP LOCKED dispatch) |
+| WebSocket reuse rate | **100%** of eligible calls | ~1/N (N = worker count) |
+| WebSocket benefit | Full (every iteration after first) | Probabilistic |
+| `previous_response_id` via HTTP | Works | Works |
+| Crash recovery | None (turn lost) | Auto-reclaim in 30s |
+
+For latency-sensitive workloads: in-memory loop gets maximum WebSocket benefit. For reliability-critical workloads: durable loop with HTTP `previous_response_id` still gets server-side caching benefit.
+
+### Scaling recommendations
+
+- **Phase 1 is the highest-value change for horizontal scaling** — `previous_response_id` over HTTP benefits all workers, all modes, no state coordination
+- **Phase 2 WebSocket** is a nice-to-have latency bonus; don't add turn affinity to chase it
+- If most turns have 10+ iterations AND latency matters: consider optional turn-level worker affinity (preferred worker hint, not hard affinity) as a future optimization
+- Monitor `transport` metric (Phase 4) to measure actual WebSocket hit rate in production
+
 ## Open Questions
 
 1. **Custom OpenAI-compatible endpoints** — Should WebSocket be attempted for non-`api.openai.com` URLs? Probably not initially; only enable for known OpenAI endpoints.
-2. **Durable execution recovery** — If a worker crashes mid-turn and another picks up, the WebSocket connection is lost. HTTP fallback handles this naturally, but we lose the latency benefit for remaining iterations.
+2. **OpenAI connection rate limits** — Undocumented. If OpenAI limits concurrent WebSocket connections per API key, we need per-key connection budgeting across workers. Monitor during rollout.
 3. **Compact + WebSocket interaction** — When compaction fires mid-turn (context too large), we must close the WebSocket and fall back to HTTP. Compaction changes the input shape, invalidating `previous_response_id`.
 4. **`store=false` state limit** — With `store=false`, only the most recent response exists in connection-local cache. Older response IDs become unrecoverable. Our sequential Reason→Act→Reason loop naturally uses only the last response_id, so this is fine.
+5. **Turn-level worker affinity** — Worth adding a "preferred worker" hint for durable turns so consecutive activities land on the same worker more often? Only if WebSocket hit rate in production is too low to justify the connection overhead. Measure first (Phase 4 metrics).
