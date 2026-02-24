@@ -241,6 +241,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
         None
     }
+
+    /// Get the platform store for org-level management tools (if available).
+    /// Default returns None (not all backends support platform management).
+    fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
+        None
+    }
 }
 
 // =============================================================================

@@ -609,6 +609,67 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Icon**: "database"
 - **Category**: "Data"
 
+#### PlatformManagement
+
+- **Status**: Available
+- **ID**: `platform_management`
+- **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
+- **System Prompt**: Describes available management tools and common workflows
+- **Tools**:
+  - `manage_harnesses` - Harness CRUD operations
+    - Parameters:
+      - `operation`: enum (list, get, create, update, delete, copy) - The operation to perform
+      - `harness_id`: string - Required for get, update, delete, copy
+      - `name`: string - Required for create, optional for update/copy
+      - `system_prompt`: string - Required for create, optional for update
+      - `description`: string - Optional for create/update
+      - `capabilities`: string[] - Optional for create
+    - Returns: Harness data with `ui_link` for each harness
+    - Policy: Auto
+  - `manage_agents` - Agent CRUD operations
+    - Parameters:
+      - `operation`: enum (list, get, create, update, delete) - The operation to perform
+      - `agent_id`: string - Required for get, update, delete
+      - `name`: string - Required for create, optional for update
+      - `system_prompt`: string - Required for create, optional for update
+      - `description`: string - Optional for create/update
+      - `capabilities`: string[] - Optional for create
+    - Returns: Agent data with `ui_link` for each agent
+    - Policy: Auto
+  - `manage_sessions` - Session CRUD operations
+    - Parameters:
+      - `operation`: enum (list, get, create, delete) - The operation to perform
+      - `session_id`: string - Required for get, delete
+      - `harness_id`: string - Required for create
+      - `agent_id`: string - Optional for create/list
+      - `title`: string - Optional for create
+      - `limit`: integer - Optional for list
+    - Returns: Session data with `ui_link` for each session
+    - Policy: Auto
+  - `session_interact` - Session messaging and turn management
+    - Parameters:
+      - `operation`: enum (send_message, get_messages, wait_for_idle) - The operation to perform
+      - `session_id`: string - Required for all operations
+      - `content`: string - Required for send_message
+      - `limit`: integer - Optional for get_messages (default: 10)
+      - `timeout_secs`: integer - Optional for wait_for_idle (default: 300)
+    - Returns: Message data or status
+    - Policy: Auto
+- **Icon**: "settings"
+- **Category**: "Management"
+
+##### Design Decision: Context-Aware Tools
+
+All platform management tools require session context to access the `PlatformStore`. Each tool implements `requires_context() -> true` and uses `execute_with_context()`. The `ToolContext` provides a `platform_store` field with the `PlatformStore` implementation.
+
+##### Design Decision: UI Links
+
+All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/chat?session={id}`). This lets agents direct users to the web interface for visual management.
+
+##### Design Decision: PlatformStore Trait
+
+The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management API. `DirectPlatformStore` (in `everruns-server`) implements it using the existing `StorageBackend` and `SessionService`. This keeps the capability in core while the implementation uses server-layer storage.
+
 ### Experimental Capabilities
 
 Experimental capabilities are available in development environments only (`DeploymentGrade::Dev`). They may change significantly or be removed.

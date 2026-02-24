@@ -80,6 +80,7 @@ mod fake_warehouse;
 mod file_system;
 pub mod mcp;
 mod noop;
+mod platform_management;
 mod research;
 mod sample_data;
 mod session;
@@ -135,6 +136,10 @@ pub use mcp::{
     parse_mcp_capability_id,
 };
 pub use noop::NoopCapability;
+pub use platform_management::{
+    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
+    SessionInteractTool,
+};
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
@@ -418,6 +423,7 @@ impl CapabilityRegistry {
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(ResearchCapability);
+        registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
@@ -1066,9 +1072,10 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
-        // 20 core built-in capabilities
+        assert!(registry.has("platform_management"));
+        // 21 core built-in capabilities
         // (integration plugins like docker_container, codesandbox add more when linked)
-        assert!(registry.len() >= 20);
+        assert!(registry.len() >= 21);
     }
 
     #[test]
@@ -1096,9 +1103,10 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
+        assert!(registry.has("platform_management"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 20);
+        assert_eq!(registry.len(), 21);
     }
 
     #[test]

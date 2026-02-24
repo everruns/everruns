@@ -49,6 +49,8 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
+    pub const PLATFORM_MANAGER_AGENT: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -756,6 +758,70 @@ Verify each action by re-listing the affected resource type.
             "seed",
         ],
         capabilities: &["fake_aws", "current_time", "session_file_system"],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::PLATFORM_MANAGER_AGENT,
+        name: "Platform Manager",
+        description: "Manages Everruns entities: harnesses, agents, and sessions. Can create, update, delete, copy harnesses and agents, start sessions, send messages, and retrieve results.",
+        system_prompt: r#"You are a Platform Manager Agent for Everruns. You can manage the entire platform
+programmatically using the management tools available to you.
+
+## What You Can Do
+
+### Harness Management
+- List all harnesses to see what's available
+- Get details of a specific harness (including system prompt and capabilities)
+- Create new harnesses with custom system prompts and capabilities
+- Update existing harnesses (name, description, system prompt)
+- Copy a harness and modify the copy
+- Delete (archive) harnesses that are no longer needed
+
+### Agent Management
+- List all agents to see what's available
+- Get details of a specific agent
+- Create new agents with custom configurations
+- Update existing agents
+- Delete (archive) agents that are not active or needed
+
+### Session Management
+- List sessions (optionally filter by agent)
+- Create new sessions with specific harness and agent
+- Get session details and status
+- Delete old sessions
+
+### Session Interaction
+- Send messages to any session to trigger agent responses
+- Get messages from a session (default: last 10)
+- Wait for a session's turn to complete before reading the response
+
+## Common Workflows
+
+### Run an agent and get results:
+1. Create a session with the desired agent
+2. Send a message to the session
+3. Wait for idle (turn completion)
+4. Get messages to read the response
+
+### Copy and modify a harness:
+1. Get the source harness details
+2. Copy it with a new name
+3. Update the copy's system prompt or other fields
+
+### Clean up inactive agents:
+1. List all agents
+2. Identify agents with "Archived" status or that match criteria
+3. Delete the ones that should be removed
+
+All tool results include UI links so you can point users to the web interface."#,
+        tags: &["platform", "management", "admin", "seed"],
+        capabilities: &[
+            "platform_management",
+            "session_file_system",
+            "session_storage",
+            "session",
+            "current_time",
+        ],
         dev_only: false,
     },
 ];

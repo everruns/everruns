@@ -527,14 +527,15 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
-| TM-AGENT-009 | Agent self-modification | Low | No tools for agent/session CRUD; system prompt immutable within a session | MITIGATED |
-| TM-AGENT-010 | Agent spawning agent chains | Low | No agent-creation tools; agents cannot spawn child agents or sessions | MITIGATED |
+| TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform_management` capability can modify agents/sessions via tools; capability must be explicitly assigned; org-scoped | **OPEN** |
+| TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform_management` capability can create agents/sessions; capability must be explicitly assigned; no recursive depth limit | **OPEN** |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts stored plaintext in DB; not encrypted at rest | **OPEN** (see TM-CRYPTO-007) |
 | TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
+| TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
 
 ### Mitigation Details
 
@@ -594,6 +595,15 @@ When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the 
 
 - **Impact:** API keys visible in session history, event exports, and any observability pipeline that captures events.
 - **Recommendation:** Prefer Settings UI for credential entry (user connections). Phase out in-chat secret collection. For tools that need credentials, guide users to Settings > Connections instead of requesting secrets in chat. See also TM-CRYPTO-007.
+- **Priority:** High
+
+**TM-AGENT-017 — Agent-Initiated Entity Management (OPEN):**
+Agents with the `platform_management` capability can create, update, and delete harnesses, agents, and sessions within their organization. They can also send messages to any session and read responses.
+
+- **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
+- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) `DirectPlatformStore` uses existing storage layer with org_id filtering.
+- **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
+- **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
 
 ## 14. Bash Sandbox (TM-BASH)
@@ -773,6 +783,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
+| TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |
 | TM-CSB-002 | Unbounded sandbox creation | Medium | Add per-session sandbox count limit |
 
 ### Accepted Risks

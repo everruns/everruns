@@ -733,9 +733,11 @@ impl ServerAppBuilder {
                 )
                 .with_sqldb_store(sqldb_store.clone())
                 .with_storage_store(session_storage_store)
-                .with_schedule_store(Arc::new(
-                    crate::storage::DbSessionScheduleStore::new(db.clone(), DEFAULT_ORG_ID),
-                ));
+                .with_schedule_store(Arc::new(crate::storage::DbSessionScheduleStore::new(
+                    db.clone(),
+                    DEFAULT_ORG_ID,
+                )))
+                .with_runner(runner.clone());
 
                 // Wire lazy connection resolver (requires encryption for token decryption)
                 if let Some(ref enc) = encryption {
