@@ -67,9 +67,22 @@ impl SseStreamConfig {
         Duration::from_millis(self.min_backoff_ms)
     }
 
-    /// Get maximum connection duration
+    /// Get maximum connection duration (fixed, no jitter).
     pub fn max_connection_duration(&self) -> Duration {
         Duration::from_secs(self.max_connection_secs)
+    }
+
+    /// Get jittered max connection duration to prevent thundering herd reconnections.
+    ///
+    /// When many SSE connections start around the same time, they'd all cycle at
+    /// exactly max_connection_secs, creating a reconnection storm. Adding ±20% jitter
+    /// spreads disconnects over a 2-minute window (for 5-min base = 4:00–6:00).
+    pub fn jittered_max_connection_duration(&self) -> Duration {
+        use rand::Rng;
+        let base = self.max_connection_secs as f64;
+        let jitter_range = base * 0.2;
+        let jitter = rand::rng().random_range(-jitter_range..jitter_range);
+        Duration::from_secs_f64(base + jitter)
     }
 
     /// Calculate next backoff (exponential, capped at max)
@@ -410,6 +423,37 @@ mod tests {
 
         let config = SseStreamConfig::monitoring();
         assert_eq!(config.disconnect_retry(), Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn test_jittered_max_connection_duration_within_bounds() {
+        let config = SseStreamConfig::realtime();
+        // 300s base, ±20% → 240–360s
+        for _ in 0..100 {
+            let duration = config.jittered_max_connection_duration();
+            assert!(
+                duration >= Duration::from_secs(240) && duration <= Duration::from_secs(360),
+                "jittered duration {:?} out of ±20% range",
+                duration
+            );
+        }
+    }
+
+    #[test]
+    fn test_jittered_durations_have_variance() {
+        let config = SseStreamConfig::realtime();
+        let durations: Vec<Duration> = (0..50)
+            .map(|_| config.jittered_max_connection_duration())
+            .collect();
+        let min = durations.iter().min().unwrap();
+        let max = durations.iter().max().unwrap();
+        // With 50 samples, we should see at least 10 seconds of spread
+        assert!(
+            *max - *min > Duration::from_secs(10),
+            "expected variance in jittered durations, got min={:?} max={:?}",
+            min,
+            max
+        );
     }
 
     #[test]

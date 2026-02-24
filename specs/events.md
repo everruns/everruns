@@ -943,8 +943,10 @@ To prevent stale connections through proxies and load balancers, SSE connections
 
 | Stream Type | Cycle Interval | Backoff Range |
 |-------------|----------------|---------------|
-| Session events (realtime) | 5 minutes | 100ms → 500ms |
-| Durable monitoring | 10 minutes | 1000ms → 20000ms |
+| Session events (realtime) | 5 minutes ±20% jitter | 100ms → 500ms |
+| Durable monitoring | 10 minutes ±20% jitter | 1000ms → 20000ms |
+
+Each connection's cycle interval is jittered by ±20% (e.g., 5 min base → 4–6 min actual) to prevent thundering-herd reconnection storms when many clients connect simultaneously. The jittered duration is computed once at stream creation.
 
 Before closing, the server sends a `disconnecting` event so clients can reconnect immediately using `since_id`. This ensures no events are missed.
 
