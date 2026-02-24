@@ -1,9 +1,9 @@
 # Multi-stage build for Next.js standalone output
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
+# Install dependencies (explicit filenames avoid glob surprises)
+COPY package.json package-lock.json ./
 RUN npm ci
 
 # Copy source and build
@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-alpine AS ui
+FROM node:22-alpine AS ui
 WORKDIR /app
 
 ENV NODE_ENV=production
