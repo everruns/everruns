@@ -2617,4 +2617,480 @@ mod tests {
         assert_eq!(parsed["resolution_seconds"], 10);
         assert_eq!(parsed["points"].as_array().unwrap().len(), 2);
     }
+
+    // ============================================
+    // started_tasks / started_workflows coverage
+    // ============================================
+
+    #[test]
+    fn test_health_response_serialization_includes_started_fields() {
+        let response = HealthResponse {
+            status: "healthy".to_string(),
+            total_workers: 2,
+            active_workers: 2,
+            workers_accepting: 2,
+            total_capacity: 10,
+            current_load: 3,
+            load_percentage: 30.0,
+            pending_tasks: 5,
+            claimed_tasks: 3,
+            completed_tasks: 20,
+            failed_tasks: 1,
+            started_tasks: 24,
+            running_workflows: 1,
+            pending_workflows: 0,
+            completed_workflows: 10,
+            failed_workflows: 0,
+            started_workflows: 11,
+            dlq_size: 0,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify started_tasks and started_workflows are present with correct values
+        assert_eq!(parsed["started_tasks"], 24);
+        assert_eq!(parsed["started_workflows"], 11);
+        // Verify they coexist with existing count fields
+        assert_eq!(parsed["completed_tasks"], 20);
+        assert_eq!(parsed["failed_tasks"], 1);
+        assert_eq!(parsed["completed_workflows"], 10);
+        assert_eq!(parsed["failed_workflows"], 0);
+    }
+
+    #[test]
+    fn test_metrics_point_serialization_includes_started_totals() {
+        let point = MetricsPoint {
+            timestamp: Utc::now(),
+            running_workflows: 3,
+            pending_workflows: 1,
+            pending_tasks: 5,
+            claimed_tasks: 2,
+            active_workers: 4,
+            load_percentage: 25.5,
+            dlq_size: 0,
+            tasks_completed_total: 100,
+            tasks_failed_total: 2,
+            tasks_started_total: 107,
+            workflows_completed_total: 50,
+            workflows_failed_total: 1,
+            workflows_started_total: 54,
+        };
+
+        let json = serde_json::to_string(&point).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify started totals are present
+        assert_eq!(parsed["tasks_started_total"], 107);
+        assert_eq!(parsed["workflows_started_total"], 54);
+        // Verify they coexist with completed/failed totals
+        assert_eq!(parsed["tasks_completed_total"], 100);
+        assert_eq!(parsed["tasks_failed_total"], 2);
+        assert_eq!(parsed["workflows_completed_total"], 50);
+        assert_eq!(parsed["workflows_failed_total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_collector_stores_and_retrieves_started_totals() {
+        let collector = MetricsCollector::new(10);
+
+        // Push two points with increasing started totals (simulating cumulative counters)
+        collector
+            .push(MetricsPoint {
+                timestamp: Utc::now(),
+                running_workflows: 1,
+                pending_workflows: 0,
+                pending_tasks: 2,
+                claimed_tasks: 1,
+                active_workers: 1,
+                load_percentage: 10.0,
+                dlq_size: 0,
+                tasks_completed_total: 10,
+                tasks_failed_total: 1,
+                tasks_started_total: 14,
+                workflows_completed_total: 5,
+                workflows_failed_total: 0,
+                workflows_started_total: 6,
+            })
+            .await;
+
+        collector
+            .push(MetricsPoint {
+                timestamp: Utc::now(),
+                running_workflows: 2,
+                pending_workflows: 1,
+                pending_tasks: 3,
+                claimed_tasks: 2,
+                active_workers: 1,
+                load_percentage: 20.0,
+                dlq_size: 0,
+                tasks_completed_total: 15,
+                tasks_failed_total: 2,
+                tasks_started_total: 22,
+                workflows_completed_total: 8,
+                workflows_failed_total: 1,
+                workflows_started_total: 12,
+            })
+            .await;
+
+        let points = collector.get_points().await;
+        assert_eq!(points.len(), 2);
+
+        // First point
+        assert_eq!(points[0].tasks_started_total, 14);
+        assert_eq!(points[0].workflows_started_total, 6);
+        assert_eq!(points[0].tasks_completed_total, 10);
+        assert_eq!(points[0].tasks_failed_total, 1);
+
+        // Second point (rates can be computed as deltas: 22-14=8 tasks started)
+        assert_eq!(points[1].tasks_started_total, 22);
+        assert_eq!(points[1].workflows_started_total, 12);
+        assert_eq!(points[1].tasks_completed_total, 15);
+        assert_eq!(points[1].tasks_failed_total, 2);
+
+        // Verify delta computation works (what the frontend would do)
+        let task_start_delta = points[1].tasks_started_total - points[0].tasks_started_total;
+        assert_eq!(task_start_delta, 8);
+        let wf_start_delta = points[1].workflows_started_total - points[0].workflows_started_total;
+        assert_eq!(wf_start_delta, 6);
+    }
+
+    #[test]
+    fn test_durable_snapshot_includes_started_fields() {
+        let snapshot = DurableSnapshot {
+            health: HealthResponse {
+                status: "healthy".to_string(),
+                total_workers: 1,
+                active_workers: 1,
+                workers_accepting: 1,
+                total_capacity: 10,
+                current_load: 2,
+                load_percentage: 20.0,
+                pending_tasks: 3,
+                claimed_tasks: 2,
+                completed_tasks: 50,
+                failed_tasks: 5,
+                started_tasks: 60,
+                running_workflows: 2,
+                pending_workflows: 1,
+                completed_workflows: 30,
+                failed_workflows: 3,
+                started_workflows: 36,
+                dlq_size: 0,
+            },
+            workers: vec![],
+            workflows: WorkflowsListResponse {
+                data: vec![],
+                total: 0,
+            },
+            tasks: TasksListResponse {
+                data: vec![],
+                total: 0,
+            },
+            dlq: DlqListResponse {
+                data: vec![],
+                total: 0,
+            },
+            circuit_breakers: CircuitBreakersListResponse {
+                data: vec![],
+                total: 0,
+            },
+            metrics_history: vec![MetricsPoint {
+                timestamp: Utc::now(),
+                running_workflows: 2,
+                pending_workflows: 1,
+                pending_tasks: 3,
+                claimed_tasks: 2,
+                active_workers: 1,
+                load_percentage: 20.0,
+                dlq_size: 0,
+                tasks_completed_total: 50,
+                tasks_failed_total: 5,
+                tasks_started_total: 60,
+                workflows_completed_total: 30,
+                workflows_failed_total: 3,
+                workflows_started_total: 36,
+            }],
+        };
+
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify health section has started fields
+        assert_eq!(parsed["health"]["started_tasks"], 60);
+        assert_eq!(parsed["health"]["started_workflows"], 36);
+
+        // Verify metrics_history points have started totals
+        let point = &parsed["metrics_history"][0];
+        assert_eq!(point["tasks_started_total"], 60);
+        assert_eq!(point["workflows_started_total"], 36);
+    }
+
+    #[test]
+    fn test_health_started_counts_consistency() {
+        // Invariant: started >= completed + failed
+        // (started includes in-progress tasks that haven't finished yet)
+        let health = SystemHealth {
+            total_workers: 3,
+            active_workers: 3,
+            workers_accepting: 3,
+            total_capacity: 30,
+            current_load: 5,
+            pending_tasks: 10,
+            claimed_tasks: 5,
+            completed_tasks: 100,
+            failed_tasks: 10,
+            started_tasks: 115, // 115 >= 100 + 10 (5 still in progress)
+            running_workflows: 3,
+            pending_workflows: 2,
+            completed_workflows: 50,
+            failed_workflows: 5,
+            started_workflows: 58, // 58 >= 50 + 5 (3 still running)
+            dlq_size: 0,
+        };
+
+        let response = HealthResponse::from(health);
+
+        // started_tasks >= completed_tasks + failed_tasks
+        assert!(
+            response.started_tasks >= response.completed_tasks + response.failed_tasks,
+            "started_tasks ({}) must be >= completed ({}) + failed ({})",
+            response.started_tasks,
+            response.completed_tasks,
+            response.failed_tasks
+        );
+
+        // started_workflows >= completed_workflows + failed_workflows
+        assert!(
+            response.started_workflows >= response.completed_workflows + response.failed_workflows,
+            "started_workflows ({}) must be >= completed ({}) + failed ({})",
+            response.started_workflows,
+            response.completed_workflows,
+            response.failed_workflows
+        );
+
+        // Verify the in-progress count can be derived
+        let in_progress_tasks =
+            response.started_tasks - response.completed_tasks - response.failed_tasks;
+        assert_eq!(in_progress_tasks, 5);
+
+        let in_progress_workflows =
+            response.started_workflows - response.completed_workflows - response.failed_workflows;
+        assert_eq!(in_progress_workflows, 3);
+    }
+
+    #[test]
+    fn test_health_response_from_system_health_maps_started_fields() {
+        let health = SystemHealth {
+            total_workers: 4,
+            active_workers: 3,
+            workers_accepting: 2,
+            total_capacity: 40,
+            current_load: 15,
+            pending_tasks: 8,
+            claimed_tasks: 15,
+            completed_tasks: 200,
+            failed_tasks: 20,
+            started_tasks: 243,
+            running_workflows: 5,
+            pending_workflows: 3,
+            completed_workflows: 100,
+            failed_workflows: 10,
+            started_workflows: 118,
+            dlq_size: 2,
+        };
+
+        let response = HealthResponse::from(health);
+
+        // Verify started fields are mapped through correctly
+        assert_eq!(response.started_tasks, 243);
+        assert_eq!(response.started_workflows, 118);
+
+        // Verify all other fields still map correctly
+        assert_eq!(response.total_workers, 4);
+        assert_eq!(response.active_workers, 3);
+        assert_eq!(response.workers_accepting, 2);
+        assert_eq!(response.total_capacity, 40);
+        assert_eq!(response.current_load, 15);
+        assert_eq!(response.pending_tasks, 8);
+        assert_eq!(response.claimed_tasks, 15);
+        assert_eq!(response.completed_tasks, 200);
+        assert_eq!(response.failed_tasks, 20);
+        assert_eq!(response.running_workflows, 5);
+        assert_eq!(response.pending_workflows, 3);
+        assert_eq!(response.completed_workflows, 100);
+        assert_eq!(response.failed_workflows, 10);
+        assert_eq!(response.dlq_size, 2);
+        assert_eq!(response.status, "warning"); // dlq_size > 0
+        assert!((response.load_percentage - 37.5).abs() < 0.01); // 15/40 * 100
+    }
+
+    #[test]
+    fn test_metrics_point_started_totals_monotonically_increasing_in_timeseries() {
+        // When constructing a MetricsTimeSeriesResponse, started totals should
+        // be monotonically non-decreasing (cumulative counters never decrease)
+        let response = MetricsTimeSeriesResponse {
+            points: vec![
+                MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: 1,
+                    pending_workflows: 0,
+                    pending_tasks: 2,
+                    claimed_tasks: 1,
+                    active_workers: 2,
+                    load_percentage: 10.0,
+                    dlq_size: 0,
+                    tasks_completed_total: 10,
+                    tasks_failed_total: 1,
+                    tasks_started_total: 12,
+                    workflows_completed_total: 5,
+                    workflows_failed_total: 0,
+                    workflows_started_total: 6,
+                },
+                MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: 2,
+                    pending_workflows: 1,
+                    pending_tasks: 3,
+                    claimed_tasks: 2,
+                    active_workers: 2,
+                    load_percentage: 20.0,
+                    dlq_size: 0,
+                    tasks_completed_total: 15,
+                    tasks_failed_total: 2,
+                    tasks_started_total: 20,
+                    workflows_completed_total: 8,
+                    workflows_failed_total: 1,
+                    workflows_started_total: 12,
+                },
+                MetricsPoint {
+                    timestamp: Utc::now(),
+                    running_workflows: 0,
+                    pending_workflows: 0,
+                    pending_tasks: 1,
+                    claimed_tasks: 0,
+                    active_workers: 2,
+                    load_percentage: 5.0,
+                    dlq_size: 0,
+                    tasks_completed_total: 22,
+                    tasks_failed_total: 3,
+                    tasks_started_total: 26,
+                    workflows_completed_total: 13,
+                    workflows_failed_total: 1,
+                    workflows_started_total: 14,
+                },
+            ],
+            resolution_seconds: 10,
+        };
+
+        // Verify monotonicity of cumulative counters
+        for window in response.points.windows(2) {
+            assert!(
+                window[1].tasks_started_total >= window[0].tasks_started_total,
+                "tasks_started_total must be monotonically non-decreasing"
+            );
+            assert!(
+                window[1].workflows_started_total >= window[0].workflows_started_total,
+                "workflows_started_total must be monotonically non-decreasing"
+            );
+            assert!(
+                window[1].tasks_completed_total >= window[0].tasks_completed_total,
+                "tasks_completed_total must be monotonically non-decreasing"
+            );
+            assert!(
+                window[1].workflows_completed_total >= window[0].workflows_completed_total,
+                "workflows_completed_total must be monotonically non-decreasing"
+            );
+        }
+
+        // Verify serialization includes all new fields
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"tasks_started_total\""));
+        assert!(json.contains("\"workflows_started_total\""));
+    }
+
+    #[test]
+    fn test_health_response_zero_started_counts() {
+        // Edge case: fresh system with no activity
+        let health = SystemHealth {
+            total_workers: 1,
+            active_workers: 1,
+            workers_accepting: 1,
+            total_capacity: 10,
+            current_load: 0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            completed_tasks: 0,
+            failed_tasks: 0,
+            started_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            completed_workflows: 0,
+            failed_workflows: 0,
+            started_workflows: 0,
+            dlq_size: 0,
+        };
+
+        let response = HealthResponse::from(health);
+        assert_eq!(response.started_tasks, 0);
+        assert_eq!(response.started_workflows, 0);
+        assert_eq!(response.status, "healthy");
+    }
+
+    #[test]
+    fn test_metrics_sampler_maps_started_fields_from_health() {
+        // Verify the mapping logic used by the metrics sampler: health.started_tasks -> tasks_started_total
+        // This mirrors the code in spawn_metrics_sampler and the SSE polling loop
+        let health = SystemHealth {
+            total_workers: 2,
+            active_workers: 2,
+            workers_accepting: 2,
+            total_capacity: 20,
+            current_load: 5,
+            pending_tasks: 3,
+            claimed_tasks: 5,
+            completed_tasks: 80,
+            failed_tasks: 8,
+            started_tasks: 96,
+            running_workflows: 4,
+            pending_workflows: 1,
+            completed_workflows: 40,
+            failed_workflows: 3,
+            started_workflows: 48,
+            dlq_size: 0,
+        };
+
+        let load_percentage = if health.total_capacity > 0 {
+            (health.current_load as f64 / health.total_capacity as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Build MetricsPoint exactly as spawn_metrics_sampler and SSE loop do
+        let point = MetricsPoint {
+            timestamp: Utc::now(),
+            running_workflows: health.running_workflows,
+            pending_workflows: health.pending_workflows,
+            pending_tasks: health.pending_tasks,
+            claimed_tasks: health.claimed_tasks,
+            active_workers: health.active_workers,
+            load_percentage,
+            dlq_size: health.dlq_size,
+            tasks_completed_total: health.completed_tasks as u64,
+            tasks_failed_total: health.failed_tasks as u64,
+            tasks_started_total: health.started_tasks as u64,
+            workflows_completed_total: health.completed_workflows as u64,
+            workflows_failed_total: health.failed_workflows as u64,
+            workflows_started_total: health.started_workflows as u64,
+        };
+
+        // Verify the mapping
+        assert_eq!(point.tasks_started_total, 96);
+        assert_eq!(point.workflows_started_total, 48);
+        assert_eq!(point.tasks_completed_total, 80);
+        assert_eq!(point.tasks_failed_total, 8);
+        assert_eq!(point.workflows_completed_total, 40);
+        assert_eq!(point.workflows_failed_total, 3);
+        assert!((point.load_percentage - 25.0).abs() < 0.01);
+    }
 }
