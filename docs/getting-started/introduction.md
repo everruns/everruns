@@ -40,7 +40,7 @@ Capabilities are modular functionality units that extend agent behavior. They ca
 - Provide tools for the agent to use
 - Modify execution behavior
 
-See [Capabilities](/features/capabilities) for more details.
+See [Capabilities](/features/capabilities/) for more details.
 
 ## Getting Started
 

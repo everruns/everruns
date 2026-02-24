@@ -1,0 +1,3 @@
+# Redirect removed pages to closest relevant page
+/sre/runbooks/production-migrations/ /sre/admin-container/ 301
+/sre/runbooks/production-migrations /sre/admin-container/ 301

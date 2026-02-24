@@ -191,7 +191,21 @@ Run the [code-simplifier](https://github.com/anthropics/claude-plugins-official/
 
 
 
-Run `just pre-pr` to automate checks 1-10 where possible. Manual review needed for spec accuracy, threat model, performance review, SDK parity, and AGENTS.md content.
+### 15. Docs Site SEO & Crawlability
+
+Verify the documentation site at `docs.everruns.com` is healthy for search engines and users.
+
+1. Build docs: `npm run build` in `apps/docs/` — must succeed without warnings
+2. Verify sitemap: `sitemap.xml` includes all published pages (currently 128+); no missing entries
+3. Check for orphaned pages: all built HTML pages must be reachable via sidebar navigation or cross-links — pages hidden from sidebar (e.g., commented-out SRE section) should either be restored to navigation or excluded from build
+4. Verify `robots.txt` allows all crawlers and points to correct sitemap URL
+5. Meta descriptions: spot-check 5+ pages (homepage, introduction, API operation, feature page) for `<meta name="description">` presence
+6. Page titles: verify titles are ≤70 characters and properly formatted (no raw `METHOD /path` prefixes leaking)
+7. Trailing slash consistency: confirm Astro `trailingSlash` setting aligns with hosting platform (Cloudflare Pages enforces trailing slashes via 308 redirects for directory-style URLs — this is expected behavior, not a bug)
+8. Internal links: spot-check navigation links resolve without unexpected redirects or 404s
+9. Search index: verify Pagefind search works on the built site
+
+Run `just pre-pr` to automate checks 1-10 where possible. Manual review needed for spec accuracy, threat model, performance review, SDK parity, AGENTS.md content, and docs site SEO.
 
 ## Frequency
 

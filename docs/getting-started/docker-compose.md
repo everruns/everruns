@@ -184,6 +184,6 @@ docker compose exec worker-1 /bin/sh -c "echo" || echo "Cannot exec (distroless 
 
 ## Next Steps
 
-- [API Reference](/api) - Full API documentation
-- [Capabilities](/features/capabilities) - Extend agent functionality
-- [Environment Variables](/sre/environment-variables) - Advanced configuration
+- [API Reference](/api/) - Full API documentation
+- [Capabilities](/features/capabilities/) - Extend agent functionality
+- [Environment Variables](/sre/environment-variables/) - Advanced configuration
