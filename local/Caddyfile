@@ -6,11 +6,24 @@
 #   /api-doc/* -> API server at :9000
 #   /health    -> API server at :9000
 #   /*         -> UI dev server at :9100
+#
+# SSE/Proxy Notes:
+#   - flush_interval -1: disables response buffering (required for SSE)
+#   - transport h2c: uses HTTP/2 cleartext to backend, enabling multiplexed
+#     SSE streams over a single TCP connection (prevents per-stream TCP overhead)
+#   - read_timeout 0: disables Caddy's read timeout for long-lived SSE streams
+#     (server handles its own 5-min connection cycling with disconnecting events)
 :9300 {
 	handle_path /api/* {
 		reverse_proxy localhost:9000 {
 			# Disable response buffering for SSE streaming
 			flush_interval -1
+			# Use HTTP/2 cleartext (h2c) to backend - enables multiplexed SSE
+			# streams over a single connection instead of one TCP per stream
+			transport http {
+				versions h2c 2
+				read_timeout 0
+			}
 		}
 	}
 	handle /api-doc/* {

@@ -25,7 +25,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// SSE stream configuration with backoff and connection cycling parameters
+/// SSE stream configuration with backoff and connection cycling parameters.
+///
+/// Connection cycling duration is configurable via environment variables to
+/// accommodate different proxy configurations:
+/// - `SSE_REALTIME_CYCLE_SECS` (default: 300) — session event streams
+/// - `SSE_MONITORING_CYCLE_SECS` (default: 600) — durable monitoring streams
+///
+/// When running behind proxies with HTTP/1.1 backends (no h2c), increase the
+/// cycling interval to reduce reconnection frequency and avoid exhausting
+/// SDK retry budgets. See `specs/events.md` for protocol details.
 #[derive(Debug, Clone, Copy)]
 pub struct SseStreamConfig {
     /// Minimum backoff when polling for new events (ms)
@@ -40,24 +49,32 @@ pub struct SseStreamConfig {
 }
 
 impl SseStreamConfig {
-    /// Fast polling for real-time session events
-    /// Min: 100ms, Max: 500ms, Connection cycle: 5 minutes
+    /// Fast polling for real-time session events.
+    /// Min: 100ms, Max: 500ms, Connection cycle: 5 minutes (configurable via SSE_REALTIME_CYCLE_SECS)
     pub fn realtime() -> Self {
+        let cycle_secs = std::env::var("SSE_REALTIME_CYCLE_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300u64);
         Self {
             min_backoff_ms: 100,
             max_backoff_ms: 500,
-            max_connection_secs: 300, // 5 minutes
+            max_connection_secs: cycle_secs,
             disconnect_retry_ms: 100, // Fast reconnect
         }
     }
 
-    /// Relaxed polling for monitoring dashboards
-    /// Min: 1000ms, Max: 20000ms, Connection cycle: 10 minutes
+    /// Relaxed polling for monitoring dashboards.
+    /// Min: 1000ms, Max: 20000ms, Connection cycle: 10 minutes (configurable via SSE_MONITORING_CYCLE_SECS)
     pub fn monitoring() -> Self {
+        let cycle_secs = std::env::var("SSE_MONITORING_CYCLE_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(600u64);
         Self {
             min_backoff_ms: 1000,
             max_backoff_ms: 20000,
-            max_connection_secs: 600,  // 10 minutes
+            max_connection_secs: cycle_secs,
             disconnect_retry_ms: 1000, // 1 second reconnect
         }
     }
@@ -655,5 +672,44 @@ mod tests {
             SseConnectionRejection::OrgLimitReached.to_string(),
             "per-organization SSE connection limit reached"
         );
+    }
+
+    #[test]
+    fn test_realtime_cycle_secs_env_override() {
+        // Set env var for this test
+        unsafe {
+            std::env::set_var("SSE_REALTIME_CYCLE_SECS", "900");
+        }
+        let config = SseStreamConfig::realtime();
+        assert_eq!(config.max_connection_secs, 900); // 15 minutes
+        assert_eq!(config.min_backoff_ms, 100); // unchanged
+        unsafe {
+            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
+        }
+    }
+
+    #[test]
+    fn test_monitoring_cycle_secs_env_override() {
+        unsafe {
+            std::env::set_var("SSE_MONITORING_CYCLE_SECS", "1800");
+        }
+        let config = SseStreamConfig::monitoring();
+        assert_eq!(config.max_connection_secs, 1800); // 30 minutes
+        assert_eq!(config.min_backoff_ms, 1000); // unchanged
+        unsafe {
+            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
+        }
+    }
+
+    #[test]
+    fn test_cycle_secs_env_invalid_fallback() {
+        unsafe {
+            std::env::set_var("SSE_REALTIME_CYCLE_SECS", "not_a_number");
+        }
+        let config = SseStreamConfig::realtime();
+        assert_eq!(config.max_connection_secs, 300); // falls back to default
+        unsafe {
+            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
+        }
     }
 }
