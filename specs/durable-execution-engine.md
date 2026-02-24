@@ -143,17 +143,30 @@ Latency improvement:
 
 ### Metrics Dashboard
 
-Real-time metrics charts on the durable overview page, powered by SSE streaming and a server-side `MetricsCollector`:
+Real-time metrics charts on the durable overview page, powered by SSE streaming and a server-side `MetricsCollector`. The UI always shows the **last 15 minutes**, zero-backfilled when data is missing (server just started or idle).
 
-1. **Workflow Status** — stacked area: running vs pending over time
-2. **Task Status** — stacked area: pending vs claimed over time
+1. **Workflow Status** — stacked area (running + pending) with completed/failed rate lines
+2. **Task Status** — stacked area (pending + claimed) with completed/failed rate lines
 3. **Throughput** — line chart: completed/failed tasks per interval (delta rates)
-4. **System Load** — line chart: load %, active workers, DLQ size
+4. **System Load** — dual-axis line chart: load % (0-100 left axis), workers + DLQ (right axis)
 
 **Architecture**: Background `tokio::spawn` task samples `SystemHealth` + worker stats every 10 seconds into a `VecDeque<MetricsPoint>` ring buffer (max 360 = 1 hour). Data is:
 - Included in global durable SSE `snapshot` events as `metrics_history` field
 - Available via REST `GET /v1/durable/metrics/timeseries`
 - Rendered with `recharts` (React charting library)
+- Frontend slices to 15-minute window (90 points at 10s resolution) and zero-fills gaps
+
+**MetricsPoint fields** (see `crates/server/src/api/durable.rs`):
+- Gauges: `running_workflows`, `pending_workflows`, `pending_tasks`, `claimed_tasks`, `active_workers`, `load_percentage`, `dlq_size`
+- Cumulative totals (for delta rates): `tasks_completed_total`, `tasks_failed_total`, `workflows_completed_total`, `workflows_failed_total`
+
+### Worker Heartbeat & Stale Worker Handling
+
+Workers send heartbeats every 5 seconds. The `WORKER_HEARTBEAT_TIMEOUT_SECS` constant (60s, defined in `crates/durable/src/persistence/store.rs`) is the single source of truth for stale detection:
+
+- **`get_system_health`** — only counts workers with heartbeat within threshold as active
+- **`list_workers`** — only returns workers with heartbeat within threshold
+- **`reclaim_stale_tasks`** — marks workers with stale heartbeats as `stopped` (cleans up workers that crashed without calling `deregister_worker`)
 
 Works in both dev mode (in-memory store) and full mode (PostgreSQL).
 

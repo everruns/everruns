@@ -13,6 +13,10 @@ use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 /// Prevents a single workflow from flooding the queue.
 pub const DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW: u32 = 100;
 
+/// Workers with no heartbeat within this many seconds are considered stale.
+/// Used by get_system_health, list_workers, and reclaim_stale_tasks (stale worker cleanup).
+pub const WORKER_HEARTBEAT_TIMEOUT_SECS: i64 = 60;
+
 /// Read max pending tasks per workflow from env, falling back to default.
 pub fn max_pending_tasks_per_workflow_from_env() -> u32 {
     std::env::var("DURABLE_MAX_PENDING_TASKS_PER_WORKFLOW")
@@ -252,8 +256,12 @@ pub struct SystemHealth {
     pub current_load: usize,
     pub pending_tasks: usize,
     pub claimed_tasks: usize,
+    pub completed_tasks: usize,
+    pub failed_tasks: usize,
     pub running_workflows: usize,
     pub pending_workflows: usize,
+    pub completed_workflows: usize,
+    pub failed_workflows: usize,
     pub dlq_size: usize,
 }
 
@@ -647,8 +655,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             current_load: 0,
             pending_tasks: 0,
             claimed_tasks: 0,
+            completed_tasks: 0,
+            failed_tasks: 0,
             running_workflows: 0,
             pending_workflows: 0,
+            completed_workflows: 0,
+            failed_workflows: 0,
             dlq_size: 0,
         })
     }

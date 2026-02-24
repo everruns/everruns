@@ -1317,6 +1317,8 @@ export interface MetricsPoint {
   dlq_size: number;
   tasks_completed_total: number;
   tasks_failed_total: number;
+  workflows_completed_total: number;
+  workflows_failed_total: number;
 }
 
 /** Metrics time series response */

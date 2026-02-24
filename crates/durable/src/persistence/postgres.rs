@@ -18,8 +18,9 @@ use super::store::{
     Pagination, ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus,
     ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo,
     StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus,
-    TraceContext, UpdateSchedule, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
-    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo,
+    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
+    WorkflowStatus,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -779,6 +780,32 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             );
         }
 
+        // Also mark workers with stale heartbeats as stopped.
+        // This cleans up workers that crashed without calling deregister_worker.
+        let worker_heartbeat_threshold =
+            Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
+        let stale_workers = sqlx::query(
+            r#"
+            UPDATE durable_workers
+            SET status = 'stopped'
+            WHERE status = 'active'
+              AND last_heartbeat_at < $1
+            RETURNING id
+            "#,
+        )
+        .bind(worker_heartbeat_threshold)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to mark stale workers as stopped: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if !stale_workers.is_empty() {
+            let ids: Vec<String> = stale_workers.iter().map(|r| r.get("id")).collect();
+            info!(count = stale_workers.len(), worker_ids = ?ids, "marked stale workers as stopped");
+        }
+
         Ok(reclaimed)
     }
 
@@ -953,8 +980,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
-        // Only show workers with recent heartbeat (within 60 seconds)
+        // Only show workers with recent heartbeat (within WORKER_HEARTBEAT_TIMEOUT_SECS)
         // Join with task queue to compute completed/failed counts
+        let heartbeat_threshold =
+            Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
+
         let query = r#"
             SELECT w.id, w.worker_group, w.activity_types, w.max_concurrency, w.current_load,
                    w.status, w.started_at, w.last_heartbeat_at, w.accepting_tasks,
@@ -974,12 +1004,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 WHERE claimed_by IS NOT NULL
                 GROUP BY claimed_by
             ) stats ON stats.claimed_by = w.id
-            WHERE w.last_heartbeat_at > NOW() - INTERVAL '60 seconds'
-              AND ($1::text IS NULL OR w.status = $1)
-              AND ($2::text IS NULL OR w.worker_group = $2)
+            WHERE w.last_heartbeat_at > $1
+              AND ($2::text IS NULL OR w.status = $2)
+              AND ($3::text IS NULL OR w.worker_group = $3)
             "#;
 
         let rows = sqlx::query(query)
+            .bind(heartbeat_threshold)
             .bind(&filter.status)
             .bind(&filter.worker_group)
             .fetch_all(&self.pool)
@@ -1669,22 +1700,31 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
-        // Single query to get all health stats
+        // Single query to get all health stats.
+        // $1 = heartbeat threshold: only workers with heartbeat after this are "active".
+        let heartbeat_threshold =
+            Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
+
         let row = sqlx::query(
             r#"
             SELECT
                 (SELECT COUNT(*) FROM durable_workers) as total_workers,
-                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active') as active_workers,
-                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND accepting_tasks = true) as workers_accepting,
-                (SELECT COALESCE(SUM(max_concurrency), 0) FROM durable_workers WHERE status = 'active') as total_capacity,
-                (SELECT COALESCE(SUM(current_load), 0) FROM durable_workers WHERE status = 'active') as current_load,
+                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > $1) as active_workers,
+                (SELECT COUNT(*) FROM durable_workers WHERE status = 'active' AND accepting_tasks = true AND last_heartbeat_at > $1) as workers_accepting,
+                (SELECT COALESCE(SUM(max_concurrency), 0) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > $1) as total_capacity,
+                (SELECT COALESCE(SUM(current_load), 0) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > $1) as current_load,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'pending') as pending_tasks,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed') as claimed_tasks,
+                (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed') as completed_tasks,
+                (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead')) as failed_tasks,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'running') as running_workflows,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'pending') as pending_workflows,
+                (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed') as completed_workflows,
+                (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled')) as failed_workflows,
                 (SELECT COUNT(*) FROM durable_dead_letter_queue WHERE requeued_at IS NULL) as dlq_size
             "#,
         )
+        .bind(heartbeat_threshold)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
@@ -1700,8 +1740,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             current_load: row.get::<i64, _>("current_load") as usize,
             pending_tasks: row.get::<i64, _>("pending_tasks") as usize,
             claimed_tasks: row.get::<i64, _>("claimed_tasks") as usize,
+            completed_tasks: row.get::<i64, _>("completed_tasks") as usize,
+            failed_tasks: row.get::<i64, _>("failed_tasks") as usize,
             running_workflows: row.get::<i64, _>("running_workflows") as usize,
             pending_workflows: row.get::<i64, _>("pending_workflows") as usize,
+            completed_workflows: row.get::<i64, _>("completed_workflows") as usize,
+            failed_workflows: row.get::<i64, _>("failed_workflows") as usize,
             dlq_size: row.get::<i64, _>("dlq_size") as usize,
         })
     }

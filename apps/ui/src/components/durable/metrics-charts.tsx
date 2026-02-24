@@ -2,11 +2,14 @@
 
 // Durable metrics time-series charts
 //
-// Renders 4 charts from MetricsPoint[] data:
-// 1. Workflow Status - running vs pending (stacked area)
-// 2. Task Status - pending vs claimed (stacked area)
+// Renders 4 charts from MetricsPoint[] data over a 15-minute window:
+// 1. Workflows - running + pending gauges, completed/failed rates
+// 2. Tasks - pending + claimed gauges, completed/failed rates
 // 3. Throughput - completed/failed tasks per interval (line)
-// 4. System Load - load %, active workers, DLQ size (line)
+// 4. System Load - load %, active workers, DLQ size (multi-axis)
+//
+// Zero-backfill: when data is missing (server idle or just started),
+// the chart is filled with zeros so the full 15-minute window is always shown.
 
 import { useMemo } from "react";
 import {
@@ -23,6 +26,13 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MetricsPoint } from "@/lib/api/types";
 
+/** Chart time window in minutes */
+const WINDOW_MINUTES = 15;
+/** Backend sampling resolution in seconds */
+const RESOLUTION_SECONDS = 10;
+/** Number of data points in the window */
+const WINDOW_SLOTS = (WINDOW_MINUTES * 60) / RESOLUTION_SECONDS; // 90
+
 // Tailwind-compatible colors
 const COLORS = {
   running: "#3b82f6", // blue-500
@@ -37,7 +47,11 @@ const COLORS = {
 
 function formatTime(timestamp: string): string {
   const d = new Date(timestamp);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 interface ChartData {
@@ -53,15 +67,72 @@ interface ChartData {
   // Computed rates (delta per interval)
   completed_rate: number;
   failed_rate: number;
+  workflow_completed_rate: number;
+  workflow_failed_rate: number;
+}
+
+/** Create a zero-valued MetricsPoint at a given timestamp */
+function zeroPoint(timestamp: string): MetricsPoint {
+  return {
+    timestamp,
+    running_workflows: 0,
+    pending_workflows: 0,
+    pending_tasks: 0,
+    claimed_tasks: 0,
+    active_workers: 0,
+    load_percentage: 0,
+    dlq_size: 0,
+    tasks_completed_total: 0,
+    tasks_failed_total: 0,
+    workflows_completed_total: 0,
+    workflows_failed_total: 0,
+  };
+}
+
+/**
+ * Build a fixed 15-minute window of data points at RESOLUTION_SECONDS intervals.
+ * Actual data is snapped to the nearest slot; missing slots are zero-filled.
+ */
+function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
+  const now = Date.now();
+  const windowStart = now - WINDOW_MINUTES * 60 * 1000;
+  const slotMs = RESOLUTION_SECONDS * 1000;
+
+  // Initialize all slots with zeros
+  const slots: MetricsPoint[] = [];
+  for (let i = 0; i < WINDOW_SLOTS; i++) {
+    const t = new Date(windowStart + i * slotMs);
+    slots[i] = zeroPoint(t.toISOString());
+  }
+
+  // Overlay actual data onto nearest slots
+  for (const point of points) {
+    const pointMs = new Date(point.timestamp).getTime();
+    if (pointMs < windowStart) continue;
+    const slotIndex = Math.round((pointMs - windowStart) / slotMs);
+    if (slotIndex >= 0 && slotIndex < WINDOW_SLOTS) {
+      slots[slotIndex] = point;
+    }
+  }
+
+  return slots;
 }
 
 function computeChartData(points: MetricsPoint[]): ChartData[] {
-  return points.map((p, i) => {
-    const prev = i > 0 ? points[i - 1] : null;
+  const windowed = buildTimeWindow(points);
+
+  return windowed.map((p, i) => {
+    const prev = i > 0 ? windowed[i - 1] : null;
     const completedDelta = prev
       ? Math.max(0, p.tasks_completed_total - prev.tasks_completed_total)
       : 0;
     const failedDelta = prev ? Math.max(0, p.tasks_failed_total - prev.tasks_failed_total) : 0;
+    const wfCompletedDelta = prev
+      ? Math.max(0, p.workflows_completed_total - prev.workflows_completed_total)
+      : 0;
+    const wfFailedDelta = prev
+      ? Math.max(0, p.workflows_failed_total - prev.workflows_failed_total)
+      : 0;
 
     return {
       time: formatTime(p.timestamp),
@@ -75,6 +146,8 @@ function computeChartData(points: MetricsPoint[]): ChartData[] {
       dlq_size: p.dlq_size,
       completed_rate: completedDelta,
       failed_rate: failedDelta,
+      workflow_completed_rate: wfCompletedDelta,
+      workflow_failed_rate: wfFailedDelta,
     };
   });
 }
@@ -133,7 +206,9 @@ export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Workflows</CardTitle>
-        <CardDescription className="text-xs">Running vs pending over time</CardDescription>
+        <CardDescription className="text-xs">
+          Running, pending, completed, and failed (last 15 min)
+        </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
         <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
@@ -160,6 +235,22 @@ export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
               fill={COLORS.pending}
               fillOpacity={0.3}
             />
+            <Line
+              type="monotone"
+              dataKey="workflow_completed_rate"
+              name="Completed"
+              stroke={COLORS.completed}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="workflow_failed_rate"
+              name="Failed"
+              stroke={COLORS.failed}
+              strokeWidth={2}
+              dot={false}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </CardContent>
@@ -172,7 +263,9 @@ export function TaskStatusChart({ data }: { data: ChartData[] }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Tasks</CardTitle>
-        <CardDescription className="text-xs">Pending vs claimed over time</CardDescription>
+        <CardDescription className="text-xs">
+          Pending, claimed, completed, and failed (last 15 min)
+        </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
         <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
@@ -199,6 +292,22 @@ export function TaskStatusChart({ data }: { data: ChartData[] }) {
               fill={COLORS.pending}
               fillOpacity={0.3}
             />
+            <Line
+              type="monotone"
+              dataKey="completed_rate"
+              name="Completed"
+              stroke={COLORS.completed}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="failed_rate"
+              name="Failed"
+              stroke={COLORS.failed}
+              strokeWidth={2}
+              dot={false}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </CardContent>
@@ -212,7 +321,7 @@ export function ThroughputChart({ data }: { data: ChartData[] }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Throughput</CardTitle>
         <CardDescription className="text-xs">
-          Completed and failed tasks per interval
+          Task completions and failures per interval (last 15 min)
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -250,16 +359,20 @@ export function SystemLoadChart({ data }: { data: ChartData[] }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">System Load</CardTitle>
-        <CardDescription className="text-xs">Load %, workers, and DLQ size</CardDescription>
+        <CardDescription className="text-xs">
+          Load %, workers, and DLQ size (last 15 min)
+        </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
         <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis {...xAxisProps(data)} />
-            <YAxis {...yAxisDefaults} />
+            <YAxis yAxisId="pct" {...yAxisDefaults} domain={[0, 100]} />
+            <YAxis yAxisId="count" {...yAxisDefaults} orientation="right" width={30} />
             <Tooltip content={<ChartTooltip />} />
             <Line
+              yAxisId="pct"
               type="monotone"
               dataKey="load_percentage"
               name="Load %"
@@ -268,6 +381,7 @@ export function SystemLoadChart({ data }: { data: ChartData[] }) {
               dot={false}
             />
             <Line
+              yAxisId="count"
               type="monotone"
               dataKey="active_workers"
               name="Workers"
@@ -276,6 +390,7 @@ export function SystemLoadChart({ data }: { data: ChartData[] }) {
               dot={false}
             />
             <Line
+              yAxisId="count"
               type="monotone"
               dataKey="dlq_size"
               name="DLQ"
@@ -293,22 +408,10 @@ export function SystemLoadChart({ data }: { data: ChartData[] }) {
 
 /**
  * Full metrics dashboard with all 4 charts in a 2x2 grid.
- * Renders empty state if no data points yet.
+ * Always shows a 15-minute window, zero-filled when data is missing.
  */
 export function MetricsCharts({ points }: { points: MetricsPoint[] }) {
   const chartData = useMemo(() => computeChartData(points), [points]);
-
-  if (chartData.length < 2) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <p className="text-sm text-muted-foreground">
-            Collecting metrics data... Charts will appear after a few data points are recorded.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
