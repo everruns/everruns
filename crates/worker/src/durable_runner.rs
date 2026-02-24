@@ -40,6 +40,9 @@ pub struct DurableTurnInput {
     /// Uses typed TurnId for type safety and consistent prefixed format.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_id: Option<TurnId>,
+    /// Previous LLM response ID for stateful continuation across reason iterations.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub previous_response_id: Option<String>,
 }
 
 /// Output from the turn workflow
@@ -489,6 +492,7 @@ impl AgentRunner for DurableRunner {
             agent_id,
             input_message_id,
             turn_id: None,
+            previous_response_id: None,
         };
 
         // Create workflow instance
@@ -673,6 +677,7 @@ mod tests {
             agent_id: Some(AgentId::new()),
             input_message_id: MessageId::new(),
             turn_id: None,
+            previous_response_id: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();

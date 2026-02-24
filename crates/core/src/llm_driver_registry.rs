@@ -91,6 +91,9 @@ pub struct LlmCompletionMetadata {
     pub finish_reason: Option<String>,
     /// Retry metadata (present if rate limit retries occurred)
     pub retry_metadata: Option<crate::llm_retry::RetryMetadata>,
+    /// Provider's response ID (e.g., OpenAI response ID from response.completed).
+    /// Used for `previous_response_id` chaining and OTel tracing.
+    pub response_id: Option<String>,
 }
 
 /// Trait for LLM drivers
@@ -382,6 +385,9 @@ pub struct LlmCallConfig {
     /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
     /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
     pub metadata: HashMap<String, String>,
+    /// Previous response ID for stateful continuation (OpenAI Responses API).
+    /// When set, the provider can skip re-encoding cached context.
+    pub previous_response_id: Option<String>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -393,6 +399,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by ReasonAtom from user message controls
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
+            previous_response_id: None,
         }
     }
 }
@@ -481,6 +488,12 @@ impl LlmCallConfigBuilder {
     /// Add a single metadata key-value pair
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.config.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set previous response ID for stateful continuation
+    pub fn previous_response_id(mut self, id: Option<String>) -> Self {
+        self.config.previous_response_id = id;
         self
     }
 

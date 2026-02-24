@@ -46,6 +46,9 @@ pub struct LlmSimConfig {
     /// This is useful for testing cancellation scenarios where we need a
     /// predictable time window to cancel an active turn before completion.
     pub response_delay: Option<std::time::Duration>,
+    /// Optional response ID to include in completion metadata.
+    /// Enables testing `previous_response_id` chaining.
+    pub response_id: Option<String>,
 }
 
 impl Default for LlmSimConfig {
@@ -56,6 +59,7 @@ impl Default for LlmSimConfig {
             simulate_latency: false,
             model_name: "llmsim-model".to_string(),
             response_delay: None,
+            response_id: None,
         }
     }
 }
@@ -121,6 +125,12 @@ impl LlmSimConfig {
     /// This creates a predictable time window for testing cancellation scenarios.
     pub fn with_response_delay(mut self, delay: std::time::Duration) -> Self {
         self.response_delay = Some(delay);
+        self
+    }
+
+    /// Set a response ID to include in completion metadata (for testing chaining)
+    pub fn with_response_id(mut self, id: impl Into<String>) -> Self {
+        self.response_id = Some(id.into());
         self
     }
 
@@ -428,6 +438,7 @@ impl LlmDriver for LlmSimDriver {
         let response_text = self.generate_response(&messages);
         let tool_calls = self.get_tool_calls(&messages);
         let model_name = config.model.clone();
+        let response_id_for_done = self.config.response_id.clone();
         let latency_profile = self.resolve_latency_profile(&model_name);
 
         // Calculate token estimates
@@ -484,6 +495,7 @@ impl LlmDriver for LlmSimDriver {
                 model: Some(model_name_done),
                 finish_reason: Some("stop".to_string()),
                 retry_metadata: None,
+                response_id: response_id_for_done,
             })));
             tail
         };
@@ -585,6 +597,7 @@ mod tests {
             tools: vec![],
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
         }
     }
 
@@ -778,6 +791,7 @@ mod tests {
             simulate_latency: false,
             model_name: "test".to_string(),
             response_delay: None,
+            response_id: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -875,6 +889,7 @@ mod tests {
             simulate_latency: false,
             model_name: "test".to_string(),
             response_delay: None,
+            response_id: None,
         };
 
         let driver = LlmSimDriver::new(config);

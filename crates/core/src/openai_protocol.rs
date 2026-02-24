@@ -388,6 +388,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                 model: Some(model),
                                 finish_reason: reason.or_else(|| Some("stop".to_string())),
                                 retry_metadata: retry_metadata_for_done.map(|arc| (*arc).clone()),
+                                response_id: None,
                             }));
                         }
 

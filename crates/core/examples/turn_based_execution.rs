@@ -260,6 +260,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 org_id: 0,
                 mcp_tool_definitions: vec![],
+                previous_response_id: None,
             })
             .await?;
 

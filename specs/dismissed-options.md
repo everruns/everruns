@@ -101,3 +101,28 @@ This document records technical options that were considered but dismissed for s
 - Distributed rate limiting (Redis-based token bucket) becomes necessary at scale
 - Provider-specific TPM/RPM budgets need explicit coordination across workers
 - Observed 429 storms that existing retry logic cannot absorb
+
+## OpenAI WebSocket Transport
+
+**Status**: Dismissed (Phase 1 plumbing retained)
+
+**What it was**: OpenAI's Responses API supports a WebSocket transport (`wss://api.openai.com/v1/responses`) that eliminates per-request HTTP overhead and enables incremental input across multi-turn tool-calling workflows by keeping a persistent connection.
+
+**Why considered**: Could reduce latency for multi-turn agent loops by avoiding repeated HTTP connection setup, and enable `store=false` with connection-local context caching for lower cost.
+
+**Why dismissed**:
+- **Horizontal scaling conflict**: Workers are stateless (`SKIP LOCKED`, no affinity). Activities within a turn can land on different workers. WebSocket connections are inherently stateful and pinned to a single process, contradicting the architecture.
+- **`store=true` already works cross-worker**: With `previous_response_id` over HTTP (Phase 1), OpenAI hydrates cached context from disk. This gives the same latency benefit (skip re-encoding) without requiring connection affinity.
+- **Operational complexity**: Connection lifecycle management (60-min limit, reconnection, error fallback), connection pooling, and worker-affinity routing add significant complexity for marginal latency gain.
+- **Single concurrent response per connection**: Each WebSocket connection supports only one in-flight response, limiting throughput per connection.
+
+**What we use instead**: `previous_response_id` threading over standard HTTP (Responses API with `store=true`):
+- Response IDs flow through `ReasonResult` → turn loop → `ReasonInput` → `LlmCallConfig` → `ResponsesRequest`
+- Works across any worker without connection affinity
+- OpenAI server-side context caching reduces re-encoding cost
+- No additional infrastructure or connection management needed
+
+**May revisit when**:
+- Worker affinity routing is implemented for other reasons
+- WebSocket transport supports multiple concurrent responses
+- Benchmarks show HTTP connection overhead is a meaningful bottleneck

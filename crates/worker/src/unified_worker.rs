@@ -418,6 +418,13 @@ where
             let act_input: ActInput = serde_json::from_value(task.input.clone())
                 .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
+            // Extract previous_response_id injected by reason→act scheduling
+            let previous_response_id = task
+                .input
+                .get("previous_response_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             // Create DurableTurnInput from ActInput context
             let turn_input = DurableTurnInput {
                 org_id: everruns_core::DEFAULT_ORG_ID,
@@ -426,6 +433,7 @@ where
                 agent_id: act_input.agent_id,
                 input_message_id: act_input.context.input_message_id,
                 turn_id: Some(act_input.context.turn_id),
+                previous_response_id,
             };
 
             let res = execute_act_activity(adapters, &act_input).await;
@@ -637,6 +645,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         agent_id: input.agent_id,
         org_id: input.org_id,
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
+        previous_response_id: input.previous_response_id.clone(),
     };
 
     let result = atom.execute(reason_input).await?;
@@ -834,6 +843,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                 agent_id: input.agent_id,
                 input_message_id: input.input_message_id,
                 turn_id,
+                previous_response_id: None,
             };
             let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -866,6 +876,9 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             // Check if there are tool calls
             let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
+
+            // Carry response_id forward for next reason iteration
+            let response_id = reason_result.response_id.clone();
 
             if reason_result.has_tool_calls && reason_result.success {
                 let turn_id = input.turn_id.unwrap_or_default();
@@ -900,7 +913,11 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                         tool_calls: server_tool_calls,
                         tool_definitions: reason_result.tool_definitions.clone(),
                     };
-                    let act_input_json = serde_json::to_value(&act_input)?;
+                    let mut act_input_json = serde_json::to_value(&act_input)?;
+                    // Carry response_id through act task for next reason iteration
+                    if let Some(rid) = &response_id {
+                        act_input_json["previous_response_id"] = serde_json::json!(rid);
+                    }
                     let activity_id = format!("act_{}", Uuid::now_v7());
 
                     let task = TaskDefinition {
@@ -961,6 +978,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             }
         }
         "act" => {
+            // Use input as-is; previous_response_id was set by the reason→act transition
             let input_json = serde_json::to_value(input)?;
 
             // Schedule another reason activity
@@ -1242,6 +1260,7 @@ mod tests {
             max_iterations: 100,
             error: None,
             usage: None,
+            response_id: None,
         };
 
         // Use the same partition logic as the worker

@@ -431,6 +431,7 @@ impl LlmDriver for GeminiLlmDriver {
                                 model: Some(model.clone()),
                                 finish_reason: Some("stop".to_string()),
                                 retry_metadata: retry_metadata.as_ref().map(|arc| (**arc).clone()),
+                                response_id: None,
                             }));
                             return Some((
                                 result,
@@ -562,6 +563,7 @@ impl LlmDriver for GeminiLlmDriver {
                                                     retry_metadata: retry_metadata
                                                         .as_ref()
                                                         .map(|arc| (**arc).clone()),
+                                                    response_id: None,
                                                 }));
                                             return Some((
                                                 result,
@@ -655,6 +657,7 @@ impl LlmDriver for GeminiLlmDriver {
                                 model: Some(model.clone()),
                                 finish_reason: Some("stop".to_string()),
                                 retry_metadata: retry_metadata.as_ref().map(|arc| (**arc).clone()),
+                                response_id: None,
                             }));
                             return Some((
                                 result,
