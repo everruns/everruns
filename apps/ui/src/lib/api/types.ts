@@ -1265,10 +1265,16 @@ export interface DurableSystemHealth {
   // Task queue
   pending_tasks: number;
   claimed_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  started_tasks: number;
   queue_depth_by_type?: Record<string, number>;
   // Workflows
   running_workflows: number;
   pending_workflows: number;
+  completed_workflows: number;
+  failed_workflows: number;
+  started_workflows: number;
   // DLQ
   dlq_size: number;
   // Circuit breakers (optional - computed from circuit-breakers endpoint if needed)
@@ -1317,8 +1323,10 @@ export interface MetricsPoint {
   dlq_size: number;
   tasks_completed_total: number;
   tasks_failed_total: number;
+  tasks_started_total: number;
   workflows_completed_total: number;
   workflows_failed_total: number;
+  workflows_started_total: number;
 }
 
 /** Metrics time series response */

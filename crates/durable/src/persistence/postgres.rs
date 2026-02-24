@@ -1717,10 +1717,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed') as claimed_tasks,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed') as completed_tasks,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead')) as failed_tasks,
+                (SELECT COUNT(*) FROM durable_task_queue WHERE claimed_at IS NOT NULL) as started_tasks,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'running') as running_workflows,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'pending') as pending_workflows,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed') as completed_workflows,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled')) as failed_workflows,
+                (SELECT COUNT(*) FROM durable_workflow_instances WHERE started_at IS NOT NULL) as started_workflows,
                 (SELECT COUNT(*) FROM durable_dead_letter_queue WHERE requeued_at IS NULL) as dlq_size
             "#,
         )
@@ -1742,10 +1744,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             claimed_tasks: row.get::<i64, _>("claimed_tasks") as usize,
             completed_tasks: row.get::<i64, _>("completed_tasks") as usize,
             failed_tasks: row.get::<i64, _>("failed_tasks") as usize,
+            started_tasks: row.get::<i64, _>("started_tasks") as usize,
             running_workflows: row.get::<i64, _>("running_workflows") as usize,
             pending_workflows: row.get::<i64, _>("pending_workflows") as usize,
             completed_workflows: row.get::<i64, _>("completed_workflows") as usize,
             failed_workflows: row.get::<i64, _>("failed_workflows") as usize,
+            started_workflows: row.get::<i64, _>("started_workflows") as usize,
             dlq_size: row.get::<i64, _>("dlq_size") as usize,
         })
     }

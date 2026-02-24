@@ -93,18 +93,6 @@ impl AppState {
                             }
                         };
 
-                        let workers = match s.list_workers(WorkerFilter::default()).await {
-                            Ok(w) => w,
-                            Err(e) => {
-                                tracing::error!("Metrics sampler: failed to list workers: {}", e);
-                                continue;
-                            }
-                        };
-
-                        let tasks_completed_total: u64 =
-                            workers.iter().map(|w| w.tasks_completed).sum();
-                        let tasks_failed_total: u64 = workers.iter().map(|w| w.tasks_failed).sum();
-
                         let load_percentage = if health.total_capacity > 0 {
                             (health.current_load as f64 / health.total_capacity as f64) * 100.0
                         } else {
@@ -120,10 +108,13 @@ impl AppState {
                             active_workers: health.active_workers,
                             load_percentage,
                             dlq_size: health.dlq_size,
-                            tasks_completed_total,
-                            tasks_failed_total,
+                            // Use DB-based cumulative counts (reliable even when workers go stale)
+                            tasks_completed_total: health.completed_tasks as u64,
+                            tasks_failed_total: health.failed_tasks as u64,
+                            tasks_started_total: health.started_tasks as u64,
                             workflows_completed_total: health.completed_workflows as u64,
                             workflows_failed_total: health.failed_workflows as u64,
+                            workflows_started_total: health.started_workflows as u64,
                         }
                     }
                     None => {
@@ -139,8 +130,10 @@ impl AppState {
                             dlq_size: 0,
                             tasks_completed_total: 0,
                             tasks_failed_total: 0,
+                            tasks_started_total: 0,
                             workflows_completed_total: 0,
                             workflows_failed_total: 0,
+                            workflows_started_total: 0,
                         }
                     }
                 };
@@ -233,10 +226,12 @@ pub struct HealthResponse {
     pub claimed_tasks: usize,
     pub completed_tasks: usize,
     pub failed_tasks: usize,
+    pub started_tasks: usize,
     pub running_workflows: usize,
     pub pending_workflows: usize,
     pub completed_workflows: usize,
     pub failed_workflows: usize,
+    pub started_workflows: usize,
     pub dlq_size: usize,
 }
 
@@ -268,10 +263,12 @@ impl From<SystemHealth> for HealthResponse {
             claimed_tasks: h.claimed_tasks,
             completed_tasks: h.completed_tasks,
             failed_tasks: h.failed_tasks,
+            started_tasks: h.started_tasks,
             running_workflows: h.running_workflows,
             pending_workflows: h.pending_workflows,
             completed_workflows: h.completed_workflows,
             failed_workflows: h.failed_workflows,
+            started_workflows: h.started_workflows,
             dlq_size: h.dlq_size,
         }
     }
@@ -575,8 +572,10 @@ pub struct MetricsPoint {
     // Cumulative totals (for computing deltas / rates on frontend)
     pub tasks_completed_total: u64,
     pub tasks_failed_total: u64,
+    pub tasks_started_total: u64,
     pub workflows_completed_total: u64,
     pub workflows_failed_total: u64,
+    pub workflows_started_total: u64,
 }
 
 /// Metrics time series response
@@ -1703,6 +1702,7 @@ pub async fn stream_durable_sse(
 
                 if has_changes {
                     // Push a metrics point for extra granularity while dashboard is open
+                    // Use DB-based cumulative counts (reliable even when workers go stale)
                     state
                         .metrics
                         .push(MetricsPoint {
@@ -1714,18 +1714,12 @@ pub async fn stream_durable_sse(
                             active_workers: snapshot.health.active_workers,
                             load_percentage: snapshot.health.load_percentage,
                             dlq_size: snapshot.health.dlq_size,
-                            tasks_completed_total: snapshot
-                                .workers
-                                .iter()
-                                .map(|w| w.tasks_completed)
-                                .sum(),
-                            tasks_failed_total: snapshot
-                                .workers
-                                .iter()
-                                .map(|w| w.tasks_failed)
-                                .sum(),
+                            tasks_completed_total: snapshot.health.completed_tasks as u64,
+                            tasks_failed_total: snapshot.health.failed_tasks as u64,
+                            tasks_started_total: snapshot.health.started_tasks as u64,
                             workflows_completed_total: snapshot.health.completed_workflows as u64,
                             workflows_failed_total: snapshot.health.failed_workflows as u64,
+                            workflows_started_total: snapshot.health.started_workflows as u64,
                         })
                         .await;
 
@@ -2037,10 +2031,12 @@ mod tests {
                 claimed_tasks: 3,
                 completed_tasks: 20,
                 failed_tasks: 1,
+                started_tasks: 24,
                 running_workflows: 1,
                 pending_workflows: 0,
                 completed_workflows: 10,
                 failed_workflows: 0,
+                started_workflows: 11,
                 dlq_size: 0,
             },
             workers: vec![],
@@ -2071,8 +2067,10 @@ mod tests {
                 dlq_size: 0,
                 tasks_completed_total: 42,
                 tasks_failed_total: 1,
+                tasks_started_total: 46,
                 workflows_completed_total: 10,
                 workflows_failed_total: 0,
+                workflows_started_total: 11,
             }],
         };
 
@@ -2119,10 +2117,12 @@ mod tests {
             claimed_tasks: 10,
             completed_tasks: 0,
             failed_tasks: 0,
+            started_tasks: 10,
             running_workflows: 2,
             pending_workflows: 1,
             completed_workflows: 0,
             failed_workflows: 0,
+            started_workflows: 2,
             dlq_size: 0,
         };
 
@@ -2146,10 +2146,12 @@ mod tests {
             claimed_tasks: 0,
             completed_tasks: 0,
             failed_tasks: 0,
+            started_tasks: 0,
             running_workflows: 0,
             pending_workflows: 0,
             completed_workflows: 0,
             failed_workflows: 0,
+            started_workflows: 0,
             dlq_size: 0,
         };
 
@@ -2169,10 +2171,12 @@ mod tests {
             claimed_tasks: 0,
             completed_tasks: 0,
             failed_tasks: 0,
+            started_tasks: 0,
             running_workflows: 0,
             pending_workflows: 0,
             completed_workflows: 0,
             failed_workflows: 0,
+            started_workflows: 0,
             dlq_size: 5,
         };
 
@@ -2191,11 +2195,13 @@ mod tests {
             pending_tasks: 0,
             completed_tasks: 0,
             failed_tasks: 0,
+            started_tasks: 0,
             claimed_tasks: 0,
             running_workflows: 0,
             pending_workflows: 0,
             completed_workflows: 0,
             failed_workflows: 0,
+            started_workflows: 0,
             dlq_size: 0,
         };
 
@@ -2483,8 +2489,10 @@ mod tests {
                 dlq_size: 0,
                 tasks_completed_total: 0,
                 tasks_failed_total: 0,
+                tasks_started_total: 0,
                 workflows_completed_total: 0,
                 workflows_failed_total: 0,
+                workflows_started_total: 0,
             })
             .await;
 
@@ -2510,8 +2518,10 @@ mod tests {
                     dlq_size: 0,
                     tasks_completed_total: 0,
                     tasks_failed_total: 0,
+                    tasks_started_total: 0,
                     workflows_completed_total: 0,
                     workflows_failed_total: 0,
+                    workflows_started_total: 0,
                 })
                 .await;
         }
@@ -2541,8 +2551,10 @@ mod tests {
                     dlq_size: 0,
                     tasks_completed_total: 0,
                     tasks_failed_total: 0,
+                    tasks_started_total: 0,
                     workflows_completed_total: 0,
                     workflows_failed_total: 0,
+                    workflows_started_total: 0,
                 })
                 .await;
         }
@@ -2569,8 +2581,10 @@ mod tests {
                     dlq_size: 0,
                     tasks_completed_total: 100,
                     tasks_failed_total: 2,
+                    tasks_started_total: 104,
                     workflows_completed_total: 50,
                     workflows_failed_total: 1,
+                    workflows_started_total: 54,
                 },
                 MetricsPoint {
                     timestamp: Utc::now(),
@@ -2583,8 +2597,10 @@ mod tests {
                     dlq_size: 1,
                     tasks_completed_total: 105,
                     tasks_failed_total: 3,
+                    tasks_started_total: 112,
                     workflows_completed_total: 52,
                     workflows_failed_total: 1,
+                    workflows_started_total: 57,
                 },
             ],
             resolution_seconds: 10,

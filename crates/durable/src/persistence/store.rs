@@ -258,10 +258,14 @@ pub struct SystemHealth {
     pub claimed_tasks: usize,
     pub completed_tasks: usize,
     pub failed_tasks: usize,
+    /// Cumulative: tasks that have ever been started (claimed_at IS NOT NULL)
+    pub started_tasks: usize,
     pub running_workflows: usize,
     pub pending_workflows: usize,
     pub completed_workflows: usize,
     pub failed_workflows: usize,
+    /// Cumulative: workflows that have ever been started (started_at IS NOT NULL)
+    pub started_workflows: usize,
     pub dlq_size: usize,
 }
 
@@ -657,10 +661,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             claimed_tasks: 0,
             completed_tasks: 0,
             failed_tasks: 0,
+            started_tasks: 0,
             running_workflows: 0,
             pending_workflows: 0,
             completed_workflows: 0,
             failed_workflows: 0,
+            started_workflows: 0,
             dlq_size: 0,
         })
     }

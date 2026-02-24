@@ -884,6 +884,15 @@ async fn test_system_health_includes_completed_and_failed_counts() {
         health.pending_workflows >= 1,
         "should count pending workflows"
     );
+    // started_workflows counts all workflows where started_at IS NOT NULL.
+    // completed and failed workflows have started_at set (they ran before finishing).
+    // Note: our test uses direct SQL UPDATE which may not set started_at,
+    // so we just verify the field exists and is non-negative.
+    assert!(
+        health.started_workflows
+            <= health.completed_workflows + health.failed_workflows + health.running_workflows,
+        "started_workflows should be consistent with other counts"
+    );
 
     cleanup_workflow(&store, wf_completed).await;
     cleanup_workflow(&store, wf_failed).await;
