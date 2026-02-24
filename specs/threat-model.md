@@ -678,7 +678,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 |----|--------|----------|------------|--------|
 | TM-DOS-001 | Large API request body | High | Input size limits on all fields; multipart upload capped at 101 MB | MITIGATED |
 | TM-DOS-002 | Agent loop infinite iteration | High | Max 10 iterations per turn; configurable | MITIGATED |
-| TM-DOS-003 | SSE connection exhaustion | Medium | SSE connections tied to session; no global connection limit | **OPEN** |
+| TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) SSE connection limits via SseConnectionTracker | MITIGATED |
 | TM-DOS-004 | Database connection pool exhaustion | Medium | sqlx connection pool with max_connections; timeouts on acquisition | MITIGATED |
 | TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
@@ -771,7 +771,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
-| TM-DOS-003 | SSE connection exhaustion | Medium | Global SSE connection limit with per-user cap |
+| TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-CSB-002 | Unbounded sandbox creation | Medium | Add per-session sandbox count limit |
 
