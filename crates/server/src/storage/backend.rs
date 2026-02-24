@@ -294,6 +294,15 @@ impl StorageBackend {
         dispatch!(self, count_sessions_by_status, org_id)
     }
 
+    /// Find a single session matching ALL given tags within an org.
+    pub async fn find_session_by_tags(
+        &self,
+        org_id: i64,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(self, find_session_by_tags, org_id, tags)
+    }
+
     pub async fn update_session(
         &self,
         org_id: i64,

@@ -951,6 +951,31 @@ impl Database {
         Ok(rows)
     }
 
+    /// Find a single session matching ALL given tags within an org.
+    /// Used for singleton patterns like global chat (one session per user per org).
+    pub async fn find_session_by_tags(
+        &self,
+        org_id: i64,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions
+            WHERE org_id = $1 AND tags @> $2
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Update session by org and session id
     pub async fn update_session(
         &self,

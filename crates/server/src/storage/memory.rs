@@ -845,6 +845,22 @@ impl InMemoryDatabase {
         Ok(counts.into_iter().collect())
     }
 
+    /// Find a single session matching ALL given tags within an org.
+    pub async fn find_session_by_tags(
+        &self,
+        org_id: i64,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| s.org_id == org_id && tags.iter().all(|tag| s.tags.contains(tag)))
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(result.into_iter().next())
+    }
+
     /// Update session, validating org ownership directly
     pub async fn update_session(
         &self,
