@@ -948,7 +948,11 @@ To prevent stale connections through proxies and load balancers, SSE connections
 
 Each connection's cycle interval is jittered by ±20% (e.g., 5 min base → 4–6 min actual) to prevent thundering-herd reconnection storms when many clients connect simultaneously. The jittered duration is computed once at stream creation.
 
-Before closing, the server sends a `disconnecting` event so clients can reconnect immediately using `since_id`. This ensures no events are missed.
+Cycle intervals are configurable via environment variables:
+- `SSE_REALTIME_CYCLE_SECS` (default: 300) — session event streams
+- `SSE_MONITORING_CYCLE_SECS` (default: 600) — durable monitoring streams
+
+Before closing, the server sends a `disconnecting` event so clients can reconnect immediately using `since_id`. This ensures no events are missed. The SDK (v0.1.2+/main) handles `disconnecting` events transparently — they do not consume the retry budget.
 
 ### Retry Hints
 
