@@ -35,5 +35,6 @@ Allow: /
 # Default
 User-agent: *
 Allow: /
+Disallow: /cdn-cgi/
 
 Sitemap: https://docs.everruns.com/sitemap.xml
