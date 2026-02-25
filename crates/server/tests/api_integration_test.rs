@@ -23,6 +23,8 @@ use everruns_core::{Agent, Harness, LlmModel, Session, SessionFile};
 const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
 /// Seed harness ID from seed.rs (GENERIC_HARNESS = 0x01933b5a_0000_7000_8000_000000000602)
 const SEED_GENERIC_HARNESS_ID: &str = "harness_01933b5a000070008000000000000602";
+/// Seed harness ID from seed.rs (CHAT_HARNESS = 0x01933b5a_0000_7000_8000_000000000603)
+const SEED_CHAT_HARNESS_ID: &str = "harness_01933b5a000070008000000000000603";
 
 // ============================================
 // Health Endpoint Tests
@@ -1636,4 +1638,77 @@ async fn test_capability_info_includes_features() {
             .is_none_or(|a| a.is_empty()),
         "noop should have no features",
     );
+}
+
+// ============================================
+// Global Chat Session Tests
+// ============================================
+
+#[tokio::test]
+async fn test_global_chat_creates_session() {
+    let server = TestServer::new().await;
+
+    // First call should create a new chat session
+    let session: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_eq!(session.title.as_deref(), Some("Chat"));
+    assert!(session.tags.contains(&"global-chat".to_string()));
+}
+
+#[tokio::test]
+async fn test_global_chat_returns_same_session() {
+    let server = TestServer::new().await;
+
+    // First call creates
+    let first: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    // Second call returns the same session
+    let second: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_eq!(first.id, second.id, "Should return the same singleton session");
+}
+
+#[tokio::test]
+async fn test_global_chat_has_chat_harness() {
+    let server = TestServer::new().await;
+
+    let session: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_eq!(
+        session.harness_id.to_string(),
+        SEED_CHAT_HARNESS_ID,
+        "Chat session should use the Chat harness"
+    );
+}
+
+#[tokio::test]
+async fn test_chat_harness_exists_in_seed() {
+    let server = TestServer::new().await;
+
+    // Verify the Chat harness was seeded
+    let harnesses: Vec<Harness> = server.get("/v1/harnesses").await.assert_success().json();
+
+    let chat_harness = harnesses
+        .iter()
+        .find(|h| h.name == "Chat")
+        .expect("Chat harness should exist in seed data");
+
+    assert_eq!(chat_harness.id.to_string(), SEED_CHAT_HARNESS_ID);
+    assert!(chat_harness.tags.contains(&"chat".to_string()));
 }

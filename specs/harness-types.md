@@ -51,6 +51,23 @@ The recommended default harness. Bundles the core capabilities needed for genera
 - Agents that store API keys or credentials in session secrets
 - General-purpose assistant workflows
 
+### Chat
+
+Conversational harness for the global chat interface. Identical capabilities to Generic, but tagged separately to support the per-user singleton session pattern.
+
+| Property | Value |
+|----------|-------|
+| Name | Chat |
+| Seed ID | `harness_01933b5a000070008000000000000603` |
+| System Prompt | "You are a helpful assistant." |
+| Tags | `chat`, `seed` |
+
+**Capabilities:** Same as Generic (`session_file_system`, `virtual_bash`, `session_storage`, `session`, `agent_instructions`, `skills`).
+
+**Use cases:**
+- Global chat interface (web UI at `/chat`)
+- Per-user singleton sessions via tag-based lookup
+
 ## Design Decisions
 
 | Question | Decision |
@@ -75,6 +92,7 @@ Harness UUIDs occupy the `0x600-0x6FF` range in the seed ID schema:
 |---------|-----------|
 | Base | `0x01933b5a_0000_7000_8000_000000000601` |
 | Generic | `0x01933b5a_0000_7000_8000_000000000602` |
+| Chat | `0x01933b5a_0000_7000_8000_000000000603` |
 
 ## Future Harness Types
 
