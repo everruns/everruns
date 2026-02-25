@@ -2,14 +2,13 @@
 
 // Durable metrics time-series charts
 //
-// Renders 4 charts from MetricsPoint[] data over a 15-minute window:
-// 1. Workflows - running + pending gauges, completed/failed rates
-// 2. Tasks - pending + claimed gauges, completed/failed rates
-// 3. Throughput - completed/failed tasks per interval (line)
-// 4. System Load - load %, active workers, DLQ size (multi-axis)
+// Design decision: show RATES from cumulative counters, not point-in-time gauges.
+// Running/pending gauges are always 0 when workflows complete faster than the
+// 10-second sampling interval. Rates (started/completed/failed per interval)
+// give meaningful throughput visibility regardless of workflow duration.
 //
-// Zero-backfill: when data is missing (server idle or just started),
-// the chart is filled with zeros so the full 15-minute window is always shown.
+// Zero-backfill: gauge fields are zero-filled for empty slots; cumulative counter
+// fields are carry-forwarded from the last known value to avoid false rate spikes.
 
 import { useMemo } from "react";
 import {
@@ -35,7 +34,7 @@ const WINDOW_SLOTS = (WINDOW_MINUTES * 60) / RESOLUTION_SECONDS; // 90
 
 // Tailwind-compatible colors
 const COLORS = {
-  running: "#3b82f6", // blue-500
+  started: "#3b82f6", // blue-500
   pending: "#eab308", // yellow-500
   claimed: "#8b5cf6", // violet-500
   completed: "#22c55e", // green-500
@@ -43,6 +42,7 @@ const COLORS = {
   load: "#f97316", // orange-500
   workers: "#06b6d4", // cyan-500
   dlq: "#ef4444", // red-500
+  running: "#3b82f6", // blue-500
 };
 
 function formatTime(timestamp: string): string {
@@ -57,6 +57,7 @@ function formatTime(timestamp: string): string {
 interface ChartData {
   time: string;
   timestamp: string;
+  // Gauges (point-in-time)
   running_workflows: number;
   pending_workflows: number;
   pending_tasks: number;
@@ -64,11 +65,35 @@ interface ChartData {
   load_percentage: number;
   active_workers: number;
   dlq_size: number;
-  // Computed rates (delta per interval)
+  // Computed rates (delta per interval) from cumulative counters
   completed_rate: number;
   failed_rate: number;
+  started_rate: number;
   workflow_completed_rate: number;
   workflow_failed_rate: number;
+  workflow_started_rate: number;
+}
+
+/** Cumulative counter field names in MetricsPoint (all are numeric) */
+const COUNTER_FIELDS = [
+  "tasks_completed_total",
+  "tasks_failed_total",
+  "tasks_started_total",
+  "workflows_completed_total",
+  "workflows_failed_total",
+  "workflows_started_total",
+] as const;
+
+type CounterField = (typeof COUNTER_FIELDS)[number];
+
+/** Get a counter value from a MetricsPoint */
+function getCounter(p: MetricsPoint, field: CounterField): number {
+  return p[field];
+}
+
+/** Set a counter value on a mutable metrics point record */
+function setCounter(p: Record<string, unknown>, field: CounterField, value: number): void {
+  p[field] = value;
 }
 
 /** Create a zero-valued MetricsPoint at a given timestamp */
@@ -84,14 +109,18 @@ function zeroPoint(timestamp: string): MetricsPoint {
     dlq_size: 0,
     tasks_completed_total: 0,
     tasks_failed_total: 0,
+    tasks_started_total: 0,
     workflows_completed_total: 0,
     workflows_failed_total: 0,
+    workflows_started_total: 0,
   };
 }
 
 /**
  * Build a fixed 15-minute window of data points at RESOLUTION_SECONDS intervals.
- * Actual data is snapped to the nearest slot; missing slots are zero-filled.
+ * Actual data is snapped to the nearest slot; missing slots are filled:
+ * - Gauge fields: zero-filled (no activity at that moment)
+ * - Counter fields: carry-forwarded (last known cumulative value, prevents false rate spikes)
  */
 function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
   const now = Date.now();
@@ -105,6 +134,9 @@ function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
     slots[i] = zeroPoint(t.toISOString());
   }
 
+  // Track which slots have real data
+  const hasData: boolean[] = new Array(WINDOW_SLOTS).fill(false);
+
   // Overlay actual data onto nearest slots
   for (const point of points) {
     const pointMs = new Date(point.timestamp).getTime();
@@ -112,6 +144,40 @@ function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
     const slotIndex = Math.round((pointMs - windowStart) / slotMs);
     if (slotIndex >= 0 && slotIndex < WINDOW_SLOTS) {
       slots[slotIndex] = point;
+      hasData[slotIndex] = true;
+    }
+  }
+
+  // Carry-forward cumulative counters through empty slots.
+  // This prevents rate spikes at boundaries between zero-filled and real data.
+  let lastCounters: Partial<Record<CounterField, number>> = {};
+  for (let i = 0; i < WINDOW_SLOTS; i++) {
+    if (hasData[i]) {
+      // Update last known counter values from real data
+      for (const field of COUNTER_FIELDS) {
+        lastCounters[field] = getCounter(slots[i], field);
+      }
+    } else if (Object.keys(lastCounters).length > 0) {
+      // Fill empty slot with last known counter values
+      const slot = slots[i] as unknown as Record<string, unknown>;
+      for (const field of COUNTER_FIELDS) {
+        if (field in lastCounters) {
+          setCounter(slot, field, lastCounters[field]!);
+        }
+      }
+    }
+  }
+
+  // Also backfill counters backward for slots before the first real data point.
+  // Find the first real data point's counter values and fill backwards.
+  const firstRealIdx = hasData.indexOf(true);
+  if (firstRealIdx > 0) {
+    const firstReal = slots[firstRealIdx];
+    for (let i = 0; i < firstRealIdx; i++) {
+      const slot = slots[i] as unknown as Record<string, unknown>;
+      for (const field of COUNTER_FIELDS) {
+        setCounter(slot, field, getCounter(firstReal, field));
+      }
     }
   }
 
@@ -127,11 +193,15 @@ function computeChartData(points: MetricsPoint[]): ChartData[] {
       ? Math.max(0, p.tasks_completed_total - prev.tasks_completed_total)
       : 0;
     const failedDelta = prev ? Math.max(0, p.tasks_failed_total - prev.tasks_failed_total) : 0;
+    const startedDelta = prev ? Math.max(0, p.tasks_started_total - prev.tasks_started_total) : 0;
     const wfCompletedDelta = prev
       ? Math.max(0, p.workflows_completed_total - prev.workflows_completed_total)
       : 0;
     const wfFailedDelta = prev
       ? Math.max(0, p.workflows_failed_total - prev.workflows_failed_total)
+      : 0;
+    const wfStartedDelta = prev
+      ? Math.max(0, p.workflows_started_total - prev.workflows_started_total)
       : 0;
 
     return {
@@ -146,8 +216,10 @@ function computeChartData(points: MetricsPoint[]): ChartData[] {
       dlq_size: p.dlq_size,
       completed_rate: completedDelta,
       failed_rate: failedDelta,
+      started_rate: startedDelta,
       workflow_completed_rate: wfCompletedDelta,
       workflow_failed_rate: wfFailedDelta,
+      workflow_started_rate: wfStartedDelta,
     };
   });
 }
@@ -207,7 +279,7 @@ export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Workflows</CardTitle>
         <CardDescription className="text-xs">
-          Running, pending, completed, and failed (last 15 min)
+          Throughput per interval: started, completed, failed (last 15 min)
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -219,20 +291,11 @@ export function WorkflowStatusChart({ data }: { data: ChartData[] }) {
             <Tooltip content={<ChartTooltip />} />
             <Area
               type="monotone"
-              dataKey="running_workflows"
-              name="Running"
+              dataKey="workflow_started_rate"
+              name="Started"
               stackId="1"
-              stroke={COLORS.running}
-              fill={COLORS.running}
-              fillOpacity={0.3}
-            />
-            <Area
-              type="monotone"
-              dataKey="pending_workflows"
-              name="Pending"
-              stackId="1"
-              stroke={COLORS.pending}
-              fill={COLORS.pending}
+              stroke={COLORS.started}
+              fill={COLORS.started}
               fillOpacity={0.3}
             />
             <Line
@@ -264,7 +327,7 @@ export function TaskStatusChart({ data }: { data: ChartData[] }) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Tasks</CardTitle>
         <CardDescription className="text-xs">
-          Pending, claimed, completed, and failed (last 15 min)
+          Throughput per interval: started, completed, failed (last 15 min)
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -276,20 +339,11 @@ export function TaskStatusChart({ data }: { data: ChartData[] }) {
             <Tooltip content={<ChartTooltip />} />
             <Area
               type="monotone"
-              dataKey="claimed_tasks"
-              name="Claimed"
+              dataKey="started_rate"
+              name="Started"
               stackId="1"
-              stroke={COLORS.claimed}
-              fill={COLORS.claimed}
-              fillOpacity={0.3}
-            />
-            <Area
-              type="monotone"
-              dataKey="pending_tasks"
-              name="Pending"
-              stackId="1"
-              stroke={COLORS.pending}
-              fill={COLORS.pending}
+              stroke={COLORS.started}
+              fill={COLORS.started}
               fillOpacity={0.3}
             />
             <Line
