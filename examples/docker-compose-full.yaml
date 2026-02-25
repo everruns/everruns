@@ -175,6 +175,10 @@ configs:
       #   /api-doc/* -> API
       #   /health    -> API
       #   /*         -> UI
+      #
+      # SSE: flush_interval -1 disables response buffering for SSE.
+      # Server handles 5-min connection cycling with disconnecting events;
+      # SDK reconnects transparently (no retry budget cost).
       :9300 {
         handle_path /api/* {
           reverse_proxy server:9000 {

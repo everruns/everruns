@@ -6,6 +6,11 @@
 #   /api-doc/* -> API server at :9000
 #   /health    -> API server at :9000
 #   /*         -> UI dev server at :9100
+#
+# SSE/Proxy Notes:
+#   - flush_interval -1: disables response buffering (required for SSE)
+#   - Server handles its own 5-min connection cycling with disconnecting events
+#   - SDK reconnects transparently on disconnecting events (no retry budget cost)
 :9300 {
 	handle_path /api/* {
 		reverse_proxy localhost:9000 {

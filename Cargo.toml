@@ -94,8 +94,8 @@ regex = "1.11"
 time = "0.3"
 parking_lot = "0.12"
 
-# Everruns SDK
-everruns-sdk = "0.1.2"
+# Everruns SDK (git main: SSE disconnect retry fix, backoff reset, client reuse)
+everruns-sdk = { git = "https://github.com/everruns/sdk", branch = "main" }
 
 # gRPC (tonic)
 tonic = "0.14"

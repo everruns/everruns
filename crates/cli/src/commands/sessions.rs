@@ -178,7 +178,9 @@ async fn get(client: &Everruns, output: OutputFormat, session_id: String) -> Res
 
     if output.is_text() {
         print_field("ID", &session.id);
-        print_field("Agent", &session.agent_id);
+        if let Some(agent_id) = &session.agent_id {
+            print_field("Agent", agent_id);
+        }
         let status = format!("{:?}", session.status).to_lowercase();
         print_field("Status", &status);
         if let Some(title) = &session.title {
