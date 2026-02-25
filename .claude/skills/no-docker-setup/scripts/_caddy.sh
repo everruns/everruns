@@ -48,10 +48,6 @@ generate_caddyfile() {
 	handle_path /api/* {
 		reverse_proxy localhost:9000 {
 			flush_interval -1
-			transport http {
-				versions h2c 2
-				read_timeout 0
-			}
 		}
 	}
 	handle /api-doc/* {
@@ -65,7 +61,7 @@ generate_caddyfile() {
 	}
 }
 CADDYEOF
-    check_pass "Caddyfile - generated at $caddyfile"
+    check_pass "Caddyfile - generated at $caddyfile" >&2
     echo "$caddyfile"
 }
 

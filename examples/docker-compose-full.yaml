@@ -176,19 +176,14 @@ configs:
       #   /health    -> API
       #   /*         -> UI
       #
-      # SSE: h2c transport enables multiplexed SSE streams over a single
-      # backend connection. read_timeout 0 prevents Caddy from closing
-      # long-lived SSE streams (server handles its own 5-min cycling).
+      # SSE: flush_interval -1 disables response buffering for SSE.
+      # Server handles 5-min connection cycling with disconnecting events;
+      # SDK reconnects transparently (no retry budget cost).
       :9300 {
         handle_path /api/* {
           reverse_proxy server:9000 {
             # Disable response buffering for SSE streaming
             flush_interval -1
-            # HTTP/2 cleartext to backend - multiplexes SSE streams
-            transport http {
-              versions h2c 2
-              read_timeout 0
-            }
           }
         }
         handle /api-doc/* {

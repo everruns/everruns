@@ -20,7 +20,7 @@ description: Set up full production-like backend (PostgreSQL + Caddy + API + Wor
 1. Sets up fresh PostgreSQL cluster at `/tmp/pgdata`
 2. Installs and starts Caddy reverse proxy on `:9300`
    - Routes `/api/*` to `:9000` (strips prefix)
-   - Uses h2c transport for multiplexed SSE streams
+   - Disables response buffering for SSE streaming
 3. Runs `just start-all --no-watch --no-docker --no-ui`
    - API server auto-applies migrations on startup
    - Starts API server (port 9000)
@@ -48,20 +48,18 @@ Caddy is auto-installed if not present.
 ## Architecture
 
 ```
-Client (:9300) → Caddy (h2c proxy) → API (:9000) → Worker (:9001)
-                                        ↓
-                                  PostgreSQL (:5432)
+Client (:9300) → Caddy (proxy) → API (:9000) → Worker (:9001)
+                                     ↓
+                               PostgreSQL (:5432)
 ```
 
 ### SSE Through Proxy
 
-Caddy is configured for optimal SSE streaming:
-- `flush_interval -1`: No response buffering
-- `transport http { versions h2c 2 }`: HTTP/2 cleartext to backend
-- `read_timeout 0`: No timeout for long-lived SSE streams
+Caddy is configured for SSE streaming:
+- `flush_interval -1`: No response buffering (required for SSE)
 
-This matches the production docker-compose-full.yaml setup and enables
-testing SSE connection cycling behavior through a real proxy.
+The server handles 5-min connection cycling with `disconnecting` events.
+The SDK reconnects transparently without consuming retry budget.
 
 ## Testing
 
