@@ -1,12 +1,17 @@
 #!/bin/bash
-# Reproduction script: SSE connection cycling through Caddy HTTP/1.1 proxy
+# Reproduction script: SSE connection cycling through Caddy reverse proxy
 #
-# Demonstrates the SDK retry exhaustion bug when SSE streams cycle through
-# a Caddy reverse proxy using HTTP/1.1 (default) vs h2c (fixed).
+# Demonstrates SSE connection cycling behavior through Caddy with HTTP/1.1
+# vs h2c backend transport.
 #
-# The issue: everruns-sdk v0.1.2 counts graceful disconnect events (normal
-# 5-min connection cycling) against max_retries. With max_retries(5), sessions
-# running >25 min exhaust retries from normal cycling alone.
+# FIXED in everruns-sdk @ d96e85cf (main, unreleased):
+# - Graceful disconnects no longer consume retry budget
+# - `connected` event resets backoff and retry_count
+# - HTTP client reused across reconnections (connection pooling)
+#
+# The original issue (everruns-sdk v0.1.2): graceful disconnect events from
+# normal 5-min connection cycling were counted against max_retries. With
+# max_retries(5), sessions running >25 min would exhaust retries.
 #
 # Prerequisites:
 #   - Running server on :9000 (via `just start-dev` or no-docker setup)
@@ -237,21 +242,23 @@ case "$MODE" in
         echo "═══════════════════════════════════════════════"
         echo ""
         echo "  Both modes should show connection cycling (disconnecting events)."
-        echo "  The difference is in HOW the SDK handles reconnection:"
+        echo "  The difference is in HOW the proxy handles reconnection:"
         echo ""
         echo "  HTTP/1.1: Each SSE reconnect = new TCP connection through Caddy."
         echo "    Under load, concurrent reconnections can fail, triggering exponential"
-        echo "    backoff (1s→2s→4s→8s→16s→30s). SDK counts graceful disconnects"
-        echo "    against max_retries → stream dies after 5 cycles."
+        echo "    backoff. With SDK v0.1.2, graceful disconnects were counted against"
+        echo "    max_retries, causing streams to die after 5 cycles (~25 min)."
         echo ""
         echo "  h2c: SSE reconnects multiplex over existing TCP connection."
-        echo "    Reconnections are lightweight. Reduces but doesn't eliminate"
-        echo "    the SDK retry budget bug."
+        echo "    Reconnections are lightweight and less likely to fail under load."
         echo ""
-        echo "  SDK fixes needed (everruns-sdk v0.1.3):"
-        echo "    1. Don't count graceful disconnects against max_retries"
-        echo "    2. Reset backoff on 'connected' event"
-        echo "    3. Reuse reqwest::Client across reconnections"
+        echo "  SDK fixes (everruns-sdk @ d96e85cf, on main):"
+        echo "    1. Graceful disconnects no longer count against max_retries  [FIXED]"
+        echo "    2. 'connected' event resets backoff and retry_count          [FIXED]"
+        echo "    3. reqwest::Client reused across reconnections               [FIXED]"
+        echo ""
+        echo "  With the SDK fix, both HTTP/1.1 and h2c work correctly."
+        echo "  h2c remains beneficial for efficiency under load (fewer TCP connections)."
         echo ""
         ;;
 esac
