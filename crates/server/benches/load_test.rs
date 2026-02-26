@@ -702,10 +702,9 @@ impl LoadTestRunner {
     /// The SDK handles automatic reconnection on `disconnecting` events,
     /// exponential backoff on errors, and resume via `since_id`.
     fn open_sse_stream(&self, session_id: &str) -> everruns_sdk::sse::EventStream {
-        self.sdk.events().stream_with_options(
-            session_id,
-            StreamOptions::exclude_deltas().with_max_retries(5),
-        )
+        self.sdk
+            .events()
+            .stream_with_options(session_id, StreamOptions::exclude_deltas())
     }
 
     /// Wait for a `session.idled` event on the SSE stream.
