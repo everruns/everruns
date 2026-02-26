@@ -887,20 +887,37 @@ struct Http2FlowConfig {
 }
 
 impl Http2FlowConfig {
+    const DEFAULT_STREAM_WINDOW: u32 = 2 * 1024 * 1024; // 2 MB
+    const DEFAULT_CONNECTION_WINDOW: u32 = 16 * 1024 * 1024; // 16 MB
+    const DEFAULT_MAX_CONCURRENT_STREAMS: u32 = 256;
+
     fn from_env() -> Self {
+        Self::from_values(
+            std::env::var("HTTP2_STREAM_WINDOW_SIZE").ok().as_deref(),
+            std::env::var("HTTP2_CONNECTION_WINDOW_SIZE")
+                .ok()
+                .as_deref(),
+            std::env::var("HTTP2_MAX_CONCURRENT_STREAMS")
+                .ok()
+                .as_deref(),
+        )
+    }
+
+    fn from_values(
+        stream_window: Option<&str>,
+        connection_window: Option<&str>,
+        max_concurrent_streams: Option<&str>,
+    ) -> Self {
         Self {
-            stream_window: std::env::var("HTTP2_STREAM_WINDOW_SIZE")
-                .ok()
+            stream_window: stream_window
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(2 * 1024 * 1024), // 2 MB
-            connection_window: std::env::var("HTTP2_CONNECTION_WINDOW_SIZE")
-                .ok()
+                .unwrap_or(Self::DEFAULT_STREAM_WINDOW),
+            connection_window: connection_window
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(16 * 1024 * 1024), // 16 MB
-            max_concurrent_streams: std::env::var("HTTP2_MAX_CONCURRENT_STREAMS")
-                .ok()
+                .unwrap_or(Self::DEFAULT_CONNECTION_WINDOW),
+            max_concurrent_streams: max_concurrent_streams
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(256),
+                .unwrap_or(Self::DEFAULT_MAX_CONCURRENT_STREAMS),
         }
     }
 
@@ -920,15 +937,7 @@ mod tests {
 
     #[test]
     fn test_h2_config_defaults() {
-        // Clear env vars to ensure defaults
-        // SAFETY: test runs single-threaded (--test-threads=1)
-        unsafe {
-            std::env::remove_var("HTTP2_STREAM_WINDOW_SIZE");
-            std::env::remove_var("HTTP2_CONNECTION_WINDOW_SIZE");
-            std::env::remove_var("HTTP2_MAX_CONCURRENT_STREAMS");
-        }
-
-        let config = Http2FlowConfig::from_env();
+        let config = Http2FlowConfig::from_values(None, None, None);
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // 2 MB
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // 16 MB
         assert_eq!(config.max_concurrent_streams, 256);
@@ -936,44 +945,17 @@ mod tests {
 
     #[test]
     fn test_h2_config_from_env() {
-        // SAFETY: test runs single-threaded (--test-threads=1)
-        unsafe {
-            std::env::set_var("HTTP2_STREAM_WINDOW_SIZE", "4194304"); // 4 MB
-            std::env::set_var("HTTP2_CONNECTION_WINDOW_SIZE", "33554432"); // 32 MB
-            std::env::set_var("HTTP2_MAX_CONCURRENT_STREAMS", "512");
-        }
-
-        let config = Http2FlowConfig::from_env();
+        let config = Http2FlowConfig::from_values(Some("4194304"), Some("33554432"), Some("512"));
         assert_eq!(config.stream_window, 4 * 1024 * 1024);
         assert_eq!(config.connection_window, 32 * 1024 * 1024);
         assert_eq!(config.max_concurrent_streams, 512);
-
-        // Clean up
-        unsafe {
-            std::env::remove_var("HTTP2_STREAM_WINDOW_SIZE");
-            std::env::remove_var("HTTP2_CONNECTION_WINDOW_SIZE");
-            std::env::remove_var("HTTP2_MAX_CONCURRENT_STREAMS");
-        }
     }
 
     #[test]
     fn test_h2_config_invalid_env_uses_defaults() {
-        // SAFETY: test runs single-threaded (--test-threads=1)
-        unsafe {
-            std::env::set_var("HTTP2_STREAM_WINDOW_SIZE", "not_a_number");
-            std::env::set_var("HTTP2_CONNECTION_WINDOW_SIZE", "");
-            std::env::remove_var("HTTP2_MAX_CONCURRENT_STREAMS");
-        }
-
-        let config = Http2FlowConfig::from_env();
+        let config = Http2FlowConfig::from_values(Some("not_a_number"), Some(""), None);
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
         assert_eq!(config.max_concurrent_streams, 256); // not set, default
-
-        // Clean up
-        unsafe {
-            std::env::remove_var("HTTP2_STREAM_WINDOW_SIZE");
-            std::env::remove_var("HTTP2_CONNECTION_WINDOW_SIZE");
-        }
     }
 }
