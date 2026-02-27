@@ -77,6 +77,18 @@ The context object fields are stable:
 
 New optional fields may be added to EventContext.
 
+## Heartbeat Comments
+
+All SSE streams send periodic heartbeat comments (`: heartbeat\n\n`) every 30 seconds. These are **not events** — they are SSE comments invisible to event parsers. They serve as a liveness signal for clients to detect stale connections.
+
+**Contract guarantees:**
+- Heartbeats are sent on all SSE streams regardless of activity (idle, active, thinking)
+- Heartbeat interval is configurable via `SSE_HEARTBEAT_INTERVAL_SECS` (default: 30)
+- Heartbeat comments do not affect event ordering, IDs, or schema
+- SDKs should set a read timeout of 1.5x the heartbeat interval (45s) to detect stale connections
+
+**Non-breaking:** Changing heartbeat text or interval is non-breaking since comments are ignored by parsers.
+
 ## Versioning
 
 Events follow semantic versioning aligned with the API version:

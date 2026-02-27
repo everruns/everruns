@@ -503,7 +503,10 @@ pub async fn stream_sse(
         _guard: sse_guard,
     };
 
-    Ok(Sse::new(guarded_stream).keep_alive(KeepAlive::default()))
+    let keep_alive = KeepAlive::new()
+        .interval(config.heartbeat_interval())
+        .text("heartbeat");
+    Ok(Sse::new(guarded_stream).keep_alive(keep_alive))
 }
 
 /// Stream wrapper that holds an SSE connection guard until the stream is dropped.
