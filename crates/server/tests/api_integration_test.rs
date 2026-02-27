@@ -1705,7 +1705,11 @@ async fn test_chat_harness_exists_in_seed() {
     let server = TestServer::new().await;
 
     // Verify the Chat harness was seeded (response is {"data": [...]})
-    let body = server.get("/v1/harnesses").await.assert_success().json_value();
+    let body = server
+        .get("/v1/harnesses")
+        .await
+        .assert_success()
+        .json_value();
     let harnesses: Vec<Harness> =
         serde_json::from_value(body["data"].clone()).expect("Failed to parse harnesses data");
 
