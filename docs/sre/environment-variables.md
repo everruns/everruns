@@ -183,6 +183,23 @@ The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse p
 - Disable response buffering for SSE endpoints
 - Example Caddy config: see `local/Caddyfile`
 
+## SSE Streaming Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSE_REALTIME_CYCLE_SECS` | `300` | Connection cycle interval for session event streams (seconds) |
+| `SSE_MONITORING_CYCLE_SECS` | `600` | Connection cycle interval for durable monitoring streams (seconds) |
+| `SSE_HEARTBEAT_INTERVAL_SECS` | `30` | Interval between heartbeat comments on all SSE streams (seconds) |
+| `SSE_GLOBAL_MAX` | `10000` | Maximum total SSE connections across all users |
+| `SSE_PER_SESSION_MAX` | `5` | Maximum SSE connections per session |
+| `SSE_PER_ORG_MAX` | `1000` | Maximum SSE connections per organization |
+
+**Notes:**
+- Heartbeat comments (`: heartbeat\n\n`) are sent on all SSE streams to detect stale connections
+- The heartbeat interval must be less than the SDK read timeout (default: 60s) with safety margin
+- Connection cycling prevents stale connections through proxies and load balancers
+- When running behind HTTP/1.1 proxies, increase `SSE_REALTIME_CYCLE_SECS` to reduce reconnection frequency
+
 ## Worker Configuration
 
 ### GRPC_ADDRESS

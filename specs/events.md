@@ -937,6 +937,30 @@ SSE streams include special lifecycle events for connection management:
 | `connected` | Sent immediately when the stream is established. Data: `{"status":"connected"}` |
 | `disconnecting` | Sent before graceful close. Data: `{"reason":"connection_cycle","retry_ms":100}` |
 
+### Heartbeat Comments
+
+All SSE streams send periodic heartbeat comments to allow clients to detect stale/half-open connections:
+
+```
+: heartbeat
+
+```
+
+Heartbeat comments are standard SSE comments (lines starting with `:`) and are **invisible to all spec-compliant event parsers** — they do not appear as events. They serve solely to reset the client's TCP read timer.
+
+| Property | Value |
+|----------|-------|
+| Format | `: heartbeat\n\n` (SSE comment) |
+| Interval | 30 seconds (configurable via `SSE_HEARTBEAT_INTERVAL_SECS`) |
+| Scope | All SSE streams (session events, durable monitoring, workflow monitoring) |
+| Activity-independent | Fires during idle, model-thinking, tool-execution, and active streaming |
+| Schema impact | None — SSE comments are not events |
+| Backward-compatible | Yes — all spec-compliant SSE parsers ignore comments |
+
+**Why 30 seconds?** The SDK default read timeout is 60s. At 30s heartbeat interval, clients have a 2x safety factor: if no heartbeat arrives within 45s (1.5x interval), the connection is almost certainly dead.
+
+**Bandwidth impact:** Each heartbeat is 14 bytes (`": heartbeat\r\n\r\n"`). At 30s intervals, this adds ~0.47 bytes/second per connection — negligible even at 10,000 concurrent connections (~4.7 KB/s total).
+
 ### Connection Cycling
 
 To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:
@@ -973,6 +997,11 @@ SDKs MUST:
 2. Handle `disconnecting` event by reconnecting with `since_id` parameter
 3. Handle `onerror` with exponential backoff (EventSource default behavior)
 4. Use `retry:` hint for reconnection timing
+5. Set a read timeout of 45s (1.5x the 30s heartbeat interval) to detect stale connections
+
+**Heartbeat handling:** SDKs do NOT need to explicitly handle heartbeat comments — SSE parsers ignore them automatically. The heartbeats simply prevent the read timeout from firing on healthy connections. If no data (events or heartbeats) arrives within the read timeout, the SDK should treat the connection as stale and reconnect with `since_id`.
+
+**Read timeout rationale:** 45s = 1.5x heartbeat interval (30s). This gives a 0.5x margin for network jitter and server scheduling delays. The previous 60s timeout (2x) also works but is slower to detect stale connections.
 
 Example client implementation:
 

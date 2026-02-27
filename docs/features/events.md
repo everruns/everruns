@@ -45,6 +45,18 @@ SSE streams include special lifecycle events for connection management:
 | `connected` | Sent immediately when the stream is established |
 | `disconnecting` | Sent before the server gracefully closes the connection |
 
+### Heartbeat Comments
+
+All SSE streams send periodic heartbeat comments every 30 seconds to allow clients to detect stale connections:
+
+```
+: heartbeat
+```
+
+Heartbeat comments are standard SSE comments (lines starting with `:`) — they are **invisible to event parsers** and do not appear as events. They simply reset the TCP read timer so clients can distinguish between "connection alive but idle" and "connection dead."
+
+**For SDK/client developers:** Set a read timeout of 45 seconds (1.5x the 30s heartbeat interval). If no data (events or heartbeats) arrives within 45s, treat the connection as stale and reconnect with `since_id`. The server sends heartbeats during all phases: idle, model thinking, tool execution, and active streaming.
+
 ### Connection Cycling
 
 To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:

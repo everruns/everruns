@@ -1753,7 +1753,10 @@ pub async fn stream_durable_sse(
     })
     .flatten();
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    let keep_alive = KeepAlive::new()
+        .interval(config.heartbeat_interval())
+        .text("heartbeat");
+    Ok(Sse::new(stream).keep_alive(keep_alive))
 }
 
 /// GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)
@@ -2009,7 +2012,10 @@ pub async fn stream_workflow_sse(
     })
     .flatten();
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    let keep_alive = KeepAlive::new()
+        .interval(config.heartbeat_interval())
+        .text("heartbeat");
+    Ok(Sse::new(stream).keep_alive(keep_alive))
 }
 
 #[cfg(test)]

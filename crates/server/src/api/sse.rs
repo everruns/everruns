@@ -25,12 +25,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// SSE stream configuration with backoff and connection cycling parameters.
+/// SSE stream configuration with backoff, connection cycling, and heartbeat parameters.
 ///
 /// Connection cycling duration is configurable via environment variables to
 /// accommodate different proxy configurations:
 /// - `SSE_REALTIME_CYCLE_SECS` (default: 300) — session event streams
 /// - `SSE_MONITORING_CYCLE_SECS` (default: 600) — durable monitoring streams
+/// - `SSE_HEARTBEAT_INTERVAL_SECS` (default: 30) — heartbeat comment interval
+///
+/// Heartbeat comments (`: heartbeat\n\n`) are sent periodically on all SSE streams
+/// to allow clients to detect stale/half-open connections. The interval MUST be
+/// less than the client read timeout (SDK default: 60s) with safety margin.
+/// At 30s, this gives a 2x safety factor.
 ///
 /// When running behind proxies with HTTP/1.1 backends (no h2c), increase the
 /// cycling interval to reduce reconnection frequency and avoid exhausting
@@ -46,6 +52,10 @@ pub struct SseStreamConfig {
     pub max_connection_secs: u64,
     /// Retry hint for immediate reconnect after disconnecting event (ms)
     pub disconnect_retry_ms: u64,
+    /// Interval between heartbeat SSE comments (seconds).
+    /// Heartbeats are SSE comments (`: heartbeat\n\n`) invisible to event parsers
+    /// but reset the client's TCP read timer to detect stale connections.
+    pub heartbeat_interval_secs: u64,
 }
 
 impl SseStreamConfig {
@@ -61,6 +71,7 @@ impl SseStreamConfig {
             max_backoff_ms: 500,
             max_connection_secs: cycle_secs,
             disconnect_retry_ms: 100, // Fast reconnect
+            heartbeat_interval_secs: heartbeat_interval_from_env(),
         }
     }
 
@@ -76,6 +87,7 @@ impl SseStreamConfig {
             max_backoff_ms: 20000,
             max_connection_secs: cycle_secs,
             disconnect_retry_ms: 1000, // 1 second reconnect
+            heartbeat_interval_secs: heartbeat_interval_from_env(),
         }
     }
 
@@ -117,6 +129,25 @@ impl SseStreamConfig {
     pub fn disconnect_retry(&self) -> Duration {
         Duration::from_millis(self.disconnect_retry_ms)
     }
+
+    /// Get heartbeat interval for SSE keepalive comments.
+    /// Used to configure axum's `KeepAlive::interval()`.
+    pub fn heartbeat_interval(&self) -> Duration {
+        Duration::from_secs(self.heartbeat_interval_secs)
+    }
+}
+
+/// Default heartbeat interval (30 seconds).
+/// Must be less than SDK read timeout (60s) with safety margin.
+/// 30s gives a 2x safety factor.
+const DEFAULT_HEARTBEAT_INTERVAL_SECS: u64 = 30;
+
+/// Read heartbeat interval from `SSE_HEARTBEAT_INTERVAL_SECS` env var, falling back to default.
+fn heartbeat_interval_from_env() -> u64 {
+    std::env::var("SSE_HEARTBEAT_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_HEARTBEAT_INTERVAL_SECS)
 }
 
 impl Default for SseStreamConfig {
@@ -357,24 +388,28 @@ mod tests {
     fn test_realtime_config() {
         unsafe {
             std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
         }
         let config = SseStreamConfig::realtime();
         assert_eq!(config.min_backoff_ms, 100);
         assert_eq!(config.max_backoff_ms, 500);
         assert_eq!(config.max_connection_secs, 300);
         assert_eq!(config.disconnect_retry_ms, 100);
+        assert_eq!(config.heartbeat_interval_secs, 30);
     }
 
     #[test]
     fn test_monitoring_config() {
         unsafe {
             std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
         }
         let config = SseStreamConfig::monitoring();
         assert_eq!(config.min_backoff_ms, 1000);
         assert_eq!(config.max_backoff_ms, 20000);
         assert_eq!(config.max_connection_secs, 600);
         assert_eq!(config.disconnect_retry_ms, 1000);
+        assert_eq!(config.heartbeat_interval_secs, 30);
     }
 
     #[test]
@@ -728,5 +763,64 @@ mod tests {
             std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
         }
         assert_eq!(config.max_connection_secs, 300); // falls back to default
+    }
+
+    // ============================================
+    // Heartbeat Tests
+    // ============================================
+
+    #[test]
+    fn test_heartbeat_interval_default() {
+        unsafe {
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
+        }
+        let config = SseStreamConfig::realtime();
+        assert_eq!(config.heartbeat_interval_secs, 30);
+        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
+
+        let config = SseStreamConfig::monitoring();
+        assert_eq!(config.heartbeat_interval_secs, 30);
+        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_heartbeat_interval_env_override() {
+        unsafe {
+            std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "15");
+        }
+        let config = SseStreamConfig::realtime();
+        unsafe {
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
+        }
+        assert_eq!(config.heartbeat_interval_secs, 15);
+        assert_eq!(config.heartbeat_interval(), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn test_heartbeat_interval_env_invalid_fallback() {
+        unsafe {
+            std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "not_a_number");
+        }
+        let config = SseStreamConfig::realtime();
+        unsafe {
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
+        }
+        assert_eq!(config.heartbeat_interval_secs, 30); // falls back to default
+    }
+
+    #[test]
+    fn test_heartbeat_interval_less_than_sdk_read_timeout() {
+        // SDK read timeout is 60s. Heartbeat must be less than that.
+        unsafe {
+            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
+        }
+        let config = SseStreamConfig::realtime();
+        let sdk_read_timeout = Duration::from_secs(60);
+        assert!(
+            config.heartbeat_interval() < sdk_read_timeout,
+            "heartbeat interval {:?} must be < SDK read timeout {:?}",
+            config.heartbeat_interval(),
+            sdk_read_timeout
+        );
     }
 }
