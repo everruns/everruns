@@ -77,6 +77,7 @@ describe("Sidebar", () => {
   it("renders all navigation items", () => {
     render(<Sidebar />);
 
+    expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
@@ -104,7 +105,6 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.queryByText("Runs")).not.toBeInTheDocument();
-    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
   });
 
   it("highlights the active navigation item", () => {
@@ -129,7 +129,7 @@ describe("Sidebar", () => {
     expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
   });
 
-  it("has exactly 5 navigation items", () => {
+  it("has exactly 6 navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
@@ -139,12 +139,12 @@ describe("Sidebar", () => {
         (link) =>
           link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
       );
-    // Filter to only nav items (Dashboard, Harnesses, Agents, Capabilities, Settings)
-    const navItems = ["Dashboard", "Harnesses", "Agents", "Capabilities", "Settings"];
+    // Filter to only nav items (Chat, Dashboard, Harnesses, Agents, Capabilities, Settings)
+    const navItems = ["Chat", "Dashboard", "Harnesses", "Agents", "Capabilities", "Settings"];
     const foundNavLinks = navLinks.filter((link) =>
       navItems.some((item) => link.textContent?.includes(item)),
     );
-    expect(foundNavLinks).toHaveLength(5);
+    expect(foundNavLinks).toHaveLength(6);
   });
 
   it("renders section labels for Building Blocks and Durable Execution", () => {

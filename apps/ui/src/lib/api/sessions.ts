@@ -102,3 +102,16 @@ export async function pinSession(sessionId: string): Promise<void> {
 export async function unpinSession(sessionId: string): Promise<void> {
   await api.delete(`/v1/sessions/${sessionId}/pin`);
 }
+
+// ============================================
+// Global Chat
+// ============================================
+
+/**
+ * Get or create the global chat session for the current user.
+ * Returns a singleton session per user per org.
+ */
+export async function getOrCreateChatSession(): Promise<Session> {
+  const response = await api.post<Session>("/v1/sessions/chat");
+  return response.data;
+}

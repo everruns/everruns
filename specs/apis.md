@@ -107,6 +107,7 @@ Sessions are top-level entities under organizations. Each session has an agent a
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/sessions` | Create session |
+| POST | `/v1/sessions/chat` | Get or create global chat session |
 | GET | `/v1/sessions` | List sessions (paginated) |
 | GET | `/v1/sessions/{session_id}` | Get session |
 | PATCH | `/v1/sessions/{session_id}` | Update session |
@@ -139,6 +140,14 @@ The optional `capabilities` field allows setting session-level capabilities that
 2. Session capabilities are applied after (additive)
 
 This enables temporarily extending an agent's capabilities for specific sessions without modifying the agent configuration.
+
+#### Get or Create Chat Session
+
+Returns the calling user's singleton global chat session. Creates one with the Chat harness if none exists. Uses tag-based lookup (`global-chat` + `user:{user_id}`) for per-user singleton management.
+
+**Request:** `POST /v1/sessions/chat` (no body required)
+
+**Response:** `200 OK` with the `Session` object.
 
 #### List Sessions
 

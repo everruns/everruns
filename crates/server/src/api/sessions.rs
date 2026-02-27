@@ -154,6 +154,8 @@ pub struct SessionStatsResponse {
 /// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        // Global chat session (must be before /{session_id} to avoid conflict)
+        .route("/v1/sessions/chat", post(get_or_create_chat_session))
         // Session stats (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/stats", get(get_session_stats))
         // Session CRUD
@@ -224,6 +226,41 @@ pub async fn create_session(
         .log_internal_error_json("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
+}
+
+/// POST /v1/sessions/chat - Get or create global chat session
+///
+/// Returns the user's singleton global chat session. Creates one if it doesn't exist.
+/// Uses the Chat harness and tags for per-user singleton management.
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/chat",
+    responses(
+        (status = 200, description = "Chat session returned", body = Session),
+        (status = 401, description = "Authentication required"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_or_create_chat_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+    // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
+    let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
+
+    let session = state
+        .session_service
+        .get_or_create_chat_session(
+            org.org_id,
+            &org.public_id,
+            user_id,
+            crate::seed::CHAT_HARNESS_ID,
+        )
+        .await
+        .log_internal_error_json("get or create chat session")?;
+
+    Ok(Json(session))
 }
 
 /// GET /v1/sessions - List sessions in organization

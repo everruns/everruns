@@ -21,6 +21,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Well-known UUID for the Chat harness (used by global chat endpoint)
+pub const CHAT_HARNESS_ID: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
+
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
 /// Range allocation:
@@ -58,6 +61,7 @@ mod seed_ids {
     // Harnesses (0x600-0x6FF)
     pub const BASE_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GENERIC_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
+    pub const CHAT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -295,6 +299,21 @@ const SEED_HARNESSES: &[SeedHarness] = &[
         description: "General-purpose harness with file system, bash, secrets, session management, and agent skills. Recommended default for most use cases.",
         system_prompt: "You are a helpful assistant.",
         tags: &["generic", "default", "seed"],
+        capabilities: &[
+            "session_file_system",
+            "virtual_bash",
+            "session_storage",
+            "session",
+            "agent_instructions",
+            "skills",
+        ],
+    },
+    SeedHarness {
+        id: seed_ids::CHAT_HARNESS,
+        name: "Chat",
+        description: "Conversational harness for the global chat interface. Same capabilities as Generic.",
+        system_prompt: "You are a helpful assistant.",
+        tags: &["chat", "seed"],
         capabilities: &[
             "session_file_system",
             "virtual_bash",

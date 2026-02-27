@@ -45,6 +45,7 @@ import {
   ChevronDown,
   FlaskConical,
   Calendar,
+  MessageCircle,
   Cog,
   Server,
   Workflow,
@@ -58,6 +59,7 @@ import {
 const isDev = process.env.NODE_ENV === "development";
 
 const topNavigation = [
+  { name: "Chat", href: "/chat", icon: MessageCircle },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];

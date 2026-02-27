@@ -335,6 +335,51 @@ impl SessionService {
         }
     }
 
+    /// Get or create the global chat session for a user.
+    /// Uses tags for per-user singleton: `["global-chat", "user:{user_id}"]`.
+    /// Creates with the Chat harness if no existing session is found.
+    pub async fn get_or_create_chat_session(
+        &self,
+        org_id: i64,
+        org_public_id: &str,
+        user_id: Uuid,
+        harness_id: Uuid,
+    ) -> Result<Session> {
+        let user_tag = format!("user:{}", user_id);
+        let tags = vec!["global-chat".to_string(), user_tag.clone()];
+
+        // Look for existing chat session
+        if let Some(row) = self.db.find_session_by_tags(org_id, &tags).await? {
+            let mut session = Self::row_to_session(row, org_public_id);
+            self.populate_features(&mut session).await?;
+            self.resolve_session_agent_id(org_id, &mut session).await?;
+            return Ok(session);
+        }
+
+        // Create a new chat session
+        let harness_id_typed = HarnessId::from_uuid(harness_id);
+        let input = CreateSessionRow {
+            org_id,
+            harness_id: Some(harness_id_typed),
+            agent_id: None,
+            title: Some("Chat".to_string()),
+            tags: vec!["global-chat".to_string(), user_tag],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        };
+        let row = self.db.create_session(input).await?;
+        let session_id = row.id.uuid();
+        let mut session = Self::row_to_session(row, org_public_id);
+        self.populate_features(&mut session).await?;
+
+        // Apply capability mounts
+        self.apply_capability_mounts(harness_id, None, &[], session_id)
+            .await?;
+
+        Ok(session)
+    }
+
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
         self.db
             .delete_session(org_id, SessionId::from_uuid(id))
