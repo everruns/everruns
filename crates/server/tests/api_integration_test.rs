@@ -1677,7 +1677,10 @@ async fn test_global_chat_returns_same_session() {
         .assert_success()
         .json();
 
-    assert_eq!(first.id, second.id, "Should return the same singleton session");
+    assert_eq!(
+        first.id, second.id,
+        "Should return the same singleton session"
+    );
 }
 
 #[tokio::test]
