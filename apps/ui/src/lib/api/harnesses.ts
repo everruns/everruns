@@ -2,7 +2,14 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api } from "./client";
-import type { Harness, CreateHarnessRequest, UpdateHarnessRequest, ListResponse } from "./types";
+import type {
+  Harness,
+  CreateHarnessRequest,
+  UpdateHarnessRequest,
+  ListResponse,
+  PreviewHarnessRequest,
+  AgentPreviewResponse,
+} from "./types";
 
 export async function createHarness(request: CreateHarnessRequest): Promise<Harness> {
   const response = await api.post<Harness>("/v1/harnesses", request);
@@ -33,5 +40,12 @@ export async function deleteHarness(harnessId: string): Promise<void> {
 
 export async function copyHarness(harnessId: string): Promise<Harness> {
   const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});
+  return response.data;
+}
+
+export async function previewHarness(
+  request: PreviewHarnessRequest,
+): Promise<AgentPreviewResponse> {
+  const response = await api.post<AgentPreviewResponse>("/v1/harnesses/preview", request);
   return response.data;
 }
