@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useCallback } from "react";
+import { use, useMemo, useCallback, useState } from "react";
 import {
   useHarness,
   useCapabilities,
@@ -17,7 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { ArrowLeft, Pencil, Copy, Trash2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { HarnessPreview } from "@/components/harnesses/harness-preview";
+import { ArrowLeft, Pencil, Copy, Trash2, Eye, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -25,6 +27,7 @@ import { getCapabilityIcon } from "@/lib/capability-icons";
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
   const { harnessId } = use(params);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("overview");
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
@@ -125,113 +128,138 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MarkdownDisplay content={harness.system_prompt} />
-            </CardContent>
-          </Card>
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="preview">
+            <Eye className="w-4 h-4 mr-2" />
+            Preview
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Capabilities</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {harnessCapabilities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No capabilities enabled.{" "}
-                  <Link
-                    href={`/harnesses/${harnessId}/edit`}
-                    className="text-primary hover:underline"
-                  >
-                    Add some
-                  </Link>
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {harnessCapabilities.map((capConfig) => {
-                    const cap = getCapabilityInfo(capConfig.ref);
-                    if (!cap) return null;
-                    const IconComponent = getCapabilityIcon(cap.icon);
+        <TabsContent value="overview">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Prompt</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MarkdownDisplay content={harness.system_prompt} />
+                </CardContent>
+              </Card>
+            </div>
 
-                    return (
-                      <div
-                        key={capConfig.ref}
-                        className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capabilities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {harnessCapabilities.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No capabilities enabled.{" "}
+                      <Link
+                        href={`/harnesses/${harnessId}/edit`}
+                        className="text-primary hover:underline"
                       >
-                        <IconComponent className="w-4 h-4" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{cap.name}</p>
-                          <p className="text-xs text-muted-foreground">{cap.description}</p>
-                        </div>
+                        Add some
+                      </Link>
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {harnessCapabilities.map((capConfig) => {
+                        const cap = getCapabilityInfo(capConfig.ref);
+                        if (!cap) return null;
+                        const IconComponent = getCapabilityIcon(cap.icon);
+
+                        return (
+                          <div
+                            key={capConfig.ref}
+                            className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+                          >
+                            <IconComponent className="w-4 h-4" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{cap.name}</p>
+                              <p className="text-xs text-muted-foreground">{cap.description}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Configuration</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {defaultModel && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Default Model</p>
+                      <div className="flex items-center gap-2">
+                        <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
+                        <span className="text-sm">{defaultModel.display_name}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    </div>
+                  )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {defaultModel && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Default Model</p>
-                  <div className="flex items-center gap-2">
-                    <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                    <span className="text-sm">{defaultModel.display_name}</span>
+                  {harness.description && (
+                    <div>
+                      <p className="text-sm font-medium">Description</p>
+                      <div className="text-sm text-muted-foreground">
+                        <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
+                      </div>
+                    </div>
+                  )}
+
+                  {harness.tags.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Tags</p>
+                      <div className="flex flex-wrap gap-1">
+                        {harness.tags.map((tag) => (
+                          <Badge key={tag} variant="outline">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-sm font-medium">Created</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(harness.created_at).toLocaleString()}
+                    </p>
                   </div>
-                </div>
-              )}
 
-              {harness.description && (
-                <div>
-                  <p className="text-sm font-medium">Description</p>
-                  <div className="text-sm text-muted-foreground">
-                    <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
+                  <div>
+                    <p className="text-sm font-medium">Updated</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(harness.updated_at).toLocaleString()}
+                    </p>
                   </div>
-                </div>
-              )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
 
-              {harness.tags.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Tags</p>
-                  <div className="flex flex-wrap gap-1">
-                    {harness.tags.map((tag) => (
-                      <Badge key={tag} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm font-medium">Created</p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(harness.created_at).toLocaleString()}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium">Updated</p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(harness.updated_at).toLocaleString()}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        <TabsContent value="preview">
+          <HarnessPreview
+            systemPrompt={harness.system_prompt}
+            capabilities={harnessCapabilities.map((cap) => ({
+              ref: cap.ref,
+              config: cap.config,
+            }))}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

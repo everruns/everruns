@@ -8,10 +8,15 @@ import {
   deleteHarness,
   getHarness,
   listHarnesses,
+  previewHarness,
   updateHarness,
 } from "@/lib/api/harnesses";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateHarnessRequest, UpdateHarnessRequest } from "@/lib/api/types";
+import type {
+  CreateHarnessRequest,
+  PreviewHarnessRequest,
+  UpdateHarnessRequest,
+} from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useHarnesses() {
@@ -91,5 +96,11 @@ export function useDeleteHarness() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
     },
+  });
+}
+
+export function usePreviewHarness() {
+  return useMutation({
+    mutationFn: (request: PreviewHarnessRequest) => previewHarness(request),
   });
 }
