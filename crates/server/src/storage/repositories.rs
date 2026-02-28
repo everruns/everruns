@@ -1129,7 +1129,9 @@ impl Database {
         filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
-        // Prefer since_id (UUID v7 monotonically increasing) over sequence for filtering.
+        // UUID v7 is NOT guaranteed monotonically increasing across concurrent inserts,
+        // so we always filter and order by the dedicated sequence column.
+        // When since_id is provided, resolve it to sequence via an inline subquery (PK lookup).
         // filter_types: positive filter — when non-empty, only return matching event types.
         // exclude_types: negative filter — remove matching event types from results.
         // When both are provided, filter_types narrows first, then exclude_types removes.
@@ -1139,10 +1141,11 @@ impl Database {
                     r#"
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
                     FROM events
-                    WHERE session_id = $1 AND id > $2
+                    WHERE session_id = $1
+                      AND sequence > (SELECT sequence FROM events WHERE id = $2)
                       AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
                       AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
-                    ORDER BY id ASC
+                    ORDER BY sequence ASC
                     "#,
                 )
                 .bind(session_id.uuid())

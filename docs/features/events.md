@@ -98,7 +98,7 @@ curl -N "https://api.everruns.com/v1/sessions/{session_id}/sse?since_id={last_ev
   -H "Authorization: Bearer $API_KEY"
 ```
 
-Event IDs are UUID v7 (monotonically increasing by timestamp), ensuring reliable ordering and no duplicate events on reconnection.
+Event IDs are UUID v7 and serve as unique identifiers. Ordering is based on a dedicated sequence number, ensuring reliable event delivery with no duplicates or gaps on reconnection.
 
 ### JavaScript Example
 

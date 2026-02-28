@@ -192,8 +192,8 @@ pub fn routes(state: AppState) -> Router {
 /// ## Resuming Streams
 ///
 /// Use the `since_id` query parameter to resume from a specific event. The server
-/// will only send events with IDs greater than the specified value. Event IDs are
-/// UUID v7 (monotonically increasing), ensuring reliable ordering.
+/// resolves the event ID to its sequence number and returns all subsequent events
+/// ordered by sequence, ensuring reliable ordering even under concurrent writes.
 ///
 /// ## Event Type Filtering
 ///
@@ -356,7 +356,7 @@ pub async fn stream_sse(
     };
 
     // Create stream that replays events from database
-    // Uses since_id (UUID v7) for tracking - monotonically increasing
+    // Uses since_id resolved to sequence for reliable ordering
     // SSE format: event: <type>, data: <full core::Event JSON>, id: <event UUID>
     // Features:
     // - Exponential backoff (100ms → 500ms) when no new events

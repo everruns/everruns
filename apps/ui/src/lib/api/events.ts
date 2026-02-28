@@ -25,7 +25,7 @@ export async function listEvents(sessionId: string, exclude?: string[]): Promise
 }
 
 // Get SSE URL for real-time event streaming
-// Uses since_id for incremental updates (UUID v7 monotonically increasing)
+// Uses since_id for incremental updates (resolved to sequence for reliable ordering)
 // Optional exclude parameter to filter out event types (e.g., delta events)
 // Note: Org is sent via everruns_org cookie (EventSource sends cookies automatically)
 export function getSseUrl(sessionId: string, sinceId?: string, exclude?: string[]): string {
