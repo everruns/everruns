@@ -1,0 +1,46 @@
+{
+  "id": "019ca2bf-b546-7941-98f6-d18056bbc712",
+  "bench_name": "throughput",
+  "timestamp": "2026-02-28T05:36:38.726364Z",
+  "server": {
+    "version": "0.8.1",
+    "auth_mode": "None",
+    "target": "local-60w",
+    "workers": 60,
+    "active_workers": 3,
+    "total_capacity": 30
+  },
+  "environment": {
+    "moniker": "local-M4-Pro-48GB",
+    "os": "Darwin 15.5",
+    "cpu_name": "Apple M4 Pro",
+    "cpu_cores": 14,
+    "memory_gb": 48.0,
+    "hostname": "MAC-P73L96T"
+  },
+  "config": {
+    "api_url": "http://localhost:9300/api",
+    "sessions": 100,
+    "messages_per_session": 50,
+    "model_id": "model_01933b5a000070008000000000000402",
+    "max_concurrent_sessions": 50,
+    "timeout_secs": 300,
+    "bench_name": "throughput"
+  },
+  "metrics": {
+    "sessions_created": 100,
+    "sessions_completed": 100,
+    "sessions_failed": 0,
+    "messages_sent": 5000,
+    "messages_completed": 5000,
+    "messages_failed": 0,
+    "latency_p50_ms": 1454.324333,
+    "latency_p95_ms": 1936.4054589999998,
+    "latency_p99_ms": 2054.6585419999997,
+    "latency_avg_ms": 1430.916604,
+    "throughput_msg_per_sec": 32.13664973082265,
+    "duration_secs": 155.585602167,
+    "error_count": 0
+  },
+  "errors": []
+}
