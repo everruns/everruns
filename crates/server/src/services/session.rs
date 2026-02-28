@@ -337,7 +337,7 @@ impl SessionService {
 
     /// Get or create the global chat session for a user.
     /// Uses tags for per-user singleton: `["global-chat", "user:{user_id}"]`.
-    /// Creates with the Chat harness if no existing session is found.
+    /// Creates with the Platform Chat harness if no existing session is found.
     pub async fn get_or_create_chat_session(
         &self,
         org_id: i64,
@@ -362,7 +362,7 @@ impl SessionService {
             org_id,
             harness_id: Some(harness_id_typed),
             agent_id: None,
-            title: Some("Chat".to_string()),
+            title: Some("Platform Chat".to_string()),
             tags: vec!["global-chat".to_string(), user_tag],
             model_id: None,
             capabilities: serde_json::json!([]),

@@ -310,8 +310,8 @@ const SEED_HARNESSES: &[SeedHarness] = &[
     },
     SeedHarness {
         id: seed_ids::CHAT_HARNESS,
-        name: "Chat",
-        description: "Conversational harness for the global chat interface. Same capabilities as Generic.",
+        name: "Platform Chat",
+        description: "Conversational harness for the global chat interface with platform management capabilities.",
         system_prompt: "You are a helpful assistant.",
         tags: &["chat", "seed"],
         capabilities: &[
@@ -321,6 +321,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
             "session",
             "agent_instructions",
             "skills",
+            "platform_management",
         ],
     },
 ];

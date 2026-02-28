@@ -2,7 +2,7 @@
 
 // Global chat session management.
 // Uses POST /v1/sessions/chat for per-user singleton get-or-create.
-// The backend manages the Chat harness and user-scoped tags.
+// The backend manages the Platform Chat harness and user-scoped tags.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "@/providers/org-provider";

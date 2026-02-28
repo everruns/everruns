@@ -231,7 +231,7 @@ pub async fn create_session(
 /// POST /v1/sessions/chat - Get or create global chat session
 ///
 /// Returns the user's singleton global chat session. Creates one if it doesn't exist.
-/// Uses the Chat harness and tags for per-user singleton management.
+/// Uses the Platform Chat harness and tags for per-user singleton management.
 #[utoipa::path(
     post,
     path = "/v1/sessions/chat",
