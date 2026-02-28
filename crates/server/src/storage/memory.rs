@@ -1000,10 +1000,15 @@ impl InMemoryDatabase {
                 if !exclude_types.is_empty() && exclude_types.contains(&e.event_type) {
                     return false;
                 }
-                // Prefer since_id (UUID v7 monotonically increasing) over sequence
+                // Resolve since_id to its sequence number for reliable ordering.
+                // UUID v7 is NOT guaranteed monotonically increasing across
+                // concurrent inserts, so always filter by sequence.
                 if let Some(id) = since_id {
-                    // Compare UUIDs directly for monotonic ordering
-                    if e.id.uuid() <= id.uuid() {
+                    if let Some(ref_event) = events.get(&id) {
+                        if e.sequence <= ref_event.sequence {
+                            return false;
+                        }
+                    } else {
                         return false;
                     }
                 } else if let Some(seq) = since_sequence
@@ -3993,6 +3998,93 @@ mod tests {
             .unwrap();
 
         assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_events_since_id_uses_sequence_ordering() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Get all events to find the ID of the second event
+        let all_events = db
+            .list_events(session_id, None, None, &[], &[])
+            .await
+            .unwrap();
+        assert_eq!(all_events.len(), 6);
+
+        let second_event_id = all_events[1].id;
+        let second_event_seq = all_events[1].sequence;
+
+        // Using since_id should return events after that event's sequence
+        let events_after_id = db
+            .list_events(session_id, None, Some(second_event_id), &[], &[])
+            .await
+            .unwrap();
+
+        // Using since_sequence with the same sequence should return the same events
+        let events_after_seq = db
+            .list_events(session_id, Some(second_event_seq), None, &[], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(events_after_id.len(), events_after_seq.len());
+        assert_eq!(events_after_id.len(), 4); // 6 total - 2 skipped = 4
+        for (a, b) in events_after_id.iter().zip(events_after_seq.iter()) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.sequence, b.sequence);
+        }
+
+        // Results should be ordered by sequence
+        for window in events_after_id.windows(2) {
+            assert!(
+                window[0].sequence < window[1].sequence,
+                "events must be ordered by sequence"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_events_since_id_unknown_returns_empty() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Using a since_id that doesn't exist should return no events
+        let unknown_id = EventId::new();
+        let events = db
+            .list_events(session_id, None, Some(unknown_id), &[], &[])
+            .await
+            .unwrap();
+
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_events_since_id_takes_precedence_over_since_sequence() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        let all_events = db
+            .list_events(session_id, None, None, &[], &[])
+            .await
+            .unwrap();
+
+        // Provide since_id of 4th event but since_sequence of 1st event.
+        // since_id should take precedence (return events after 4th).
+        let fourth_event_id = all_events[3].id;
+        let events = db
+            .list_events(
+                session_id,
+                Some(all_events[0].sequence),
+                Some(fourth_event_id),
+                &[],
+                &[],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 2); // events 5 and 6
+        assert_eq!(events[0].sequence, all_events[4].sequence);
+        assert_eq!(events[1].sequence, all_events[5].sequence);
     }
 
     #[tokio::test]

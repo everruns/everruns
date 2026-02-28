@@ -46,7 +46,7 @@ Every event MUST conform to this schema:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | UUID v7 | Yes | Unique, monotonically increasing event identifier |
+| `id` | UUID v7 | Yes | Unique event identifier (ordering uses `sequence`, not ID) |
 | `type` | string | Yes | Event type in dot notation (e.g., `input.message`, `reason.started`) |
 | `ts` | ISO 8601 | Yes | Event timestamp with millisecond precision |
 | `session_id` | UUID | Yes | Session this event belongs to |
@@ -1028,7 +1028,7 @@ Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) end
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `since_id` | EventId | Resume after this event ID (UUID v7 monotonic) |
+| `since_id` | EventId | Resume after this event ID (resolved to sequence for ordering) |
 | `types` | string[] | **Positive filter**: only return events matching these types. Empty = all types. |
 | `exclude` | string[] | **Negative filter**: remove matching types from the result. |
 

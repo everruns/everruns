@@ -1129,30 +1129,28 @@ impl Database {
         filter_types: &[String],
         exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
-        // Prefer since_id (UUID v7 monotonically increasing) over sequence for filtering.
+        // Resolve since_id to its sequence number for reliable ordering.
+        // UUID v7 is NOT guaranteed monotonically increasing across concurrent inserts,
+        // so we always filter and order by the dedicated sequence column.
         // filter_types: positive filter — when non-empty, only return matching event types.
         // exclude_types: negative filter — remove matching event types from results.
         // When both are provided, filter_types narrows first, then exclude_types removes.
-        let rows = match (since_id, since_sequence) {
+        let since_sequence = match (since_id, since_sequence) {
             (Some(id), _) => {
-                sqlx::query_as::<_, EventRow>(
-                    r#"
-                    SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
-                    FROM events
-                    WHERE session_id = $1 AND id > $2
-                      AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
-                      AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
-                    ORDER BY id ASC
-                    "#,
+                // Look up the sequence number for this event ID
+                let seq = sqlx::query_scalar::<_, i32>(
+                    "SELECT sequence FROM events WHERE id = $1",
                 )
-                .bind(session_id.uuid())
                 .bind(id.uuid())
-                .bind(filter_types)
-                .bind(exclude_types)
-                .fetch_all(&self.pool)
-                .await?
+                .fetch_optional(&self.pool)
+                .await?;
+                seq.or(since_sequence)
             }
-            (None, Some(seq)) => {
+            (None, seq) => seq,
+        };
+
+        let rows = match since_sequence {
+            Some(seq) => {
                 sqlx::query_as::<_, EventRow>(
                     r#"
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
@@ -1170,7 +1168,7 @@ impl Database {
                 .fetch_all(&self.pool)
                 .await?
             }
-            (None, None) => {
+            None => {
                 sqlx::query_as::<_, EventRow>(
                     r#"
                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
