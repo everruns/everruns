@@ -19,7 +19,6 @@
 //!   API_URL=http://localhost:9300/api   # API endpoint
 //!   SESSIONS=100                    # Number of parallel sessions
 //!   MESSAGES_PER_SESSION=50         # Messages per session
-//!   MODEL_ID=<model_id>             # Model to use (default: llmsim-latency seed model)
 //!   TARGET=docker-example           # Target label (auto-detected if unset)
 
 use std::fs;
@@ -75,8 +74,7 @@ impl Default for LoadTestConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(50),
-            model_id: std::env::var("MODEL_ID")
-                .unwrap_or_else(|_| DEFAULT_LLMSIM_MODEL_ID.to_string()),
+            model_id: DEFAULT_LLMSIM_MODEL_ID.to_string(),
             max_concurrent_sessions: std::env::var("MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -722,6 +720,13 @@ impl LoadTestRunner {
         loop {
             match tokio::time::timeout_at(deadline, sse_stream.next()).await {
                 Ok(Some(Ok(event))) => {
+                    tracing::debug!(
+                        session_id,
+                        event_id = %event.id,
+                        event_type = %event.event_type,
+                        last_event_id = ?sse_stream.last_event_id(),
+                        "SSE event received"
+                    );
                     if event.event_type == "session.idled" {
                         return Ok(());
                     }
@@ -780,7 +785,9 @@ impl LoadTestRunner {
                 // but log for visibility.
                 tracing::debug!(
                     session_id,
+                    event_id = %event.id,
                     event_type = %event.event_type,
+                    last_event_id = ?sse_stream.last_event_id(),
                     "Received event during eager SSE connect"
                 );
             }
@@ -1000,7 +1007,6 @@ fn print_help() {
     println!("  API_URL              API endpoint (default: http://localhost:9300/api)");
     println!("  SESSIONS             Number of parallel sessions (default: 100)");
     println!("  MESSAGES_PER_SESSION Messages per session (default: 50)");
-    println!("  MODEL_ID             Model ID (default: seed llmsim model)");
     println!("  MAX_CONCURRENT       Max concurrent sessions (default: 50)");
     println!("  TIMEOUT_SECS         Request timeout in seconds (default: 300)");
     println!("  TARGET               Target label for saved results (default: auto-detected)");
@@ -1119,6 +1125,9 @@ fn print_comparison(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Init tracing so RUST_LOG works (e.g. RUST_LOG=everruns_sdk=debug)
+    tracing_subscriber::fmt::init();
+
     let cli = CliArgs::parse();
 
     if cli.help {
