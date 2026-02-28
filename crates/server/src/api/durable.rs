@@ -3099,4 +3099,161 @@ mod tests {
         assert_eq!(point.workflows_failed_total, 3);
         assert!((point.load_percentage - 25.0).abs() < 0.01);
     }
+
+    // ============================================
+    // Integration test: get_health with InMemoryWorkflowEventStore
+    // ============================================
+
+    #[tokio::test]
+    async fn test_get_health_with_in_memory_store() {
+        use everruns_durable::InMemoryWorkflowEventStore;
+
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+
+        // Register a worker with fresh heartbeat
+        store
+            .register_worker(WorkerInfo {
+                id: "test-worker".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 3,
+                status: "active".to_string(),
+                accepting_tasks: true,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        // Create a pending workflow
+        let wf_id = Uuid::now_v7();
+        store
+            .create_workflow(wf_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+        let response = HealthResponse::from(health);
+
+        // Verify worker metrics
+        assert_eq!(response.active_workers, 1);
+        assert_eq!(response.workers_accepting, 1);
+        assert_eq!(response.total_capacity, 10);
+        assert_eq!(response.current_load, 3);
+        assert!((response.load_percentage - 30.0).abs() < 0.01);
+
+        // Verify workflow metrics
+        assert_eq!(response.pending_workflows, 1);
+        assert_eq!(response.running_workflows, 0);
+
+        // Status should be healthy (active workers, no DLQ)
+        assert_eq!(response.status, "healthy");
+    }
+
+    #[tokio::test]
+    async fn test_get_health_with_in_memory_store_full_scenario() {
+        use everruns_durable::workflow::ActivityOptions;
+        use everruns_durable::{InMemoryWorkflowEventStore, TaskDefinition};
+
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+
+        // Register worker
+        store
+            .register_worker(WorkerInfo {
+                id: "w1".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 0,
+                status: "active".to_string(),
+                accepting_tasks: true,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        // Create workflows in different states
+        let wf_pending = Uuid::now_v7();
+        store
+            .create_workflow(wf_pending, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let wf_running = Uuid::now_v7();
+        store
+            .create_workflow(wf_running, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(wf_running, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+
+        // Create and enqueue tasks
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: wf_running,
+                activity_id: "a1".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: wf_running,
+                activity_id: "a2".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Claim one task
+        let claimed = store
+            .claim_task("w1", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        let claimed_task_id = claimed[0].id;
+
+        // Complete the claimed task
+        store
+            .complete_task(claimed_task_id, "w1", serde_json::json!({}))
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+        let response = HealthResponse::from(health);
+
+        // Verify all metrics
+        assert_eq!(response.active_workers, 1);
+        assert_eq!(response.total_capacity, 10);
+        assert_eq!(response.pending_workflows, 1);
+        assert_eq!(response.running_workflows, 1);
+        assert_eq!(response.pending_tasks, 1); // a2 still pending
+        assert_eq!(response.claimed_tasks, 0); // task1 completed, not claimed
+        assert_eq!(response.completed_tasks, 1);
+        assert_eq!(response.started_tasks, 1); // task1 was claimed
+        assert_eq!(response.started_workflows, 1); // wf_running has started_at
+        assert_eq!(response.status, "healthy");
+    }
 }

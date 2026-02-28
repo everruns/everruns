@@ -256,6 +256,19 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         } else {
             workflow.result = result;
             workflow.error = error;
+            match status {
+                WorkflowStatus::Running => {
+                    if workflow.started_at.is_none() {
+                        workflow.started_at = Some(Utc::now());
+                    }
+                }
+                WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled => {
+                    if workflow.completed_at.is_none() {
+                        workflow.completed_at = Some(Utc::now());
+                    }
+                }
+                WorkflowStatus::Pending => {} // handled above
+            }
         }
         Ok(())
     }
@@ -773,6 +786,101 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .collect();
         result.sort_by(|a, b| b.started_at.cmp(&a.started_at));
         Ok(result)
+    }
+
+    async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
+        let workers = self.workers.read();
+        let heartbeat_threshold =
+            Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
+
+        let total_workers = workers.len();
+        let active_workers = workers
+            .values()
+            .filter(|w| w.status == "active" && w.last_heartbeat_at > heartbeat_threshold)
+            .count();
+        let workers_accepting = workers
+            .values()
+            .filter(|w| {
+                w.status == "active"
+                    && w.accepting_tasks
+                    && w.last_heartbeat_at > heartbeat_threshold
+            })
+            .count();
+        let total_capacity: usize = workers
+            .values()
+            .filter(|w| w.status == "active" && w.last_heartbeat_at > heartbeat_threshold)
+            .map(|w| w.max_concurrency as usize)
+            .sum();
+        let current_load: usize = workers
+            .values()
+            .filter(|w| w.status == "active" && w.last_heartbeat_at > heartbeat_threshold)
+            .map(|w| w.current_load as usize)
+            .sum();
+        drop(workers);
+
+        let tasks = self.tasks.read();
+        let pending_tasks = tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Pending)
+            .count();
+        let claimed_tasks = tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Claimed)
+            .count();
+        let completed_tasks = tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Completed)
+            .count();
+        let failed_tasks = tasks
+            .values()
+            .filter(|t| matches!(t.status, TaskStatus::Failed | TaskStatus::Dead))
+            .count();
+        let started_tasks = tasks.values().filter(|t| t.claimed_at.is_some()).count();
+        drop(tasks);
+
+        let workflows = self.workflows.read();
+        let running_workflows = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Running)
+            .count();
+        let pending_workflows = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Pending)
+            .count();
+        let completed_workflows = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Completed)
+            .count();
+        let failed_workflows = workflows
+            .values()
+            .filter(|w| matches!(w.status, WorkflowStatus::Failed | WorkflowStatus::Cancelled))
+            .count();
+        let started_workflows = workflows
+            .values()
+            .filter(|w| w.started_at.is_some())
+            .count();
+        drop(workflows);
+
+        let dlq_size = self.dlq.read().len();
+
+        Ok(SystemHealth {
+            total_workers,
+            active_workers,
+            workers_accepting,
+            total_capacity,
+            current_load,
+            pending_tasks,
+            claimed_tasks,
+            completed_tasks,
+            failed_tasks,
+            started_tasks,
+            running_workflows,
+            pending_workflows,
+            completed_workflows,
+            failed_workflows,
+            started_workflows,
+            dlq_size,
+        })
     }
 
     async fn list_workflows(
@@ -2079,5 +2187,397 @@ mod tests {
             result,
             Err(StoreError::TaskQueueLimitExceeded { .. })
         ));
+    }
+
+    // =========================================================================
+    // System Health Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_system_health_empty() {
+        let store = InMemoryWorkflowEventStore::new();
+        let health = store.get_system_health().await.unwrap();
+
+        assert_eq!(health.total_workers, 0);
+        assert_eq!(health.active_workers, 0);
+        assert_eq!(health.workers_accepting, 0);
+        assert_eq!(health.total_capacity, 0);
+        assert_eq!(health.current_load, 0);
+        assert_eq!(health.pending_tasks, 0);
+        assert_eq!(health.claimed_tasks, 0);
+        assert_eq!(health.completed_tasks, 0);
+        assert_eq!(health.failed_tasks, 0);
+        assert_eq!(health.started_tasks, 0);
+        assert_eq!(health.running_workflows, 0);
+        assert_eq!(health.pending_workflows, 0);
+        assert_eq!(health.completed_workflows, 0);
+        assert_eq!(health.failed_workflows, 0);
+        assert_eq!(health.started_workflows, 0);
+        assert_eq!(health.dlq_size, 0);
+    }
+
+    #[tokio::test]
+    async fn test_system_health_worker_counts() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Register two active workers
+        store
+            .register_worker(WorkerInfo {
+                id: "w1".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 3,
+                status: "active".to_string(),
+                accepting_tasks: true,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        store
+            .register_worker(WorkerInfo {
+                id: "w2".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 5,
+                current_load: 2,
+                status: "active".to_string(),
+                accepting_tasks: false,
+                backpressure_reason: Some("overloaded".to_string()),
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+
+        assert_eq!(health.total_workers, 2);
+        assert_eq!(health.active_workers, 2);
+        assert_eq!(health.workers_accepting, 1); // only w1 accepts
+        assert_eq!(health.total_capacity, 15); // 10 + 5
+        assert_eq!(health.current_load, 5); // 3 + 2
+    }
+
+    #[tokio::test]
+    async fn test_system_health_draining_workers_excluded_from_capacity() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        store
+            .register_worker(WorkerInfo {
+                id: "w-active".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 2,
+                status: "active".to_string(),
+                accepting_tasks: true,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        store
+            .register_worker(WorkerInfo {
+                id: "w-draining".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 5,
+                status: "draining".to_string(),
+                accepting_tasks: false,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now(),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+
+        assert_eq!(health.total_workers, 2);
+        assert_eq!(health.active_workers, 1);
+        assert_eq!(health.total_capacity, 10); // only active worker
+        assert_eq!(health.current_load, 2); // only active worker
+    }
+
+    #[tokio::test]
+    async fn test_system_health_stale_workers_excluded() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Register a worker with a stale heartbeat (> 60s ago)
+        store
+            .register_worker(WorkerInfo {
+                id: "w-stale".to_string(),
+                worker_group: Some("default".to_string()),
+                activity_types: vec!["act".to_string()],
+                max_concurrency: 10,
+                current_load: 5,
+                status: "active".to_string(),
+                accepting_tasks: true,
+                backpressure_reason: None,
+                started_at: Utc::now(),
+                last_heartbeat_at: Utc::now() - chrono::Duration::seconds(120),
+                hostname: None,
+                version: None,
+                metadata: None,
+                tasks_completed: 0,
+                tasks_failed: 0,
+                avg_task_duration_ms: None,
+            })
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+
+        assert_eq!(health.total_workers, 1); // still counted as total
+        assert_eq!(health.active_workers, 0); // but not active (stale heartbeat)
+        assert_eq!(health.workers_accepting, 0);
+        assert_eq!(health.total_capacity, 0);
+        assert_eq!(health.current_load, 0);
+    }
+
+    #[tokio::test]
+    async fn test_system_health_workflow_counts() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Create workflows in different states
+        let wf_pending = Uuid::now_v7();
+        store
+            .create_workflow(wf_pending, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        // Stays pending (default)
+
+        let wf_running = Uuid::now_v7();
+        store
+            .create_workflow(wf_running, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(wf_running, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+
+        let wf_completed = Uuid::now_v7();
+        store
+            .create_workflow(wf_completed, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(
+                wf_completed,
+                WorkflowStatus::Completed,
+                Some(serde_json::json!({})),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let wf_failed = Uuid::now_v7();
+        store
+            .create_workflow(wf_failed, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(
+                wf_failed,
+                WorkflowStatus::Failed,
+                None,
+                Some(crate::workflow::WorkflowError::new("test failure")),
+            )
+            .await
+            .unwrap();
+
+        let wf_cancelled = Uuid::now_v7();
+        store
+            .create_workflow(wf_cancelled, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(wf_cancelled, WorkflowStatus::Cancelled, None, None)
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+
+        assert_eq!(health.pending_workflows, 1);
+        assert_eq!(health.running_workflows, 1);
+        assert_eq!(health.completed_workflows, 1);
+        assert_eq!(health.failed_workflows, 2); // failed + cancelled
+    }
+
+    #[tokio::test]
+    async fn test_system_health_task_counts() {
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Enqueue two tasks
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "a1".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        let _task2 = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "a2".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Initial: 2 pending, 0 claimed
+        let health = store.get_system_health().await.unwrap();
+        assert_eq!(health.pending_tasks, 2);
+        assert_eq!(health.claimed_tasks, 0);
+        assert_eq!(health.started_tasks, 0);
+
+        // Claim one task
+        let claimed = store
+            .claim_task("w1", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        let claimed_id = claimed[0].id;
+
+        let health = store.get_system_health().await.unwrap();
+        assert_eq!(health.pending_tasks, 1);
+        assert_eq!(health.claimed_tasks, 1);
+        assert_eq!(health.started_tasks, 1); // claimed_at is set
+
+        // Complete the claimed task
+        store
+            .complete_task(claimed_id, "w1", serde_json::json!({}))
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+        assert_eq!(health.pending_tasks, 1);
+        assert_eq!(health.claimed_tasks, 0);
+        assert_eq!(health.completed_tasks, 1);
+        assert_eq!(health.started_tasks, 1); // still 1 (ever started)
+    }
+
+    #[tokio::test]
+    async fn test_system_health_dlq_size() {
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Create a task, claim, and move to DLQ
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "a1".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        store
+            .claim_task("w1", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        store
+            .move_to_dlq(task_id, vec!["err1".to_string(), "err2".to_string()])
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+        assert_eq!(health.dlq_size, 1);
+    }
+
+    #[tokio::test]
+    async fn test_system_health_started_workflows_counts_started_at() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Create a pending workflow (never started)
+        let wf1 = Uuid::now_v7();
+        store
+            .create_workflow(wf1, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Create a running workflow (has started_at)
+        let wf2 = Uuid::now_v7();
+        store
+            .create_workflow(wf2, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(wf2, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+
+        // Create a completed workflow (has started_at)
+        let wf3 = Uuid::now_v7();
+        store
+            .create_workflow(wf3, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(wf3, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(
+                wf3,
+                WorkflowStatus::Completed,
+                Some(serde_json::json!({})),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let health = store.get_system_health().await.unwrap();
+        // started_workflows counts workflows where started_at IS NOT NULL
+        // wf2 (running) and wf3 (completed after running) should have started_at set
+        assert_eq!(health.started_workflows, 2);
     }
 }
