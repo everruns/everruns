@@ -99,6 +99,7 @@ Harnesses define the base environment and capabilities for sessions. See [harnes
 | PATCH | `/v1/harnesses/{id}` | Update harness |
 | DELETE | `/v1/harnesses/{id}` | Delete harness |
 | POST | `/v1/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
+| POST | `/v1/harnesses/preview` | Preview merged system prompt + tools |
 
 ### Sessions
 

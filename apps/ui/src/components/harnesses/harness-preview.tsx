@@ -106,9 +106,7 @@ export function HarnessPreview({ systemPrompt, capabilities }: HarnessPreviewPro
               {preview.tools.length}
             </Badge>
           </CardTitle>
-          <CardDescription>
-            Tools available from the enabled capabilities
-          </CardDescription>
+          <CardDescription>Tools available from the enabled capabilities</CardDescription>
         </CardHeader>
         <CardContent>
           {preview.tools.length === 0 ? (
