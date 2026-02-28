@@ -143,7 +143,7 @@ This enables temporarily extending an agent's capabilities for specific sessions
 
 #### Get or Create Chat Session
 
-Returns the calling user's singleton global chat session. Creates one with the Chat harness if none exists. Uses tag-based lookup (`global-chat` + `user:{user_id}`) for per-user singleton management.
+Returns the calling user's singleton global chat session. Creates one with the Platform Chat harness if none exists. Uses tag-based lookup (`global-chat` + `user:{user_id}`) for per-user singleton management.
 
 **Request:** `POST /v1/sessions/chat` (no body required)
 

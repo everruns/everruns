@@ -51,22 +51,33 @@ The recommended default harness. Bundles the core capabilities needed for genera
 - Agents that store API keys or credentials in session secrets
 - General-purpose assistant workflows
 
-### Chat
+### Platform Chat
 
-Conversational harness for the global chat interface. Identical capabilities to Generic, but tagged separately to support the per-user singleton session pattern.
+Conversational harness for the global chat interface. Extends Generic capabilities with platform management tools, tagged separately to support the per-user singleton session pattern.
 
 | Property | Value |
 |----------|-------|
-| Name | Chat |
+| Name | Platform Chat |
 | Seed ID | `harness_01933b5a000070008000000000000603` |
 | System Prompt | "You are a helpful assistant." |
 | Tags | `chat`, `seed` |
 
-**Capabilities:** Same as Generic (`session_file_system`, `virtual_bash`, `session_storage`, `session`, `agent_instructions`, `skills`).
+**Capabilities:** Generic capabilities plus `platform_management`:
+
+| Capability ID | Name | Purpose |
+|---------------|------|---------|
+| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` |
+| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
+| `session_storage` | Session Storage | Key/value store and encrypted secret storage |
+| `session` | Session | Session info access and title management |
+| `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
+| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
+| `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools |
 
 **Use cases:**
 - Global chat interface (web UI at `/chat`)
 - Per-user singleton sessions via tag-based lookup
+- Managing Everruns entities (harnesses, agents, sessions) directly from chat
 
 ## Design Decisions
 

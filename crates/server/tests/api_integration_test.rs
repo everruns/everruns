@@ -1655,7 +1655,7 @@ async fn test_global_chat_creates_session() {
         .assert_success()
         .json();
 
-    assert_eq!(session.title.as_deref(), Some("Chat"));
+    assert_eq!(session.title.as_deref(), Some("Platform Chat"));
     assert!(session.tags.contains(&"global-chat".to_string()));
 }
 
@@ -1696,7 +1696,7 @@ async fn test_global_chat_has_chat_harness() {
     assert_eq!(
         session.harness_id.to_string(),
         SEED_CHAT_HARNESS_ID,
-        "Chat session should use the Chat harness"
+        "Chat session should use the Platform Chat harness"
     );
 }
 
@@ -1704,7 +1704,7 @@ async fn test_global_chat_has_chat_harness() {
 async fn test_chat_harness_exists_in_seed() {
     let server = TestServer::new().await;
 
-    // Verify the Chat harness was seeded (response is {"data": [...]})
+    // Verify the Platform Chat harness was seeded (response is {"data": [...]})
     let body = server
         .get("/v1/harnesses")
         .await
@@ -1715,9 +1715,38 @@ async fn test_chat_harness_exists_in_seed() {
 
     let chat_harness = harnesses
         .iter()
-        .find(|h| h.name == "Chat")
-        .expect("Chat harness should exist in seed data");
+        .find(|h| h.name == "Platform Chat")
+        .expect("Platform Chat harness should exist in seed data");
 
     assert_eq!(chat_harness.id.to_string(), SEED_CHAT_HARNESS_ID);
     assert!(chat_harness.tags.contains(&"chat".to_string()));
+}
+
+#[tokio::test]
+async fn test_chat_harness_has_platform_management() {
+    let server = TestServer::new().await;
+
+    let harness: Harness = server
+        .get(&format!("/v1/harnesses/{}", SEED_CHAT_HARNESS_ID))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(harness.name, "Platform Chat");
+
+    let cap_ids: Vec<&str> = harness
+        .capabilities
+        .iter()
+        .map(|c| c.capability_id())
+        .collect();
+
+    assert_eq!(
+        cap_ids.len(),
+        7,
+        "Platform Chat harness should have 7 capabilities (Generic + platform_management)"
+    );
+    assert!(
+        cap_ids.contains(&"platform_management"),
+        "Platform Chat harness should include platform_management capability"
+    );
 }
