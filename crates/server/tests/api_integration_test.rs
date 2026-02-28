@@ -1721,3 +1721,32 @@ async fn test_chat_harness_exists_in_seed() {
     assert_eq!(chat_harness.id.to_string(), SEED_CHAT_HARNESS_ID);
     assert!(chat_harness.tags.contains(&"chat".to_string()));
 }
+
+#[tokio::test]
+async fn test_chat_harness_has_platform_management() {
+    let server = TestServer::new().await;
+
+    let harness: Harness = server
+        .get(&format!("/v1/harnesses/{}", SEED_CHAT_HARNESS_ID))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(harness.name, "Platform Chat");
+
+    let cap_ids: Vec<&str> = harness
+        .capabilities
+        .iter()
+        .map(|c| c.capability_id())
+        .collect();
+
+    assert_eq!(
+        cap_ids.len(),
+        7,
+        "Platform Chat harness should have 7 capabilities (Generic + platform_management)"
+    );
+    assert!(
+        cap_ids.contains(&"platform_management"),
+        "Platform Chat harness should include platform_management capability"
+    );
+}
