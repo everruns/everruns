@@ -94,13 +94,15 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
 | TM-AUTH-005 | API key exposure in transit | High | HTTPS required in production; keys prefixed `evr_` for scanning | MITIGATED |
 | TM-AUTH-006 | API key brute force | Medium | Keys stored as SHA-256 hashes; 128-bit entropy makes brute force infeasible | MITIGATED |
-| TM-AUTH-007 | OAuth state fixation | High | State parameter validated in callback flow | MITIGATED |
+| TM-AUTH-007 | OAuth state fixation | High | State parameter generated but NOT validated in callback (`routes.rs:508-525` has TODO) | **OPEN** |
 | TM-AUTH-008 | Session fixation via cookie | Medium | New tokens issued on login; HTTP-only, SameSite=Lax cookies | MITIGATED |
 | TM-AUTH-009 | Refresh token theft | High | Stored hashed in DB; HTTP-only cookie; revocable | MITIGATED |
 | TM-AUTH-010 | Admin password in env var | Low | Limited to admin mode; documented risk; shell history exposure possible | **ACCEPTED** |
 | TM-AUTH-011 | Auth bypass in `none` mode | Info | By design for local development; anonymous user gets admin role | **BY DESIGN** |
 | TM-AUTH-012 | OAuth account linking collision | Medium | Accounts linked by email; if attacker controls email at provider, they gain access | **CALLER RISK** |
 | TM-AUTH-013 | Expired API key still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
+| TM-AUTH-014 | Account enumeration via registration | Medium | Returns distinct "Email already registered" error; enables email harvesting | **OPEN** |
+| TM-AUTH-015 | JWT secret insecure default | High | Falls back to hardcoded `insecure-dev-secret-change-me` if `AUTH_JWT_SECRET` unset; no startup check in production | **OPEN** |
 
 ### Mitigation Details
 
@@ -172,6 +174,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-005 | Internal org_id exposure | Medium | `org_id` (BIGINT) never in APIs, URLs, logs, or error messages; only `public_id` exposed | MITIGATED |
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
+| TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
 
 ### Mitigation Details
 
@@ -431,7 +434,7 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-DURABLE-001 | Task hijacking | High | Ownership verified on completion; late finisher gets `TaskNotOwned` error | MITIGATED |
-| TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `GRPC_AUTH_TOKEN` env var; network isolation as defense-in-depth | MITIGATED |
+| TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `GRPC_AUTH_TOKEN` env var; auth disabled if env var unset; no org scoping in gRPC handlers | **OPEN** |
 | TM-DURABLE-003 | Event injection | Medium | Events created via gRPC only; validated for session membership | MITIGATED |
 | TM-DURABLE-004 | Queue flooding | Medium | Per-workflow pending task limit (default 100, configurable via `MAX_PENDING_TASKS_PER_WORKFLOW`) | MITIGATED |
 | TM-DURABLE-005 | Heartbeat timeout manipulation | Low | 30s timeout is reasonable for LLM operations; reclaimed tasks re-queued | MITIGATED |
@@ -439,6 +442,7 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | TM-DURABLE-007 | Task state manipulation | Medium | Tasks immutable after creation; only status transitions allowed via state machine | MITIGATED |
 | TM-DURABLE-008 | Worker impersonation | High | Bearer token auth via `GRPC_AUTH_TOKEN` prevents unauthorized access | MITIGATED (same as TM-DURABLE-002) |
 | TM-DURABLE-009 | Replay attack on workflow events | Low | Event store is append-only; events processed in sequence order | MITIGATED |
+| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | All `/v1/durable/*` endpoints lack `AuthUser`/`ResolvedOrg` extractors; accessible without auth | **OPEN** |
 
 ### Mitigation Details
 
@@ -477,6 +481,7 @@ Workers authenticate to control plane gRPC (port 9001) via bearer token (`GRPC_A
 | TM-OBS-004 | Braintrust API key exposure | Medium | Key stored in env var; not logged | MITIGATED |
 | TM-OBS-005 | Log injection | Low | Structured logging via `tracing` crate; no raw string interpolation in log output | MITIGATED |
 | TM-OBS-006 | Sensitive data in error logs | Medium | Errors logged server-side only; API keys and passwords excluded from tracing fields | MITIGATED |
+| TM-OBS-007 | No security audit logging | Medium | No structured audit logs for login attempts, API key operations, permission changes, or org member changes | **OPEN** |
 
 ### Mitigation Details
 
@@ -693,6 +698,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
+| TM-DOS-008 | ReDoS via file grep endpoint | Medium | `POST /v1/sessions/:id/fs/_/grep` accepts user regex with no complexity limits | **OPEN** |
 
 ## 16. Daytona Cloud Sandbox (TM-DAYTONA)
 
@@ -772,6 +778,14 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | ~~TM-API-011~~ | ~~WebFetch internal port scanning~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 blocks private IP ranges |
 | ~~TM-API-012~~ | ~~WebFetch DNS rebinding~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 DNS pinning prevents rebinding |
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
+| TM-AUTH-007 | OAuth state not validated | High | Store state in cookie; validate in callback |
+| TM-AUTH-014 | Account enumeration via registration | Medium | Return generic error for existing emails |
+| TM-AUTH-015 | JWT secret insecure default | High | Fail startup if AUTH_JWT_SECRET unset in production |
+| TM-DURABLE-002 | gRPC auth optional, no org scoping | High | Require GRPC_AUTH_TOKEN in production; add org scoping |
+| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | Add AuthUser/ResolvedOrg to all /v1/durable/* endpoints |
+| TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
+| TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
+| TM-OBS-007 | No security audit logging | Medium | Add structured audit log for auth events |
 | TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
