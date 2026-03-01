@@ -439,8 +439,19 @@ impl SessionFileService {
     }
 
     /// Search files using grep-like pattern matching
+    /// Max regex pattern length to prevent resource-intensive compilation (TM-DOS-008)
+    const MAX_GREP_PATTERN_LEN: usize = 1000;
+
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        // Validate regex pattern
+        // TM-DOS-008: Limit pattern length to prevent expensive regex compilation.
+        // Note: Rust's `regex` crate already prevents catastrophic backtracking
+        // (uses Thompson NFA), but compilation cost is O(n) in pattern length.
+        anyhow::ensure!(
+            req.pattern.len() <= Self::MAX_GREP_PATTERN_LEN,
+            "Regex pattern too long (max {} characters)",
+            Self::MAX_GREP_PATTERN_LEN
+        );
+
         let regex = Regex::new(&req.pattern)?;
 
         // Get matching files from database
