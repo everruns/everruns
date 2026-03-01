@@ -184,7 +184,8 @@ impl TestServer {
             db: db.clone(),
             auth: auth_state.clone(),
         };
-        let durable_state = api::durable::AppState::new(Some(durable_store.clone()));
+        let durable_state =
+            api::durable::AppState::new(Some(durable_store.clone()), auth_state.clone());
         let schedules_state = api::schedules::ScheduleAppState::new(Some(durable_store));
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
