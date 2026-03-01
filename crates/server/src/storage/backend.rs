@@ -236,6 +236,22 @@ impl StorageBackend {
         dispatch!(self, get_agent_public_id, org_id, id)
     }
 
+    pub async fn set_agent_encrypted_prompt(
+        &self,
+        agent_id: AgentId,
+        encrypted: &[u8],
+    ) -> Result<()> {
+        dispatch!(self, set_agent_encrypted_prompt, agent_id, encrypted)
+    }
+
+    pub async fn set_harness_encrypted_prompt(
+        &self,
+        harness_id: HarnessId,
+        encrypted: &[u8],
+    ) -> Result<()> {
+        dispatch!(self, set_harness_encrypted_prompt, harness_id, encrypted)
+    }
+
     // ============================================
     // Harnesses
     // ============================================

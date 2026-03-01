@@ -710,6 +710,35 @@ impl Database {
         Ok(row.map(|r| r.0))
     }
 
+    /// TM-CRYPTO-007: Store encrypted system prompt for an agent.
+    /// Called after agent create/update when EncryptionService is available.
+    pub async fn set_agent_encrypted_prompt(
+        &self,
+        agent_id: AgentId,
+        encrypted: &[u8],
+    ) -> Result<()> {
+        sqlx::query("UPDATE agents SET system_prompt_encrypted = $1 WHERE id = $2")
+            .bind(encrypted)
+            .bind(agent_id.uuid())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// TM-CRYPTO-007: Store encrypted system prompt for a harness.
+    pub async fn set_harness_encrypted_prompt(
+        &self,
+        harness_id: HarnessId,
+        encrypted: &[u8],
+    ) -> Result<()> {
+        sqlx::query("UPDATE harnesses SET system_prompt_encrypted = $1 WHERE id = $2")
+            .bind(encrypted)
+            .bind(harness_id.uuid())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     // ============================================
     // Harnesses (base configuration for sessions)
     // ============================================
