@@ -22,43 +22,144 @@ use everruns_durable::{
     record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
-    self, AddMessageRequest, AddMessageResponse, CheckCircuitBreakerRequest,
-    CheckCircuitBreakerResponse, CircuitBreakerState as ProtoCircuitBreakerState,
-    ClaimDurableTasksRequest, ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse,
-    CompleteDurableTaskRequest, CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
-    CountActiveDurableWorkflowsResponse, CreateDurableWorkflowRequest,
-    CreateDurableWorkflowResponse, DeregisterDurableWorkerRequest, DeregisterDurableWorkerResponse,
-    DurableWorkflowStatus, EmitEventRequest, EmitEventResponse, EmitEventStreamResponse,
-    EnqueueDurableTaskRequest, EnqueueDurableTaskResponse, FailDurableTaskRequest,
-    FailDurableTaskResponse, GetAgentRequest, GetAgentResponse, GetDefaultModelRequest,
-    GetDefaultModelResponse, GetDurableWorkflowStatusRequest, GetDurableWorkflowStatusResponse,
-    GetHarnessRequest, GetHarnessResponse, GetMcpServerByPrefixRequest,
-    GetMcpServerByPrefixResponse, GetModelWithProviderRequest, GetModelWithProviderResponse,
-    GetSessionRequest, GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse,
-    HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest,
-    HeartbeatDurableWorkerResponse, LoadMessagesRequest, LoadMessagesResponse, McpServerInfo,
-    McpToolDef, RecordCircuitBreakerFailureRequest, RecordCircuitBreakerFailureResponse,
-    RecordCircuitBreakerSuccessRequest, RecordCircuitBreakerSuccessResponse,
-    RegisterDurableWorkerRequest, RegisterDurableWorkerResponse, ResolveImageRequest,
-    ResolveImageResponse, ResolveImagesRequest, ResolveImagesResponse, ResolvedImageData,
-    SessionCreateDirectoryRequest, SessionCreateDirectoryResponse, SessionDeleteFileRequest,
-    SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
-    SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
-    SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
-    SessionStorageDeleteSecretRequest, SessionStorageDeleteSecretResponse,
-    SessionStorageDeleteValueRequest, SessionStorageDeleteValueResponse,
-    SessionStorageGetSecretRequest, SessionStorageGetSecretResponse, SessionStorageGetValueRequest,
-    SessionStorageGetValueResponse, SessionStorageListKeysRequest, SessionStorageListKeysResponse,
-    SessionStorageListSecretsRequest, SessionStorageListSecretsResponse,
-    SessionStorageSetSecretRequest, SessionStorageSetSecretResponse, SessionStorageSetValueRequest,
-    SessionStorageSetValueResponse, SessionWriteFileRequest, SessionWriteFileResponse,
-    SetSessionStatusRequest, SetSessionStatusResponse, SetSessionTitleRequest,
-    SetSessionTitleResponse, SubscribeTaskNotificationsRequest, TaskNotification,
-    TaskNotificationType, UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
+    self,
+    AddMessageRequest,
+    AddMessageResponse,
+    CheckCircuitBreakerRequest,
+    CheckCircuitBreakerResponse,
+    CircuitBreakerState as ProtoCircuitBreakerState,
+    ClaimDurableTasksRequest,
+    ClaimDurableTasksResponse,
+    CommitExecRequest,
+    CommitExecResponse,
+    CompleteDurableTaskRequest,
+    CompleteDurableTaskResponse,
+    CountActiveDurableWorkflowsRequest,
+    CountActiveDurableWorkflowsResponse,
+    CreateDurableWorkflowRequest,
+    CreateDurableWorkflowResponse,
+    DeregisterDurableWorkerRequest,
+    DeregisterDurableWorkerResponse,
+    DurableWorkflowStatus,
+    EmitEventRequest,
+    EmitEventResponse,
+    EmitEventStreamResponse,
+    EnqueueDurableTaskRequest,
+    EnqueueDurableTaskResponse,
+    FailDurableTaskRequest,
+    FailDurableTaskResponse,
+    GetAgentRequest,
+    GetAgentResponse,
+    GetDefaultModelRequest,
+    GetDefaultModelResponse,
+    GetDurableWorkflowStatusRequest,
+    GetDurableWorkflowStatusResponse,
+    GetHarnessRequest,
+    GetHarnessResponse,
+    GetMcpServerByPrefixRequest,
+    GetMcpServerByPrefixResponse,
+    GetModelWithProviderRequest,
+    GetModelWithProviderResponse,
+    GetSessionRequest,
+    GetSessionResponse,
+    GetTurnContextRequest,
+    GetTurnContextResponse,
+    HeartbeatDurableTaskRequest,
+    HeartbeatDurableTaskResponse,
+    HeartbeatDurableWorkerRequest,
+    HeartbeatDurableWorkerResponse,
+    LoadMessagesRequest,
+    LoadMessagesResponse,
+    McpServerInfo,
+    McpToolDef,
+    // Platform management types
+    PlatformCopyHarnessRequest,
+    PlatformCopyHarnessResponse,
+    PlatformCreateAgentRequest,
+    PlatformCreateAgentResponse,
+    PlatformCreateHarnessRequest,
+    PlatformCreateHarnessResponse,
+    PlatformCreateSessionRequest,
+    PlatformCreateSessionResponse,
+    PlatformDeleteAgentRequest,
+    PlatformDeleteAgentResponse,
+    PlatformDeleteHarnessRequest,
+    PlatformDeleteHarnessResponse,
+    PlatformDeleteSessionRequest,
+    PlatformDeleteSessionResponse,
+    PlatformGetBaseUrlRequest,
+    PlatformGetBaseUrlResponse,
+    PlatformGetMessagesRequest,
+    PlatformGetMessagesResponse,
+    PlatformListAgentsRequest,
+    PlatformListAgentsResponse,
+    PlatformListHarnessesRequest,
+    PlatformListHarnessesResponse,
+    PlatformListSessionsRequest,
+    PlatformListSessionsResponse,
+    PlatformSendMessageRequest,
+    PlatformSendMessageResponse,
+    PlatformUpdateAgentRequest,
+    PlatformUpdateAgentResponse,
+    PlatformUpdateHarnessRequest,
+    PlatformUpdateHarnessResponse,
+    PlatformWaitForIdleRequest,
+    PlatformWaitForIdleResponse,
+    RecordCircuitBreakerFailureRequest,
+    RecordCircuitBreakerFailureResponse,
+    RecordCircuitBreakerSuccessRequest,
+    RecordCircuitBreakerSuccessResponse,
+    RegisterDurableWorkerRequest,
+    RegisterDurableWorkerResponse,
+    ResolveImageRequest,
+    ResolveImageResponse,
+    ResolveImagesRequest,
+    ResolveImagesResponse,
+    ResolvedImageData,
+    SessionCreateDirectoryRequest,
+    SessionCreateDirectoryResponse,
+    SessionDeleteFileRequest,
+    SessionDeleteFileResponse,
+    SessionGrepFilesRequest,
+    SessionGrepFilesResponse,
+    SessionListDirectoryRequest,
+    SessionListDirectoryResponse,
+    SessionReadFileRequest,
+    SessionReadFileResponse,
+    SessionStatFileRequest,
+    SessionStatFileResponse,
+    SessionStorageDeleteSecretRequest,
+    SessionStorageDeleteSecretResponse,
+    SessionStorageDeleteValueRequest,
+    SessionStorageDeleteValueResponse,
+    SessionStorageGetSecretRequest,
+    SessionStorageGetSecretResponse,
+    SessionStorageGetValueRequest,
+    SessionStorageGetValueResponse,
+    SessionStorageListKeysRequest,
+    SessionStorageListKeysResponse,
+    SessionStorageListSecretsRequest,
+    SessionStorageListSecretsResponse,
+    SessionStorageSetSecretRequest,
+    SessionStorageSetSecretResponse,
+    SessionStorageSetValueRequest,
+    SessionStorageSetValueResponse,
+    SessionWriteFileRequest,
+    SessionWriteFileResponse,
+    SetSessionStatusRequest,
+    SetSessionStatusResponse,
+    SetSessionTitleRequest,
+    SetSessionTitleResponse,
+    SubscribeTaskNotificationsRequest,
+    TaskNotification,
+    TaskNotificationType,
+    UpdateDurableWorkflowStatusRequest,
+    UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
-    WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
-    schema_event_to_proto, schema_harness_to_proto,
+    WorkerService, WorkerServiceServer,
+    datetime_to_proto_timestamp as ip_datetime_to_proto_timestamp, proto_event_request_to_schema,
+    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto, schema_session_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -126,6 +227,8 @@ pub struct WorkerServiceImpl {
     db: Arc<StorageBackend>,
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
+    /// Agent runner for triggering turn workflows (platform management send_message)
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
 }
 
 impl WorkerServiceImpl {
@@ -133,6 +236,7 @@ impl WorkerServiceImpl {
         event_service: EventService,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
+        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     ) -> Self {
         let agent_service = AgentService::new(db.clone());
         let harness_service = HarnessService::new(db.clone());
@@ -177,6 +281,7 @@ impl WorkerServiceImpl {
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
             session_storage_store,
+            runner,
         }
     }
 
@@ -2355,6 +2460,534 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(SessionStorageListSecretsResponse {
             secrets: proto_secrets,
         }))
+    }
+
+    // ========================================================================
+    // Platform management operations
+    // ========================================================================
+
+    async fn platform_list_harnesses(
+        &self,
+        request: Request<PlatformListHarnessesRequest>,
+    ) -> Result<Response<PlatformListHarnessesResponse>, Status> {
+        let req = request.into_inner();
+        let harnesses = self
+            .harness_service
+            .list(req.org_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
+
+        let proto_harnesses = harnesses.iter().map(schema_harness_to_proto).collect();
+        Ok(Response::new(PlatformListHarnessesResponse {
+            harnesses: proto_harnesses,
+        }))
+    }
+
+    async fn platform_create_harness(
+        &self,
+        request: Request<PlatformCreateHarnessRequest>,
+    ) -> Result<Response<PlatformCreateHarnessResponse>, Status> {
+        let req = request.into_inner();
+        let capabilities: Vec<everruns_core::AgentCapabilityConfig> = req
+            .capabilities
+            .iter()
+            .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
+            .collect();
+
+        let create_req = crate::api::harnesses::CreateHarnessRequest {
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: None,
+            tags: vec![],
+            capabilities,
+        };
+
+        let harness = self
+            .harness_service
+            .create(req.org_id, create_req)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to create harness: {}", e)))?;
+
+        Ok(Response::new(PlatformCreateHarnessResponse {
+            harness: Some(schema_harness_to_proto(&harness)),
+        }))
+    }
+
+    async fn platform_update_harness(
+        &self,
+        request: Request<PlatformUpdateHarnessRequest>,
+    ) -> Result<Response<PlatformUpdateHarnessResponse>, Status> {
+        let req = request.into_inner();
+        let harness_id = parse_uuid(req.harness_id.as_ref())?;
+
+        let update_req = crate::api::harnesses::UpdateHarnessRequest {
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: None,
+            tags: None,
+            capabilities: None,
+            status: None,
+        };
+
+        let harness = self
+            .harness_service
+            .update(req.org_id, harness_id, update_req)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?
+            .ok_or_else(|| Status::not_found("Harness not found"))?;
+
+        Ok(Response::new(PlatformUpdateHarnessResponse {
+            harness: Some(schema_harness_to_proto(&harness)),
+        }))
+    }
+
+    async fn platform_delete_harness(
+        &self,
+        request: Request<PlatformDeleteHarnessRequest>,
+    ) -> Result<Response<PlatformDeleteHarnessResponse>, Status> {
+        let req = request.into_inner();
+        let harness_id = parse_uuid(req.harness_id.as_ref())?;
+
+        self.harness_service
+            .delete(req.org_id, harness_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
+
+        Ok(Response::new(PlatformDeleteHarnessResponse {}))
+    }
+
+    async fn platform_copy_harness(
+        &self,
+        request: Request<PlatformCopyHarnessRequest>,
+    ) -> Result<Response<PlatformCopyHarnessResponse>, Status> {
+        let req = request.into_inner();
+        let harness_id = parse_uuid(req.harness_id.as_ref())?;
+
+        let harness = self
+            .harness_service
+            .copy(req.org_id, harness_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?
+            .ok_or_else(|| Status::not_found("Harness not found"))?;
+
+        // If a new_name was provided, update the copy with the new name
+        let harness = if let Some(new_name) = req.new_name {
+            let update_req = crate::api::harnesses::UpdateHarnessRequest {
+                name: Some(new_name),
+                description: None,
+                system_prompt: None,
+                default_model_id: None,
+                tags: None,
+                capabilities: None,
+                status: None,
+            };
+            self.harness_service
+                .update(req.org_id, harness.id.uuid(), update_req)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))?
+                .unwrap_or(harness)
+        } else {
+            harness
+        };
+
+        Ok(Response::new(PlatformCopyHarnessResponse {
+            harness: Some(schema_harness_to_proto(&harness)),
+        }))
+    }
+
+    async fn platform_list_agents(
+        &self,
+        request: Request<PlatformListAgentsRequest>,
+    ) -> Result<Response<PlatformListAgentsResponse>, Status> {
+        let req = request.into_inner();
+        let agents = self
+            .agent_service
+            .list(req.org_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
+
+        let proto_agents = agents.iter().map(schema_agent_to_proto).collect();
+        Ok(Response::new(PlatformListAgentsResponse {
+            agents: proto_agents,
+        }))
+    }
+
+    async fn platform_create_agent(
+        &self,
+        request: Request<PlatformCreateAgentRequest>,
+    ) -> Result<Response<PlatformCreateAgentResponse>, Status> {
+        let req = request.into_inner();
+        let capabilities: Vec<everruns_core::AgentCapabilityConfig> = req
+            .capabilities
+            .iter()
+            .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
+            .collect();
+
+        let create_req = crate::api::agents::CreateAgentRequest {
+            id: None,
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: None,
+            tags: vec![],
+            capabilities,
+            tools: vec![],
+        };
+
+        let agent = self
+            .agent_service
+            .create(req.org_id, None, create_req)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to create agent: {}", e)))?;
+
+        Ok(Response::new(PlatformCreateAgentResponse {
+            agent: Some(schema_agent_to_proto(&agent)),
+        }))
+    }
+
+    async fn platform_update_agent(
+        &self,
+        request: Request<PlatformUpdateAgentRequest>,
+    ) -> Result<Response<PlatformUpdateAgentResponse>, Status> {
+        let req = request.into_inner();
+        let agent_id = parse_uuid(req.agent_id.as_ref())?;
+
+        // Resolve UUID to public_id for the service
+        let agent = self
+            .agent_service
+            .get(req.org_id, agent_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+
+        let update_req = crate::api::agents::UpdateAgentRequest {
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: None,
+            tags: None,
+            capabilities: None,
+            tools: None,
+            status: None,
+        };
+
+        let updated = self
+            .agent_service
+            .update(req.org_id, &agent.public_id.to_string(), update_req)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+
+        Ok(Response::new(PlatformUpdateAgentResponse {
+            agent: Some(schema_agent_to_proto(&updated)),
+        }))
+    }
+
+    async fn platform_delete_agent(
+        &self,
+        request: Request<PlatformDeleteAgentRequest>,
+    ) -> Result<Response<PlatformDeleteAgentResponse>, Status> {
+        let req = request.into_inner();
+        let agent_id = parse_uuid(req.agent_id.as_ref())?;
+
+        // Resolve UUID to public_id for the service
+        let agent = self
+            .agent_service
+            .get(req.org_id, agent_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+
+        self.agent_service
+            .delete(req.org_id, &agent.public_id.to_string())
+            .await
+            .map_err(|e| Status::internal(format!("Failed to delete agent: {}", e)))?;
+
+        Ok(Response::new(PlatformDeleteAgentResponse {}))
+    }
+
+    async fn platform_list_sessions(
+        &self,
+        request: Request<PlatformListSessionsRequest>,
+    ) -> Result<Response<PlatformListSessionsResponse>, Status> {
+        let req = request.into_inner();
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
+
+        let limit = req.limit.unwrap_or(20);
+        let agent_id = match req.agent_id {
+            Some(ref uuid_proto) => Some(parse_uuid(Some(uuid_proto))?),
+            None => None,
+        };
+
+        let pagination = crate::api::common::Pagination { offset: 0, limit };
+
+        let (sessions, _total) = self
+            .session_service
+            .list(req.org_id, &org_public_id, agent_id, None, pagination)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
+
+        let proto_sessions = sessions.iter().map(schema_session_to_proto).collect();
+        Ok(Response::new(PlatformListSessionsResponse {
+            sessions: proto_sessions,
+        }))
+    }
+
+    async fn platform_create_session(
+        &self,
+        request: Request<PlatformCreateSessionRequest>,
+    ) -> Result<Response<PlatformCreateSessionResponse>, Status> {
+        let req = request.into_inner();
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let harness_id = parse_uuid(req.harness_id.as_ref())?;
+
+        let agent_uuid = match req.agent_id {
+            Some(ref uuid_proto) => Some(parse_uuid(Some(uuid_proto))?),
+            None => None,
+        };
+
+        // Look up agent public_id if agent_uuid is provided
+        let agent_public_id = if let Some(aid) = agent_uuid {
+            let agent = self
+                .agent_service
+                .get(req.org_id, aid)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+                .ok_or_else(|| Status::not_found("Agent not found"))?;
+            Some(agent.public_id)
+        } else {
+            None
+        };
+
+        let create_req = crate::api::sessions::CreateSessionRequest {
+            harness_id: everruns_core::HarnessId::from_uuid(harness_id),
+            agent_id: agent_public_id,
+            title: req.title,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+        };
+
+        let session = self
+            .session_service
+            .create(
+                req.org_id,
+                &org_public_id,
+                harness_id,
+                agent_uuid,
+                create_req.agent_id,
+                create_req,
+            )
+            .await
+            .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?;
+
+        Ok(Response::new(PlatformCreateSessionResponse {
+            session: Some(schema_session_to_proto(&session)),
+        }))
+    }
+
+    async fn platform_delete_session(
+        &self,
+        request: Request<PlatformDeleteSessionRequest>,
+    ) -> Result<Response<PlatformDeleteSessionResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        self.session_service
+            .delete(req.org_id, session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to delete session: {}", e)))?;
+
+        Ok(Response::new(PlatformDeleteSessionResponse {}))
+    }
+
+    async fn platform_send_message(
+        &self,
+        request: Request<PlatformSendMessageRequest>,
+    ) -> Result<Response<PlatformSendMessageResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
+
+        // Get session to find harness_id and agent_id
+        let session = self
+            .session_service
+            .get(req.org_id, &org_public_id, session_id, None)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        // Create message event
+        let message_id = uuid::Uuid::now_v7();
+        let now = chrono::Utc::now();
+
+        let core_message = everruns_core::Message {
+            id: everruns_core::MessageId::from_uuid(message_id),
+            role: everruns_core::MessageRole::User,
+            content: vec![everruns_core::ContentPart::text(&req.content)],
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            created_at: now,
+        };
+
+        let session_id_typed = everruns_core::SessionId::from_uuid(session_id);
+        let message_id_typed = everruns_core::MessageId::from_uuid(message_id);
+
+        // Emit input message event
+        self.event_service
+            .emit(everruns_core::EventRequest::new(
+                session_id_typed,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::InputMessageData::new(core_message),
+            ))
+            .await
+            .map_err(|e| Status::internal(format!("Failed to emit message event: {}", e)))?;
+
+        // Start turn workflow if runner is available
+        if let Some(ref runner) = self.runner {
+            let runner = runner.clone();
+            let harness_id = session.harness_id;
+            let agent_id = session.agent_id;
+            tokio::spawn(async move {
+                if let Err(e) = runner
+                    .start_run(
+                        req.org_id,
+                        session_id_typed,
+                        harness_id,
+                        agent_id,
+                        message_id_typed,
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Platform send_message: failed to start turn workflow"
+                    );
+                }
+            });
+        }
+
+        Ok(Response::new(PlatformSendMessageResponse {}))
+    }
+
+    async fn platform_get_messages(
+        &self,
+        request: Request<PlatformGetMessagesRequest>,
+    ) -> Result<Response<PlatformGetMessagesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let limit = req.limit.unwrap_or(10) as i32;
+
+        let events = self
+            .event_service
+            .list_message_events_limited(session_id, Some(limit))
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+
+        let proto_messages: Vec<proto::PlatformMessage> = events
+            .iter()
+            .filter_map(|ev| {
+                let (role, content) = match &ev.data {
+                    everruns_core::EventData::InputMessage(d) => {
+                        let text: String = d
+                            .message
+                            .content
+                            .iter()
+                            .filter_map(|p| match p {
+                                everruns_core::ContentPart::Text(t) => Some(t.text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        ("user".to_string(), text)
+                    }
+                    everruns_core::EventData::OutputMessageCompleted(d) => {
+                        let text: String = d
+                            .message
+                            .content
+                            .iter()
+                            .filter_map(|p| match p {
+                                everruns_core::ContentPart::Text(t) => Some(t.text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        ("assistant".to_string(), text)
+                    }
+                    _ => return None,
+                };
+
+                if content.is_empty() {
+                    return None;
+                }
+
+                Some(proto::PlatformMessage {
+                    role,
+                    content,
+                    created_at: Some(ip_datetime_to_proto_timestamp(ev.ts)),
+                })
+            })
+            .collect();
+
+        Ok(Response::new(PlatformGetMessagesResponse {
+            messages: proto_messages,
+        }))
+    }
+
+    async fn platform_wait_for_idle(
+        &self,
+        request: Request<PlatformWaitForIdleRequest>,
+    ) -> Result<Response<PlatformWaitForIdleResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let timeout_secs = req.timeout_secs.unwrap_or(120);
+
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
+
+        loop {
+            let session = self
+                .session_service
+                .get(req.org_id, &org_public_id, session_id, None)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+                .ok_or_else(|| Status::not_found("Session not found"))?;
+
+            let status_str = session.status.to_string();
+            if status_str == "idle"
+                || status_str == "waiting_for_tool_results"
+                || status_str == "error"
+            {
+                return Ok(Response::new(PlatformWaitForIdleResponse {
+                    status: status_str,
+                }));
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Ok(Response::new(PlatformWaitForIdleResponse {
+                    status: "timeout".to_string(),
+                }));
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+    }
+
+    async fn platform_get_base_url(
+        &self,
+        _request: Request<PlatformGetBaseUrlRequest>,
+    ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
+        let base_url = std::env::var("APP_URL")
+            .or_else(|_| std::env::var("PUBLIC_URL"))
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+
+        Ok(Response::new(PlatformGetBaseUrlResponse { base_url }))
     }
 }
 
