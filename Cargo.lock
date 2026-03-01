@@ -385,11 +385,12 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.1.7"
-source = "git+https://github.com/everruns/bashkit?tag=v0.1.7#8e10e347ad5ae712d8ef218011e36a966ee91fd5"
+version = "0.1.8"
+source = "git+https://github.com/everruns/bashkit?tag=v0.1.8#ac184be82b1aca84c0d3cdd7b7dd93eb18a7531e"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "flate2",
  "futures",
@@ -397,10 +398,13 @@ dependencies = [
  "jaq-core",
  "jaq-json",
  "jaq-std",
+ "md-5",
  "regex",
  "schemars",
  "serde",
  "serde_json",
+ "sha1",
+ "sha2",
  "thiserror 2.0.18",
  "tokio",
  "url",
