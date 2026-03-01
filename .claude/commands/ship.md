@@ -60,18 +60,32 @@ git fetch origin main && git rebase origin/main
 
 - If rebase fails with conflicts, abort and tell the user to resolve manually
 
+**Impact detection** — before running checks, determine what changed:
+
 ```bash
-just pre-push
+# Detect changed file categories
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+HAS_RUST=$(echo "$CHANGED_FILES" | grep -qE '\.(rs|toml)$' && echo true || echo false)
+HAS_UI=$(echo "$CHANGED_FILES" | grep -qE '^apps/ui/' && echo true || echo false)
+HAS_DOCS=$(echo "$CHANGED_FILES" | grep -qE '^apps/docs/' && echo true || echo false)
+HAS_API=$(echo "$CHANGED_FILES" | grep -qE '^(crates/.*api|crates/.*server)' && echo true || echo false)
 ```
 
-- If it fails, run `just fmt` to auto-fix, then retry once
+Run only relevant checks based on impact. Skip categories that have zero changed files:
+
+| Check | Run when |
+|-------|----------|
+| `cargo fmt --check` | `HAS_RUST` |
+| `cargo clippy --all-targets --all-features -- -D warnings` | `HAS_RUST` |
+| `cargo test --all-features --lib --bins` | `HAS_RUST` |
+| `cargo fetch --locked` | `HAS_RUST` |
+| UI format, lint, build (`cd apps/ui && npm run format:check && npm run lint && npm run build`) | `HAS_UI` |
+| OpenAPI spec freshness (`./scripts/export-openapi.sh`) | `HAS_API` |
+| Docs build (`cd apps/docs && npm run check && npm run build`) | `HAS_DOCS` |
+
+- For skipped categories, log: `⏭️ Skipping <category> checks (no <category> files changed)`
+- If `just fmt` can auto-fix failures in a relevant category, run it then retry once
 - If still failing, stop and report
-
-```bash
-just pre-pr
-```
-
-- If it fails, stop and report the failures
 
 ### Phase 6: Push and PR
 
