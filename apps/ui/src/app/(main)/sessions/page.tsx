@@ -77,8 +77,9 @@ export default function SessionsPage() {
   }, [agents]);
 
   const handleOpenNewSessionDialog = () => {
-    // Pre-select the first harness
-    setNewSessionHarnessId(harnesses?.[0]?.id || "");
+    // Pre-select the Generic harness, falling back to the first harness
+    const genericHarness = harnesses?.find((h) => h.name === "Generic");
+    setNewSessionHarnessId(genericHarness?.id || harnesses?.[0]?.id || "");
     // Pre-select the filtered agent if one is selected, otherwise leave empty (optional)
     setNewSessionAgentId(selectedAgentId || "");
     setNewSessionDialogOpen(true);
