@@ -12,6 +12,7 @@ use super::backend::AuthBackend;
 use super::config::AuthConfig;
 use super::jwt::JwtService;
 use super::middleware::{AuthError, AuthMethod, AuthUser};
+use super::rate_limit::AuthRateLimiter;
 use super::routes::{self, AuthConfigResponse};
 use crate::storage::StorageBackend;
 
@@ -22,6 +23,7 @@ pub struct BuiltinAuthBackend {
     pub config: AuthConfig,
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
+    pub rate_limiter: AuthRateLimiter,
 }
 
 impl BuiltinAuthBackend {
@@ -31,6 +33,7 @@ impl BuiltinAuthBackend {
             config,
             jwt_service,
             db,
+            rate_limiter: AuthRateLimiter::new(),
         }
     }
 }
