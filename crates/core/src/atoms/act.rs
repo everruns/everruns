@@ -742,4 +742,107 @@ mod tests {
                 .contains("not found")
         );
     }
+
+    fn manage_harnesses_tool_def() -> crate::ToolDefinition {
+        crate::ToolDefinition::Builtin(crate::BuiltinTool {
+            name: "manage_harnesses".to_string(),
+            display_name: None,
+            description: "CRUD operations for harnesses".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "operation": {"type": "string"}
+                },
+                "required": ["operation"]
+            }),
+            policy: Default::default(),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_platform_tool_works_with_platform_store() {
+        use crate::capabilities::{Capability, PlatformManagementCapability};
+
+        let mut executor = ToolRegistry::with_defaults();
+        for tool in PlatformManagementCapability.tools() {
+            executor.register_boxed(tool);
+        }
+        let event_emitter = NoopEventEmitter;
+
+        // Build mock platform store
+        let mock_store = crate::platform_store::tests::MockPlatformStore::new();
+        let platform_store: Arc<dyn crate::platform_store::PlatformStore> = Arc::new(mock_store);
+
+        let atom = ActAtom::new(executor, event_emitter).with_platform_store(platform_store);
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "manage_harnesses".to_string(),
+                arguments: json!({"operation": "list"}),
+            }],
+            tool_definitions: vec![manage_harnesses_tool_def()],
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert!(result.completed);
+        assert_eq!(result.results.len(), 1);
+        assert!(
+            result.results[0].success,
+            "manage_harnesses should succeed when platform_store is wired: {:?}",
+            result.results[0].result.error
+        );
+    }
+
+    /// Regression test: `manage_harnesses` called through ActAtom WITHOUT
+    /// `platform_store` should produce an error message in the result body.
+    /// ToolErrors are "normal" results (success=true) by design, but the
+    /// result body contains `{"error": "..."}` that the LLM sees.
+    #[tokio::test]
+    async fn test_act_atom_platform_tool_fails_without_platform_store() {
+        use crate::capabilities::{Capability, PlatformManagementCapability};
+
+        let mut executor = ToolRegistry::with_defaults();
+        for tool in PlatformManagementCapability.tools() {
+            executor.register_boxed(tool);
+        }
+        let event_emitter = NoopEventEmitter;
+
+        // No stores set → ActAtom uses plain `execute()` which the tool
+        // returns a ToolError from ("requires context").
+        let atom = ActAtom::new(executor, event_emitter);
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "manage_harnesses".to_string(),
+                arguments: json!({"operation": "list"}),
+            }],
+            tool_definitions: vec![manage_harnesses_tool_def()],
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert!(result.completed);
+        assert_eq!(result.results.len(), 1);
+        // ToolErrors produce result body with {"error": "..."} but the ActAtom
+        // treats them as successful completions (error field is None).
+        let result_body = result.results[0].result.result.as_ref().unwrap();
+        let err_msg = result_body["error"].as_str().unwrap();
+        assert!(
+            err_msg.contains("requires context"),
+            "Expected 'requires context' error, got: {err_msg}"
+        );
+    }
 }
