@@ -17,7 +17,7 @@
 //! }
 //! ```
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -108,6 +108,10 @@ impl Capability for DockerContainerCapability {
 
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {

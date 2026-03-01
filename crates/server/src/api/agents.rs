@@ -14,7 +14,7 @@ use axum::{
 };
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, ToolDefinition};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, OrgRole, ToolDefinition};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{
@@ -216,6 +216,32 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// TM-AGENT-005: Reject if any requested capabilities are high-risk and the
+/// caller does not have at least Admin role.
+fn require_admin_for_high_risk(
+    org: &ResolvedOrg,
+    caps: &[AgentCapabilityConfig],
+    capability_service: &CapabilityService,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if caps.is_empty() || org.role.has_permission(OrgRole::Admin) {
+        return Ok(());
+    }
+    let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
+    let high = capability_service.high_risk_ids(&refs);
+    if !high.is_empty() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: format!(
+                    "Admin role required to assign high-risk capabilities: {}",
+                    high.join(", ")
+                ),
+            }),
+        ));
+    }
+    Ok(())
+}
+
 /// POST /v1/agents - Create a new agent
 #[utoipa::path(
     post,
@@ -240,6 +266,9 @@ pub async fn create_agent(
         &req.system_prompt,
         req.capabilities.len(),
     )?;
+
+    // TM-AGENT-005: High-risk capabilities require admin role
+    require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
     let client_id = req.id;
     let agent = match state.service.create(org.org_id, client_id, req).await {
@@ -357,6 +386,11 @@ pub async fn update_agent(
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),
     )?;
+
+    // TM-AGENT-005: High-risk capabilities require admin role
+    if let Some(caps) = &req.capabilities {
+        require_admin_for_high_risk(&org, caps, &state.capability_service)?;
+    }
 
     let agent = state
         .service
@@ -499,6 +533,9 @@ pub async fn upsert_agent(
         req.capabilities.len(),
     )?;
 
+    // TM-AGENT-005: High-risk capabilities require admin role
+    require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
+
     let (agent, was_created) = state
         .service
         .upsert(org.org_id, &agent_id.to_string(), req)
@@ -631,6 +668,9 @@ pub async fn import_agent(
             .collect(),
         tools: vec![],
     };
+
+    // TM-AGENT-005: High-risk capabilities require admin role
+    require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
     let agent = state
         .service
