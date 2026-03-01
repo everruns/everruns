@@ -556,8 +556,7 @@ impl ServerAppBuilder {
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                 // Mitigation: Bearer token auth required in production (panics if missing)
                 let grpc_token = grpc_service::require_grpc_auth_token();
-                let auth_interceptor =
-                    grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
+                let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
                 let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
                 tracing::info!("gRPC server listening on {}", addr);
                 if let Err(e) = tonic::transport::Server::builder()
