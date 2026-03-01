@@ -58,11 +58,11 @@ pub struct ListAuditLogsQuery {
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/organizations/:org_id/audit-logs", get(list_audit_logs))
+        .route("/v1/orgs/{org}/audit-logs", get(list_audit_logs))
         .with_state(state)
 }
 
-/// GET /v1/organizations/:org_id/audit-logs - List audit logs (admin only)
+/// GET /v1/orgs/{org}/audit-logs - List audit logs (admin only)
 async fn list_audit_logs(
     State(state): State<AppState>,
     org: OrgAdmin,
