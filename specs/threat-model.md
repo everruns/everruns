@@ -507,22 +507,20 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-001 | XSS via stored content | Medium | React UI auto-escapes; file preview uses Shiki (no raw HTML injection) | MITIGATED |
 | TM-WEB-002 | CSRF on state-changing requests | Medium | SameSite=Lax cookies; JSON content type required; no GET side effects | MITIGATED |
 | TM-WEB-003 | Cookie theft via XSS | High | Refresh token cookie: HTTP-only; access token cookie: HTTP-only | MITIGATED |
-| TM-WEB-004 | Clickjacking | Medium | No X-Frame-Options or CSP frame-ancestors header set | **OPEN** |
-| TM-WEB-005 | Missing security headers | Low | No Content-Security-Policy, X-Content-Type-Options, Referrer-Policy headers | **OPEN** |
+| TM-WEB-004 | Clickjacking | Medium | X-Frame-Options: DENY and CSP frame-ancestors: 'none' via SetResponseHeaderLayer | MITIGATED |
+| TM-WEB-005 | Missing security headers | Low | CSP, X-Content-Type-Options: nosniff, Referrer-Policy, Permissions-Policy via tower-http middleware | MITIGATED |
 | TM-WEB-006 | Open redirect in OAuth flow | Medium | OAuth callbacks validated against configured redirect URIs | MITIGATED |
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
 
 ### Mitigation Details
 
-**TM-WEB-004 / TM-WEB-005 — Security Headers (OPEN):**
-- **Recommendation:** Add the following response headers:
-  ```
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
-  ```
-- **Priority:** Medium
+**TM-WEB-004 / TM-WEB-005 — Security Headers (MITIGATED):**
+Applied via `SetResponseHeaderLayer` in `app_builder.rs`:
+- `X-Frame-Options: DENY` — prevents clickjacking
+- `X-Content-Type-Options: nosniff` — prevents MIME sniffing
+- `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()` — disables unused APIs
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
 
 ## 13. AI Agent Behavior (TM-AGENT)
 
@@ -792,8 +790,6 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
-| TM-WEB-004 | Missing clickjacking protection | Medium | Add X-Frame-Options: DENY |
-| TM-WEB-005 | Missing security headers | Low | Add CSP, X-Content-Type-Options, Referrer-Policy |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
