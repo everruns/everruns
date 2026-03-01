@@ -5160,16 +5160,26 @@ mod durable_sse_tests {
     use tokio::net::TcpListener;
     use tower::ServiceExt;
 
+    fn test_auth_state() -> everruns_server::auth::middleware::AuthState {
+        use everruns_server::auth::config::AuthConfig;
+        use everruns_server::storage::StorageBackend;
+        let config = AuthConfig::default();
+        everruns_server::auth::middleware::AuthState::builtin(
+            config,
+            std::sync::Arc::new(StorageBackend::in_memory()),
+        )
+    }
+
     /// Create a test router with in-memory durable store
     fn create_test_app() -> Router {
         let store = Arc::new(InMemoryWorkflowEventStore::new());
-        let state = durable::AppState::new(Some(store));
+        let state = durable::AppState::new(Some(store), test_auth_state());
         durable::routes(state)
     }
 
     /// Create a test router with no durable store (simulates 503)
     fn create_test_app_no_store() -> Router {
-        let state = durable::AppState::new(None);
+        let state = durable::AppState::new(None, test_auth_state());
         durable::routes(state)
     }
 

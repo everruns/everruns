@@ -35,22 +35,33 @@ use uuid::Uuid;
 
 use super::common::ErrorResponse;
 use super::sse::{DisconnectReason, SseStreamConfig};
+use crate::auth::middleware::{AuthState, AuthUser};
+use axum::extract::FromRef;
 
 /// App state for durable routes
+/// TM-DURABLE-010: All durable endpoints require authentication.
 #[derive(Clone)]
 pub struct AppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     metrics: MetricsCollector,
+    auth: AuthState,
+}
+
+impl FromRef<AppState> for AuthState {
+    fn from_ref(state: &AppState) -> Self {
+        state.auth.clone()
+    }
 }
 
 impl AppState {
     /// Create new state with an optional workflow event store
     ///
     /// Collector holds 360 points = 1 hour at 10s intervals.
-    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>) -> Self {
+    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>, auth: AuthState) -> Self {
         Self {
             store,
             metrics: MetricsCollector::new(360),
+            auth,
         }
     }
 
@@ -673,6 +684,7 @@ pub struct SendSignalRequest {
     tag = "durable"
 )]
 pub async fn get_health(
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
@@ -699,6 +711,7 @@ pub async fn get_health(
     tag = "durable"
 )]
 pub async fn get_metrics_timeseries(
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<MetricsTimeSeriesResponse>, (StatusCode, Json<ErrorResponse>)> {
     let points = state.metrics.get_points().await;
@@ -723,6 +736,7 @@ pub async fn get_metrics_timeseries(
     tag = "durable"
 )]
 pub async fn list_workers(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkersQuery>,
 ) -> Result<Json<WorkersListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -782,6 +796,7 @@ pub async fn list_workers(
     tag = "durable"
 )]
 pub async fn drain_worker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -813,6 +828,7 @@ pub async fn drain_worker(
     tag = "durable"
 )]
 pub async fn resume_worker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -847,6 +863,7 @@ pub async fn resume_worker(
     tag = "durable"
 )]
 pub async fn list_workflows(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkflowsQuery>,
 ) -> Result<Json<WorkflowsListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -904,6 +921,7 @@ pub async fn list_workflows(
     tag = "durable"
 )]
 pub async fn get_workflow(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Json<WorkflowResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -953,6 +971,7 @@ pub async fn get_workflow(
     tag = "durable"
 )]
 pub async fn get_workflow_events(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Json<WorkflowEventsListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -991,6 +1010,7 @@ pub async fn get_workflow_events(
     tag = "durable"
 )]
 pub async fn cancel_workflow(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1035,6 +1055,7 @@ pub async fn cancel_workflow(
     tag = "durable"
 )]
 pub async fn send_signal(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
     Json(req): Json<SendSignalRequest>,
@@ -1077,6 +1098,7 @@ pub async fn send_signal(
     tag = "durable"
 )]
 pub async fn list_tasks(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<TasksListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1135,6 +1157,7 @@ pub async fn list_tasks(
     tag = "durable"
 )]
 pub async fn list_dlq(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ListDlqQuery>,
 ) -> Result<Json<DlqListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1180,6 +1203,7 @@ pub async fn list_dlq(
     tag = "durable"
 )]
 pub async fn retry_dlq(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(dlq_id): Path<Uuid>,
 ) -> Result<Json<Uuid>, (StatusCode, Json<ErrorResponse>)> {
@@ -1216,6 +1240,7 @@ pub async fn retry_dlq(
     tag = "durable"
 )]
 pub async fn list_circuit_breakers(
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<CircuitBreakersListResponse>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
@@ -1253,6 +1278,7 @@ pub async fn list_circuit_breakers(
     tag = "durable"
 )]
 pub async fn get_circuit_breaker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<Json<CircuitBreakerResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1294,6 +1320,7 @@ pub async fn get_circuit_breaker(
     tag = "durable"
 )]
 pub async fn force_open_circuit_breaker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1327,6 +1354,7 @@ pub async fn force_open_circuit_breaker(
     tag = "durable"
 )]
 pub async fn force_close_circuit_breaker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1371,6 +1399,7 @@ pub async fn force_close_circuit_breaker(
     tag = "durable"
 )]
 pub async fn delete_circuit_breaker(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1455,6 +1484,7 @@ struct WorkflowSnapshot {
     tag = "durable"
 )]
 pub async fn stream_durable_sse(
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
     // Verify store is available
@@ -1792,6 +1822,7 @@ pub async fn stream_durable_sse(
     tag = "durable"
 )]
 pub async fn stream_workflow_sse(
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
@@ -2022,6 +2053,16 @@ pub async fn stream_workflow_sse(
 mod tests {
     use super::*;
 
+    /// Create a test AuthState with AuthMode::None (no auth required in tests)
+    fn test_auth_state() -> AuthState {
+        use crate::auth::config::AuthConfig;
+        let config = AuthConfig::default();
+        AuthState::builtin(
+            config,
+            std::sync::Arc::new(crate::storage::StorageBackend::in_memory()),
+        )
+    }
+
     #[test]
     fn test_durable_snapshot_serialization() {
         let snapshot = DurableSnapshot {
@@ -2217,7 +2258,7 @@ mod tests {
 
     #[test]
     fn test_app_state_get_store_none() {
-        let state = AppState::new(None);
+        let state = AppState::new(None, test_auth_state());
         let result = state.get_store();
         assert!(result.is_err());
     }
