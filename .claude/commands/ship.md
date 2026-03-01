@@ -1,6 +1,6 @@
 # Ship
 
-Run the full ship flow: verify quality, ensure test coverage, update artifacts, smoke test, then push, create PR, and merge when CI is green.
+Run the full ship flow: verify quality, ensure test coverage, simplify code, review security, update artifacts, smoke test, then push, create PR, and merge when CI is green.
 
 This command implements the complete "Shipping" definition and Pre-PR Checklist from AGENTS.md. When the user says "ship" or "fix and ship", execute ALL phases below — not just the push/merge steps.
 
@@ -30,7 +30,33 @@ Review the changes on this branch (use `git diff origin/main...HEAD` and `git lo
 4. **Run all tests** to confirm green: `cargo test --all-features`
 5. If any test fails, fix the code or test until green
 
-### Phase 3: Artifact Updates
+### Phase 3: Code Simplification
+
+Review all changed code on this branch (`git diff origin/main...HEAD`) for opportunities to simplify:
+
+1. **Identify duplication** — look for repeated logic that could be consolidated
+2. **Reduce complexity** — simplify nested conditionals, long functions, over-engineered abstractions
+3. **Remove dead code** — unused variables, unreachable branches, leftover debugging code
+4. **Improve clarity** — rename unclear variables/functions, flatten unnecessary indirection
+5. **Check for over-engineering** — feature flags, abstractions, or configurability beyond what's needed for the current change
+
+If simplifications are made, re-run `cargo test --all-features` to confirm tests still pass.
+
+### Phase 4: Security Review
+
+Analyze all changed code on this branch (`git diff origin/main...HEAD`) for security vulnerabilities:
+
+1. **Injection flaws** — SQL injection, command injection, XSS, template injection in any new/modified code paths
+2. **Authentication & authorization** — missing or bypassed auth checks, privilege escalation, insecure session handling
+3. **Input validation** — unsanitized user input, missing bounds checks, unchecked deserialization
+4. **Data exposure** — secrets in logs, verbose error messages leaking internals, sensitive data in responses
+5. **Cryptographic issues** — weak algorithms, hardcoded keys, missing encryption for sensitive data
+6. **Dependency risks** — newly added dependencies with known vulnerabilities
+7. **OWASP Top 10 coverage** — check against current OWASP Top 10 categories for any applicable issues
+
+If vulnerabilities are found, fix them, add tests for the fix, and loop back to Phase 2 to verify all tests pass.
+
+### Phase 5: Artifact Updates
 
 Review the changes and update project artifacts where applicable. Skip items that aren't affected.
 
@@ -41,7 +67,7 @@ Review the changes and update project artifacts where applicable. Skip items tha
 5. **Documentation** (`apps/docs/`): if the change affects user-facing APIs, configuration, or features documented on the docs site — update the relevant docs pages
 6. **OpenAPI spec**: if API endpoints were added/modified, run `./scripts/export-openapi.sh` to regenerate
 
-### Phase 4: Smoke Testing
+### Phase 6: Smoke Testing
 
 Smoke test impacted functionality to verify it works end-to-end:
 
@@ -52,7 +78,7 @@ Smoke test impacted functionality to verify it works end-to-end:
 
 If smoke testing reveals issues, fix them and loop back to Phase 2 (tests must still pass).
 
-### Phase 5: Quality Gates
+### Phase 7: Quality Gates
 
 ```bash
 git fetch origin main && git rebase origin/main
@@ -87,7 +113,7 @@ Run only relevant checks based on impact. Skip categories that have zero changed
 - If `just fmt` can auto-fix failures in a relevant category, run it then retry once
 - If still failing, stop and report
 
-### Phase 6: Push and PR
+### Phase 8: Push and PR
 
 ```bash
 git push -u origin <current-branch>
@@ -107,14 +133,14 @@ If no PR exists, create one using the PR template (`.github/pull_request_templat
 
 If a PR already exists, update it if needed and report its URL.
 
-### Phase 7: Wait for CI and Merge
+### Phase 9: Wait for CI and Merge
 
 - Check CI status with `gh pr checks` (poll every 30s, up to 15 minutes)
 - If CI is green, merge with `gh pr merge --squash --auto`
 - If CI fails, report the failing checks and stop
 - **NEVER** merge when CI is red
 
-### Phase 8: Post-merge
+### Phase 10: Post-merge
 
 After successful merge:
 
@@ -124,6 +150,6 @@ After successful merge:
 ## Notes
 
 - This is the canonical shipping workflow. It implements the full "Shipping" definition and Pre-PR Checklist from AGENTS.md.
-- Phases 2-4 (tests, artifacts, smoke testing) are the quality core — do NOT skip them.
+- Phases 2-6 (tests, simplification, security, artifacts, smoke testing) are the quality core — do NOT skip them.
 - The `$ARGUMENTS` context helps scope which tests, specs, and smoke tests are relevant.
 - For "fix and ship" requests: implement the fix first, then run `/ship` to validate and merge.
