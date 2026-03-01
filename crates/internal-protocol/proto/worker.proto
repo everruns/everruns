@@ -151,6 +151,38 @@ service WorkerService {
 
     // List all secret names in a session (without values)
     rpc SessionStorageListSecrets(SessionStorageListSecretsRequest) returns (SessionStorageListSecretsResponse);
+
+    // === Platform management operations ===
+    // Used by the platform_management capability tools to manage org-wide entities
+    // via gRPC workers (mirrors PlatformStore trait in core)
+
+    // Harness operations
+    rpc PlatformListHarnesses(PlatformListHarnessesRequest) returns (PlatformListHarnessesResponse);
+    rpc PlatformCreateHarness(PlatformCreateHarnessRequest) returns (PlatformCreateHarnessResponse);
+    rpc PlatformUpdateHarness(PlatformUpdateHarnessRequest) returns (PlatformUpdateHarnessResponse);
+    rpc PlatformDeleteHarness(PlatformDeleteHarnessRequest) returns (PlatformDeleteHarnessResponse);
+    rpc PlatformCopyHarness(PlatformCopyHarnessRequest) returns (PlatformCopyHarnessResponse);
+
+    // Agent operations
+    rpc PlatformListAgents(PlatformListAgentsRequest) returns (PlatformListAgentsResponse);
+    rpc PlatformCreateAgent(PlatformCreateAgentRequest) returns (PlatformCreateAgentResponse);
+    rpc PlatformUpdateAgent(PlatformUpdateAgentRequest) returns (PlatformUpdateAgentResponse);
+    rpc PlatformDeleteAgent(PlatformDeleteAgentRequest) returns (PlatformDeleteAgentResponse);
+
+    // Session operations
+    rpc PlatformListSessions(PlatformListSessionsRequest) returns (PlatformListSessionsResponse);
+    rpc PlatformCreateSession(PlatformCreateSessionRequest) returns (PlatformCreateSessionResponse);
+    rpc PlatformDeleteSession(PlatformDeleteSessionRequest) returns (PlatformDeleteSessionResponse);
+
+    // Messaging operations
+    rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
+    rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
+
+    // Turn management
+    rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
+
+    // Base URL for UI links
+    rpc PlatformGetBaseUrl(PlatformGetBaseUrlRequest) returns (PlatformGetBaseUrlResponse);
 }
 
 // ============================================================================
@@ -967,4 +999,177 @@ message SessionStorageListSecretsRequest {
 
 message SessionStorageListSecretsResponse {
     repeated StorageSecretInfo secrets = 1;
+}
+
+// ============================================================================
+// Platform management types
+// ============================================================================
+
+// Simplified message for platform management (role + text + timestamp)
+message PlatformMessage {
+    string role = 1;
+    string content = 2;
+    Timestamp created_at = 3;
+}
+
+// === Harness operations ===
+
+message PlatformListHarnessesRequest {
+    int64 org_id = 1;
+}
+
+message PlatformListHarnessesResponse {
+    repeated Harness harnesses = 1;
+}
+
+message PlatformCreateHarnessRequest {
+    int64 org_id = 1;
+    string name = 2;
+    optional string description = 3;
+    string system_prompt = 4;
+    repeated string capabilities = 5;
+}
+
+message PlatformCreateHarnessResponse {
+    Harness harness = 1;
+}
+
+message PlatformUpdateHarnessRequest {
+    int64 org_id = 1;
+    Uuid harness_id = 2;
+    optional string name = 3;
+    optional string description = 4;
+    optional string system_prompt = 5;
+}
+
+message PlatformUpdateHarnessResponse {
+    Harness harness = 1;
+}
+
+message PlatformDeleteHarnessRequest {
+    int64 org_id = 1;
+    Uuid harness_id = 2;
+}
+
+message PlatformDeleteHarnessResponse {}
+
+message PlatformCopyHarnessRequest {
+    int64 org_id = 1;
+    Uuid harness_id = 2;
+    optional string new_name = 3;
+}
+
+message PlatformCopyHarnessResponse {
+    Harness harness = 1;
+}
+
+// === Agent operations ===
+
+message PlatformListAgentsRequest {
+    int64 org_id = 1;
+}
+
+message PlatformListAgentsResponse {
+    repeated Agent agents = 1;
+}
+
+message PlatformCreateAgentRequest {
+    int64 org_id = 1;
+    string name = 2;
+    optional string description = 3;
+    string system_prompt = 4;
+    repeated string capabilities = 5;
+}
+
+message PlatformCreateAgentResponse {
+    Agent agent = 1;
+}
+
+message PlatformUpdateAgentRequest {
+    int64 org_id = 1;
+    Uuid agent_id = 2;
+    optional string name = 3;
+    optional string description = 4;
+    optional string system_prompt = 5;
+}
+
+message PlatformUpdateAgentResponse {
+    Agent agent = 1;
+}
+
+message PlatformDeleteAgentRequest {
+    int64 org_id = 1;
+    Uuid agent_id = 2;
+}
+
+message PlatformDeleteAgentResponse {}
+
+// === Session operations ===
+
+message PlatformListSessionsRequest {
+    int64 org_id = 1;
+    optional uint32 limit = 2;
+    optional Uuid agent_id = 3;
+}
+
+message PlatformListSessionsResponse {
+    repeated Session sessions = 1;
+}
+
+message PlatformCreateSessionRequest {
+    int64 org_id = 1;
+    Uuid harness_id = 2;
+    optional Uuid agent_id = 3;
+    optional string title = 4;
+}
+
+message PlatformCreateSessionResponse {
+    Session session = 1;
+}
+
+message PlatformDeleteSessionRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+}
+
+message PlatformDeleteSessionResponse {}
+
+// === Messaging operations ===
+
+message PlatformSendMessageRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    string content = 3;
+}
+
+message PlatformSendMessageResponse {}
+
+message PlatformGetMessagesRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    optional uint32 limit = 3;
+}
+
+message PlatformGetMessagesResponse {
+    repeated PlatformMessage messages = 1;
+}
+
+// === Turn management ===
+
+message PlatformWaitForIdleRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    optional uint64 timeout_secs = 3;
+}
+
+message PlatformWaitForIdleResponse {
+    string status = 1;
+}
+
+// === Base URL ===
+
+message PlatformGetBaseUrlRequest {}
+
+message PlatformGetBaseUrlResponse {
+    string base_url = 1;
 }

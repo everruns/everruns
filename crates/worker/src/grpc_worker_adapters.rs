@@ -329,6 +329,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcSessionStorageStore::new(self.client.clone())))
     }
 
+    fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
+        Some(Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
+            self.client.clone(),
+            everruns_core::DEFAULT_ORG_ID,
+        )))
+    }
+
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {
         let mut registry = ToolRegistry::with_defaults();
 

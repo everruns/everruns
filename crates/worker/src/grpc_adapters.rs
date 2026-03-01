@@ -1313,3 +1313,439 @@ impl SessionStorageStore for GrpcSessionStorageStore {
             .collect())
     }
 }
+
+// ============================================================================
+// GrpcPlatformStore - PlatformStore implementation over gRPC
+// ============================================================================
+
+/// gRPC-backed platform store for org-scoped management operations.
+///
+/// Proxies all PlatformStore trait methods to the control-plane via gRPC RPCs.
+/// Used by gRPC workers to support the platform_management capability.
+pub struct GrpcPlatformStore {
+    client: GrpcClient,
+    org_id: i64,
+}
+
+impl GrpcPlatformStore {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
+    }
+}
+
+#[async_trait]
+impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
+    // =========================================================================
+    // Harness Operations
+    // =========================================================================
+
+    async fn list_harnesses(&self) -> Result<Vec<Harness>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_list_harnesses(proto::PlatformListHarnessesRequest {
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_list_harnesses failed: {}", e)))?;
+
+        response
+            .into_inner()
+            .harnesses
+            .into_iter()
+            .map(|h| {
+                everruns_internal_protocol::proto_harness_to_schema(h)
+                    .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+            })
+            .collect()
+    }
+
+    async fn get_harness(&self, id: everruns_core::HarnessId) -> Result<Option<Harness>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_harness(proto::GetHarnessRequest {
+                harness_id: Some(uuid_to_proto(id.uuid())),
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_harness failed: {}", e)))?;
+
+        match response.into_inner().harness {
+            Some(h) => Ok(Some(
+                everruns_internal_protocol::proto_harness_to_schema(h)
+                    .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    async fn create_harness(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        system_prompt: &str,
+        capabilities: &[String],
+    ) -> Result<Harness> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_create_harness(proto::PlatformCreateHarnessRequest {
+                org_id: self.org_id,
+                name: name.to_string(),
+                description: description.map(|s| s.to_string()),
+                system_prompt: system_prompt.to_string(),
+                capabilities: capabilities.to_vec(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_create_harness failed: {}", e)))?;
+
+        let harness = response
+            .into_inner()
+            .harness
+            .ok_or_else(|| grpc_error("No harness in create response"))?;
+
+        everruns_internal_protocol::proto_harness_to_schema(harness)
+            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+    }
+
+    async fn update_harness(
+        &self,
+        id: everruns_core::HarnessId,
+        name: Option<&str>,
+        description: Option<&str>,
+        system_prompt: Option<&str>,
+    ) -> Result<Harness> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_update_harness(proto::PlatformUpdateHarnessRequest {
+                org_id: self.org_id,
+                harness_id: Some(uuid_to_proto(id.uuid())),
+                name: name.map(|s| s.to_string()),
+                description: description.map(|s| s.to_string()),
+                system_prompt: system_prompt.map(|s| s.to_string()),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_update_harness failed: {}", e)))?;
+
+        let harness = response
+            .into_inner()
+            .harness
+            .ok_or_else(|| grpc_error("No harness in update response"))?;
+
+        everruns_internal_protocol::proto_harness_to_schema(harness)
+            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+    }
+
+    async fn delete_harness(&self, id: everruns_core::HarnessId) -> Result<()> {
+        let mut client = self.client.inner.lock().await;
+        client
+            .platform_delete_harness(proto::PlatformDeleteHarnessRequest {
+                org_id: self.org_id,
+                harness_id: Some(uuid_to_proto(id.uuid())),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_delete_harness failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn copy_harness(
+        &self,
+        id: everruns_core::HarnessId,
+        new_name: Option<&str>,
+    ) -> Result<Harness> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_copy_harness(proto::PlatformCopyHarnessRequest {
+                org_id: self.org_id,
+                harness_id: Some(uuid_to_proto(id.uuid())),
+                new_name: new_name.map(|s| s.to_string()),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_copy_harness failed: {}", e)))?;
+
+        let harness = response
+            .into_inner()
+            .harness
+            .ok_or_else(|| grpc_error("No harness in copy response"))?;
+
+        everruns_internal_protocol::proto_harness_to_schema(harness)
+            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+    }
+
+    // =========================================================================
+    // Agent Operations
+    // =========================================================================
+
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_list_agents(proto::PlatformListAgentsRequest {
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_list_agents failed: {}", e)))?;
+
+        response
+            .into_inner()
+            .agents
+            .into_iter()
+            .map(|a| {
+                everruns_internal_protocol::proto_agent_to_schema(a)
+                    .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+            })
+            .collect()
+    }
+
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_agent(proto::GetAgentRequest {
+                agent_id: Some(uuid_to_proto(id.uuid())),
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_agent failed: {}", e)))?;
+
+        match response.into_inner().agent {
+            Some(a) => Ok(Some(
+                everruns_internal_protocol::proto_agent_to_schema(a)
+                    .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    async fn create_agent(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        system_prompt: &str,
+        capabilities: &[String],
+    ) -> Result<Agent> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_create_agent(proto::PlatformCreateAgentRequest {
+                org_id: self.org_id,
+                name: name.to_string(),
+                description: description.map(|s| s.to_string()),
+                system_prompt: system_prompt.to_string(),
+                capabilities: capabilities.to_vec(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_create_agent failed: {}", e)))?;
+
+        let agent = response
+            .into_inner()
+            .agent
+            .ok_or_else(|| grpc_error("No agent in create response"))?;
+
+        everruns_internal_protocol::proto_agent_to_schema(agent)
+            .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+    }
+
+    async fn update_agent(
+        &self,
+        id: AgentId,
+        name: Option<&str>,
+        description: Option<&str>,
+        system_prompt: Option<&str>,
+    ) -> Result<Agent> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_update_agent(proto::PlatformUpdateAgentRequest {
+                org_id: self.org_id,
+                agent_id: Some(uuid_to_proto(id.uuid())),
+                name: name.map(|s| s.to_string()),
+                description: description.map(|s| s.to_string()),
+                system_prompt: system_prompt.map(|s| s.to_string()),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_update_agent failed: {}", e)))?;
+
+        let agent = response
+            .into_inner()
+            .agent
+            .ok_or_else(|| grpc_error("No agent in update response"))?;
+
+        everruns_internal_protocol::proto_agent_to_schema(agent)
+            .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+    }
+
+    async fn delete_agent(&self, id: AgentId) -> Result<()> {
+        let mut client = self.client.inner.lock().await;
+        client
+            .platform_delete_agent(proto::PlatformDeleteAgentRequest {
+                org_id: self.org_id,
+                agent_id: Some(uuid_to_proto(id.uuid())),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_delete_agent failed: {}", e)))?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // Session Operations
+    // =========================================================================
+
+    async fn list_sessions(
+        &self,
+        limit: Option<usize>,
+        agent_id: Option<AgentId>,
+    ) -> Result<Vec<Session>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_list_sessions(proto::PlatformListSessionsRequest {
+                org_id: self.org_id,
+                limit: limit.map(|l| l as u32),
+                agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_list_sessions failed: {}", e)))?;
+
+        response
+            .into_inner()
+            .sessions
+            .into_iter()
+            .map(|s| {
+                everruns_internal_protocol::proto_session_to_schema(s)
+                    .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))
+            })
+            .collect()
+    }
+
+    async fn create_session(
+        &self,
+        harness_id: everruns_core::HarnessId,
+        agent_id: Option<AgentId>,
+        title: Option<&str>,
+    ) -> Result<Session> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_create_session(proto::PlatformCreateSessionRequest {
+                org_id: self.org_id,
+                harness_id: Some(uuid_to_proto(harness_id.uuid())),
+                agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
+                title: title.map(|s| s.to_string()),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_create_session failed: {}", e)))?;
+
+        let session = response
+            .into_inner()
+            .session
+            .ok_or_else(|| grpc_error("No session in create response"))?;
+
+        everruns_internal_protocol::proto_session_to_schema(session)
+            .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))
+    }
+
+    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_session(proto::GetSessionRequest {
+                session_id: Some(uuid_to_proto(id.uuid())),
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_session failed: {}", e)))?;
+
+        match response.into_inner().session {
+            Some(s) => Ok(Some(
+                everruns_internal_protocol::proto_session_to_schema(s)
+                    .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    async fn delete_session(&self, id: SessionId) -> Result<()> {
+        let mut client = self.client.inner.lock().await;
+        client
+            .platform_delete_session(proto::PlatformDeleteSessionRequest {
+                org_id: self.org_id,
+                session_id: Some(uuid_to_proto(id.uuid())),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_delete_session failed: {}", e)))?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // Messaging
+    // =========================================================================
+
+    async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        let mut client = self.client.inner.lock().await;
+        client
+            .platform_send_message(proto::PlatformSendMessageRequest {
+                org_id: self.org_id,
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                content: content.to_string(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_send_message failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_messages(
+        &self,
+        session_id: SessionId,
+        limit: Option<usize>,
+    ) -> Result<Vec<everruns_core::platform_store::PlatformMessage>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_get_messages(proto::PlatformGetMessagesRequest {
+                org_id: self.org_id,
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                limit: limit.map(|l| l as u32),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_get_messages failed: {}", e)))?;
+
+        Ok(response
+            .into_inner()
+            .messages
+            .into_iter()
+            .map(|m| everruns_core::platform_store::PlatformMessage {
+                role: m.role,
+                content: m.content,
+                created_at: proto_timestamp_or_now(m.created_at.as_ref()),
+            })
+            .collect())
+    }
+
+    // =========================================================================
+    // Turn Management
+    // =========================================================================
+
+    async fn wait_for_idle(
+        &self,
+        session_id: SessionId,
+        timeout_secs: Option<u64>,
+    ) -> Result<String> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_wait_for_idle(proto::PlatformWaitForIdleRequest {
+                org_id: self.org_id,
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                timeout_secs,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_wait_for_idle failed: {}", e)))?;
+
+        Ok(response.into_inner().status)
+    }
+
+    // =========================================================================
+    // UI Links
+    // =========================================================================
+
+    fn base_url(&self) -> &str {
+        // Cache the base_url as a leaked static to satisfy the &str lifetime
+        // Called infrequently, value stable across runtime
+        static BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        BASE_URL.get_or_init(|| {
+            std::env::var("APP_URL")
+                .or_else(|_| std::env::var("PUBLIC_URL"))
+                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+        })
+    }
+}

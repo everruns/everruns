@@ -529,6 +529,7 @@ impl ServerAppBuilder {
             let grpc_db = db.clone();
             let grpc_encryption = encryption.clone();
             let grpc_event_service = event_service.clone();
+            let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
 
             let task_broadcaster = if let Some(pool) = db.pool() {
@@ -547,6 +548,7 @@ impl ServerAppBuilder {
                     (*grpc_event_service).clone(),
                     grpc_db,
                     grpc_encryption,
+                    Some(grpc_runner),
                 );
                 if let Some(broadcaster) = task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
