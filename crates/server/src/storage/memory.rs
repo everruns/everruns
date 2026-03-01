@@ -56,6 +56,8 @@ pub struct InMemoryDatabase {
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
     // Session schedules
     session_schedules: RwLock<HashMap<ScheduleId, SessionScheduleRow>>,
+    // Audit logs (TM-OBS-007)
+    audit_logs: RwLock<Vec<AuditLogRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -102,6 +104,7 @@ impl Default for InMemoryDatabase {
             user_connections: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
             session_schedules: RwLock::new(HashMap::new()),
+            audit_logs: RwLock::new(Vec::new()),
         }
     }
 }
@@ -3662,6 +3665,54 @@ impl InMemoryDatabase {
         due.truncate(limit as usize);
         Ok(due)
     }
+
+    // Audit Logs (TM-OBS-007)
+
+    pub async fn create_audit_log(&self, input: CreateAuditLogRow) -> Result<AuditLogRow> {
+        let row = AuditLogRow {
+            id: Uuid::now_v7(),
+            org_id: input.org_id,
+            actor_id: input.actor_id,
+            event_type: input.event_type,
+            ip_address: input.ip_address,
+            metadata: input.metadata,
+            created_at: Self::now(),
+        };
+        self.audit_logs.write().push(row.clone());
+        Ok(row)
+    }
+
+    pub async fn list_audit_logs(
+        &self,
+        org_id: i64,
+        limit: i64,
+        before: Option<DateTime<Utc>>,
+        event_type_prefix: Option<&str>,
+        actor_id: Option<Uuid>,
+    ) -> Result<Vec<AuditLogRow>> {
+        let logs = self.audit_logs.read();
+        let before_ts = before.unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(1));
+        let mut filtered: Vec<_> = logs
+            .iter()
+            .filter(|r| {
+                r.org_id == org_id
+                    && r.created_at < before_ts
+                    && event_type_prefix.is_none_or(|p| r.event_type.starts_with(p))
+                    && actor_id.is_none_or(|a| r.actor_id == Some(a))
+            })
+            .cloned()
+            .collect();
+        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        filtered.truncate(limit as usize);
+        Ok(filtered)
+    }
+
+    pub async fn delete_audit_logs_before(&self, before: DateTime<Utc>) -> Result<u64> {
+        let mut logs = self.audit_logs.write();
+        let initial = logs.len();
+        logs.retain(|r| r.created_at >= before);
+        Ok((initial - logs.len()) as u64)
+    }
 }
 
 #[cfg(test)]
@@ -4388,5 +4439,139 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cross_org_search.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_audit_log_create_and_list() {
+        let db = InMemoryDatabase::new();
+
+        let user_id = Uuid::now_v7();
+        db.create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: Some(user_id),
+            event_type: "auth.login.success".to_string(),
+            ip_address: Some("1.2.3.4".to_string()),
+            metadata: serde_json::json!({"method": "password"}),
+        })
+        .await
+        .unwrap();
+
+        db.create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: None,
+            event_type: "auth.login.failure".to_string(),
+            ip_address: Some("5.6.7.8".to_string()),
+            metadata: serde_json::json!({"reason": "invalid_password"}),
+        })
+        .await
+        .unwrap();
+
+        // List all
+        let logs = db
+            .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(logs.len(), 2);
+        // Newest first
+        assert_eq!(logs[0].event_type, "auth.login.failure");
+
+        // Filter by event type prefix
+        let success_only = db
+            .list_audit_logs(DEFAULT_ORG_ID, 50, None, Some("auth.login.success"), None)
+            .await
+            .unwrap();
+        assert_eq!(success_only.len(), 1);
+        assert_eq!(success_only[0].event_type, "auth.login.success");
+
+        // Filter by actor
+        let actor_logs = db
+            .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, Some(user_id))
+            .await
+            .unwrap();
+        assert_eq!(actor_logs.len(), 1);
+        assert_eq!(actor_logs[0].actor_id, Some(user_id));
+
+        // Limit
+        let limited = db
+            .list_audit_logs(DEFAULT_ORG_ID, 1, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(limited.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_audit_log_org_isolation() {
+        let db = InMemoryDatabase::new();
+
+        let org2 = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000099".to_string(),
+                name: "Other Org".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        db.create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: None,
+            event_type: "auth.login.success".to_string(),
+            ip_address: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+
+        db.create_audit_log(CreateAuditLogRow {
+            org_id: org2.org_id,
+            actor_id: None,
+            event_type: "auth.login.failure".to_string(),
+            ip_address: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+
+        let org1_logs = db
+            .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(org1_logs.len(), 1);
+        assert_eq!(org1_logs[0].event_type, "auth.login.success");
+
+        let org2_logs = db
+            .list_audit_logs(org2.org_id, 50, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(org2_logs.len(), 1);
+        assert_eq!(org2_logs[0].event_type, "auth.login.failure");
+    }
+
+    #[tokio::test]
+    async fn test_audit_log_retention_delete() {
+        let db = InMemoryDatabase::new();
+
+        db.create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: None,
+            event_type: "auth.login.success".to_string(),
+            ip_address: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+
+        // Delete logs before future timestamp → removes all
+        let deleted = db
+            .delete_audit_logs_before(Utc::now() + chrono::Duration::hours(1))
+            .await
+            .unwrap();
+        assert_eq!(deleted, 1);
+
+        let logs = db
+            .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+            .await
+            .unwrap();
+        assert!(logs.is_empty());
     }
 }

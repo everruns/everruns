@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{FromRef, Path, Query, State},
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{Redirect, Response},
     routing::{delete, get, post},
@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::audit;
 use super::rate_limit::extract_client_ip;
 
 use super::{
@@ -259,9 +260,12 @@ pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<Au
 /// POST /v1/auth/login - Login with email and password
 pub async fn login(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
+    let ip = audit::client_ip(&headers);
+
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
         if let Some(admin) = &state.config.admin
@@ -270,9 +274,25 @@ pub async fn login(
         {
             // Create or get admin user
             let user = get_or_create_admin_user(&state, admin).await?;
+            audit::emit(
+                state.db.clone(),
+                DEFAULT_ORG_ID,
+                Some(user.id),
+                "auth.login.success",
+                ip,
+                serde_json::json!({"method": "admin"}),
+            );
             return generate_token_response(&state, jar, &user).await;
         }
         // Admin mode only allows the configured admin credentials
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            None,
+            "auth.login.failure",
+            ip,
+            serde_json::json!({"method": "admin", "reason": "invalid_credentials"}),
+        );
         return Err(AuthError::unauthorized("Invalid email or password"));
     }
 
@@ -284,15 +304,22 @@ pub async fn login(
     }
 
     // Find user by email
-    let user = state
-        .db
-        .get_user_by_email(&req.email)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error during login: {}", e);
-            AuthError::unauthorized("Login failed")
-        })?
-        .ok_or_else(|| AuthError::unauthorized("Invalid email or password"))?;
+    let user = state.db.get_user_by_email(&req.email).await.map_err(|e| {
+        tracing::error!("Database error during login: {}", e);
+        AuthError::unauthorized("Login failed")
+    })?;
+
+    let Some(user) = user else {
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            None,
+            "auth.login.failure",
+            ip,
+            serde_json::json!({"reason": "user_not_found"}),
+        );
+        return Err(AuthError::unauthorized("Invalid email or password"));
+    };
 
     // Verify password
     let password_hash = user
@@ -306,6 +333,14 @@ pub async fn login(
     })?;
 
     if !valid {
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            Some(user.id),
+            "auth.login.failure",
+            ip,
+            serde_json::json!({"reason": "invalid_password"}),
+        );
         return Err(AuthError::unauthorized("Invalid email or password"));
     }
 
@@ -324,12 +359,22 @@ pub async fn login(
         organizations: builtin::organizations_or_default(organizations),
     };
 
+    audit::emit(
+        state.db.clone(),
+        DEFAULT_ORG_ID,
+        Some(auth_user.id),
+        "auth.login.success",
+        ip,
+        serde_json::json!({"method": "password"}),
+    );
+
     generate_token_response(&state, jar, &auth_user).await
 }
 
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<TokenResponse>), AuthError> {
@@ -403,6 +448,15 @@ pub async fn register(
         organizations: builtin::organizations_or_default(organizations),
     };
 
+    audit::emit(
+        state.db.clone(),
+        DEFAULT_ORG_ID,
+        Some(auth_user.id),
+        "auth.register.success",
+        audit::client_ip(&headers),
+        serde_json::json!({}),
+    );
+
     let (jar, json) = generate_token_response(&state, jar, &auth_user).await?;
     Ok((StatusCode::CREATED, jar, json))
 }
@@ -414,6 +468,7 @@ pub async fn register(
 /// primary flow for browser clients since the cookie is HttpOnly.
 pub async fn refresh_token(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     jar: CookieJar,
     body: Option<Json<RefreshTokenRequest>>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
@@ -480,6 +535,15 @@ pub async fn refresh_token(
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     };
+
+    audit::emit(
+        state.db.clone(),
+        DEFAULT_ORG_ID,
+        Some(auth_user.id),
+        "auth.token_refresh.success",
+        audit::client_ip(&headers),
+        serde_json::json!({}),
+    );
 
     generate_token_response(&state, jar, &auth_user).await
 }
@@ -591,6 +655,7 @@ pub async fn oauth_redirect(
 /// TM-AUTH-007: Validates CSRF state from cookie before proceeding.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
@@ -639,6 +704,14 @@ pub async fn oauth_callback(
     }
     .map_err(|e| {
         tracing::error!("OAuth exchange failed: {}", e);
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            None,
+            "auth.oauth.failure",
+            audit::client_ip(&headers),
+            serde_json::json!({"provider": provider, "reason": "exchange_failed"}),
+        );
         AuthError::unauthorized("OAuth authentication failed")
     })?;
 
@@ -722,6 +795,15 @@ pub async fn oauth_callback(
         organizations: builtin::organizations_or_default(organizations),
     };
 
+    audit::emit(
+        state.db.clone(),
+        DEFAULT_ORG_ID,
+        Some(auth_user.id),
+        "auth.oauth.success",
+        audit::client_ip(&headers),
+        serde_json::json!({"provider": provider}),
+    );
+
     // Generate tokens and set cookies
     let (jar, _) = generate_token_response(&state, jar, &auth_user).await?;
 
@@ -769,6 +851,7 @@ pub async fn list_api_keys(
 /// Cannot be called with API key authentication (must use session auth).
 pub async fn create_api_key_route(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     user: AuthUser,
     org: ResolvedOrg,
     Json(req): Json<CreateApiKeyRequest>,
@@ -809,6 +892,15 @@ pub async fn create_api_key_route(
             AuthError::unauthorized("Failed to create API key")
         })?;
 
+    audit::emit(
+        state.db.clone(),
+        org.org_id,
+        Some(user.id),
+        "auth.api_key.created",
+        audit::client_ip(&headers),
+        serde_json::json!({"key_id": key_row.id.to_string(), "name": req.name}),
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(ApiKeyResponse {
@@ -826,6 +918,7 @@ pub async fn create_api_key_route(
 /// DELETE /v1/auth/api-keys/:key_id - Delete an API key
 pub async fn delete_api_key_route(
     State(state): State<BuiltinAuthBackend>,
+    headers: HeaderMap,
     user: AuthUser,
     Path(key_id): Path<Uuid>,
 ) -> Result<StatusCode, AuthError> {
@@ -839,6 +932,14 @@ pub async fn delete_api_key_route(
         })?;
 
     if deleted {
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            Some(user.id),
+            "auth.api_key.deleted",
+            audit::client_ip(&headers),
+            serde_json::json!({"key_id": key_id.to_string()}),
+        );
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AuthError::unauthorized("API key not found"))

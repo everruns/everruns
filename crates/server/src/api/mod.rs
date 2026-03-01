@@ -4,6 +4,7 @@
 // Each submodule handles a specific resource type with its own AppState.
 
 pub mod agents;
+pub mod audit_logs;
 pub mod capabilities;
 pub mod common;
 pub mod durable;
