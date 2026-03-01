@@ -4366,6 +4366,10 @@
             "type": "string",
             "description": "Display name"
           },
+          "risk_level": {
+            "$ref": "#/components/schemas/RiskLevel",
+            "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+          },
           "status": {
             "type": "string",
             "description": "Current status"
@@ -5921,6 +5925,10 @@
                 "name": {
                   "type": "string",
                   "description": "Display name"
+                },
+                "risk_level": {
+                  "$ref": "#/components/schemas/RiskLevel",
+                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
                 },
                 "status": {
                   "type": "string",
@@ -8255,6 +8263,15 @@
             "description": "The API value (e.g., \"low\", \"medium\")"
           }
         }
+      },
+      "RiskLevel": {
+        "type": "string",
+        "description": "Risk classification for capabilities (TM-AGENT-005).\n\nUsed to enforce approval requirements when assigning capabilities.",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
       },
       "ScheduleExecutionResponse": {
         "type": "object",
