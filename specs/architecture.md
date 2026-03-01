@@ -184,6 +184,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcSessionFileStore` - Implements `SessionFileStore` trait via gRPC
    - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
+   - `GrpcPlatformStore` - Implements `PlatformStore` trait via gRPC (platform management capability)
 
 3. **Durable Execution gRPC Operations**:
    - `ClaimDurableTasks` - Workers poll for pending tasks
