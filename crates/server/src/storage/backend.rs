@@ -112,6 +112,14 @@ impl StorageBackend {
         dispatch!(self, list_users, search)
     }
 
+    pub async fn list_users_by_org(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<UserRow>> {
+        dispatch!(self, list_users_by_org, org_id, search)
+    }
+
     // ============================================
     // API Keys
     // ============================================

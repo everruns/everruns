@@ -3985,8 +3985,8 @@
         "tags": [
           "users"
         ],
-        "summary": "GET /v1/users - List all users",
-        "description": "Lists all users in the system with optional search filtering.\nRequires authentication (admin access recommended).",
+        "summary": "GET /v1/users - List users in current organization",
+        "description": "Lists users that belong to the current organization with optional search filtering.\nTM-TENANT-008: Enforces org isolation to prevent cross-tenant user enumeration.",
         "operationId": "list_users",
         "parameters": [
           {
@@ -4001,7 +4001,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of users",
+            "description": "List of users in organization",
             "content": {
               "application/json": {
                 "schema": {

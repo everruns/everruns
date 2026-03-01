@@ -243,6 +243,39 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// List users within an organization (TM-TENANT-008: org-scoped user listing)
+    pub async fn list_users_by_org(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<UserRow>> {
+        let members = self.organization_members.read();
+        let users = self.users.read();
+
+        // Get user IDs that belong to this org
+        let org_user_ids: std::collections::HashSet<_> = members
+            .keys()
+            .filter(|(oid, _)| *oid == org_id)
+            .map(|(_, uid)| *uid)
+            .collect();
+
+        let mut result: Vec<_> = users
+            .values()
+            .filter(|u| org_user_ids.contains(&u.id))
+            .filter(|u| match search {
+                Some(query) if !query.trim().is_empty() => {
+                    let pattern = query.trim().to_lowercase();
+                    u.name.to_lowercase().contains(&pattern)
+                        || u.email.to_lowercase().contains(&pattern)
+                }
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
     // ============================================
     // API Keys
     // ============================================
@@ -4218,5 +4251,115 @@ mod tests {
         // Most recent session should be first
         assert_eq!(sessions[0].title, Some("Session 5".to_string()));
         assert_eq!(sessions[4].title, Some("Session 1".to_string()));
+    }
+
+    // TM-TENANT-008: Verify org-scoped user listing prevents cross-tenant enumeration
+    #[tokio::test]
+    async fn test_list_users_by_org_isolation() {
+        let db = InMemoryDatabase::new();
+
+        // Create two orgs
+        let org1 = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000010".to_string(),
+                name: "Org 1".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        let org2 = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000020".to_string(),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        // Create three users
+        let user1 = db
+            .create_user(CreateUserRow {
+                email: "alice@example.com".to_string(),
+                name: "Alice".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+        let user2 = db
+            .create_user(CreateUserRow {
+                email: "bob@example.com".to_string(),
+                name: "Bob".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+        let _user3 = db
+            .create_user(CreateUserRow {
+                email: "charlie@example.com".to_string(),
+                name: "Charlie".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+
+        // Add users to different orgs
+        db.add_organization_member(org1.org_id, user1.id, "member")
+            .await
+            .unwrap();
+        db.add_organization_member(org1.org_id, user2.id, "member")
+            .await
+            .unwrap();
+        db.add_organization_member(org2.org_id, user2.id, "member")
+            .await
+            .unwrap();
+        // user3 not in any of these orgs
+
+        // Org1 should see alice + bob
+        let org1_users = db.list_users_by_org(org1.org_id, None).await.unwrap();
+        assert_eq!(org1_users.len(), 2);
+        let org1_emails: Vec<_> = org1_users.iter().map(|u| u.email.as_str()).collect();
+        assert!(org1_emails.contains(&"alice@example.com"));
+        assert!(org1_emails.contains(&"bob@example.com"));
+
+        // Org2 should see only bob
+        let org2_users = db.list_users_by_org(org2.org_id, None).await.unwrap();
+        assert_eq!(org2_users.len(), 1);
+        assert_eq!(org2_users[0].email, "bob@example.com");
+
+        // Charlie should not appear in either org
+        assert!(!org1_emails.contains(&"charlie@example.com"));
+
+        // Search within org should filter
+        let search_results = db
+            .list_users_by_org(org1.org_id, Some("alice"))
+            .await
+            .unwrap();
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].email, "alice@example.com");
+
+        // Search in org2 for alice should return nothing (alice not in org2)
+        let cross_org_search = db
+            .list_users_by_org(org2.org_id, Some("alice"))
+            .await
+            .unwrap();
+        assert_eq!(cross_org_search.len(), 0);
     }
 }

@@ -266,6 +266,49 @@ impl Database {
         Ok(rows)
     }
 
+    /// List users within an organization (TM-TENANT-008: org-scoped user listing)
+    /// Filters via organization_members join to enforce tenant isolation.
+    pub async fn list_users_by_org(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<UserRow>> {
+        let rows = match search {
+            Some(query) if !query.trim().is_empty() => {
+                let search_pattern = format!("%{}%", query.trim().to_lowercase());
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash, u.email_verified, u.auth_provider, u.auth_provider_id, u.created_at, u.updated_at, u.external_id
+                    FROM users u
+                    JOIN organization_members om ON u.id = om.user_id
+                    WHERE om.org_id = $1 AND (LOWER(u.name) LIKE $2 OR LOWER(u.email) LIKE $2)
+                    ORDER BY u.created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&search_pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash, u.email_verified, u.auth_provider, u.auth_provider_id, u.created_at, u.updated_at, u.external_id
+                    FROM users u
+                    JOIN organization_members om ON u.id = om.user_id
+                    WHERE om.org_id = $1
+                    ORDER BY u.created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+
+        Ok(rows)
+    }
+
     // ============================================
     // API Keys
     // ============================================

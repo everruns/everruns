@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::middleware::{AuthState, AuthUser};
+use crate::auth::middleware::{AuthState, AuthUser, ResolvedOrg};
 use axum::extract::FromRef;
 
 /// Cookie name for storing selected organization
@@ -84,10 +84,10 @@ pub fn routes(state: UsersState) -> Router {
         .with_state(state)
 }
 
-/// GET /v1/users - List all users
+/// GET /v1/users - List users in current organization
 ///
-/// Lists all users in the system with optional search filtering.
-/// Requires authentication (admin access recommended).
+/// Lists users that belong to the current organization with optional search filtering.
+/// TM-TENANT-008: Enforces org isolation to prevent cross-tenant user enumeration.
 #[utoipa::path(
     get,
     path = "/v1/users",
@@ -95,7 +95,7 @@ pub fn routes(state: UsersState) -> Router {
         ("search" = Option<String>, Query, description = "Search by name or email")
     ),
     responses(
-        (status = 200, description = "List of users", body = ListResponse<User>),
+        (status = 200, description = "List of users in organization", body = ListResponse<User>),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal server error")
     ),
@@ -103,12 +103,13 @@ pub fn routes(state: UsersState) -> Router {
 )]
 pub async fn list_users(
     State(state): State<UsersState>,
-    _auth: AuthUser, // Require authentication
+    org: ResolvedOrg,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<ListResponse<User>>, StatusCode> {
+    // TM-TENANT-008: Filter users by org membership to enforce tenant isolation
     let rows = state
         .db
-        .list_users(query.search.as_deref())
+        .list_users_by_org(org.org_id, query.search.as_deref())
         .await
         .map_err(|e| {
             tracing::error!("Failed to list users: {}", e);
