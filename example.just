@@ -33,6 +33,12 @@ start tag="latest":
         export DEFAULT_GEMINI_API_KEY="$GEMINI_API_KEY"
     fi
 
+    # Pass through worker gRPC auth token if set
+    if [[ -n "${WORKER_GRPC_AUTH_TOKEN:-}" ]]; then
+        echo "✅ WORKER_GRPC_AUTH_TOKEN found"
+        export WORKER_GRPC_AUTH_TOKEN="$WORKER_GRPC_AUTH_TOKEN"
+    fi
+
     echo "✅ Local docker compose not running, starting example full stack..."
     cd examples
     docker compose -f docker-compose-full.yaml up --pull always -d

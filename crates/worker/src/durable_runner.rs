@@ -453,11 +453,11 @@ impl DurableRunner {
         }
     }
 
-    /// Create from GRPC_ADDRESS environment variable (defaults to 127.0.0.1:9001)
+    /// Create from WORKER_GRPC_ADDRESS environment variable (defaults to 127.0.0.1:9001)
     /// Used by workers
     pub async fn from_env() -> Result<Self> {
         let grpc_address =
-            std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
+            std::env::var("WORKER_GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
 
         Self::new(&grpc_address).await
     }

@@ -30,9 +30,9 @@ pub struct GrpcClientAuth {
 }
 
 impl GrpcClientAuth {
-    /// Build from env. Reads `GRPC_AUTH_TOKEN`; returns no-op when unset.
+    /// Build from env. Reads `WORKER_GRPC_AUTH_TOKEN`; returns no-op when unset.
     pub fn from_env() -> Self {
-        let token = std::env::var("GRPC_AUTH_TOKEN")
+        let token = std::env::var("WORKER_GRPC_AUTH_TOKEN")
             .ok()
             .filter(|t| !t.is_empty())
             .and_then(|t| format!("Bearer {}", t).parse().ok());
@@ -88,7 +88,7 @@ impl GrpcDurableStore {
             {
                 Ok(channel) => {
                     // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-                    // Mitigation: Attach bearer token from GRPC_AUTH_TOKEN env
+                    // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
                     let auth = GrpcClientAuth::from_env();
                     let client = WorkerServiceClient::with_interceptor(channel, auth);
                     if attempt > 1 {

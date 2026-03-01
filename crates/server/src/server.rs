@@ -31,7 +31,8 @@ impl ServerConfig {
             .unwrap_or_default();
 
         let addr = std::env::var("ADDR").unwrap_or_else(|_| "0.0.0.0:9000".to_string());
-        let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
+        let grpc_addr =
+            std::env::var("WORKER_GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
 
         Self {
             dev_mode,

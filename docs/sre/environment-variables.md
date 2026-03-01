@@ -200,9 +200,9 @@ The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse p
 - Connection cycling prevents stale connections through proxies and load balancers
 - When running behind HTTP/1.1 proxies, increase `SSE_REALTIME_CYCLE_SECS` to reduce reconnection frequency
 
-## Worker Configuration
+## Worker gRPC Configuration
 
-### GRPC_ADDRESS
+### WORKER_GRPC_ADDRESS
 
 Address of the control-plane gRPC server for worker communication.
 
@@ -214,13 +214,63 @@ Address of the control-plane gRPC server for worker communication.
 **Example:**
 
 ```bash
-GRPC_ADDRESS=127.0.0.1:9001
+WORKER_GRPC_ADDRESS=127.0.0.1:9001
 ```
 
 **Notes:**
 - Workers communicate with the control-plane via gRPC for all database operations
 - The control-plane exposes both HTTP (port 9000) and gRPC (port 9001) interfaces
 - Workers are stateless and do not connect directly to the database
+
+### WORKER_GRPC_AUTH_TOKEN
+
+Bearer token for authenticating worker gRPC connections to the control-plane.
+
+| Property | Value |
+|----------|-------|
+| **Required** | Yes (production); No (dev mode) |
+| **Default** | Unset (auth disabled) |
+
+**Example:**
+
+```bash
+WORKER_GRPC_AUTH_TOKEN=your-secret-token
+```
+
+**Notes:**
+- Must be set on both the server and all workers (same value)
+- When unset, gRPC auth is disabled (acceptable for local development only)
+- Server panics on startup if unset when not in dev mode
+
+### WORKER_GRPC_ADDR
+
+Bind address for the server-side gRPC listener (control-plane only).
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (server only) |
+| **Default** | `0.0.0.0:9001` |
+
+**Example:**
+
+```bash
+WORKER_GRPC_ADDR=0.0.0.0:9001
+```
+
+### WORKER_GRPC_CONNECT_TIMEOUT
+
+Timeout in seconds for worker initial connection to control-plane gRPC.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `30` |
+
+**Example:**
+
+```bash
+WORKER_GRPC_CONNECT_TIMEOUT=60
+```
 
 ## OpenTelemetry Configuration
 

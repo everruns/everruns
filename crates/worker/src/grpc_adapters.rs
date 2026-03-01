@@ -60,7 +60,7 @@ impl GrpcClient {
             .map_err(|e| grpc_error(format!("gRPC connection failed: {}", e)))?;
 
         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-        // Mitigation: Attach bearer token from GRPC_AUTH_TOKEN env
+        // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
         let auth = GrpcClientAuth::from_env();
         let client = WorkerServiceClient::with_interceptor(channel, auth)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
