@@ -354,6 +354,18 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
+    // TM-CRYPTO-007: Agent system prompts encrypted at rest
+    EncryptedColumn {
+        table: "agents",
+        column: "system_prompt_encrypted",
+        id_column: "id",
+    },
+    // TM-CRYPTO-007: Harness system prompts encrypted at rest
+    EncryptedColumn {
+        table: "harnesses",
+        column: "system_prompt_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
@@ -579,6 +591,20 @@ mod tests {
         for line in sql.lines() {
             let line_lower = line.to_lowercase();
             let trimmed = line_lower.trim();
+
+            // Detect ALTER TABLE ... ADD COLUMN ... _encrypted
+            // Pattern: "alter table <table> add column <col>_encrypted <type>;"
+            if trimmed.starts_with("alter table") && trimmed.contains("add column") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // Expected: ["alter", "table", "<table>", "add", "column", "<col>", "<type>", ...]
+                if parts.len() >= 6 {
+                    let table_name = parts[2];
+                    let col_name = parts[5].trim_end_matches(';');
+                    if col_name.ends_with("_encrypted") {
+                        found.insert((table_name.to_string(), col_name.to_string()));
+                    }
+                }
+            }
 
             // Detect CREATE TABLE
             if trimmed.starts_with("create table") {
