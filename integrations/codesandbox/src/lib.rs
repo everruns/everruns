@@ -14,7 +14,7 @@ pub mod state;
 pub mod tools;
 pub mod types;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::tools::Tool;
 
 use tools::*;
@@ -53,6 +53,10 @@ impl Capability for CodeSandboxCapability {
 
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {

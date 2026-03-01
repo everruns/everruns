@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+use crate::capabilities::RiskLevel;
 use crate::capability_types::{CapabilityId, CapabilityStatus};
 use crate::tool_types::ToolDefinition;
 
@@ -54,6 +55,16 @@ pub struct CapabilityInfo {
     /// Multiple capabilities can contribute the same feature.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub features: Vec<String>,
+    /// TM-AGENT-005: Risk level. High-risk capabilities require admin approval.
+    #[serde(skip_serializing_if = "is_low_risk", default = "default_risk_level")]
+    pub risk_level: RiskLevel,
+}
+
+fn is_low_risk(r: &RiskLevel) -> bool {
+    *r == RiskLevel::Low
+}
+fn default_risk_level() -> RiskLevel {
+    RiskLevel::Low
 }
 
 impl CapabilityInfo {
@@ -78,6 +89,7 @@ impl CapabilityInfo {
             is_skill,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
             features: cap.features().iter().map(|s| s.to_string()).collect(),
+            risk_level: cap.risk_level(),
         }
     }
 }
@@ -112,6 +124,7 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            risk_level: RiskLevel::Low,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -143,6 +156,7 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            risk_level: RiskLevel::Low,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -164,6 +178,7 @@ mod tests {
             is_skill: false,
             dependencies: vec!["session_file_system".to_string()],
             features: vec![],
+            risk_level: RiskLevel::Low,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -217,6 +232,7 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec!["secrets".to_string(), "key_value".to_string()],
+            risk_level: RiskLevel::Low,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -240,5 +256,58 @@ mod tests {
         let noop_cap = registry.get("noop").unwrap();
         let info = CapabilityInfo::from_core(noop_cap.as_ref());
         assert!(info.features.is_empty());
+    }
+
+    #[test]
+    fn test_risk_level_serialization() {
+        // Low risk should be skipped in serialization
+        let cap = CapabilityInfo {
+            id: CapabilityId::new("safe"),
+            name: "Safe".to_string(),
+            description: "Low risk".to_string(),
+            status: CapabilityStatus::Available,
+            icon: None,
+            category: None,
+            system_prompt: None,
+            tool_definitions: vec![],
+            is_mcp: false,
+            is_skill: false,
+            dependencies: vec![],
+            features: vec![],
+            risk_level: RiskLevel::Low,
+        };
+        let json = serde_json::to_string(&cap).unwrap();
+        assert!(
+            !json.contains("\"risk_level\""),
+            "Low risk should be omitted"
+        );
+
+        // High risk should be present
+        let cap_high = CapabilityInfo {
+            risk_level: RiskLevel::High,
+            ..cap
+        };
+        let json = serde_json::to_string(&cap_high).unwrap();
+        assert!(json.contains("\"risk_level\":\"high\""));
+    }
+
+    #[test]
+    fn test_from_core_populates_risk_level() {
+        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+
+        // virtual_bash is High risk
+        let bash_cap = registry.get("virtual_bash").unwrap();
+        let info = CapabilityInfo::from_core(bash_cap.as_ref());
+        assert_eq!(info.risk_level, RiskLevel::High);
+
+        // web_fetch is High risk
+        let fetch_cap = registry.get("web_fetch").unwrap();
+        let info = CapabilityInfo::from_core(fetch_cap.as_ref());
+        assert_eq!(info.risk_level, RiskLevel::High);
+
+        // noop is Low risk (default)
+        let noop_cap = registry.get("noop").unwrap();
+        let info = CapabilityInfo::from_core(noop_cap.as_ref());
+        assert_eq!(info.risk_level, RiskLevel::Low);
     }
 }

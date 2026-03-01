@@ -18,7 +18,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition,
+    CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition, RiskLevel,
     mcp_capability_id, skill_capability_id,
 };
 use std::sync::Arc;
@@ -81,6 +81,7 @@ impl CapabilityService {
                 is_skill: false,
                 dependencies: vec![], // MCP capabilities have no dependencies
                 features: vec![],
+                risk_level: RiskLevel::Low,
             });
         }
 
@@ -104,6 +105,7 @@ impl CapabilityService {
                 is_skill: true,
                 dependencies: vec!["session_file_system".to_string()],
                 features: vec![],
+                risk_level: RiskLevel::Low,
             });
         }
 
@@ -149,6 +151,7 @@ impl CapabilityService {
                     is_skill: false,
                     dependencies: vec![], // MCP capabilities have no dependencies
                     features: vec![],
+                    risk_level: RiskLevel::Low,
                 }));
             }
             return Ok(None);
@@ -171,6 +174,7 @@ impl CapabilityService {
                     is_skill: true,
                     dependencies: vec!["session_file_system".to_string()],
                     features: vec![],
+                    risk_level: RiskLevel::Low,
                 }));
             }
             return Ok(None);
@@ -210,6 +214,23 @@ impl CapabilityService {
     #[allow(dead_code)]
     pub fn registry(&self) -> &CapabilityRegistry {
         &self.registry
+    }
+
+    /// Return the IDs of any high-risk capabilities in the given list.
+    ///
+    /// Looks up each capability in the built-in registry.  MCP and skill
+    /// capabilities are always Low risk (user-configured), so only built-in
+    /// capabilities can be High.
+    pub fn high_risk_ids(&self, cap_refs: &[&str]) -> Vec<String> {
+        cap_refs
+            .iter()
+            .filter(|id| {
+                self.registry
+                    .get(id)
+                    .is_some_and(|c| c.risk_level() == RiskLevel::High)
+            })
+            .map(|id| id.to_string())
+            .collect()
     }
 
     /// Get the database storage backend

@@ -534,7 +534,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | Agent creator chooses capabilities; no approval workflow for dangerous capabilities (virtual_bash, docker) | **OPEN** |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (virtual_bash, web_fetch, docker, daytona, codesandbox) require Admin role to assign via API | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -572,11 +572,8 @@ Combined prompt sent to LLM as system message
 ```
 The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
 
-**TM-AGENT-005 — Capability Escalation (OPEN):**
-Capabilities are all-or-nothing. An org member can create an agent with `virtual_bash` + `web_fetch`, giving it the ability to execute bash commands and exfiltrate results via HTTP. No approval workflow exists for dangerous capability combinations.
-
-- **Recommendation:** Implement HITL approval for high-risk capabilities (`virtual_bash`, `docker_container`). Consider capability scoping (e.g., read-only filesystem).
-- **Priority:** Medium
+**TM-AGENT-005 — Capability Escalation (MITIGATED):**
+Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`virtual_bash`, `web_fetch`, `docker_container`, `daytona`, `codesandbox`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
 
 **TM-AGENT-006 — Iteration Limit:**
 ```rust
@@ -792,7 +789,6 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
 | TM-OBS-007 | No security audit logging | Medium | Add structured audit log for auth events |
-| TM-AGENT-005 | No approval for dangerous capabilities | High | HITL approval for virtual_bash, docker |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
@@ -835,7 +831,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
 | Secure OTLP endpoint | TM-OBS-003 | Use trusted internal infrastructure only |
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |
-| Review agent capabilities | TM-AGENT-005, TM-AGENT-013 | Audit capability assignments; avoid virtual_bash + web_fetch on untrusted agents |
+| Review agent capabilities | TM-AGENT-005, TM-AGENT-013 | High-risk capabilities require Admin role; audit capability assignments for org admin accounts |
 | System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
 | Block cloud metadata | TM-API-009 | Defense-in-depth: enable IMDSv2 (AWS), metadata concealment (GCP), or equivalent; fetchkit v0.1.2 blocks 169.254.0.0/16 at application level |
 | Worker network isolation | TM-API-008, TM-API-010, TM-API-011 | Defense-in-depth: restrict worker container egress; fetchkit v0.1.2 blocks private IPs at application level |

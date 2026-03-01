@@ -362,6 +362,34 @@ pub trait Capability: Send + Sync {
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         None
     }
+
+    /// Returns the risk level of this capability.
+    ///
+    /// TM-AGENT-005: High-risk capabilities (code execution, network access)
+    /// require admin approval when assigned to agents/harnesses. Capabilities
+    /// that combine execution + network access enable data exfiltration.
+    ///
+    /// By default, returns `RiskLevel::Low`.
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::Low
+    }
+}
+
+/// Risk classification for capabilities (TM-AGENT-005).
+///
+/// Used to enforce approval requirements when assigning capabilities.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum RiskLevel {
+    /// No special approval needed
+    Low,
+    /// Logged but allowed for org members
+    Medium,
+    /// Requires org admin role to assign
+    High,
 }
 
 // ============================================================================
@@ -2302,5 +2330,36 @@ mod tests {
             &registry,
         );
         assert_eq!(features, vec!["schedules"]);
+    }
+
+    #[test]
+    fn test_risk_level_ordering() {
+        assert!(RiskLevel::Low < RiskLevel::Medium);
+        assert!(RiskLevel::Medium < RiskLevel::High);
+    }
+
+    #[test]
+    fn test_risk_level_serde_roundtrip() {
+        let high = RiskLevel::High;
+        let json = serde_json::to_string(&high).unwrap();
+        assert_eq!(json, "\"high\"");
+        let back: RiskLevel = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, RiskLevel::High);
+    }
+
+    #[test]
+    fn test_high_risk_capabilities() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // virtual_bash and web_fetch should be High
+        let bash = registry.get("virtual_bash").unwrap();
+        assert_eq!(bash.risk_level(), RiskLevel::High);
+
+        let fetch = registry.get("web_fetch").unwrap();
+        assert_eq!(fetch.risk_level(), RiskLevel::High);
+
+        // Default capabilities should be Low
+        let noop = registry.get("noop").unwrap();
+        assert_eq!(noop.risk_level(), RiskLevel::Low);
     }
 }

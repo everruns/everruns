@@ -9,7 +9,7 @@
 //! - Timeout for first byte: 1 second (connect + time to first response byte)
 //! - Timeout for body: 30 seconds total, partial content returned if exceeded
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use fetchkit::{
@@ -36,6 +36,10 @@ impl Capability for WebFetchCapability {
 
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {

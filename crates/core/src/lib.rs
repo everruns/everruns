@@ -155,12 +155,12 @@ pub use capabilities::{
     IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
     McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
     MultiplyTool, NoopCapability, PlatformManagementCapability, ReadFileTool, ResearchCapability,
-    ResolvedCapabilities, SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability,
-    SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability,
-    SubtractTool, TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
-    WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
-    compute_features, get_dependencies, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id, resolve_dependencies,
+    ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
+    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
+    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
+    WriteFileTool, WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
+    collect_capabilities_with_configs, compute_features, get_dependencies, is_mcp_capability,
+    mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

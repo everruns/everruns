@@ -61,6 +61,7 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 | `is_mcp` | boolean | True if this is an MCP virtual capability |
 | `dependencies` | string[] | IDs of capabilities this capability depends on |
 | `features` | string[] | UI feature strings this capability contributes to |
+| `risk_level` | RiskLevel | Risk classification: `low` (default, omitted in JSON), `medium`, `high` |
 
 ##### Description Markdown Support
 
@@ -216,6 +217,20 @@ MCP and Skill virtual capabilities currently declare no features.
 #### compute_features()
 
 See `crates/core/src/capabilities/mod.rs` for `compute_features()` — resolves dependencies, collects features, deduplicates.
+
+### Risk Levels (TM-AGENT-005)
+
+Each capability declares a `RiskLevel` via the `Capability` trait. The API enforces that assigning high-risk capabilities to an agent requires `OrgRole::Admin`.
+
+| Level | Description | Enforcement |
+|-------|-------------|-------------|
+| `low` | Default. No special requirements. | Any org member |
+| `medium` | Logged but allowed for org members. | Any org member |
+| `high` | Can execute arbitrary code or access external resources. | Requires Admin role |
+
+High-risk built-in capabilities: `virtual_bash`, `web_fetch`, `docker_container`, `daytona`, `codesandbox`.
+
+See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 
 ### Built-in Capabilities
 
