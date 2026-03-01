@@ -175,6 +175,17 @@ pub fn grpc_auth_token_from_env() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// TM-DURABLE-002: Validate that GRPC_AUTH_TOKEN is set in production.
+/// Panics if the token is missing when not in dev mode.
+pub fn require_grpc_auth_token() -> String {
+    grpc_auth_token_from_env().unwrap_or_else(|| {
+        panic!(
+            "GRPC_AUTH_TOKEN must be set when not in dev mode. \
+             Without it, gRPC endpoints are unauthenticated."
+        )
+    })
+}
+
 /// Tonic interceptor that validates bearer token on every gRPC request.
 /// If `expected_token` is `None`, all requests are allowed (dev mode).
 #[derive(Clone)]
@@ -3080,5 +3091,23 @@ mod tests {
             .insert("authorization", "Basic secret123".parse().unwrap());
         let err = interceptor.call(request).unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    }
+
+    // TM-DURABLE-002: require_grpc_auth_token panics when GRPC_AUTH_TOKEN is unset
+    #[test]
+    #[should_panic(expected = "GRPC_AUTH_TOKEN must be set")]
+    fn test_require_grpc_auth_token_panics_without_env() {
+        // SAFETY: single-threaded test; no other thread reads this var concurrently
+        unsafe { std::env::remove_var("GRPC_AUTH_TOKEN") };
+        require_grpc_auth_token();
+    }
+
+    #[test]
+    fn test_require_grpc_auth_token_returns_value() {
+        // SAFETY: single-threaded test; no other thread reads this var concurrently
+        unsafe { std::env::set_var("GRPC_AUTH_TOKEN", "test-token-123") };
+        let token = require_grpc_auth_token();
+        assert_eq!(token, "test-token-123");
+        unsafe { std::env::remove_var("GRPC_AUTH_TOKEN") };
     }
 }
