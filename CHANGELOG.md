@@ -11,6 +11,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.2] - 2026-03-01
+
+### Highlights
+
+- **Global Chat Page** — New global chat page and Chat harness for direct agent conversations ([#602](https://github.com/everruns/everruns/pull/602), [#608](https://github.com/everruns/everruns/pull/608))
+- **Platform Management Capability** — New capability for platform operations, wired through Chat harness and gRPC workers ([#587](https://github.com/everruns/everruns/pull/587), [#608](https://github.com/everruns/everruns/pull/608), [#615](https://github.com/everruns/everruns/pull/615), [#622](https://github.com/everruns/everruns/pull/622))
+- **SSE Reliability** — Periodic heartbeat comments, HTTP/2 flow control tuning, 1000-connection limit, reliable event ordering via sequence resolution ([#604](https://github.com/everruns/everruns/pull/604), [#584](https://github.com/everruns/everruns/pull/584), [#585](https://github.com/everruns/everruns/pull/585), [#597](https://github.com/everruns/everruns/pull/597), [#606](https://github.com/everruns/everruns/pull/606))
+- **Durable Dashboard Metrics** — Time-series graphs, accurate worker counts, throughput rates, and dev-mode support ([#578](https://github.com/everruns/everruns/pull/578), [#590](https://github.com/everruns/everruns/pull/590), [#596](https://github.com/everruns/everruns/pull/596), [#610](https://github.com/everruns/everruns/pull/610))
+- **OpenAI Context Caching** — Thread `previous_response_id` for server-side context caching across turns ([#594](https://github.com/everruns/everruns/pull/594))
+
+### What's Changed
+
+- fix(worker): wire platform_store in DurableWorker act_activity path ([#622](https://github.com/everruns/everruns/pull/622))
+- chore: add /process-issues command for Linear issue processing ([#619](https://github.com/everruns/everruns/pull/619))
+- chore(specs): security audit — 12 findings with threat model updates ([#618](https://github.com/everruns/everruns/pull/618))
+- feat(ship): add code simplification and security review phases ([#616](https://github.com/everruns/everruns/pull/616))
+- chore(ship): add impact awareness to Phase 5 quality gates ([#617](https://github.com/everruns/everruns/pull/617))
+- fix(server): downgrade missing directory log from error to debug ([#614](https://github.com/everruns/everruns/pull/614))
+- fix(worker): implement PlatformStore for gRPC workers ([#615](https://github.com/everruns/everruns/pull/615))
+- chore(deps): upgrade bashkit v0.1.7 → v0.1.8 ([#613](https://github.com/everruns/everruns/pull/613))
+- fix(example): always pull fresh images on start ([#612](https://github.com/everruns/everruns/pull/612))
+- chore(deps): upgrade everruns-sdk v0.1.2 → v0.1.3 ([#611](https://github.com/everruns/everruns/pull/611))
+- fix(durable): fix dashboard metrics for dev mode and show all statuses ([#610](https://github.com/everruns/everruns/pull/610))
+- feat(ui): add preview tabs to harness detail and edit pages ([#607](https://github.com/everruns/everruns/pull/607))
+- refactor(bench): always use llmsim-latency model in load tests ([#609](https://github.com/everruns/everruns/pull/609))
+- feat(capabilities): register platform_management in Chat harness, rename to Platform Chat ([#608](https://github.com/everruns/everruns/pull/608))
+- fix(server): resolve since_id to sequence for reliable event ordering ([#606](https://github.com/everruns/everruns/pull/606))
+- chore(deps): bump the npm_and_yarn group across 1 directory with 1 update ([#605](https://github.com/everruns/everruns/pull/605))
+- feat(sse): add periodic heartbeat comments to all SSE streams ([#604](https://github.com/everruns/everruns/pull/604))
+- feat(ui,server): add global chat page and Chat harness ([#602](https://github.com/everruns/everruns/pull/602))
+- fix(server): eliminate env var race in Http2FlowConfig tests ([#601](https://github.com/everruns/everruns/pull/601))
+- fix(load-test): remove SSE retry cap to use SDK default unlimited reconnects ([#599](https://github.com/everruns/everruns/pull/599))
+- chore(deps): upgrade bashkit v0.1.6 → v0.1.7 ([#598](https://github.com/everruns/everruns/pull/598))
+- fix(sse): bump SDK with SSE disconnect fix, configurable cycling ([#597](https://github.com/everruns/everruns/pull/597))
+- fix(durable): show workflow/task throughput rates instead of gauges ([#596](https://github.com/everruns/everruns/pull/596))
+- fix(docs): block /cdn-cgi/ in robots.txt ([#595](https://github.com/everruns/everruns/pull/595))
+- feat(core): thread previous_response_id for OpenAI server-side context caching ([#594](https://github.com/everruns/everruns/pull/594))
+- fix(ci): stop cancelling in-progress CI runs on main ([#593](https://github.com/everruns/everruns/pull/593))
+- chore: upgrade Node.js from 20 to 22 LTS ([#592](https://github.com/everruns/everruns/pull/592))
+- chore(ui): update oxfmt to 0.35.0 ([#591](https://github.com/everruns/everruns/pull/591))
+- fix(durable): fix dashboard worker count and metrics accuracy ([#590](https://github.com/everruns/everruns/pull/590))
+- fix(docs): resolve SEO crawling issues (308 redirects, excluded pages) ([#589](https://github.com/everruns/everruns/pull/589))
+- fix(bench): eagerly connect SSE stream before sending messages ([#588](https://github.com/everruns/everruns/pull/588))
+- feat(core): add platform management capability ([#587](https://github.com/everruns/everruns/pull/587))
+- fix(server): configure HTTP/2 flow control for high-concurrency SSE ([#584](https://github.com/everruns/everruns/pull/584))
+- chore(specs): remove code-derivable content, link to source files ([#586](https://github.com/everruns/everruns/pull/586))
+- fix(server): bump per-org SSE connection limit from 50 to 1000 ([#585](https://github.com/everruns/everruns/pull/585))
+- fix(bench): use SDK EventStream for SSE reconnection in load test ([#582](https://github.com/everruns/everruns/pull/582))
+- feat(server): add types positive filter to events endpoints ([#581](https://github.com/everruns/everruns/pull/581))
+- feat(durable): add metrics time-series graphs to overview dashboard ([#578](https://github.com/everruns/everruns/pull/578))
+- feat(fake_aws): autonomous Cost & Security Auditor with rich seed data ([#577](https://github.com/everruns/everruns/pull/577))
+- feat(bench): replace polling with SSE for turn completion detection ([#580](https://github.com/everruns/everruns/pull/580))
+- fix(durable): add summary to workers list response ([#579](https://github.com/everruns/everruns/pull/579))
+- fix(server): use axum_extra::extract::Query for SSE exclude param ([#575](https://github.com/everruns/everruns/pull/575))
+- chore(ship): expand /ship command to enforce full quality workflow ([#576](https://github.com/everruns/everruns/pull/576))
+- feat(llmsim): add latency and streaming simulation for benchmarks ([#574](https://github.com/everruns/everruns/pull/574))
+- fix(ui): merge orphan input.message into turn.started in trajectory view ([#573](https://github.com/everruns/everruns/pull/573))
+- refactor(server): extract ServerAppBuilder, remove server::run() ([#572](https://github.com/everruns/everruns/pull/572))
+- fix(durable): skip postgres-dependent tests without PostgreSQL ([#571](https://github.com/everruns/everruns/pull/571))
+
 ## [0.8.1] - 2026-02-22
 
 ### Highlights
