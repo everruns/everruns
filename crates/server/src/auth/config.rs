@@ -166,15 +166,20 @@ impl AuthConfig {
         let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
 
         // JWT configuration
+        // TM-AUTH-002: Require AUTH_JWT_SECRET when authentication is enabled.
+        // In AuthMode::None, generate a random secret (tokens are not validated).
+        // In AuthMode::Admin or AuthMode::Full, refuse to start without a secret.
         let jwt_secret = std::env::var("AUTH_JWT_SECRET").unwrap_or_else(|_| {
             if mode == AuthMode::None {
-                // Generate a random secret for dev mode
                 use rand::Rng;
                 let bytes: [u8; 32] = rand::rng().random();
                 hex::encode(bytes)
             } else {
-                tracing::warn!("AUTH_JWT_SECRET not set, using insecure default");
-                "insecure-dev-secret-change-me".to_string()
+                panic!(
+                    "AUTH_JWT_SECRET must be set when AUTH_MODE is '{}'. \
+                     Without it, JWTs can be forged by anyone.",
+                    mode.as_str()
+                )
             }
         });
 
@@ -513,6 +518,17 @@ mod tests {
         assert!(
             !config.signup_enabled(),
             "Admin mode should never allow signup"
+        );
+    }
+
+    // TM-AUTH-002: Verify the insecure hardcoded fallback is removed
+    #[test]
+    fn test_default_jwt_config_has_no_insecure_secret() {
+        // AuthConfig::default() should not contain the old hardcoded fallback
+        let config = AuthConfig::default();
+        assert_ne!(
+            config.jwt.secret, "insecure-dev-secret-change-me",
+            "Default config must not use the insecure hardcoded secret"
         );
     }
 }
