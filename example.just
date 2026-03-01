@@ -35,7 +35,7 @@ start tag="latest":
 
     echo "✅ Local docker compose not running, starting example full stack..."
     cd examples
-    docker compose -f docker-compose-full.yaml up -d
+    docker compose -f docker-compose-full.yaml up --pull always -d
     echo "✅ Example full stack started!"
     echo "   - UI: http://localhost:9300"
     echo "   - Jaeger UI: http://localhost:16686"
