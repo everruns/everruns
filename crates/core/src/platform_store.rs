@@ -154,3 +154,212 @@ pub trait PlatformStore: Send + Sync {
     /// Base URL for constructing UI links (e.g., "http://localhost:3000").
     fn base_url(&self) -> &str;
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use crate::AgentCapabilityConfig;
+    use crate::agent::{Agent, AgentStatus};
+    use crate::harness::{Harness, HarnessStatus};
+    use crate::session::{Session, SessionStatus};
+
+    /// Mock PlatformStore for unit tests.
+    ///
+    /// Shared across test modules so that any test exercising
+    /// platform management tools (directly or via ActAtom) uses
+    /// the same mock. This prevents wiring bugs where a tool is
+    /// registered but the store is not passed through.
+    pub struct MockPlatformStore {
+        pub harness: Harness,
+        pub agent: Agent,
+        pub session: Session,
+    }
+
+    impl Default for MockPlatformStore {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl MockPlatformStore {
+        pub fn new() -> Self {
+            Self {
+                harness: Harness {
+                    id: HarnessId::new(),
+                    name: "Test Harness".to_string(),
+                    description: Some("test harness".to_string()),
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![AgentCapabilityConfig::new("session")],
+                    status: HarnessStatus::Active,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                agent: Agent {
+                    public_id: crate::typed_id::AgentId::new(),
+                    internal_id: uuid::Uuid::now_v7(),
+                    name: "Test Agent".to_string(),
+                    description: Some("test agent".to_string()),
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    tools: vec![],
+                    status: AgentStatus::Active,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    usage: None,
+                },
+                session: Session {
+                    id: SessionId::new(),
+                    organization_id: "org_00000000000000000000000000000001".to_string(),
+                    harness_id: HarnessId::new(),
+                    agent_id: None,
+                    title: Some("Test Session".to_string()),
+                    preview: None,
+                    output_preview: None,
+                    tags: vec![],
+                    model_id: None,
+                    capabilities: vec![],
+                    tools: vec![],
+                    status: SessionStatus::Idle,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    started_at: None,
+                    finished_at: None,
+                    usage: None,
+                    is_pinned: None,
+                    active_schedule_count: None,
+                    features: vec![],
+                },
+            }
+        }
+    }
+
+    #[async_trait]
+    impl PlatformStore for MockPlatformStore {
+        async fn list_harnesses(&self) -> Result<Vec<Harness>> {
+            Ok(vec![self.harness.clone()])
+        }
+        async fn get_harness(&self, _id: HarnessId) -> Result<Option<Harness>> {
+            Ok(Some(self.harness.clone()))
+        }
+        async fn create_harness(
+            &self,
+            name: &str,
+            _desc: Option<&str>,
+            _prompt: &str,
+            _caps: &[String],
+        ) -> Result<Harness> {
+            let mut h = self.harness.clone();
+            h.name = name.to_string();
+            Ok(h)
+        }
+        async fn update_harness(
+            &self,
+            _id: HarnessId,
+            name: Option<&str>,
+            _desc: Option<&str>,
+            _prompt: Option<&str>,
+        ) -> Result<Harness> {
+            let mut h = self.harness.clone();
+            if let Some(n) = name {
+                h.name = n.to_string();
+            }
+            Ok(h)
+        }
+        async fn delete_harness(&self, _id: HarnessId) -> Result<()> {
+            Ok(())
+        }
+        async fn copy_harness(&self, _id: HarnessId, new_name: Option<&str>) -> Result<Harness> {
+            let mut h = self.harness.clone();
+            h.id = HarnessId::new();
+            h.name = new_name.unwrap_or("Copy").to_string();
+            Ok(h)
+        }
+        async fn list_agents(&self) -> Result<Vec<Agent>> {
+            Ok(vec![self.agent.clone()])
+        }
+        async fn get_agent_by_id(&self, _id: crate::typed_id::AgentId) -> Result<Option<Agent>> {
+            Ok(Some(self.agent.clone()))
+        }
+        async fn create_agent(
+            &self,
+            name: &str,
+            _desc: Option<&str>,
+            _prompt: &str,
+            _caps: &[String],
+        ) -> Result<Agent> {
+            let mut a = self.agent.clone();
+            a.name = name.to_string();
+            Ok(a)
+        }
+        async fn update_agent(
+            &self,
+            _id: crate::typed_id::AgentId,
+            name: Option<&str>,
+            _desc: Option<&str>,
+            _prompt: Option<&str>,
+        ) -> Result<Agent> {
+            let mut a = self.agent.clone();
+            if let Some(n) = name {
+                a.name = n.to_string();
+            }
+            Ok(a)
+        }
+        async fn delete_agent(&self, _id: crate::typed_id::AgentId) -> Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(
+            &self,
+            _limit: Option<usize>,
+            _agent_id: Option<crate::typed_id::AgentId>,
+        ) -> Result<Vec<Session>> {
+            Ok(vec![self.session.clone()])
+        }
+        async fn create_session(
+            &self,
+            _hid: HarnessId,
+            _aid: Option<crate::typed_id::AgentId>,
+            title: Option<&str>,
+        ) -> Result<Session> {
+            let mut s = self.session.clone();
+            s.title = title.map(|t| t.to_string());
+            Ok(s)
+        }
+        async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
+            Ok(Some(self.session.clone()))
+        }
+        async fn delete_session(&self, _id: SessionId) -> Result<()> {
+            Ok(())
+        }
+        async fn send_message(&self, _id: SessionId, _content: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn get_messages(
+            &self,
+            _id: SessionId,
+            _limit: Option<usize>,
+        ) -> Result<Vec<PlatformMessage>> {
+            Ok(vec![
+                PlatformMessage {
+                    role: "user".into(),
+                    content: "Hello".into(),
+                    created_at: chrono::Utc::now(),
+                },
+                PlatformMessage {
+                    role: "agent".into(),
+                    content: "Hi!".into(),
+                    created_at: chrono::Utc::now(),
+                },
+            ])
+        }
+        async fn wait_for_idle(&self, _id: SessionId, _t: Option<u64>) -> Result<String> {
+            Ok("idle".to_string())
+        }
+        fn base_url(&self) -> &str {
+            "http://localhost:3000"
+        }
+    }
+}

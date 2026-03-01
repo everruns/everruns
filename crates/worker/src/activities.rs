@@ -24,8 +24,8 @@ use std::sync::Arc;
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStorageStore,
-    GrpcSessionStore,
+    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcPlatformStore, GrpcSessionFileStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -356,10 +356,13 @@ pub async fn act_activity(
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
     let storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
-        Arc::new(GrpcSessionStorageStore::new(grpc_client));
+        Arc::new(GrpcSessionStorageStore::new(grpc_client.clone()));
+    let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
+        Arc::new(GrpcPlatformStore::new(grpc_client, org_id));
 
     let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store)
-        .with_storage_store(storage_store);
+        .with_storage_store(storage_store)
+        .with_platform_store(platform_store);
 
     atom.execute(input)
         .await
