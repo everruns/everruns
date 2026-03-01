@@ -224,6 +224,21 @@ impl ServerAppBuilder {
         } else {
             let database_url = std::env::var("DATABASE_URL")
                 .context("DATABASE_URL environment variable required")?;
+
+            // TM-NEW: Warn when DATABASE_URL lacks TLS in production
+            if !database_url.contains("sslmode=") {
+                tracing::warn!(
+                    "DATABASE_URL does not specify sslmode. \
+                     For production, use sslmode=require or sslmode=verify-full \
+                     to encrypt database connections."
+                );
+            } else if database_url.contains("sslmode=disable") {
+                tracing::warn!(
+                    "DATABASE_URL has sslmode=disable — database connections are unencrypted. \
+                     For production, use sslmode=require or sslmode=verify-full."
+                );
+            }
+
             let backend = StorageBackend::postgres(&database_url)
                 .await
                 .context("Failed to connect to database")?;
