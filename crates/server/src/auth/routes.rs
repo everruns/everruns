@@ -4,9 +4,11 @@
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{FromRef, Path, Query, State},
-    http::StatusCode,
-    response::Redirect,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
+    response::{Redirect, Response},
     routing::{delete, get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
@@ -16,6 +18,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+use super::rate_limit::extract_client_ip;
 
 use super::{
     api_key::generate_api_key,
@@ -151,14 +155,70 @@ pub struct AuthConfigResponse {
     pub signup_enabled: bool,
 }
 
+/// Rate limit middleware for login endpoint
+async fn rate_limit_login(
+    State(state): State<BuiltinAuthBackend>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    if let Err(e) = state.rate_limiter.check_login(ip) {
+        return e.into();
+    }
+    next.run(req).await
+}
+
+/// Rate limit middleware for register endpoint
+async fn rate_limit_register(
+    State(state): State<BuiltinAuthBackend>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    if let Err(e) = state.rate_limiter.check_register(ip) {
+        return e.into();
+    }
+    next.run(req).await
+}
+
+/// Rate limit middleware for refresh endpoint
+async fn rate_limit_refresh(
+    State(state): State<BuiltinAuthBackend>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    if let Err(e) = state.rate_limiter.check_refresh(ip) {
+        return e.into();
+    }
+    next.run(req).await
+}
+
 /// Create auth routes
 pub fn routes(state: BuiltinAuthBackend) -> Router {
-    Router::new()
-        // Public routes
-        .route("/v1/auth/config", get(get_auth_config))
+    // Rate-limited routes (sensitive auth endpoints)
+    let login_route = Router::new()
         .route("/v1/auth/login", post(login))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_login,
+        ));
+    let register_route = Router::new()
         .route("/v1/auth/register", post(register))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_register,
+        ));
+    let refresh_route = Router::new()
         .route("/v1/auth/refresh", post(refresh_token))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_refresh,
+        ));
+
+    Router::new()
+        // Public routes (no rate limit needed)
+        .route("/v1/auth/config", get(get_auth_config))
         .route("/v1/auth/logout", post(logout))
         // OAuth routes
         .route("/v1/auth/oauth/{provider}", get(oauth_redirect))
@@ -170,6 +230,10 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
             get(list_api_keys).post(create_api_key_route),
         )
         .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route))
+        // Merge rate-limited routes
+        .merge(login_route)
+        .merge(register_route)
+        .merge(refresh_route)
         .with_state(state)
 }
 

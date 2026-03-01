@@ -81,6 +81,9 @@ aes-gcm = "0.10"
 rand = "0.9"
 base64 = "0.22"
 
+# Rate limiting
+governor = "0.8"
+
 # Authentication
 argon2 = "0.5"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
