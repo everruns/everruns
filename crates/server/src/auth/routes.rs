@@ -132,12 +132,14 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
+/// Cookie name for OAuth CSRF state (TM-AUTH-007)
+const OAUTH_STATE_COOKIE: &str = "oauth_state";
+
 /// OAuth callback query parameters
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct OAuthCallbackQuery {
     pub code: String,
-    pub state: String, // TODO: Use for CSRF validation
+    pub state: String,
 }
 
 /// Auth configuration response
@@ -472,10 +474,12 @@ pub async fn get_current_user(
 }
 
 /// GET /v1/auth/oauth/:provider - Redirect to OAuth provider
+/// TM-AUTH-007: State stored in HttpOnly cookie for CSRF validation in callback.
 pub async fn oauth_redirect(
     State(state): State<BuiltinAuthBackend>,
     Path(provider): Path<String>,
-) -> Result<Redirect, AuthError> {
+    jar: CookieJar,
+) -> Result<(CookieJar, Redirect), AuthError> {
     let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
@@ -505,13 +509,21 @@ pub async fn oauth_redirect(
         }
     };
 
-    // In a production system, we'd store the state in a session/cookie for verification
-    // TODO: Implement proper state management for OAuth
+    // TM-AUTH-007: Store state in HttpOnly cookie for CSRF validation
+    let state_cookie = Cookie::build((OAUTH_STATE_COOKIE, oauth_state))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::minutes(10))
+        .build();
+    let jar = jar.add(state_cookie);
 
-    Ok(Redirect::to(&auth_url.url))
+    Ok((jar, Redirect::to(&auth_url.url)))
 }
 
 /// GET /v1/auth/callback/:provider - OAuth callback
+/// TM-AUTH-007: Validates CSRF state from cookie before proceeding.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
     Path(provider): Path<String>,
@@ -521,8 +533,22 @@ pub async fn oauth_callback(
     let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
-    // TODO: Validate state from session for CSRF protection
-    // For now, we'll skip state validation in development
+    // TM-AUTH-007: Validate CSRF state parameter
+    let stored_state = jar
+        .get(OAUTH_STATE_COOKIE)
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| {
+            tracing::warn!("OAuth callback missing state cookie (possible CSRF attempt)");
+            AuthError::unauthorized("Invalid OAuth state")
+        })?;
+
+    if stored_state != query.state {
+        tracing::warn!("OAuth callback state mismatch (possible CSRF attempt)");
+        return Err(AuthError::unauthorized("Invalid OAuth state"));
+    }
+
+    // Clear the state cookie (single-use)
+    let jar = jar.remove(Cookie::build(OAUTH_STATE_COOKIE).path("/"));
 
     let user_info = match provider_enum {
         OAuthProvider::Google => {
@@ -909,4 +935,23 @@ async fn get_or_create_admin_user(
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_oauth_state_is_unique() {
+        let s1 = generate_oauth_state();
+        let s2 = generate_oauth_state();
+        assert_ne!(s1, s2);
+        assert_eq!(s1.len(), 32); // 16 bytes hex-encoded
+    }
+
+    #[test]
+    fn test_oauth_state_cookie_name() {
+        // Verify the constant is set correctly for TM-AUTH-007
+        assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
+    }
 }
