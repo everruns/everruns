@@ -454,12 +454,18 @@ Worker B continues execution → task completes correctly
 ```
 Prevents duplicate activity execution when workers lose connectivity.
 
-**TM-DURABLE-002 — gRPC Security (MITIGATED):**
+**TM-DURABLE-002 — gRPC Security (OPEN):**
 Workers authenticate to control plane gRPC (port 9001) via bearer token (`GRPC_AUTH_TOKEN` env var).
 - Server: `GrpcAuthInterceptor` validates `authorization: Bearer <token>` on every request
 - Client: `GrpcClientAuth` injects the bearer token into every outgoing request
-- When `GRPC_AUTH_TOKEN` is unset, auth is disabled (dev mode only)
+- When `GRPC_AUTH_TOKEN` is unset, auth is disabled — **not restricted to dev mode**
+- No org_id scoping in gRPC handlers; compromised worker can access all orgs
 - Network isolation remains as defense-in-depth
+- **Recommendation:** Fail startup if `GRPC_AUTH_TOKEN` unset when `AUTH_MODE != none`. Add `org_id` to gRPC request context.
+
+**TM-DURABLE-010 — Durable API Endpoints Unauthenticated (OPEN):**
+All `/v1/durable/*` HTTP endpoints use `State(state): State<AppState>` only — no `AuthUser` or `ResolvedOrg` extractor. Any network-reachable client can list workflows, drain workers, cancel tasks, and view DLQ.
+- **Recommendation:** Add `AuthUser` (minimum) or `ResolvedOrg` (preferred) to all durable endpoints. Worker management endpoints should require admin role.
 
 ## 10. Scheduled Tasks (TM-SCHED)
 
@@ -822,6 +828,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Responsibility | Related Threats | Description |
 |---------------|-----------------|-------------|
 | Enable TLS/HTTPS | TM-AUTH-005, TM-LLM-006 | All production traffic must use HTTPS |
+| Database TLS | TM-API-001 | Use `sslmode=require` in `DATABASE_URL` for production; no code-level enforcement |
 | Secure env vars | TM-AUTH-002, TM-CRYPTO-001 | Never commit secrets to source control |
 | Configure CORS | TM-API-007, TM-WEB-007 | Set explicit allowed origins in production |
 | Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network; set `GRPC_AUTH_TOKEN` in production |
