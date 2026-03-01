@@ -597,7 +597,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .list_session_files(session_id, path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to list directory: {}", e);
+                let msg = e.to_string();
+                if msg.contains("not found") || msg.contains("not a directory") {
+                    tracing::debug!("Directory not found: {}", path);
+                } else {
+                    tracing::error!("Failed to list directory: {}", e);
+                }
                 store_error("Failed to list directory")
             })?;
 

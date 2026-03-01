@@ -773,6 +773,42 @@ async fn test_session_filesystem() {
     assert_eq!(result["deleted"], true);
 }
 
+#[tokio::test]
+async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
+    let server = TestServer::new().await;
+
+    // Create agent and session
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "FS 404 Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+
+    // List a directory that doesn't exist — should return 404, not 500
+    let resp = server.get(&format!("{}/.agents/skills", fs_url)).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 // ============================================
 // Harness Tests
 // ============================================

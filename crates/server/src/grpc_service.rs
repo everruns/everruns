@@ -1199,8 +1199,14 @@ impl WorkerService for WorkerServiceImpl {
             .list_directory(session_id, &req.path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to list directory: {}", e);
-                Status::internal("Failed to list directory")
+                let msg = e.to_string();
+                if msg.contains("not found") || msg.contains("not a directory") {
+                    tracing::debug!("Directory not found: {}", req.path);
+                    Status::not_found(msg)
+                } else {
+                    tracing::error!("Failed to list directory: {}", e);
+                    Status::internal("Failed to list directory")
+                }
             })?;
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
