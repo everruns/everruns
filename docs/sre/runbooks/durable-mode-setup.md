@@ -43,7 +43,7 @@ In a separate terminal:
 
 ```bash
 # Workers only need gRPC address - NO DATABASE_URL required!
-export GRPC_ADDRESS="127.0.0.1:9001"
+export WORKER_GRPC_ADDRESS="127.0.0.1:9001"
 
 # Start the durable worker
 cargo run -p everruns-worker --bin durable-worker
@@ -72,7 +72,8 @@ async fn main() -> anyhow::Result<()> {
 |----------|-------------|---------|
 | `RUNNER_MODE` | Runner mode (durable only) | `durable` |
 | `DATABASE_URL` | PostgreSQL connection URL | Required |
-| `GRPC_ADDRESS` | Control-plane gRPC address | `127.0.0.1:9001` |
+| `WORKER_GRPC_ADDRESS` | Control-plane gRPC address | `127.0.0.1:9001` |
+| `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
 | `MAX_CONCURRENT_TASKS` | Max tasks per worker | `10` |
 
@@ -195,7 +196,7 @@ WHERE status = 'claimed'
 
 ### Worker Not Processing Tasks
 
-1. Check worker is running and connected to correct `GRPC_ADDRESS`
+1. Check worker is running and connected to correct `WORKER_GRPC_ADDRESS`
 2. Verify `activity_types` match task types in queue
 3. Check worker heartbeat in `durable_workers` table
 

@@ -14,6 +14,7 @@
 #
 #   2. Create .env file with:
 #      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
+#      WORKER_GRPC_AUTH_TOKEN=<your-token>  # Required: worker gRPC auth token
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
 #      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
@@ -61,6 +62,7 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
+      WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
@@ -84,7 +86,8 @@ services:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-1
     environment:
-      GRPC_ADDRESS: server:9001
+      WORKER_GRPC_ADDRESS: server:9001
+      WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
@@ -96,7 +99,8 @@ services:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-2
     environment:
-      GRPC_ADDRESS: server:9001
+      WORKER_GRPC_ADDRESS: server:9001
+      WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
@@ -108,7 +112,8 @@ services:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     container_name: everruns-worker-3
     environment:
-      GRPC_ADDRESS: server:9001
+      WORKER_GRPC_ADDRESS: server:9001
+      WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:

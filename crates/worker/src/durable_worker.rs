@@ -149,14 +149,14 @@ impl DurableWorkerConfig {
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
 
         let grpc_address =
-            std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
+            std::env::var("WORKER_GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
 
         let max_concurrent = std::env::var("MAX_CONCURRENT_TASKS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
 
-        let connect_timeout_secs: u64 = std::env::var("GRPC_CONNECT_TIMEOUT")
+        let connect_timeout_secs: u64 = std::env::var("WORKER_GRPC_CONNECT_TIMEOUT")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(30);

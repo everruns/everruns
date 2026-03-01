@@ -168,19 +168,19 @@ use tonic::{Request, Response, Status, Streaming};
 
 /// Read the gRPC auth token from the environment. When set, all gRPC
 /// requests must include `authorization: Bearer <token>` metadata.
-/// Returns `None` if `GRPC_AUTH_TOKEN` is unset (auth disabled — dev only).
+/// Returns `None` if `WORKER_GRPC_AUTH_TOKEN` is unset (auth disabled — dev only).
 pub fn grpc_auth_token_from_env() -> Option<String> {
-    std::env::var("GRPC_AUTH_TOKEN")
+    std::env::var("WORKER_GRPC_AUTH_TOKEN")
         .ok()
         .filter(|t| !t.is_empty())
 }
 
-/// TM-DURABLE-002: Validate that GRPC_AUTH_TOKEN is set in production.
+/// TM-DURABLE-002: Validate that WORKER_GRPC_AUTH_TOKEN is set in production.
 /// Panics if the token is missing when not in dev mode.
 pub fn require_grpc_auth_token() -> String {
     grpc_auth_token_from_env().unwrap_or_else(|| {
         panic!(
-            "GRPC_AUTH_TOKEN must be set when not in dev mode. \
+            "WORKER_GRPC_AUTH_TOKEN must be set when not in dev mode. \
              Without it, gRPC endpoints are unauthenticated."
         )
     })
@@ -3093,21 +3093,21 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
     }
 
-    // TM-DURABLE-002: require_grpc_auth_token panics when GRPC_AUTH_TOKEN is unset
+    // TM-DURABLE-002: require_grpc_auth_token panics when WORKER_GRPC_AUTH_TOKEN is unset
     #[test]
-    #[should_panic(expected = "GRPC_AUTH_TOKEN must be set")]
+    #[should_panic(expected = "WORKER_GRPC_AUTH_TOKEN must be set")]
     fn test_require_grpc_auth_token_panics_without_env() {
         // SAFETY: single-threaded test; no other thread reads this var concurrently
-        unsafe { std::env::remove_var("GRPC_AUTH_TOKEN") };
+        unsafe { std::env::remove_var("WORKER_GRPC_AUTH_TOKEN") };
         require_grpc_auth_token();
     }
 
     #[test]
     fn test_require_grpc_auth_token_returns_value() {
         // SAFETY: single-threaded test; no other thread reads this var concurrently
-        unsafe { std::env::set_var("GRPC_AUTH_TOKEN", "test-token-123") };
+        unsafe { std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "test-token-123") };
         let token = require_grpc_auth_token();
         assert_eq!(token, "test-token-123");
-        unsafe { std::env::remove_var("GRPC_AUTH_TOKEN") };
+        unsafe { std::env::remove_var("WORKER_GRPC_AUTH_TOKEN") };
     }
 }
