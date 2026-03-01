@@ -5,6 +5,7 @@
 // either PostgreSQL (production) or in-memory (dev mode) storage.
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{AgentId, EventId, HarnessId, ScheduleId, SessionId};
 use sqlx::PgPool;
@@ -1226,5 +1227,36 @@ impl StorageBackend {
 
     pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
         dispatch!(self, claim_due_session_schedules, limit)
+    }
+
+    // ============================================
+    // Audit Logs (TM-OBS-007)
+    // ============================================
+
+    pub async fn create_audit_log(&self, input: CreateAuditLogRow) -> Result<AuditLogRow> {
+        dispatch!(self, create_audit_log, input)
+    }
+
+    pub async fn list_audit_logs(
+        &self,
+        org_id: i64,
+        limit: i64,
+        before: Option<DateTime<Utc>>,
+        event_type_prefix: Option<&str>,
+        actor_id: Option<Uuid>,
+    ) -> Result<Vec<AuditLogRow>> {
+        dispatch!(
+            self,
+            list_audit_logs,
+            org_id,
+            limit,
+            before,
+            event_type_prefix,
+            actor_id
+        )
+    }
+
+    pub async fn delete_audit_logs_before(&self, before: DateTime<Utc>) -> Result<u64> {
+        dispatch!(self, delete_audit_logs_before, before)
     }
 }

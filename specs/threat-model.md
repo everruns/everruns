@@ -136,7 +136,7 @@ Display:   evr_<first-8-chars>...   (prefix for identification)
 | TM-CRYPTO-004 | Known-plaintext attack | Medium | Unique DEK per encryption; same plaintext produces different ciphertext | MITIGATED |
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
-| TM-CRYPTO-007 | Limited encryption scope | Medium | Only LLM API keys encrypted; other sensitive fields (system prompts, session data) stored plaintext | **OPEN** |
+| TM-CRYPTO-007 | Limited encryption scope | Medium | System prompts encrypted via envelope encryption (migration 004); LLM API keys encrypted | MITIGATED |
 
 ### Mitigation Details
 
@@ -487,7 +487,7 @@ All `/v1/durable/*` HTTP endpoints use `State(state): State<AppState>` only — 
 | TM-OBS-004 | Braintrust API key exposure | Medium | Key stored in env var; not logged | MITIGATED |
 | TM-OBS-005 | Log injection | Low | Structured logging via `tracing` crate; no raw string interpolation in log output | MITIGATED |
 | TM-OBS-006 | Sensitive data in error logs | Medium | Errors logged server-side only; API keys and passwords excluded from tracing fields | MITIGATED |
-| TM-OBS-007 | No security audit logging | Medium | No structured audit logs for login attempts, API key operations, permission changes, or org member changes | **OPEN** |
+| TM-OBS-007 | No security audit logging | Medium | Structured audit_logs table with fire-and-forget writes for auth events; admin-only query API | MITIGATED |
 
 ### Mitigation Details
 
@@ -499,6 +499,13 @@ Agent turn → events emitted → BraintrustEventListener (async)
     → Fire-and-forget (no retry)
 ```
 Full conversation data (user messages, LLM responses, tool results) is transmitted. Organizations must evaluate whether Braintrust integration is appropriate given their data classification requirements.
+
+**TM-OBS-007 — Security Audit Logging (MITIGATED):**
+- `audit_logs` PostgreSQL table (migration 005) stores structured events with: org_id, actor_id, event_type, ip_address, metadata, created_at.
+- Event types follow `domain.action.outcome` convention: `auth.login.success`, `auth.login.failure`, `auth.register.success`, `auth.token_refresh.success`, `auth.api_key.created`, `auth.api_key.deleted`, `auth.oauth.success`, `auth.oauth.failure`.
+- Fire-and-forget writes via `auth::audit::emit()` — audit failures never block auth operations.
+- Admin-only query API: `GET /v1/organizations/:org_id/audit-logs` with filters for event_type, actor_id, cursor pagination.
+- Retention: `delete_audit_logs_before()` method available for scheduled cleanup.
 
 ## 12. Web Security (TM-WEB)
 
@@ -515,7 +522,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 ### Mitigation Details
 
 **TM-WEB-004 / TM-WEB-005 — Security Headers (MITIGATED):**
-Applied via `SetResponseHeaderLayer` in `app_builder.rs`:
+Applied via `SetResponseHeaderLayer` (`if_not_present`) in `app_builder.rs`:
 - `X-Frame-Options: DENY` — prevents clickjacking
 - `X-Content-Type-Options: nosniff` — prevents MIME sniffing
 - `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
@@ -538,7 +545,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
 | TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform_management` capability can modify agents/sessions via tools; capability must be explicitly assigned; org-scoped | **OPEN** |
 | TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform_management` capability can create agents/sessions; capability must be explicitly assigned; no recursive depth limit | **OPEN** |
-| TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts stored plaintext in DB; not encrypted at rest | **OPEN** (see TM-CRYPTO-007) |
+| TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts encrypted at rest via envelope encryption (TM-CRYPTO-007) | MITIGATED |
 | TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
@@ -785,10 +792,8 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-DURABLE-010 | Durable API endpoints unauthenticated | High | Add AuthUser/ResolvedOrg to all /v1/durable/* endpoints |
 | TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
-| TM-OBS-007 | No security audit logging | Medium | Add structured audit log for auth events |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
-| TM-CRYPTO-007 | Limited encryption scope | Medium | Encrypt system prompts and other sensitive fields |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |

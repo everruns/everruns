@@ -716,6 +716,32 @@ pub struct SessionKeyValueRow {
     pub updated_at: DateTime<Utc>,
 }
 
+// ============================================
+// Audit Log models (TM-OBS-007)
+// ============================================
+
+/// Audit log row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct AuditLogRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub actor_id: Option<Uuid>,
+    pub event_type: String,
+    pub ip_address: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an audit log entry
+#[derive(Debug, Clone)]
+pub struct CreateAuditLogRow {
+    pub org_id: i64,
+    pub actor_id: Option<Uuid>,
+    pub event_type: String,
+    pub ip_address: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
 /// Input for creating/updating a session key/value
 #[derive(Debug, Clone)]
 pub struct UpsertSessionKeyValue {

@@ -422,6 +422,7 @@ impl ServerAppBuilder {
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+        let audit_logs_state = api::audit_logs::AppState::new(db.clone(), auth_state.clone());
         let user_connections_state = api::user_connections::AppState {
             db: db.clone(),
             encryption: encryption.clone(),
@@ -478,7 +479,8 @@ impl ServerAppBuilder {
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::user_connections::routes(user_connections_state))
-            .merge(api::session_schedules::routes(session_schedules_state));
+            .merge(api::session_schedules::routes(session_schedules_state))
+            .merge(api::audit_logs::routes(audit_logs_state));
 
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {

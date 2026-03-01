@@ -4,6 +4,7 @@
 // Decision: Pluggable auth backend trait for external providers (SaaS)
 
 pub mod api_key;
+pub mod audit;
 pub mod backend;
 pub mod builtin;
 pub mod config;
