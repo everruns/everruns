@@ -57,10 +57,7 @@ impl AppState {
     /// Create new state with an optional workflow event store
     ///
     /// Collector holds 360 points = 1 hour at 10s intervals.
-    pub fn new(
-        store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-        auth: AuthState,
-    ) -> Self {
+    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>, auth: AuthState) -> Self {
         Self {
             store,
             metrics: MetricsCollector::new(360),
@@ -2060,7 +2057,10 @@ mod tests {
     fn test_auth_state() -> AuthState {
         use crate::auth::config::AuthConfig;
         let config = AuthConfig::default();
-        AuthState::builtin(config, std::sync::Arc::new(crate::storage::StorageBackend::in_memory()))
+        AuthState::builtin(
+            config,
+            std::sync::Arc::new(crate::storage::StorageBackend::in_memory()),
+        )
     }
 
     #[test]
