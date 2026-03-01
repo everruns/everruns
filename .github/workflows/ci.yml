@@ -300,6 +300,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       API_BASE_URL: http://localhost:9000
+      GRPC_AUTH_TOKEN: test-grpc-token-for-ci
 
     steps:
       - uses: actions/checkout@v4
