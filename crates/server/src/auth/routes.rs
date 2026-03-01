@@ -343,21 +343,22 @@ pub async fn register(
         return Err(AuthError::forbidden("Password registration is disabled"));
     }
 
-    // Check if user already exists
+    // Hash password first to make timing consistent whether or not the email exists.
+    // This prevents account enumeration via response-time differences (TM-AUTH-014).
+    let password_hash = hash_password(&req.password).map_err(|e| {
+        tracing::error!("Password hashing error: {}", e);
+        AuthError::unauthorized("Registration failed")
+    })?;
+
+    // Check if user already exists — generic error to prevent account enumeration
     let existing = state.db.get_user_by_email(&req.email).await.map_err(|e| {
         tracing::error!("Database error during registration: {}", e);
         AuthError::unauthorized("Registration failed")
     })?;
 
     if existing.is_some() {
-        return Err(AuthError::unauthorized("Email already registered"));
+        return Err(AuthError::unauthorized("Registration failed"));
     }
-
-    // Hash password
-    let password_hash = hash_password(&req.password).map_err(|e| {
-        tracing::error!("Password hashing error: {}", e);
-        AuthError::unauthorized("Registration failed")
-    })?;
 
     // Create user
     let user = state

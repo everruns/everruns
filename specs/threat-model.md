@@ -101,7 +101,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-011 | Auth bypass in `none` mode | Info | By design for local development; anonymous user gets admin role | **BY DESIGN** |
 | TM-AUTH-012 | OAuth account linking collision | Medium | Accounts linked by email; if attacker controls email at provider, they gain access | **CALLER RISK** |
 | TM-AUTH-013 | Expired API key still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
-| TM-AUTH-014 | Account enumeration via registration | Medium | Returns distinct "Email already registered" error; enables email harvesting | **OPEN** |
+| TM-AUTH-014 | Account enumeration via registration | Medium | Returns generic "Registration failed" for existing emails; password hash computed first for timing consistency | MITIGATED |
 | TM-AUTH-015 | JWT secret insecure default | High | Falls back to hardcoded `insecure-dev-secret-change-me` if `AUTH_JWT_SECRET` unset; no startup check in production | **OPEN** |
 
 ### Mitigation Details
@@ -782,7 +782,6 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | ~~TM-API-012~~ | ~~WebFetch DNS rebinding~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 DNS pinning prevents rebinding |
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
 | TM-AUTH-007 | OAuth state not validated | High | Store state in cookie; validate in callback |
-| TM-AUTH-014 | Account enumeration via registration | Medium | Return generic error for existing emails |
 | TM-AUTH-015 | JWT secret insecure default | High | Fail startup if AUTH_JWT_SECRET unset in production |
 | TM-DURABLE-002 | gRPC auth optional, no org scoping | High | Require GRPC_AUTH_TOKEN in production; add org scoping |
 | TM-DURABLE-010 | Durable API endpoints unauthenticated | High | Add AuthUser/ResolvedOrg to all /v1/durable/* endpoints |
