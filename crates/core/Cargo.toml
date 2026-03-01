@@ -54,7 +54,7 @@ url = "2"
 fetchkit = "0.1.2"
 
 # Virtual bash interpreter
-bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.7" }
+bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.8" }
 
 # OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
