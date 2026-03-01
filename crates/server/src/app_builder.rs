@@ -37,6 +37,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 
@@ -526,6 +527,33 @@ impl ServerAppBuilder {
         } else {
             app
         };
+
+        // TM-WEB-004/005: Security response headers
+        let app = app
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::X_FRAME_OPTIONS,
+                axum::http::HeaderValue::from_static("DENY"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::X_CONTENT_TYPE_OPTIONS,
+                axum::http::HeaderValue::from_static("nosniff"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::REFERRER_POLICY,
+                axum::http::HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("permissions-policy"),
+                axum::http::HeaderValue::from_static(
+                    "camera=(), microphone=(), geolocation=()",
+                ),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("content-security-policy"),
+                axum::http::HeaderValue::from_static(
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+                ),
+            ));
 
         let app = app.layer(TraceLayer::new_for_http());
 
