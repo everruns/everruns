@@ -763,6 +763,28 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(0)
     }
 
+    async fn get_capacity_snapshot(&self) -> Result<CapacitySnapshot, StoreError> {
+        let workers = self.workers.read();
+        let heartbeat_threshold =
+            Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
+
+        let mut total_available: u32 = 0;
+        let mut active_workers: u32 = 0;
+        for w in workers.values() {
+            if w.status == "active"
+                && w.accepting_tasks
+                && w.last_heartbeat_at > heartbeat_threshold
+            {
+                total_available += w.max_concurrency.saturating_sub(w.current_load);
+                active_workers += 1;
+            }
+        }
+        Ok(CapacitySnapshot {
+            total_available,
+            active_workers,
+        })
+    }
+
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
         let workers = self.workers.read();
         let mut result: Vec<_> = workers

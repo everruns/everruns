@@ -327,6 +327,15 @@ pub struct WorkerInfo {
     pub avg_task_duration_ms: Option<u64>,
 }
 
+/// Snapshot of total system worker capacity for fair-share claiming.
+#[derive(Debug, Clone, Default)]
+pub struct CapacitySnapshot {
+    /// Total available slots across all active, accepting workers
+    pub total_available: u32,
+    /// Number of active workers that are accepting tasks
+    pub active_workers: u32,
+}
+
 /// Filter for listing DLQ entries
 #[derive(Debug, Clone, Default)]
 pub struct DlqFilter {
@@ -533,6 +542,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Returns the number of tasks that were reclaimed
     async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
         Ok(0)
+    }
+
+    /// Get a snapshot of total system worker capacity.
+    /// Used by workers to compute fair-share claim limits.
+    async fn get_capacity_snapshot(&self) -> Result<CapacitySnapshot, StoreError> {
+        Ok(CapacitySnapshot::default())
     }
 
     // =========================================================================

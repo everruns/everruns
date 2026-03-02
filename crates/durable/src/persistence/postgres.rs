@@ -14,13 +14,13 @@ use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 use super::store::{
-    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter, HeartbeatResponse,
-    Pagination, ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus,
-    ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo,
-    StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus,
-    TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo,
-    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
-    WorkflowStatus,
+    CapacitySnapshot, CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter,
+    HeartbeatResponse, Pagination, ScheduleExecutionFilter, ScheduleExecutionRow,
+    ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
+    SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
+    TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS,
+    WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
+    WorkflowInfoExtended, WorkflowStatus,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -1096,6 +1096,32 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         }
 
         Ok(reclaimed)
+    }
+
+    #[instrument(skip(self))]
+    async fn get_capacity_snapshot(&self) -> Result<CapacitySnapshot, StoreError> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                COALESCE(SUM(max_concurrency - current_load), 0)::INT AS total_available,
+                COUNT(*)::INT AS active_workers
+            FROM durable_workers
+            WHERE status = 'active'
+              AND accepting_tasks = true
+              AND last_heartbeat_at > NOW() - INTERVAL '30 seconds'
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to get capacity snapshot: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        Ok(CapacitySnapshot {
+            total_available: row.get::<i32, _>("total_available") as u32,
+            active_workers: row.get::<i32, _>("active_workers") as u32,
+        })
     }
 
     #[instrument(skip(self, error_history))]

@@ -420,17 +420,27 @@ impl WorkerPool {
                     continue;
                 }
 
-                // Calculate how many tasks to claim
-                let available_slots = backpressure.available_slots();
-                if available_slots == 0 {
+                // Calculate how many tasks to claim (fair-share)
+                let my_available = backpressure.available_slots();
+                if my_available == 0 {
                     if poller.wait().await {
                         break;
                     }
                     continue;
                 }
 
+                // Cap claim batch to fair share of total system capacity
+                let claim_limit = match store.get_capacity_snapshot().await {
+                    Ok(snap) => fair_share_claim_limit(
+                        my_available,
+                        snap.total_available,
+                        snap.active_workers,
+                    ),
+                    Err(_) => my_available, // error: no cap
+                };
+
                 // Poll for tasks
-                match poller.poll(available_slots).await {
+                match poller.poll(claim_limit).await {
                     Ok(tasks) => {
                         for task in tasks {
                             // Get handler
@@ -578,6 +588,24 @@ impl WorkerPool {
     }
 }
 
+/// Compute fair-share claim limit for a worker given its available slots
+/// and the total system capacity. Returns the capped number of tasks to claim.
+///
+/// When there's only one worker (or capacity is unknown), returns my_available.
+/// With multiple workers, each gets a proportional share:
+///   ceil(my_available² / total_available), minimum 1.
+pub(crate) fn fair_share_claim_limit(
+    my_available: usize,
+    total_available: u32,
+    active_workers: u32,
+) -> usize {
+    if active_workers <= 1 || total_available == 0 {
+        return my_available;
+    }
+    let share = (my_available as f64 / total_available as f64) * my_available as f64;
+    (share.ceil() as usize).max(1)
+}
+
 /// Serde support for Duration as milliseconds
 mod duration_millis {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -632,5 +660,40 @@ mod tests {
     fn test_worker_pool_status() {
         assert_ne!(WorkerPoolStatus::Running, WorkerPoolStatus::Stopped);
         assert_ne!(WorkerPoolStatus::Draining, WorkerPoolStatus::Running);
+    }
+
+    #[test]
+    fn test_fair_share_single_worker() {
+        // Single worker gets full allocation
+        assert_eq!(fair_share_claim_limit(10, 10, 1), 10);
+        assert_eq!(fair_share_claim_limit(5, 5, 0), 5);
+    }
+
+    #[test]
+    fn test_fair_share_equal_workers() {
+        // 3 workers, each with 10 available (total 30)
+        // Each should get ceil(10 * 10/30) = ceil(3.33) = 4
+        assert_eq!(fair_share_claim_limit(10, 30, 3), 4);
+    }
+
+    #[test]
+    fn test_fair_share_unequal_workers() {
+        // Worker A: 8 available, Worker B: 2 available, total: 10
+        // A gets ceil(8 * 8/10) = ceil(6.4) = 7
+        assert_eq!(fair_share_claim_limit(8, 10, 2), 7);
+        // B gets ceil(2 * 2/10) = ceil(0.4) = 1 (minimum 1)
+        assert_eq!(fair_share_claim_limit(2, 10, 2), 1);
+    }
+
+    #[test]
+    fn test_fair_share_minimum_one() {
+        // Even with tiny share, always claim at least 1
+        assert_eq!(fair_share_claim_limit(1, 100, 10), 1);
+    }
+
+    #[test]
+    fn test_fair_share_zero_total() {
+        // Edge case: total_available = 0
+        assert_eq!(fair_share_claim_limit(5, 0, 3), 5);
     }
 }
