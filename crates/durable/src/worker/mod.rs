@@ -58,6 +58,8 @@ mod backpressure;
 mod poller;
 mod pool;
 
-pub use backpressure::{BackpressureConfig, BackpressureError, BackpressureState};
+pub use backpressure::{
+    BackpressureConfig, BackpressureError, BackpressureState, ResourceMetrics, ResourceMonitor,
+};
 pub use poller::{AdaptivePoller, PollerConfig, PollerError, TaskPoller};
 pub use pool::{WorkerPool, WorkerPoolConfig, WorkerPoolError, WorkerPoolStatus};

@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use super::backpressure::{BackpressureConfig, BackpressureState};
+use super::backpressure::{BackpressureConfig, BackpressureState, ResourceMonitor};
 use super::poller::{PollerConfig, PollerError, TaskPoller};
 use crate::persistence::{ClaimedTask, StoreError, WorkerInfo, WorkflowEventStore};
 
@@ -53,6 +53,10 @@ pub struct WorkerPoolConfig {
     /// Graceful shutdown timeout
     #[serde(with = "duration_millis")]
     pub shutdown_timeout: Duration,
+
+    /// Resource monitoring interval (CPU/memory sampling)
+    #[serde(with = "duration_millis")]
+    pub resource_monitor_interval: Duration,
 }
 
 impl Default for WorkerPoolConfig {
@@ -68,6 +72,7 @@ impl Default for WorkerPoolConfig {
             stale_reclaim_interval: Duration::from_secs(30),
             stale_threshold: Duration::from_secs(60),
             shutdown_timeout: Duration::from_secs(30),
+            resource_monitor_interval: Duration::from_secs(2),
         }
     }
 }
@@ -217,6 +222,7 @@ pub struct WorkerPool {
     poll_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
     heartbeat_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
     reclaim_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
+    resource_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl WorkerPool {
@@ -240,6 +246,7 @@ impl WorkerPool {
             poll_handle: std::sync::Mutex::new(None),
             heartbeat_handle: std::sync::Mutex::new(None),
             reclaim_handle: std::sync::Mutex::new(None),
+            resource_handle: std::sync::Mutex::new(None),
         }
     }
 
@@ -280,6 +287,11 @@ impl WorkerPool {
         *self.status.write().unwrap() = WorkerPoolStatus::Running;
 
         // Start background tasks
+        let has_resource_thresholds = self.config.backpressure.memory_threshold.is_some()
+            || self.config.backpressure.cpu_threshold.is_some();
+        if has_resource_thresholds {
+            self.start_resource_monitor_loop();
+        }
         self.start_poll_loop();
         self.start_heartbeat_loop();
         self.start_reclaim_loop();
@@ -521,7 +533,8 @@ impl WorkerPool {
                 tokio::select! {
                     _ = ticker.tick() => {
                         let load = backpressure.current_load();
-                        let accepting = backpressure.is_accepting();
+                        let accepting = backpressure.is_accepting()
+                            && !backpressure.is_resource_pressured();
 
                         if let Err(e) = store.worker_heartbeat(&worker_id, load, accepting).await {
                             error!("Heartbeat failed: {}", e);
@@ -538,6 +551,44 @@ impl WorkerPool {
         });
 
         *self.heartbeat_handle.lock().unwrap() = Some(handle);
+    }
+
+    /// Start the resource monitor loop (CPU/memory sampling)
+    fn start_resource_monitor_loop(&self) {
+        let interval = self.config.resource_monitor_interval;
+        let backpressure = Arc::clone(&self.backpressure);
+        let mut shutdown_rx = self.shutdown_rx.clone();
+
+        let handle = tokio::spawn(async move {
+            let mut monitor = ResourceMonitor::new();
+            let mut ticker = tokio::time::interval(interval);
+
+            // Take an initial sample so metrics are available immediately
+            let metrics = monitor.sample();
+            backpressure.update_resources(metrics);
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        let metrics = monitor.sample();
+                        backpressure.update_resources(metrics);
+                        debug!(
+                            cpu = format!("{:.1}%", metrics.cpu_usage * 100.0),
+                            memory_mb = format!("{:.0}", metrics.memory_used_bytes as f64 / 1_048_576.0),
+                            "Resource sample"
+                        );
+                    }
+                    _ = shutdown_rx.changed() => {
+                        debug!("Resource monitor loop: shutdown requested");
+                        break;
+                    }
+                }
+            }
+
+            debug!("Resource monitor loop exited");
+        });
+
+        *self.resource_handle.lock().unwrap() = Some(handle);
     }
 
     /// Start the stale task reclamation loop
