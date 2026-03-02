@@ -197,6 +197,11 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Clear boundary between control-plane (owns state) and workers (stateless executors)
    - Batched operations reduce round trips (4 DB calls → 1 gRPC call)
 
+5. **Security** (see `specs/threat-model.md` TM-DURABLE-002):
+   - Bearer token auth (`WORKER_GRPC_AUTH_TOKEN`) required in production
+   - Optional mutual TLS (mTLS) via `WORKER_GRPC_TLS_*` env vars for transport encryption + identity verification
+   - Workers are intentionally cross-org — they process tasks from any org's queue; org-scoping enforced at HTTP API layer
+
 ### Worker Communication Flow
 
 ```mermaid

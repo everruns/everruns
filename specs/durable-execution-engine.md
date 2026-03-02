@@ -206,6 +206,12 @@ Works in both dev mode (in-memory store) and full mode (PostgreSQL).
 
 **Startup**: Workers retry connecting to control-plane for up to 5 seconds with exponential backoff (100ms → 1s). This handles startup race conditions when both services restart simultaneously.
 
+**Authentication**: Two layered mechanisms (see `specs/threat-model.md` TM-DURABLE-002):
+1. Bearer token (`WORKER_GRPC_AUTH_TOKEN`) — required in production, server panics if unset
+2. Mutual TLS (`WORKER_GRPC_TLS_*`) — optional, provides transport encryption + mutual identity verification
+
+**Design decision**: Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
+
 ## Benchmarks
 
 Load tests for validating performance and scalability. Located in `crates/durable/benches/`.
