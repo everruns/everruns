@@ -51,6 +51,54 @@ impl tonic::service::Interceptor for GrpcClientAuth {
     }
 }
 
+/// Build client-side TLS config from environment variables for mutual TLS (mTLS).
+///
+/// When `WORKER_GRPC_TLS_CA_CERT` is set, the worker verifies the server's certificate
+/// against this CA. When `WORKER_GRPC_TLS_CERT` and `WORKER_GRPC_TLS_KEY` are also set,
+/// the worker presents its own certificate to the server (mutual TLS).
+///
+/// Returns `None` when TLS env vars are not configured (plain HTTP/2).
+pub fn grpc_client_tls_from_env() -> Option<tonic::transport::ClientTlsConfig> {
+    use tonic::transport::{Certificate, ClientTlsConfig, Identity};
+
+    let ca_path = std::env::var("WORKER_GRPC_TLS_CA_CERT")
+        .ok()
+        .filter(|s| !s.is_empty())?;
+
+    let ca_pem = std::fs::read_to_string(&ca_path)
+        .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_CA_CERT at {ca_path}: {e}"));
+    let mut tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca_pem));
+
+    // Optional: override the expected server domain name (for certs with non-matching CN/SAN)
+    if let Some(domain) = std::env::var("WORKER_GRPC_TLS_DOMAIN")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        tls = tls.domain_name(domain);
+    }
+
+    // When client cert+key are provided, present them to the server (mTLS)
+    if let (Some(cert_path), Some(key_path)) = (
+        std::env::var("WORKER_GRPC_TLS_CERT")
+            .ok()
+            .filter(|s| !s.is_empty()),
+        std::env::var("WORKER_GRPC_TLS_KEY")
+            .ok()
+            .filter(|s| !s.is_empty()),
+    ) {
+        let cert_pem = std::fs::read_to_string(&cert_path)
+            .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_CERT at {cert_path}: {e}"));
+        let key_pem = std::fs::read_to_string(&key_path)
+            .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_KEY at {key_path}: {e}"));
+        tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+        tracing::info!("gRPC mTLS enabled: CA verification + client certificate");
+    } else {
+        tracing::info!("gRPC TLS enabled: CA verification only (no client certificate)");
+    }
+
+    Some(tls)
+}
+
 /// gRPC-based durable store client for workers
 ///
 /// This adapter provides durable execution operations via gRPC,
@@ -71,7 +119,13 @@ impl GrpcDurableStore {
     pub async fn connect_with_timeout(address: &str, max_duration: Duration) -> Result<Self> {
         use tokio::time::sleep;
 
-        let endpoint = format!("http://{}", address);
+        let tls_config = grpc_client_tls_from_env();
+        let scheme = if tls_config.is_some() {
+            "https"
+        } else {
+            "http"
+        };
+        let endpoint = format!("{}://{}", scheme, address);
         let initial_backoff = Duration::from_millis(100);
         let max_backoff = Duration::from_secs(2);
 
@@ -81,11 +135,13 @@ impl GrpcDurableStore {
 
         loop {
             attempt += 1;
-            match Channel::from_shared(endpoint.clone())
-                .expect("valid endpoint")
-                .connect()
-                .await
-            {
+            let mut ep = Channel::from_shared(endpoint.clone()).expect("valid endpoint");
+            if let Some(ref tls) = tls_config {
+                ep = ep
+                    .tls_config(tls.clone())
+                    .map_err(|e| anyhow::anyhow!("Invalid gRPC client TLS configuration: {e}"))?;
+            }
+            match ep.connect().await {
                 Ok(channel) => {
                     // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                     // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
@@ -94,6 +150,7 @@ impl GrpcDurableStore {
                     if attempt > 1 {
                         tracing::info!(
                             address = %address,
+                            tls = tls_config.is_some(),
                             attempts = attempt,
                             elapsed_ms = start.elapsed().as_millis(),
                             "Connected to control-plane gRPC"
@@ -680,5 +737,84 @@ mod tests {
         let request = Request::new(());
         let result = auth.call(request).unwrap();
         assert!(result.metadata().get("authorization").is_none());
+    }
+
+    #[test]
+    fn test_grpc_client_tls_returns_none_when_no_env_vars() {
+        // SAFETY: single-threaded test; no other thread reads these vars concurrently
+        unsafe {
+            std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
+            std::env::remove_var("WORKER_GRPC_TLS_CERT");
+            std::env::remove_var("WORKER_GRPC_TLS_KEY");
+        }
+
+        let config = grpc_client_tls_from_env();
+        assert!(
+            config.is_none(),
+            "Should return None when TLS not configured"
+        );
+    }
+
+    #[test]
+    fn test_grpc_client_tls_returns_none_when_ca_cert_empty() {
+        unsafe {
+            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", "");
+        }
+        let config = grpc_client_tls_from_env();
+        assert!(config.is_none());
+        unsafe { std::env::remove_var("WORKER_GRPC_TLS_CA_CERT") };
+    }
+
+    #[test]
+    fn test_grpc_client_tls_returns_config_with_valid_ca() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let ca_path = format!("{}/tests/fixtures/test-ca.pem", manifest);
+
+        unsafe {
+            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
+            std::env::remove_var("WORKER_GRPC_TLS_CERT");
+            std::env::remove_var("WORKER_GRPC_TLS_KEY");
+        }
+
+        let config = grpc_client_tls_from_env();
+        assert!(
+            config.is_some(),
+            "Should return Some when CA cert is configured"
+        );
+
+        unsafe { std::env::remove_var("WORKER_GRPC_TLS_CA_CERT") };
+    }
+
+    #[test]
+    fn test_grpc_client_tls_with_client_cert() {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let ca_path = format!("{}/tests/fixtures/test-ca.pem", manifest);
+        let cert_path = format!("{}/tests/fixtures/test-client-cert.pem", manifest);
+        let key_path = format!("{}/tests/fixtures/test-client-key.pem", manifest);
+
+        unsafe {
+            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
+            std::env::set_var("WORKER_GRPC_TLS_CERT", &cert_path);
+            std::env::set_var("WORKER_GRPC_TLS_KEY", &key_path);
+        }
+
+        let config = grpc_client_tls_from_env();
+        assert!(
+            config.is_some(),
+            "Should return Some when CA+cert+key are configured"
+        );
+
+        unsafe {
+            std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
+            std::env::remove_var("WORKER_GRPC_TLS_CERT");
+            std::env::remove_var("WORKER_GRPC_TLS_KEY");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Failed to read WORKER_GRPC_TLS_CA_CERT")]
+    fn test_grpc_client_tls_panics_on_missing_ca_file() {
+        unsafe { std::env::set_var("WORKER_GRPC_TLS_CA_CERT", "/nonexistent/ca.pem") };
+        let _config = grpc_client_tls_from_env();
     }
 }

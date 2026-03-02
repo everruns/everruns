@@ -600,12 +600,20 @@ impl ServerAppBuilder {
                     grpc_svc.set_task_broadcaster(broadcaster);
                 }
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-                // Mitigation: Bearer token auth required in production (panics if missing)
+                // Mitigation: Bearer token auth + optional mTLS
                 let grpc_token = grpc_service::require_grpc_auth_token();
                 let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
+                let tls_config = grpc_service::grpc_server_tls_from_env();
                 let addr = grpc_addr.parse().expect("Invalid WORKER_GRPC_ADDR");
                 tracing::info!("gRPC server listening on {}", addr);
-                if let Err(e) = tonic::transport::Server::builder()
+
+                let mut builder = tonic::transport::Server::builder();
+                if let Some(tls) = tls_config {
+                    builder = builder
+                        .tls_config(tls)
+                        .expect("Invalid gRPC TLS configuration");
+                }
+                if let Err(e) = builder
                     .layer(tonic::service::interceptor::InterceptorLayer::new(
                         auth_interceptor,
                     ))
