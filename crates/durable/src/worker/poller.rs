@@ -1,10 +1,12 @@
-//! Task polling with exponential backoff
+//! Task polling with exponential backoff and jitter
 //!
 //! Implements efficient task claiming with adaptive polling intervals.
+//! Jitter prevents thundering herd when multiple workers wake up simultaneously.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use tracing::{debug, instrument, trace};
@@ -27,6 +29,11 @@ pub struct PollerConfig {
 
     /// Maximum tasks to claim per poll
     pub batch_size: usize,
+
+    /// Jitter factor (0.0 – 1.0). Random jitter up to this fraction of the
+    /// current interval is added to each wait, preventing thundering herd.
+    /// Default: 0.2 (20% jitter). Set to 0.0 to disable.
+    pub jitter_factor: f64,
 }
 
 impl Default for PollerConfig {
@@ -36,6 +43,7 @@ impl Default for PollerConfig {
             max_interval: Duration::from_secs(5),
             backoff_multiplier: 1.5,
             batch_size: 10,
+            jitter_factor: 0.2,
         }
     }
 }
@@ -67,6 +75,12 @@ impl PollerConfig {
     /// Set batch size
     pub fn with_batch_size(mut self, size: usize) -> Self {
         self.batch_size = size.max(1);
+        self
+    }
+
+    /// Set jitter factor (0.0 – 1.0)
+    pub fn with_jitter_factor(mut self, factor: f64) -> Self {
+        self.jitter_factor = factor.clamp(0.0, 1.0);
         self
     }
 }
@@ -138,13 +152,17 @@ impl TaskPoller {
         Ok(tasks)
     }
 
-    /// Wait for the current backoff interval
+    /// Wait for the current backoff interval plus random jitter.
     ///
+    /// Jitter is `[0, jitter_factor * current_interval]` and prevents
+    /// thundering herd when multiple workers have identical poll cadences.
     /// Returns early if shutdown is signaled.
     pub async fn wait(&mut self) -> bool {
+        let sleep_duration = jittered_interval(self.current_interval, self.config.jitter_factor);
+
         let mut shutdown_rx = self.shutdown_rx.clone();
         tokio::select! {
-            _ = tokio::time::sleep(self.current_interval) => false,
+            _ = tokio::time::sleep(sleep_duration) => false,
             _ = shutdown_rx.changed() => {
                 debug!("Shutdown signal received during wait");
                 true
@@ -174,6 +192,17 @@ impl TaskPoller {
         );
         self.current_interval = new_interval.min(self.config.max_interval);
     }
+}
+
+/// Compute a jittered wait duration given a base interval and jitter factor.
+/// Returns a duration in `[base, base * (1 + jitter_factor)]`.
+pub(crate) fn jittered_interval(base: Duration, jitter_factor: f64) -> Duration {
+    if jitter_factor <= 0.0 {
+        return base;
+    }
+    let max_jitter = base.as_secs_f64() * jitter_factor;
+    let jitter = rand::rng().random_range(0.0..max_jitter);
+    base + Duration::from_secs_f64(jitter)
 }
 
 /// Poller errors
@@ -282,6 +311,7 @@ mod tests {
         assert_eq!(config.max_interval, Duration::from_secs(5));
         assert_eq!(config.backoff_multiplier, 1.5);
         assert_eq!(config.batch_size, 10);
+        assert_eq!(config.jitter_factor, 0.2);
     }
 
     #[test]
@@ -290,12 +320,14 @@ mod tests {
             .with_min_interval(Duration::from_millis(50))
             .with_max_interval(Duration::from_secs(10))
             .with_backoff_multiplier(2.0)
-            .with_batch_size(20);
+            .with_batch_size(20)
+            .with_jitter_factor(0.5);
 
         assert_eq!(config.min_interval, Duration::from_millis(50));
         assert_eq!(config.max_interval, Duration::from_secs(10));
         assert_eq!(config.backoff_multiplier, 2.0);
         assert_eq!(config.batch_size, 20);
+        assert_eq!(config.jitter_factor, 0.5);
     }
 
     #[test]
@@ -351,5 +383,44 @@ mod tests {
         poller.record_poll(15);
 
         assert_eq!(poller.average_tasks_per_poll(), 10.0);
+    }
+
+    #[test]
+    fn test_jittered_interval_zero_factor() {
+        let base = Duration::from_millis(500);
+        let result = jittered_interval(base, 0.0);
+        assert_eq!(result, base);
+    }
+
+    #[test]
+    fn test_jittered_interval_bounded() {
+        let base = Duration::from_millis(1000);
+        let factor = 0.2;
+        // Run multiple times to test randomness stays in bounds
+        for _ in 0..100 {
+            let result = jittered_interval(base, factor);
+            assert!(result >= base, "jitter should not decrease interval");
+            assert!(
+                result <= base + Duration::from_millis(200),
+                "jitter should not exceed 20% of base: got {:?}",
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn test_jittered_interval_negative_factor() {
+        let base = Duration::from_millis(500);
+        let result = jittered_interval(base, -0.5);
+        assert_eq!(result, base, "negative factor should be treated as zero");
+    }
+
+    #[test]
+    fn test_jitter_factor_clamped() {
+        let config = PollerConfig::new().with_jitter_factor(2.0);
+        assert_eq!(config.jitter_factor, 1.0, "factor clamped to 1.0");
+
+        let config = PollerConfig::new().with_jitter_factor(-0.5);
+        assert_eq!(config.jitter_factor, 0.0, "factor clamped to 0.0");
     }
 }
