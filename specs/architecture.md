@@ -605,3 +605,32 @@ This ensures:
 - Users can only send allowed content types (text, images)
 - System can store all content types (including tool calls, results)
 - No conversion needed between storage and core layers
+
+## Multi-Instance Deployment
+
+Multiple control-plane instances can run behind a load balancer for HA.
+
+### What's Already Multi-Instance Safe
+
+| Component | Reason |
+|-----------|--------|
+| PostgreSQL database | Shared, connection pool per instance |
+| Migrations | Advisory lock protected |
+| Task claiming (SKIP LOCKED) | Naturally partitions work |
+| Worker registration | Database-backed, any server can serve any worker |
+| PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
+| PgListener (event_available) | Same; SSE clients on any instance see all events |
+
+### Configuration (`EXPECTED_INSTANCES`)
+
+Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
+
+- **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. A startup warning fires if pool × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
+
+### Load Balancer Requirements
+
+- HTTP/1.1 or HTTP/2 for SSE (long-lived connections)
+- Health check: `GET /health`
+- No session affinity required (stateless API; SSE reconnects are idempotent)

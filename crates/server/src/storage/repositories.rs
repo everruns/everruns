@@ -68,6 +68,9 @@ impl Database {
     }
 
     /// Create database connection pool from URL with configurable pool settings.
+    ///
+    /// Multi-instance sizing: set `DATABASE_POOL_MAX = pg_max_connections / N - margin`
+    /// where N = number of control-plane instances.
     pub async fn from_url(database_url: &str) -> Result<Self> {
         let config = DatabasePoolConfig::from_env();
         let pool = PgPoolOptions::new()
@@ -84,6 +87,40 @@ impl Database {
             idle_timeout_secs = config.idle_timeout.as_secs(),
             "Database connection pool initialized"
         );
+
+        // Multi-instance pool sizing check
+        let instances: u32 = std::env::var("EXPECTED_INSTANCES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1)
+            .max(1);
+        if instances > 1 {
+            let estimated_total = config.max_connections.saturating_mul(instances);
+            // PostgreSQL default max_connections is 100; warn if we'd exceed 80% of it
+            let pg_max: u32 = std::env::var("PG_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100);
+            if estimated_total > pg_max * 80 / 100 {
+                tracing::warn!(
+                    pool_max = config.max_connections,
+                    instances,
+                    estimated_total,
+                    pg_max,
+                    "Pool size × instances ({estimated_total}) exceeds 80% of PG_MAX_CONNECTIONS ({pg_max}). \
+                     Reduce DATABASE_POOL_MAX or increase PostgreSQL max_connections."
+                );
+            } else {
+                tracing::info!(
+                    pool_max = config.max_connections,
+                    instances,
+                    estimated_total,
+                    pg_max,
+                    "Database pool sizing OK for multi-instance deployment"
+                );
+            }
+        }
+
         Ok(Self { pool })
     }
 
