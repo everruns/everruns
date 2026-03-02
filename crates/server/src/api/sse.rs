@@ -204,22 +204,48 @@ impl Default for SseConnectionLimits {
 
 impl SseConnectionLimits {
     /// Load limits from environment variables with sensible defaults.
+    ///
+    /// When running multiple control-plane instances behind a load balancer,
+    /// set `EXPECTED_INSTANCES` to divide global and per-org limits across
+    /// instances. Per-session limits are NOT divided since a single session's
+    /// SSE connections typically land on the same instance (sticky sessions)
+    /// or are acceptably over-counted.
     pub fn from_env() -> Self {
         let defaults = Self::default();
-        Self {
-            global_max: std::env::var("SSE_GLOBAL_MAX")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(defaults.global_max),
+        let instances: usize = std::env::var("EXPECTED_INSTANCES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1)
+            .max(1);
+
+        let raw_global = std::env::var("SSE_GLOBAL_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(defaults.global_max);
+        let raw_per_org = std::env::var("SSE_PER_ORG_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(defaults.per_org_max);
+
+        let limits = Self {
+            global_max: (raw_global / instances).max(1),
             per_session_max: std::env::var("SSE_PER_SESSION_MAX")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.per_session_max),
-            per_org_max: std::env::var("SSE_PER_ORG_MAX")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(defaults.per_org_max),
+            per_org_max: (raw_per_org / instances).max(1),
+        };
+
+        if instances > 1 {
+            tracing::info!(
+                instances,
+                global_max = limits.global_max,
+                per_org_max = limits.per_org_max,
+                "SSE connection limits adjusted for multi-instance deployment"
+            );
         }
+
+        limits
     }
 }
 
@@ -822,5 +848,67 @@ mod tests {
             config.heartbeat_interval(),
             sdk_read_timeout
         );
+    }
+
+    #[test]
+    fn test_sse_limits_default_single_instance() {
+        // SAFETY: test is run single-threaded
+        unsafe {
+            std::env::remove_var("EXPECTED_INSTANCES");
+            std::env::remove_var("SSE_GLOBAL_MAX");
+            std::env::remove_var("SSE_PER_ORG_MAX");
+            std::env::remove_var("SSE_PER_SESSION_MAX");
+        }
+        let limits = SseConnectionLimits::from_env();
+        assert_eq!(limits.global_max, 10_000);
+        assert_eq!(limits.per_org_max, 1_000);
+        assert_eq!(limits.per_session_max, 5);
+    }
+
+    #[test]
+    fn test_sse_limits_multi_instance_divides_global_and_org() {
+        // SAFETY: test is run single-threaded
+        unsafe {
+            std::env::set_var("EXPECTED_INSTANCES", "4");
+            std::env::remove_var("SSE_GLOBAL_MAX");
+            std::env::remove_var("SSE_PER_ORG_MAX");
+            std::env::remove_var("SSE_PER_SESSION_MAX");
+        }
+        let limits = SseConnectionLimits::from_env();
+        // 10_000 / 4 = 2_500
+        assert_eq!(limits.global_max, 2_500);
+        // 1_000 / 4 = 250
+        assert_eq!(limits.per_org_max, 250);
+        // Per-session NOT divided
+        assert_eq!(limits.per_session_max, 5);
+        unsafe {
+            std::env::remove_var("EXPECTED_INSTANCES");
+        }
+    }
+
+    #[test]
+    fn test_sse_connection_tracker_try_acquire_and_drop() {
+        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits {
+            global_max: 2,
+            per_session_max: 2,
+            per_org_max: 2,
+        }));
+
+        let session = uuid::Uuid::new_v4();
+        let guard1 = tracker.try_acquire(1, session).unwrap();
+        let guard2 = tracker.try_acquire(1, session).unwrap();
+
+        // Third should fail (global_max = 2)
+        assert_eq!(
+            tracker.try_acquire(1, session).unwrap_err(),
+            SseConnectionRejection::GlobalLimitReached
+        );
+
+        // Drop one guard, should be able to acquire again
+        drop(guard1);
+        let _guard3 = tracker.try_acquire(1, session).unwrap();
+
+        drop(guard2);
+        drop(_guard3);
     }
 }

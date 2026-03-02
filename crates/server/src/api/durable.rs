@@ -589,11 +589,23 @@ pub struct MetricsPoint {
     pub workflows_started_total: u64,
 }
 
-/// Metrics time series response
+/// Metrics time series response.
+///
+/// In multi-instance deployments, each instance maintains its own metrics
+/// ring buffer. The `instance_count` field indicates how many instances
+/// are expected so consumers can aggregate or label appropriately.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MetricsTimeSeriesResponse {
     pub points: Vec<MetricsPoint>,
     pub resolution_seconds: u64,
+    /// Number of expected control-plane instances (from EXPECTED_INSTANCES env).
+    /// When >1, these metrics represent only this instance's view.
+    #[serde(skip_serializing_if = "is_one")]
+    pub instance_count: u32,
+}
+
+fn is_one(v: &u32) -> bool {
+    *v == 1
 }
 
 /// Background metrics collector maintaining a ring buffer of timestamped health snapshots
@@ -715,9 +727,15 @@ pub async fn get_metrics_timeseries(
     State(state): State<AppState>,
 ) -> Result<Json<MetricsTimeSeriesResponse>, (StatusCode, Json<ErrorResponse>)> {
     let points = state.metrics.get_points().await;
+    let instance_count: u32 = std::env::var("EXPECTED_INSTANCES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
+        .max(1);
     Ok(Json(MetricsTimeSeriesResponse {
         points,
         resolution_seconds: 10,
+        instance_count,
     }))
 }
 
@@ -2651,6 +2669,7 @@ mod tests {
                 },
             ],
             resolution_seconds: 10,
+            instance_count: 1,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2658,11 +2677,24 @@ mod tests {
         assert!(json.contains("\"points\""));
         assert!(json.contains("\"tasks_completed_total\":100"));
         assert!(json.contains("\"tasks_completed_total\":105"));
+        // instance_count=1 is skipped in serialization
+        assert!(!json.contains("instance_count"));
 
         // Verify round-trip deserialization shape
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["resolution_seconds"], 10);
         assert_eq!(parsed["points"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_metrics_timeseries_instance_count_serialization() {
+        let response = MetricsTimeSeriesResponse {
+            points: vec![],
+            resolution_seconds: 10,
+            instance_count: 3,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"instance_count\":3"));
     }
 
     // ============================================
@@ -3028,6 +3060,7 @@ mod tests {
                 },
             ],
             resolution_seconds: 10,
+            instance_count: 1,
         };
 
         // Verify monotonicity of cumulative counters
