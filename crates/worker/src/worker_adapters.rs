@@ -63,14 +63,10 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Set a session title.
     async fn set_session_title(
         &self,
-        _org_id: i64,
-        _session_id: Uuid,
-        _title: String,
-    ) -> Result<Session> {
-        Err(everruns_core::AgentLoopError::store(
-            "set_session_title not supported by this adapter",
-        ))
-    }
+        org_id: i64,
+        session_id: Uuid,
+        title: String,
+    ) -> Result<Session>;
 
     // =========================================================================
     // Message Operations
@@ -217,36 +213,39 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Get the session SQL database store (if available).
-    /// Default returns None (not all backends support session SQL databases).
+    ///
+    /// Returns None when the backend can't support session SQL databases
+    /// (e.g. gRPC workers — SQLite is inherently local/in-memory).
+    // TODO(EVE-44): Add gRPC proxy for session SQL databases
     fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
         None
     }
 
-    /// Get the session storage store for kv_store/secret_store tools (if available).
-    /// Default returns None (not all backends support session storage).
-    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
-        None
-    }
+    // =========================================================================
+    // Required Store Accessors
+    //
+    // NO default implementations. Every WorkerAdapters impl MUST provide these.
+    // This is enforced at compile time to prevent the class of bug where a new
+    // adapter silently returns None and tools fail at runtime with misleading
+    // errors (e.g. "API key not configured" when the real issue is a missing
+    // gRPC endpoint).
+    //
+    // For stores with full gRPC support, the return type is non-optional.
+    // For stores still missing gRPC RPCs, the return type is Option but there
+    // is no default — implementors must explicitly return None or Some.
+    // =========================================================================
 
-    /// Get the user connection resolver for lazy token lookup (if available).
-    /// Default returns None (not all backends support user connections).
-    fn connection_resolver(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
-        None
-    }
+    /// Get the session storage store for kv_store/secret_store tools.
+    fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore>;
 
-    /// Get the session schedule store for scheduling tools (if available).
-    /// Default returns None (not all backends support session schedules).
-    fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
-        None
-    }
+    /// Get the platform store for org-level management tools.
+    fn platform_store(&self) -> Arc<dyn everruns_core::platform_store::PlatformStore>;
 
-    /// Get the platform store for org-level management tools (if available).
-    /// Default returns None (not all backends support platform management).
-    fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
-        None
-    }
+    /// Get the user connection resolver for lazy token lookup.
+    fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
+
+    /// Get the session schedule store for scheduling tools.
+    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
 }
 
 // =============================================================================
