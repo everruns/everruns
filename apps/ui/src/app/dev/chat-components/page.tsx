@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot, ArrowLeft } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
+import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
-import type { Message, Event } from "@/lib/api/types";
+import type { Message, Event, ToolCompletedData } from "@/lib/api/types";
+import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { PendingImage } from "@/lib/api/images";
 
 // Check if we're in development mode
@@ -396,6 +398,109 @@ const samplePendingImages: PendingImage[] = [
   },
 ];
 
+// Sample data for BashToolCallCard (event-based)
+const sampleBashEventData: Record<
+  string,
+  { toolCall: ToolCallContent; toolResult?: ToolCompletedData }
+> = {
+  // Successful command with stdout only
+  success: {
+    toolCall: {
+      id: "tc-bash-1",
+      name: "bash",
+      arguments: {
+        command: "cargo test --workspace",
+        description: "Run all workspace tests",
+      },
+    },
+    toolResult: {
+      tool_call_id: "tc-bash-1",
+      tool_name: "bash",
+      success: true,
+      status: "success",
+      result: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            stdout:
+              "running 24 tests\ntest storage::tests::test_create_agent ... ok\ntest storage::tests::test_list_agents ... ok\ntest api::tests::test_health_endpoint ... ok\ntest api::tests::test_create_session ... ok\n\ntest result: ok. 24 passed; 0 failed; 0 ignored",
+            stderr: "",
+            exit_code: 0,
+            success: true,
+          }),
+        },
+      ],
+      duration_ms: 4523,
+    },
+  },
+  // Failed command with stderr
+  withStderr: {
+    toolCall: {
+      id: "tc-bash-2",
+      name: "bash",
+      arguments: {
+        command: "cargo clippy -- -D warnings",
+        description: "Run clippy linter",
+      },
+    },
+    toolResult: {
+      tool_call_id: "tc-bash-2",
+      tool_name: "bash",
+      success: true,
+      status: "success",
+      result: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            stdout: "    Checking everruns-core v0.1.0\n",
+            stderr:
+              "error[E0308]: mismatched types\n  --> src/lib.rs:42:5\n   |\n42 |     let x: u32 = \"hello\";\n   |                  ^^^^^^^ expected `u32`, found `&str`\n\nerror: aborting due to 1 previous error",
+            exit_code: 1,
+            success: false,
+          }),
+        },
+      ],
+      duration_ms: 12340,
+    },
+  },
+  // Currently executing
+  executing: {
+    toolCall: {
+      id: "tc-bash-3",
+      name: "bash",
+      arguments: {
+        command: "npm run build",
+      },
+    },
+  },
+  // Simple short command
+  shortOutput: {
+    toolCall: {
+      id: "tc-bash-4",
+      name: "bash",
+      arguments: { command: "echo hello" },
+    },
+    toolResult: {
+      tool_call_id: "tc-bash-4",
+      tool_name: "bash",
+      success: true,
+      status: "success",
+      result: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            stdout: "hello\n",
+            stderr: "",
+            exit_code: 0,
+            success: true,
+          }),
+        },
+      ],
+      duration_ms: 45,
+    },
+  },
+};
+
 // Sample event data for MessageInfoIcon
 const sampleEvents = {
   userMessage: {
@@ -585,6 +690,48 @@ export default function DevChatComponentsPage() {
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.writeTodos.toolCall}
                     toolResult={sampleToolCallMessages.writeTodos.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* BashToolCallCard Section */}
+            <ShowcaseSection
+              title="BashToolCallCard Component"
+              description="Claude Code-style bash rendering: $ command, structured stdout/stderr"
+            >
+              <ShowcaseItem label="Successful Command (Collapsed)">
+                <div className="ml-6">
+                  <ToolCallCardFromEvent
+                    toolCall={sampleBashEventData.success.toolCall}
+                    toolResult={sampleBashEventData.success.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Failed Command with stderr">
+                <div className="ml-6">
+                  <ToolCallCardFromEvent
+                    toolCall={sampleBashEventData.withStderr.toolCall}
+                    toolResult={sampleBashEventData.withStderr.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Executing">
+                <div className="ml-6">
+                  <ToolCallCardFromEvent
+                    toolCall={sampleBashEventData.executing.toolCall}
+                    toolResult={sampleBashEventData.executing.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Short Output">
+                <div className="ml-6">
+                  <ToolCallCardFromEvent
+                    toolCall={sampleBashEventData.shortOutput.toolCall}
+                    toolResult={sampleBashEventData.shortOutput.toolResult}
                   />
                 </div>
               </ShowcaseItem>

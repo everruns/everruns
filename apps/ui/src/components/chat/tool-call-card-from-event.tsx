@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
+import { BashToolCallCard, isBashTool } from "./bash-tool-call-card";
 import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
 import { ClientToolCallCard } from "./client-tool-call-card";
 
@@ -48,6 +49,11 @@ export function ToolCallCardFromEvent({
         />
       </div>
     );
+  }
+
+  // Special rendering for bash/shell tool
+  if (isBashTool(toolCall.name)) {
+    return <BashToolCallCard toolCall={toolCall} toolResult={toolResult} />;
   }
 
   const statusIcon = isComplete ? (
