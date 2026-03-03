@@ -454,7 +454,7 @@ const sampleBashEventData: Record<
           text: JSON.stringify({
             stdout: "    Checking everruns-core v0.1.0\n",
             stderr:
-              "error[E0308]: mismatched types\n  --> src/lib.rs:42:5\n   |\n42 |     let x: u32 = \"hello\";\n   |                  ^^^^^^^ expected `u32`, found `&str`\n\nerror: aborting due to 1 previous error",
+              'error[E0308]: mismatched types\n  --> src/lib.rs:42:5\n   |\n42 |     let x: u32 = "hello";\n   |                  ^^^^^^^ expected `u32`, found `&str`\n\nerror: aborting due to 1 previous error',
             exit_code: 1,
             success: false,
           }),

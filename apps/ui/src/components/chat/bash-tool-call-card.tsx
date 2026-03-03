@@ -123,9 +123,7 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
 
       {/* Tool-level error (not bash stderr) */}
       {hasError && !bashOutput && (
-        <div className="text-red-600 ml-[22px] mt-0.5 text-[10px]">
-          Error: {toolResult?.error}
-        </div>
+        <div className="text-red-600 ml-[22px] mt-0.5 text-[10px]">Error: {toolResult?.error}</div>
       )}
 
       {/* Expanded output */}
