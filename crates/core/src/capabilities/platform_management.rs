@@ -47,6 +47,19 @@ impl Capability for PlatformManagementCapability {
         Some(
             r#"You have platform management tools to manage Everruns entities:
 
+## Capabilities
+
+Capabilities are the primary way to extend agent and harness functionality. Each capability provides tools, system prompt additions, or both. There are three types:
+- **Built-in**: Core capabilities like file system, bash, web fetch, research, etc.
+- **MCP Servers**: External tool providers connected via the Model Context Protocol.
+- **Skills**: Reusable instruction sets that teach agents domain-specific workflows.
+
+When creating or updating agents/harnesses, use `list_capabilities` to discover available capability IDs, then pass them in the `capabilities` parameter.
+
+`list_capabilities` - Discover available capabilities:
+- search: Optional filter by name, description, category, or ID
+- Returns: capability ID, name, description, type, tools, dependencies
+
 `manage_harnesses` - Harness CRUD operations:
 - operation: "list" - List all harnesses
 - operation: "get" - Get a harness by ID (requires: harness_id)
@@ -79,6 +92,7 @@ All results include UI links to view entities in the web interface."#,
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
+            Box::new(ListCapabilitiesTool),
             Box::new(ManageHarnessesTool),
             Box::new(ManageAgentsTool),
             Box::new(ManageSessionsTool),
@@ -998,6 +1012,109 @@ impl Tool for SessionInteractTool {
     }
 }
 
+// =============================================================================
+// Tool: list_capabilities
+// =============================================================================
+
+pub struct ListCapabilitiesTool;
+
+#[async_trait]
+impl Tool for ListCapabilitiesTool {
+    fn name(&self) -> &str {
+        "list_capabilities"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("List Capabilities")
+    }
+
+    fn description(&self) -> &str {
+        "List and search available capabilities (built-in, MCP servers, and skills). Use this to discover what capabilities exist before creating or updating agents and harnesses."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "search": {
+                    "type": "string",
+                    "description": "Optional search query to filter capabilities by name, description, category, or ID (case-insensitive)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "list_capabilities requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let search = get_str(&arguments, "search");
+
+        match store.list_capabilities(search).await {
+            Ok(capabilities) => {
+                let items: Vec<Value> = capabilities
+                    .iter()
+                    .map(|c| {
+                        let mut item = json!({
+                            "id": c.id.as_str(),
+                            "name": c.name,
+                            "description": c.description,
+                            "status": c.status.to_string(),
+                        });
+                        if let Some(cat) = &c.category {
+                            item["category"] = json!(cat);
+                        }
+                        if c.is_mcp {
+                            item["type"] = json!("mcp_server");
+                        } else if c.is_skill {
+                            item["type"] = json!("skill");
+                        } else {
+                            item["type"] = json!("builtin");
+                        }
+                        if !c.tool_definitions.is_empty() {
+                            item["tool_count"] = json!(c.tool_definitions.len());
+                            item["tools"] = json!(
+                                c.tool_definitions
+                                    .iter()
+                                    .map(|t| t.name())
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                        if !c.dependencies.is_empty() {
+                            item["dependencies"] = json!(c.dependencies);
+                        }
+                        item
+                    })
+                    .collect();
+                let count = items.len();
+                ToolExecutionResult::success(json!({
+                    "capabilities": items,
+                    "count": count,
+                    "hint": "Use capability IDs when creating or updating agents and harnesses via manage_agents or manage_harnesses (capabilities parameter)."
+                }))
+            }
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to list capabilities: {e}")),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1021,11 +1138,12 @@ mod tests {
     }
 
     #[test]
-    fn capability_provides_four_tools() {
+    fn capability_provides_five_tools() {
         let cap = PlatformManagementCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"list_capabilities"));
         assert!(names.contains(&"manage_harnesses"));
         assert!(names.contains(&"manage_agents"));
         assert!(names.contains(&"manage_sessions"));
@@ -1594,7 +1712,8 @@ mod tests {
 
     #[tokio::test]
     async fn all_tools_require_context() {
-        // All four tools should have requires_context = true
+        // All five tools should have requires_context = true
+        assert!(ListCapabilitiesTool.requires_context());
         assert!(ManageHarnessesTool.requires_context());
         assert!(ManageAgentsTool.requires_context());
         assert!(ManageSessionsTool.requires_context());
@@ -1605,12 +1724,14 @@ mod tests {
     async fn all_tools_without_context_return_error() {
         // execute() (no context) should fail for all tools
         for tool_name in [
+            "list_capabilities",
             "manage_harnesses",
             "manage_agents",
             "manage_sessions",
             "session_interact",
         ] {
             let result = match tool_name {
+                "list_capabilities" => ListCapabilitiesTool.execute(json!({})).await,
                 "manage_harnesses" => {
                     ManageHarnessesTool
                         .execute(json!({"operation": "list"}))
@@ -1638,13 +1759,76 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn list_capabilities_returns_all() {
+        let ctx = mock_context();
+        let tool = ListCapabilitiesTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                let count = v["count"].as_u64().unwrap();
+                assert!(count > 0, "should return at least one capability");
+                let caps = v["capabilities"].as_array().unwrap();
+                // Verify each capability has required fields
+                for cap in caps {
+                    assert!(cap["id"].is_string());
+                    assert!(cap["name"].is_string());
+                    assert!(cap["type"].is_string());
+                }
+                assert!(v["hint"].as_str().unwrap().contains("capability IDs"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_capabilities_search_filters_results() {
+        let ctx = mock_context();
+        let tool = ListCapabilitiesTool;
+        let result = tool
+            .execute_with_context(json!({"search": "current_time"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                let count = v["count"].as_u64().unwrap();
+                assert!(count >= 1, "should find at least current_time");
+                let caps = v["capabilities"].as_array().unwrap();
+                assert!(
+                    caps.iter()
+                        .any(|c| c["id"].as_str().unwrap() == "current_time"),
+                    "should contain current_time"
+                );
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_capabilities_search_no_match() {
+        let ctx = mock_context();
+        let tool = ListCapabilitiesTool;
+        let result = tool
+            .execute_with_context(json!({"search": "zzz_nonexistent_zzz"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 0);
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
     #[test]
     fn capability_has_system_prompt_addition() {
         let cap = PlatformManagementCapability;
         let prompt = cap.system_prompt_addition().expect("should have prompt");
+        assert!(prompt.contains("list_capabilities"));
         assert!(prompt.contains("manage_harnesses"));
         assert!(prompt.contains("manage_agents"));
         assert!(prompt.contains("manage_sessions"));
         assert!(prompt.contains("session_interact"));
+        // Capabilities section should be mentioned
+        assert!(prompt.contains("Capabilities"));
+        assert!(prompt.contains("primary way to extend"));
     }
 }

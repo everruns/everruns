@@ -1735,6 +1735,53 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
     }
 
     // =========================================================================
+    // Capabilities
+    // =========================================================================
+
+    async fn list_capabilities(
+        &self,
+        search: Option<&str>,
+    ) -> Result<Vec<everruns_core::CapabilityInfo>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .platform_list_capabilities(proto::PlatformListCapabilitiesRequest {
+                org_id: self.org_id,
+                search: search.map(|s| s.to_string()),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC platform_list_capabilities failed: {}", e)))?;
+
+        let caps = response
+            .into_inner()
+            .capabilities
+            .into_iter()
+            .map(|c| everruns_core::CapabilityInfo {
+                id: everruns_core::CapabilityId::new(&c.id),
+                name: c.name,
+                description: c.description,
+                status: if c.status == "available" {
+                    everruns_core::CapabilityStatus::Available
+                } else if c.status == "coming_soon" {
+                    everruns_core::CapabilityStatus::ComingSoon
+                } else {
+                    everruns_core::CapabilityStatus::Deprecated
+                },
+                icon: c.icon,
+                category: c.category,
+                system_prompt: None,
+                tool_definitions: vec![], // Tool definitions not sent over gRPC (tool names suffice for listing)
+                is_mcp: c.is_mcp,
+                is_skill: c.is_skill,
+                dependencies: c.dependencies,
+                features: vec![],
+                risk_level: everruns_core::RiskLevel::Low,
+            })
+            .collect();
+
+        Ok(caps)
+    }
+
+    // =========================================================================
     // UI Links
     // =========================================================================
 

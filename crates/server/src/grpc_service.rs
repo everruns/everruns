@@ -6,8 +6,8 @@
 // Decision: No direct database access - all operations go through services layer
 
 use crate::services::{
-    AgentService, EventService, HarnessService, LlmResolverService, McpServerService,
-    SessionFileService, SessionService,
+    AgentService, CapabilityService, EventService, HarnessService, LlmResolverService,
+    McpServerService, SessionFileService, SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use crate::storage::{EncryptionService, StorageBackend};
@@ -72,6 +72,7 @@ use everruns_internal_protocol::proto::{
     LoadMessagesResponse,
     McpServerInfo,
     McpToolDef,
+    PlatformCapabilityInfo,
     // Platform management types
     PlatformCopyHarnessRequest,
     PlatformCopyHarnessResponse,
@@ -93,6 +94,8 @@ use everruns_internal_protocol::proto::{
     PlatformGetMessagesResponse,
     PlatformListAgentsRequest,
     PlatformListAgentsResponse,
+    PlatformListCapabilitiesRequest,
+    PlatformListCapabilitiesResponse,
     PlatformListHarnessesRequest,
     PlatformListHarnessesResponse,
     PlatformListSessionsRequest,
@@ -272,6 +275,7 @@ pub struct WorkerServiceImpl {
     session_file_service: SessionFileService,
     llm_resolver_service: LlmResolverService,
     mcp_server_service: McpServerService,
+    capability_service: CapabilityService,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     /// Task notification broadcaster for push-based notifications
     task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
@@ -296,6 +300,7 @@ impl WorkerServiceImpl {
         let session_file_service = SessionFileService::new(db.clone());
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
+        let capability_service = CapabilityService::new(db.clone(), encryption.clone());
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -329,6 +334,7 @@ impl WorkerServiceImpl {
             session_file_service,
             llm_resolver_service,
             mcp_server_service,
+            capability_service,
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
@@ -3035,6 +3041,61 @@ impl WorkerService for WorkerServiceImpl {
 
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
+    }
+
+    async fn platform_list_capabilities(
+        &self,
+        request: Request<PlatformListCapabilitiesRequest>,
+    ) -> Result<Response<PlatformListCapabilitiesResponse>, Status> {
+        let req = request.into_inner();
+        let capabilities = self
+            .capability_service
+            .list_all(req.org_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list capabilities: {}", e)))?;
+
+        // Apply search filter if provided
+        let filtered: Vec<_> = if let Some(ref q) = req.search {
+            let q = q.to_lowercase();
+            capabilities
+                .into_iter()
+                .filter(|c| {
+                    c.name.to_lowercase().contains(&q)
+                        || c.description.to_lowercase().contains(&q)
+                        || c.id.as_str().to_lowercase().contains(&q)
+                        || c.category
+                            .as_deref()
+                            .is_some_and(|cat| cat.to_lowercase().contains(&q))
+                })
+                .collect()
+        } else {
+            capabilities
+        };
+
+        let proto_caps = filtered
+            .iter()
+            .map(|c| PlatformCapabilityInfo {
+                id: c.id.as_str().to_string(),
+                name: c.name.clone(),
+                description: c.description.clone(),
+                status: c.status.to_string(),
+                category: c.category.clone(),
+                icon: c.icon.clone(),
+                is_mcp: c.is_mcp,
+                is_skill: c.is_skill,
+                tool_count: c.tool_definitions.len() as u32,
+                tool_names: c
+                    .tool_definitions
+                    .iter()
+                    .map(|t| t.name().to_string())
+                    .collect(),
+                dependencies: c.dependencies.clone(),
+            })
+            .collect();
+
+        Ok(Response::new(PlatformListCapabilitiesResponse {
+            capabilities: proto_caps,
+        }))
     }
 
     async fn platform_get_base_url(

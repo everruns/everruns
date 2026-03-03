@@ -6,6 +6,7 @@
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
 use crate::agent::Agent;
+use crate::capability_dto::CapabilityInfo;
 use crate::error::Result;
 use crate::harness::Harness;
 use crate::session::Session;
@@ -146,6 +147,16 @@ pub trait PlatformStore: Send + Sync {
         session_id: SessionId,
         timeout_secs: Option<u64>,
     ) -> Result<String>;
+
+    // =========================================================================
+    // Capabilities
+    // =========================================================================
+
+    /// List all available capabilities (built-in + MCP servers + skills).
+    ///
+    /// Optionally filter by a search query (case-insensitive match against
+    /// name, description, category, and capability ID).
+    async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>>;
 
     // =========================================================================
     // UI Links
@@ -357,6 +368,27 @@ pub mod tests {
         }
         async fn wait_for_idle(&self, _id: SessionId, _t: Option<u64>) -> Result<String> {
             Ok("idle".to_string())
+        }
+        async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>> {
+            let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+            let mut caps: Vec<CapabilityInfo> = registry
+                .list()
+                .iter()
+                .map(|c| CapabilityInfo::from_core(c.as_ref()))
+                .collect();
+            if let Some(q) = search {
+                let q = q.to_lowercase();
+                caps.retain(|c| {
+                    c.name.to_lowercase().contains(&q)
+                        || c.description.to_lowercase().contains(&q)
+                        || c.id.as_str().to_lowercase().contains(&q)
+                        || c.category
+                            .as_deref()
+                            .is_some_and(|cat| cat.to_lowercase().contains(&q))
+                });
+            }
+            caps.sort_by(|a, b| a.name.cmp(&b.name));
+            Ok(caps)
         }
         fn base_url(&self) -> &str {
             "http://localhost:3000"
