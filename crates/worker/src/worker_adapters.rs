@@ -212,14 +212,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         Ok(registry)
     }
 
-    /// Get the session SQL database store (if available).
-    ///
-    /// Returns None when the backend doesn't yet expose session SQL databases
-    /// via gRPC. The store is PostgreSQL-backed and should be available in all
-    /// deployment modes once gRPC support is added (EVE-44).
-    fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
-        None
-    }
+    /// Get the session SQL database store.
+    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef;
 
     // =========================================================================
     // Required Store Accessors

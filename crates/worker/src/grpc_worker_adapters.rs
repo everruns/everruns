@@ -20,8 +20,8 @@ use uuid::Uuid;
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStorageStore,
-    GrpcSessionStore,
+    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
@@ -323,6 +323,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn driver_registry(&self) -> DriverRegistry {
         create_driver_registry()
+    }
+
+    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+        Arc::new(GrpcSessionSqlDbStore::new(self.client.clone()))
     }
 
     fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {

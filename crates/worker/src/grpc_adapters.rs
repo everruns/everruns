@@ -1970,3 +1970,384 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
         })
     }
 }
+
+// ============================================================================
+// GrpcSessionSqlDbStore - SessionSqlDbStore implementation over gRPC
+// ============================================================================
+
+use everruns_core::session_sqldb::{
+    ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
+    SqlQueryResult, TableSchema,
+};
+/// Alias std::result::Result to avoid shadowing by everruns_core::error::Result.
+type SqlDbResult<T> = std::result::Result<T, SessionSqlDbError>;
+
+/// gRPC-backed session SQL database store.
+///
+/// Proxies all SessionSqlDbStore trait methods to the control-plane via gRPC RPCs.
+pub struct GrpcSessionSqlDbStore {
+    client: GrpcClient,
+}
+
+impl GrpcSessionSqlDbStore {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+/// Convert a gRPC status to a SessionSqlDbError, preserving error semantics.
+fn grpc_status_to_sqldb_error(status: tonic::Status) -> SessionSqlDbError {
+    let msg = status.message().to_string();
+    match status.code() {
+        tonic::Code::NotFound => SessionSqlDbError::DatabaseNotFound(msg),
+        tonic::Code::AlreadyExists => SessionSqlDbError::DatabaseAlreadyExists(msg),
+        tonic::Code::InvalidArgument => SessionSqlDbError::InvalidDatabaseName(msg),
+        tonic::Code::ResourceExhausted => SessionSqlDbError::LimitExceeded(msg),
+        tonic::Code::DeadlineExceeded => SessionSqlDbError::QueryTimeout(0),
+        tonic::Code::PermissionDenied => SessionSqlDbError::AuthorizerBlocked(msg),
+        tonic::Code::FailedPrecondition => SessionSqlDbError::QueryError(msg),
+        _ => SessionSqlDbError::Internal(msg),
+    }
+}
+
+fn proto_db_info_to_core(info: proto::SessionSqlDbDatabaseInfo) -> DatabaseInfo {
+    DatabaseInfo {
+        name: info.name,
+        size_bytes: info.size_bytes,
+        page_count: info.page_count,
+        created_at: proto_timestamp_or_now(info.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(info.updated_at.as_ref()),
+    }
+}
+
+#[async_trait]
+impl SessionSqlDbStore for GrpcSessionSqlDbStore {
+    async fn create_database(
+        &self,
+        session_id: SessionId,
+        name: &str,
+    ) -> SqlDbResult<DatabaseInfo> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbCreateDatabaseRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            name: name.to_string(),
+        };
+        let response = client
+            .session_sql_db_create_database(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        let db = response
+            .into_inner()
+            .database
+            .ok_or_else(|| SessionSqlDbError::Internal("Missing database in response".into()))?;
+        Ok(proto_db_info_to_core(db))
+    }
+
+    async fn list_databases(&self, session_id: SessionId) -> SqlDbResult<Vec<DatabaseInfo>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbListDatabasesRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+        };
+        let response = client
+            .session_sql_db_list_databases(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        Ok(response
+            .into_inner()
+            .databases
+            .into_iter()
+            .map(proto_db_info_to_core)
+            .collect())
+    }
+
+    async fn get_database(
+        &self,
+        session_id: SessionId,
+        name: &str,
+    ) -> SqlDbResult<Option<DatabaseInfo>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbGetDatabaseRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            name: name.to_string(),
+        };
+        let response = client
+            .session_sql_db_get_database(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        Ok(response.into_inner().database.map(proto_db_info_to_core))
+    }
+
+    async fn delete_database(&self, session_id: SessionId, name: &str) -> SqlDbResult<bool> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbDeleteDatabaseRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            name: name.to_string(),
+        };
+        let response = client
+            .session_sql_db_delete_database(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        Ok(response.into_inner().deleted)
+    }
+
+    async fn sql_execute(
+        &self,
+        session_id: SessionId,
+        db_name: &str,
+        sql: &str,
+    ) -> SqlDbResult<SqlExecuteResult> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbExecuteRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            db_name: db_name.to_string(),
+            sql: sql.to_string(),
+        };
+        let response = client
+            .session_sql_db_execute(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        Ok(SqlExecuteResult {
+            rows_affected: response.into_inner().rows_affected,
+        })
+    }
+
+    async fn sql_query(
+        &self,
+        session_id: SessionId,
+        db_name: &str,
+        sql: &str,
+    ) -> SqlDbResult<SqlQueryResult> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbQueryRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            db_name: db_name.to_string(),
+            sql: sql.to_string(),
+        };
+        let response = client
+            .session_sql_db_query(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        let inner = response.into_inner();
+        let rows: Vec<Vec<serde_json::Value>> = inner
+            .rows
+            .into_iter()
+            .map(|list_value| {
+                list_value
+                    .values
+                    .into_iter()
+                    .map(proto_value_to_json)
+                    .collect()
+            })
+            .collect();
+        Ok(SqlQueryResult {
+            columns: inner.columns,
+            rows,
+            row_count: inner.row_count as usize,
+            truncated: inner.truncated,
+        })
+    }
+
+    async fn sql_schema(
+        &self,
+        session_id: SessionId,
+        db_name: &str,
+        table: Option<&str>,
+    ) -> SqlDbResult<Vec<TableSchema>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionSqlDbSchemaRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            db_name: db_name.to_string(),
+            table: table.map(|t| t.to_string()),
+        };
+        let response = client
+            .session_sql_db_schema(request)
+            .await
+            .map_err(grpc_status_to_sqldb_error)?;
+        Ok(response
+            .into_inner()
+            .tables
+            .into_iter()
+            .map(|t| TableSchema {
+                name: t.name,
+                columns: t
+                    .columns
+                    .into_iter()
+                    .map(|c| ColumnSchema {
+                        name: c.name,
+                        column_type: c.column_type,
+                        notnull: c.notnull,
+                        pk: c.pk,
+                        default_value: c.default_value,
+                    })
+                    .collect(),
+                row_count: t.row_count,
+            })
+            .collect())
+    }
+}
+
+/// Convert a proto Value to serde_json::Value for SQL query results.
+fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
+    match value.kind {
+        Some(prost_types::value::Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(prost_types::value::Kind::NumberValue(n)) => serde_json::Value::Number(
+            serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
+        ),
+        Some(prost_types::value::Kind::StringValue(s)) => serde_json::Value::String(s),
+        Some(prost_types::value::Kind::BoolValue(b)) => serde_json::Value::Bool(b),
+        Some(prost_types::value::Kind::ListValue(list)) => {
+            serde_json::Value::Array(list.values.into_iter().map(proto_value_to_json).collect())
+        }
+        Some(prost_types::value::Kind::StructValue(s)) => {
+            let map: serde_json::Map<String, serde_json::Value> = s
+                .fields
+                .into_iter()
+                .map(|(k, v)| (k, proto_value_to_json(v)))
+                .collect();
+            serde_json::Value::Object(map)
+        }
+        None => serde_json::Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_proto_value_to_json_null() {
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::NullValue(0)),
+        };
+        assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_proto_value_to_json_none_kind() {
+        let val = prost_types::Value { kind: None };
+        assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_proto_value_to_json_string() {
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::StringValue("hello".into())),
+        };
+        assert_eq!(
+            proto_value_to_json(val),
+            serde_json::Value::String("hello".into())
+        );
+    }
+
+    #[test]
+    fn test_proto_value_to_json_number() {
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::NumberValue(42.5)),
+        };
+        assert_eq!(proto_value_to_json(val), serde_json::json!(42.5));
+    }
+
+    #[test]
+    fn test_proto_value_to_json_bool() {
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::BoolValue(true)),
+        };
+        assert_eq!(proto_value_to_json(val), serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn test_proto_value_to_json_list() {
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::ListValue(
+                prost_types::ListValue {
+                    values: vec![
+                        prost_types::Value {
+                            kind: Some(prost_types::value::Kind::NumberValue(1.0)),
+                        },
+                        prost_types::Value {
+                            kind: Some(prost_types::value::Kind::StringValue("two".into())),
+                        },
+                    ],
+                },
+            )),
+        };
+        assert_eq!(proto_value_to_json(val), serde_json::json!([1.0, "two"]));
+    }
+
+    #[test]
+    fn test_proto_db_info_to_core() {
+        let proto = proto::SessionSqlDbDatabaseInfo {
+            name: "test".into(),
+            size_bytes: 4096,
+            page_count: 1,
+            created_at: Some(proto::Timestamp {
+                seconds: 1700000000,
+                nanos: 0,
+            }),
+            updated_at: Some(proto::Timestamp {
+                seconds: 1700000000,
+                nanos: 0,
+            }),
+        };
+        let info = proto_db_info_to_core(proto);
+        assert_eq!(info.name, "test");
+        assert_eq!(info.size_bytes, 4096);
+        assert_eq!(info.page_count, 1);
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_not_found() {
+        let status = tonic::Status::not_found("db not found");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::DatabaseNotFound(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_already_exists() {
+        let status = tonic::Status::already_exists("db exists");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::DatabaseAlreadyExists(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_invalid_argument() {
+        let status = tonic::Status::invalid_argument("bad name");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::InvalidDatabaseName(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_resource_exhausted() {
+        let status = tonic::Status::resource_exhausted("too many");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::LimitExceeded(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_deadline_exceeded() {
+        let status = tonic::Status::deadline_exceeded("timeout");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::QueryTimeout(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_permission_denied() {
+        let status = tonic::Status::permission_denied("blocked");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::AuthorizerBlocked(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_failed_precondition() {
+        let status = tonic::Status::failed_precondition("syntax error");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::QueryError(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_internal() {
+        let status = tonic::Status::internal("unexpected");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::Internal(_)));
+    }
+}

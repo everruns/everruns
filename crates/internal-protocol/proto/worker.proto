@@ -164,6 +164,30 @@ service WorkerService {
     // List all secret names in a session (without values)
     rpc SessionStorageListSecrets(SessionStorageListSecretsRequest) returns (SessionStorageListSecretsResponse);
 
+    // === Session SQL database operations ===
+    // Session-scoped SQL databases (SQLite over PostgreSQL VFS)
+
+    // Create a named database in a session
+    rpc SessionSqlDbCreateDatabase(SessionSqlDbCreateDatabaseRequest) returns (SessionSqlDbCreateDatabaseResponse);
+
+    // List all databases for a session
+    rpc SessionSqlDbListDatabases(SessionSqlDbListDatabasesRequest) returns (SessionSqlDbListDatabasesResponse);
+
+    // Get metadata for a specific database
+    rpc SessionSqlDbGetDatabase(SessionSqlDbGetDatabaseRequest) returns (SessionSqlDbGetDatabaseResponse);
+
+    // Delete a database and all its pages
+    rpc SessionSqlDbDeleteDatabase(SessionSqlDbDeleteDatabaseRequest) returns (SessionSqlDbDeleteDatabaseResponse);
+
+    // Execute DDL/DML SQL (auto-creates database if needed)
+    rpc SessionSqlDbExecute(SessionSqlDbExecuteRequest) returns (SessionSqlDbExecuteResponse);
+
+    // Execute read-only SQL query
+    rpc SessionSqlDbQuery(SessionSqlDbQueryRequest) returns (SessionSqlDbQueryResponse);
+
+    // Get schema for tables in a database
+    rpc SessionSqlDbSchema(SessionSqlDbSchemaRequest) returns (SessionSqlDbSchemaResponse);
+
     // === Platform management operations ===
     // Used by the platform_management capability tools to manage org-wide entities
     // via gRPC workers (mirrors PlatformStore trait in core)
@@ -1084,6 +1108,118 @@ message CountActiveSessionSchedulesRequest {
 
 message CountActiveSessionSchedulesResponse {
     uint32 count = 1;
+}
+
+// ============================================================================
+// Session SQL database types
+// ============================================================================
+
+// Database metadata (mirrors core::session_sqldb::DatabaseInfo)
+message SessionSqlDbDatabaseInfo {
+    string name = 1;
+    int64 size_bytes = 2;
+    int32 page_count = 3;
+    Timestamp created_at = 4;
+    Timestamp updated_at = 5;
+}
+
+// Column schema (mirrors core::session_sqldb::ColumnSchema)
+message SessionSqlDbColumnSchema {
+    string name = 1;
+    string column_type = 2;
+    bool notnull = 3;
+    bool pk = 4;
+    optional string default_value = 5;
+}
+
+// Table schema (mirrors core::session_sqldb::TableSchema)
+message SessionSqlDbTableSchema {
+    string name = 1;
+    repeated SessionSqlDbColumnSchema columns = 2;
+    int64 row_count = 3;
+}
+
+// === Create database ===
+
+message SessionSqlDbCreateDatabaseRequest {
+    Uuid session_id = 1;
+    string name = 2;
+}
+
+message SessionSqlDbCreateDatabaseResponse {
+    SessionSqlDbDatabaseInfo database = 1;
+}
+
+// === List databases ===
+
+message SessionSqlDbListDatabasesRequest {
+    Uuid session_id = 1;
+}
+
+message SessionSqlDbListDatabasesResponse {
+    repeated SessionSqlDbDatabaseInfo databases = 1;
+}
+
+// === Get database ===
+
+message SessionSqlDbGetDatabaseRequest {
+    Uuid session_id = 1;
+    string name = 2;
+}
+
+message SessionSqlDbGetDatabaseResponse {
+    optional SessionSqlDbDatabaseInfo database = 1;
+}
+
+// === Delete database ===
+
+message SessionSqlDbDeleteDatabaseRequest {
+    Uuid session_id = 1;
+    string name = 2;
+}
+
+message SessionSqlDbDeleteDatabaseResponse {
+    bool deleted = 1;
+}
+
+// === Execute SQL (DDL/DML) ===
+
+message SessionSqlDbExecuteRequest {
+    Uuid session_id = 1;
+    string db_name = 2;
+    string sql = 3;
+}
+
+message SessionSqlDbExecuteResponse {
+    uint64 rows_affected = 1;
+}
+
+// === Query SQL (read-only) ===
+
+message SessionSqlDbQueryRequest {
+    Uuid session_id = 1;
+    string db_name = 2;
+    string sql = 3;
+}
+
+message SessionSqlDbQueryResponse {
+    repeated string columns = 1;
+    // Rows encoded as JSON arrays (each row is a ListValue of column values)
+    repeated google.protobuf.ListValue rows = 2;
+    uint64 row_count = 3;
+    bool truncated = 4;
+}
+
+// === Schema ===
+
+message SessionSqlDbSchemaRequest {
+    Uuid session_id = 1;
+    string db_name = 2;
+    optional string table = 3;
+}
+
+message SessionSqlDbSchemaResponse {
+    repeated SessionSqlDbTableSchema tables = 1;
 }
 
 // ============================================================================

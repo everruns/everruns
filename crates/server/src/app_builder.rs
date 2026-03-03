@@ -785,8 +785,8 @@ impl ServerAppBuilder {
                     llm_resolver,
                     mcp_server_service,
                     capability_registry,
+                    sqldb_store.clone(),
                 )
-                .with_sqldb_store(sqldb_store.clone())
                 .with_storage_store(session_storage_store)
                 .with_schedule_store(Arc::new(crate::storage::DbSessionScheduleStore::new(
                     db.clone(),
