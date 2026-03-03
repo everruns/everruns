@@ -631,6 +631,11 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
 - **System Prompt**: Describes available management tools and common workflows
 - **Tools**:
+  - `list_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
+    - Parameters:
+      - `search`: string - Optional case-insensitive filter by name, description, category, or ID
+    - Returns: Array of capabilities with id, name, description, type (builtin/mcp_server/skill), tools, dependencies
+    - Policy: Auto
   - `manage_harnesses` - Harness CRUD operations
     - Parameters:
       - `operation`: enum (list, get, create, update, delete, copy) - The operation to perform
@@ -680,6 +685,10 @@ All platform management tools require session context to access the `PlatformSto
 ##### Design Decision: UI Links
 
 All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/chat?session={id}`). This lets agents direct users to the web interface for visual management.
+
+##### Design Decision: Capability Discovery via list_capabilities
+
+The `list_capabilities` tool enables agents (particularly the Platform Chat) to discover available capabilities before creating or updating agents/harnesses. It queries the `PlatformStore.list_capabilities()` method which returns built-in capabilities, MCP server capabilities, and skill capabilities. The search parameter supports case-insensitive filtering across name, description, category, and ID. The Platform Chat harness system prompt instructs the agent to use `list_capabilities` before creating agents.
 
 ##### Design Decision: PlatformStore Trait
 

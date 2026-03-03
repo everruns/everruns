@@ -1051,6 +1051,7 @@ pub struct DirectPlatformStore {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    capability_service: crate::services::CapabilityService,
 }
 
 impl DirectPlatformStore {
@@ -1059,10 +1060,12 @@ impl DirectPlatformStore {
         event_service: Arc<EventService>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     ) -> Self {
+        let capability_service = crate::services::CapabilityService::new(db.clone(), None);
         Self {
             db,
             event_service,
             runner,
+            capability_service,
         }
     }
 
@@ -1671,6 +1674,28 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
             tokio::time::sleep(poll_interval).await;
         }
+    }
+
+    // =========================================================================
+    // Capabilities
+    // =========================================================================
+
+    async fn list_capabilities(
+        &self,
+        search: Option<&str>,
+    ) -> everruns_core::error::Result<Vec<everruns_core::CapabilityInfo>> {
+        let mut caps = self
+            .capability_service
+            .list_all(DEFAULT_ORG_ID)
+            .await
+            .map_err(|e| store_error(format!("Failed to list capabilities: {e}")))?;
+
+        if let Some(q) = search {
+            caps.retain(|c| c.matches_search(q));
+        }
+
+        caps.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(caps)
     }
 
     // =========================================================================

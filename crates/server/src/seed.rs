@@ -312,7 +312,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
         id: seed_ids::CHAT_HARNESS,
         name: "Platform Chat",
         description: "Conversational harness for the global chat interface with platform management capabilities.",
-        system_prompt: "You are a helpful assistant.",
+        system_prompt: "You are a helpful assistant on the Everruns platform.\n\nCapabilities are the primary way to extend agent functionality. Use `list_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.\n\nWhen creating agents, always use `list_capabilities` first to find relevant capability IDs to include.",
         tags: &["chat", "seed"],
         capabilities: &[
             "session_file_system",

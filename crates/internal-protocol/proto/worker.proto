@@ -181,6 +181,9 @@ service WorkerService {
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
 
+    // Capability discovery
+    rpc PlatformListCapabilities(PlatformListCapabilitiesRequest) returns (PlatformListCapabilitiesResponse);
+
     // Base URL for UI links
     rpc PlatformGetBaseUrl(PlatformGetBaseUrlRequest) returns (PlatformGetBaseUrlResponse);
 }
@@ -1164,6 +1167,31 @@ message PlatformWaitForIdleRequest {
 
 message PlatformWaitForIdleResponse {
     string status = 1;
+}
+
+// === Capability discovery ===
+
+message PlatformListCapabilitiesRequest {
+    int64 org_id = 1;
+    optional string search = 2;
+}
+
+message PlatformCapabilityInfo {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string status = 4;
+    optional string category = 5;
+    optional string icon = 6;
+    bool is_mcp = 7;
+    bool is_skill = 8;
+    uint32 tool_count = 9;
+    repeated string tool_names = 10;
+    repeated string dependencies = 11;
+}
+
+message PlatformListCapabilitiesResponse {
+    repeated PlatformCapabilityInfo capabilities = 1;
 }
 
 // === Base URL ===

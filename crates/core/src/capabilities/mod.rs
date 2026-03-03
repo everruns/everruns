@@ -137,8 +137,8 @@ pub use mcp::{
 };
 pub use noop::NoopCapability;
 pub use platform_management::{
-    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
-    SessionInteractTool,
+    ListCapabilitiesTool, ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool,
+    PlatformManagementCapability, SessionInteractTool,
 };
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;

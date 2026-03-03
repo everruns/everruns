@@ -68,6 +68,18 @@ fn default_risk_level() -> RiskLevel {
 }
 
 impl CapabilityInfo {
+    /// Case-insensitive search across name, description, category, and ID.
+    pub fn matches_search(&self, query: &str) -> bool {
+        let q = query.to_lowercase();
+        self.name.to_lowercase().contains(&q)
+            || self.description.to_lowercase().contains(&q)
+            || self.id.as_str().to_lowercase().contains(&q)
+            || self
+                .category
+                .as_deref()
+                .is_some_and(|cat| cat.to_lowercase().contains(&q))
+    }
+
     /// Create a CapabilityInfo DTO from a core Capability trait object
     pub fn from_core(cap: &dyn crate::capabilities::Capability) -> Self {
         // Check if this is an MCP or skill capability by checking the ID prefix
@@ -309,5 +321,36 @@ mod tests {
         let noop_cap = registry.get("noop").unwrap();
         let info = CapabilityInfo::from_core(noop_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::Low);
+    }
+
+    #[test]
+    fn test_matches_search() {
+        let cap = CapabilityInfo {
+            id: CapabilityId::new("web_fetch"),
+            name: "Web Fetch".to_string(),
+            description: "Fetch content from URLs".to_string(),
+            status: CapabilityStatus::Available,
+            icon: None,
+            category: Some("Network".to_string()),
+            system_prompt: None,
+            tool_definitions: vec![],
+            is_mcp: false,
+            is_skill: false,
+            dependencies: vec![],
+            features: vec![],
+            risk_level: RiskLevel::Low,
+        };
+
+        // Matches by name (case-insensitive)
+        assert!(cap.matches_search("web"));
+        assert!(cap.matches_search("WEB FETCH"));
+        // Matches by description
+        assert!(cap.matches_search("urls"));
+        // Matches by ID
+        assert!(cap.matches_search("web_fetch"));
+        // Matches by category
+        assert!(cap.matches_search("network"));
+        // No match
+        assert!(!cap.matches_search("zzz_nonexistent"));
     }
 }
