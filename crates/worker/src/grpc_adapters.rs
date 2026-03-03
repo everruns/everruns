@@ -1315,6 +1315,180 @@ impl SessionStorageStore for GrpcSessionStorageStore {
 }
 
 // ============================================================================
+// GrpcConnectionResolver - UserConnectionResolver over gRPC
+// ============================================================================
+
+/// gRPC-backed user connection resolver.
+///
+/// Proxies `get_connection_token` calls to the control-plane which has access
+/// to encrypted tokens and GitHub App credentials.
+pub struct GrpcConnectionResolver {
+    client: GrpcClient,
+}
+
+impl GrpcConnectionResolver {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
+    async fn get_connection_token(
+        &self,
+        session_id: everruns_core::SessionId,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::GetConnectionTokenRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            provider: provider.to_string(),
+        };
+        let response = client
+            .get_connection_token(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_connection_token failed: {}", e)))?;
+        Ok(response.into_inner().token)
+    }
+}
+
+// ============================================================================
+// GrpcScheduleStore - SessionScheduleStore over gRPC
+// ============================================================================
+
+/// gRPC-backed session schedule store.
+///
+/// Proxies schedule CRUD to the control-plane via gRPC RPCs.
+pub struct GrpcScheduleStore {
+    client: GrpcClient,
+}
+
+impl GrpcScheduleStore {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+fn proto_schedule_to_schema(
+    s: proto::SessionScheduleProto,
+) -> Result<everruns_core::session_schedule::SessionSchedule> {
+    use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
+    use everruns_core::typed_id::{ScheduleId, SessionId};
+
+    let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
+    let session_uuid = proto_uuid_to_uuid(s.session_id.as_ref())?;
+
+    let schedule_type = match s.schedule_type.as_str() {
+        "recurring" => ScheduleType::Recurring,
+        _ => ScheduleType::OneShot,
+    };
+
+    Ok(SessionSchedule {
+        id: ScheduleId::from_uuid(id_uuid),
+        session_id: SessionId::from_uuid(session_uuid),
+        description: s.description,
+        cron_expression: s.cron_expression,
+        scheduled_at: s.scheduled_at.as_ref().map(proto_timestamp_to_datetime),
+        timezone: s.timezone,
+        enabled: s.enabled,
+        schedule_type,
+        next_trigger_at: s.next_trigger_at.as_ref().map(proto_timestamp_to_datetime),
+        last_triggered_at: s
+            .last_triggered_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime),
+        trigger_count: s.trigger_count as u32,
+        created_at: proto_timestamp_or_now(s.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(s.updated_at.as_ref()),
+    })
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
+    async fn create_schedule(
+        &self,
+        session_id: everruns_core::SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+        timezone: String,
+    ) -> Result<everruns_core::session_schedule::SessionSchedule> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CreateSessionScheduleRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            description,
+            cron_expression,
+            scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
+            timezone,
+        };
+        let response = client
+            .create_session_schedule(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC create_session_schedule failed: {}", e)))?;
+        let proto_schedule = response
+            .into_inner()
+            .schedule
+            .ok_or_else(|| grpc_error("No schedule in response"))?;
+        proto_schedule_to_schema(proto_schedule)
+    }
+
+    async fn cancel_schedule(
+        &self,
+        session_id: everruns_core::SessionId,
+        schedule_id: everruns_core::typed_id::ScheduleId,
+    ) -> Result<everruns_core::session_schedule::SessionSchedule> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CancelSessionScheduleRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            schedule_id: Some(uuid_to_proto(schedule_id.uuid())),
+        };
+        let response = client
+            .cancel_session_schedule(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC cancel_session_schedule failed: {}", e)))?;
+        let proto_schedule = response
+            .into_inner()
+            .schedule
+            .ok_or_else(|| grpc_error("No schedule in response"))?;
+        proto_schedule_to_schema(proto_schedule)
+    }
+
+    async fn list_schedules(
+        &self,
+        session_id: everruns_core::SessionId,
+    ) -> Result<Vec<everruns_core::session_schedule::SessionSchedule>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::ListSessionSchedulesRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+        };
+        let response = client
+            .list_session_schedules(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC list_session_schedules failed: {}", e)))?;
+        response
+            .into_inner()
+            .schedules
+            .into_iter()
+            .map(proto_schedule_to_schema)
+            .collect()
+    }
+
+    async fn count_active_schedules(&self, session_id: everruns_core::SessionId) -> Result<u32> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CountActiveSessionSchedulesRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+        };
+        let response = client
+            .count_active_session_schedules(request)
+            .await
+            .map_err(|e| {
+                grpc_error(format!("gRPC count_active_session_schedules failed: {}", e))
+            })?;
+        Ok(response.into_inner().count)
+    }
+}
+
+// ============================================================================
 // GrpcPlatformStore - PlatformStore implementation over gRPC
 // ============================================================================
 

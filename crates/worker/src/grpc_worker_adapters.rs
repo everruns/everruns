@@ -329,6 +329,20 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcSessionStorageStore::new(self.client.clone())))
     }
 
+    fn connection_resolver(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+        Some(Arc::new(crate::grpc_adapters::GrpcConnectionResolver::new(
+            self.client.clone(),
+        )))
+    }
+
+    fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+        Some(Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
+            self.client.clone(),
+        )))
+    }
+
     fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
         Some(Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
             self.client.clone(),
