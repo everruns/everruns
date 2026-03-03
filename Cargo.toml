@@ -101,7 +101,7 @@ parking_lot = "0.12"
 everruns-sdk = { git = "https://github.com/everruns/sdk", tag = "v0.1.3" }
 
 # gRPC (tonic)
-tonic = "0.14"
+tonic = { version = "0.14", features = ["tls-ring"] }
 tonic-prost = "0.14"
 tonic-build = "0.14"
 tonic-prost-build = "0.14"

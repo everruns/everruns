@@ -78,7 +78,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 **Trust boundary 1 — User → API:** All user input is untrusted. Authentication, authorization, input validation applied here.
 
-**Trust boundary 2 — Control Plane → Workers:** Workers are stateless executors with no database credentials. Communication via gRPC. Currently relies on network isolation (no mutual auth).
+**Trust boundary 2 — Control Plane → Workers:** Workers are stateless executors with no database credentials. Communication via gRPC with bearer token auth (required) and optional mutual TLS (mTLS). Workers are intentionally cross-org.
 
 **Trust boundary 3 — Workers → External Services:** LLM providers and MCP servers are external. API keys transmitted over HTTPS. MCP responses parsed defensively.
 
@@ -434,15 +434,15 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-DURABLE-001 | Task hijacking | High | Ownership verified on completion; late finisher gets `TaskNotOwned` error | MITIGATED |
-| TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `WORKER_GRPC_AUTH_TOKEN` env var; auth disabled if env var unset; no org scoping in gRPC handlers | **OPEN** |
+| TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `WORKER_GRPC_AUTH_TOKEN` (required in production); optional mTLS via `WORKER_GRPC_TLS_*` env vars; workers are cross-org by design | MITIGATED |
 | TM-DURABLE-003 | Event injection | Medium | Events created via gRPC only; validated for session membership | MITIGATED |
 | TM-DURABLE-004 | Queue flooding | Medium | Per-workflow pending task limit (default 100, configurable via `MAX_PENDING_TASKS_PER_WORKFLOW`) | MITIGATED |
 | TM-DURABLE-005 | Heartbeat timeout manipulation | Low | 30s timeout is reasonable for LLM operations; reclaimed tasks re-queued | MITIGATED |
 | TM-DURABLE-006 | Dead letter queue growth | Low | Failed tasks preserved in DLQ; no automatic cleanup | **ACCEPTED** |
 | TM-DURABLE-007 | Task state manipulation | Medium | Tasks immutable after creation; only status transitions allowed via state machine | MITIGATED |
-| TM-DURABLE-008 | Worker impersonation | High | Bearer token auth via `WORKER_GRPC_AUTH_TOKEN` prevents unauthorized access | MITIGATED (same as TM-DURABLE-002) |
+| TM-DURABLE-008 | Worker impersonation | High | Bearer token auth + optional mTLS prevents unauthorized access (see TM-DURABLE-002) | MITIGATED |
 | TM-DURABLE-009 | Replay attack on workflow events | Low | Event store is append-only; events processed in sequence order | MITIGATED |
-| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | All `/v1/durable/*` endpoints lack `AuthUser`/`ResolvedOrg` extractors; accessible without auth | **OPEN** |
+| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | All `/v1/durable/*` endpoints require `AuthUser` extractor | MITIGATED |
 
 ### Mitigation Details
 
@@ -454,18 +454,22 @@ Worker B continues execution → task completes correctly
 ```
 Prevents duplicate activity execution when workers lose connectivity.
 
-**TM-DURABLE-002 — gRPC Security (OPEN):**
-Workers authenticate to control plane gRPC (port 9001) via bearer token (`WORKER_GRPC_AUTH_TOKEN` env var).
-- Server: `GrpcAuthInterceptor` validates `authorization: Bearer <token>` on every request
-- Client: `GrpcClientAuth` injects the bearer token into every outgoing request
-- When `WORKER_GRPC_AUTH_TOKEN` is unset, auth is disabled — **not restricted to dev mode**
-- No org_id scoping in gRPC handlers; compromised worker can access all orgs
-- Network isolation remains as defense-in-depth
-- **Recommendation:** Fail startup if `WORKER_GRPC_AUTH_TOKEN` unset when `AUTH_MODE != none`. Add `org_id` to gRPC request context.
+**TM-DURABLE-002 — gRPC Security (MITIGATED):**
+Workers authenticate to control plane gRPC (port 9001) via two layered mechanisms:
 
-**TM-DURABLE-010 — Durable API Endpoints Unauthenticated (OPEN):**
-All `/v1/durable/*` HTTP endpoints use `State(state): State<AppState>` only — no `AuthUser` or `ResolvedOrg` extractor. Any network-reachable client can list workflows, drain workers, cancel tasks, and view DLQ.
-- **Recommendation:** Add `AuthUser` (minimum) or `ResolvedOrg` (preferred) to all durable endpoints. Worker management endpoints should require admin role.
+1. **Bearer token auth** (`WORKER_GRPC_AUTH_TOKEN` env var) — required in production (server panics on startup if unset in non-dev mode)
+   - Server: `GrpcAuthInterceptor` validates `authorization: Bearer <token>` on every request
+   - Client: `GrpcClientAuth` injects the bearer token into every outgoing request
+2. **Mutual TLS (mTLS)** — optional, configured via `WORKER_GRPC_TLS_*` env vars
+   - Server presents its certificate (`WORKER_GRPC_TLS_CERT`/`WORKER_GRPC_TLS_KEY`) and verifies client certs against `WORKER_GRPC_TLS_CA_CERT`
+   - Worker presents its client certificate and verifies the server against the CA
+   - Provides encryption + mutual identity verification at the transport layer
+   - Bearer token auth remains active as defense-in-depth even when mTLS is enabled
+
+**Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
+
+**TM-DURABLE-010 — Durable API Endpoints (MITIGATED):**
+All `/v1/durable/*` HTTP endpoints require `AuthUser` extractor. Unauthenticated requests are rejected.
 
 ## 10. Scheduled Tasks (TM-SCHED)
 
@@ -788,8 +792,8 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
 | TM-AUTH-007 | OAuth state not validated | High | Store state in cookie; validate in callback |
 | TM-AUTH-015 | JWT secret insecure default | High | Fail startup if AUTH_JWT_SECRET unset in production |
-| TM-DURABLE-002 | gRPC auth optional, no org scoping | High | Require WORKER_GRPC_AUTH_TOKEN in production; add org scoping |
-| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | Add AuthUser/ResolvedOrg to all /v1/durable/* endpoints |
+| ~~TM-DURABLE-002~~ | ~~gRPC auth optional, no org scoping~~ | ~~High~~ | Mitigated: Bearer token required in production + optional mTLS; workers cross-org by design |
+| ~~TM-DURABLE-010~~ | ~~Durable API endpoints unauthenticated~~ | ~~High~~ | Mitigated: All endpoints require AuthUser extractor |
 | TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
@@ -827,7 +831,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Database TLS | TM-API-001 | Use `sslmode=require` in `DATABASE_URL` for production; no code-level enforcement |
 | Secure env vars | TM-AUTH-002, TM-CRYPTO-001 | Never commit secrets to source control |
 | Configure CORS | TM-API-007, TM-WEB-007 | Set explicit allowed origins in production |
-| Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network; set `WORKER_GRPC_AUTH_TOKEN` in production |
+| Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network; set `WORKER_GRPC_AUTH_TOKEN`; configure mTLS via `WORKER_GRPC_TLS_*` for production |
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
 | Secure OTLP endpoint | TM-OBS-003 | Use trusted internal infrastructure only |
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |

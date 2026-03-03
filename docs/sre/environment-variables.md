@@ -272,6 +272,79 @@ Timeout in seconds for worker initial connection to control-plane gRPC.
 WORKER_GRPC_CONNECT_TIMEOUT=60
 ```
 
+### WORKER_GRPC_TLS_CERT
+
+Path to PEM-encoded certificate file. On the server, this is the gRPC server certificate. On the worker, this is the client certificate presented during mTLS handshake.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (TLS disabled) |
+
+**Example:**
+
+```bash
+WORKER_GRPC_TLS_CERT=/etc/everruns/grpc-cert.pem
+```
+
+**Notes:**
+- Must be set together with `WORKER_GRPC_TLS_KEY`
+- Server: enables TLS on the gRPC listener when both cert and key are set
+- Worker: presents client certificate to the server when both cert and key are set (requires `WORKER_GRPC_TLS_CA_CERT`)
+
+### WORKER_GRPC_TLS_KEY
+
+Path to PEM-encoded private key file corresponding to `WORKER_GRPC_TLS_CERT`.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set |
+
+**Example:**
+
+```bash
+WORKER_GRPC_TLS_KEY=/etc/everruns/grpc-key.pem
+```
+
+### WORKER_GRPC_TLS_CA_CERT
+
+Path to PEM-encoded CA certificate bundle for verifying the remote peer.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set |
+
+**Example:**
+
+```bash
+WORKER_GRPC_TLS_CA_CERT=/etc/everruns/grpc-ca.pem
+```
+
+**Notes:**
+- Server: when set, requires workers to present valid client certificates signed by this CA (mutual TLS)
+- Worker: when set, verifies the server's certificate against this CA and switches to `https://` transport
+- For full mTLS, set on both server and worker alongside their respective cert/key pairs
+
+### WORKER_GRPC_TLS_DOMAIN
+
+Override the expected server domain name for TLS certificate verification (worker only).
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Derived from `WORKER_GRPC_ADDRESS` hostname |
+
+**Example:**
+
+```bash
+WORKER_GRPC_TLS_DOMAIN=control-plane.internal
+```
+
+**Notes:**
+- Useful when the server certificate CN/SAN differs from the connection hostname (e.g., connecting via IP but cert has a DNS name)
+
 ## OpenTelemetry Configuration
 
 Everruns supports distributed tracing via OpenTelemetry with OTLP export. Traces follow the [Gen-AI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for LLM operations.
