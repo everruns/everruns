@@ -1691,15 +1691,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .map_err(|e| store_error(format!("Failed to list capabilities: {e}")))?;
 
         if let Some(q) = search {
-            let q = q.to_lowercase();
-            caps.retain(|c| {
-                c.name.to_lowercase().contains(&q)
-                    || c.description.to_lowercase().contains(&q)
-                    || c.id.as_str().to_lowercase().contains(&q)
-                    || c.category
-                        .as_deref()
-                        .is_some_and(|cat| cat.to_lowercase().contains(&q))
-            });
+            caps.retain(|c| c.matches_search(q));
         }
 
         caps.sort_by(|a, b| a.name.cmp(&b.name));

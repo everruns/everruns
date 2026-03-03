@@ -3056,17 +3056,9 @@ impl WorkerService for WorkerServiceImpl {
 
         // Apply search filter if provided
         let filtered: Vec<_> = if let Some(ref q) = req.search {
-            let q = q.to_lowercase();
             capabilities
                 .into_iter()
-                .filter(|c| {
-                    c.name.to_lowercase().contains(&q)
-                        || c.description.to_lowercase().contains(&q)
-                        || c.id.as_str().to_lowercase().contains(&q)
-                        || c.category
-                            .as_deref()
-                            .is_some_and(|cat| cat.to_lowercase().contains(&q))
-                })
+                .filter(|c| c.matches_search(q))
                 .collect()
         } else {
             capabilities
