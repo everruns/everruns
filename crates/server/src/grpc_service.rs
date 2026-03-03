@@ -141,6 +141,20 @@ use everruns_internal_protocol::proto::{
     SessionListDirectoryResponse,
     SessionReadFileRequest,
     SessionReadFileResponse,
+    SessionSqlDbCreateDatabaseRequest,
+    SessionSqlDbCreateDatabaseResponse,
+    SessionSqlDbDeleteDatabaseRequest,
+    SessionSqlDbDeleteDatabaseResponse,
+    SessionSqlDbExecuteRequest,
+    SessionSqlDbExecuteResponse,
+    SessionSqlDbGetDatabaseRequest,
+    SessionSqlDbGetDatabaseResponse,
+    SessionSqlDbListDatabasesRequest,
+    SessionSqlDbListDatabasesResponse,
+    SessionSqlDbQueryRequest,
+    SessionSqlDbQueryResponse,
+    SessionSqlDbSchemaRequest,
+    SessionSqlDbSchemaResponse,
     SessionStatFileRequest,
     SessionStatFileResponse,
     SessionStorageDeleteSecretRequest,
@@ -295,6 +309,8 @@ pub struct WorkerServiceImpl {
     db: Arc<StorageBackend>,
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
+    /// Session SQL database store for session-scoped databases
+    sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
@@ -365,6 +381,13 @@ impl WorkerServiceImpl {
                 None
             };
 
+        // Create session SQL database store (always available, in-memory backend)
+        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>> =
+            Some(Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
+                sqldb_backend,
+            )));
+
         Self {
             event_service,
             agent_service,
@@ -378,6 +401,7 @@ impl WorkerServiceImpl {
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
             session_storage_store,
+            sqldb_store,
             runner,
             connection_resolver,
             schedule_store,
@@ -439,6 +463,16 @@ impl WorkerServiceImpl {
             app_id,
             private_key,
         ))
+    }
+
+    /// Get session SQL database store or return unavailable error
+    #[allow(clippy::result_large_err)]
+    fn sqldb_store(
+        &self,
+    ) -> Result<&Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>, Status> {
+        self.sqldb_store
+            .as_ref()
+            .ok_or_else(|| Status::unavailable("Session SQL database not available"))
     }
 
     /// Get organization public_id from org_id
@@ -594,6 +628,66 @@ fn session_schedule_to_proto(
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
     }
+}
+
+/// Convert a SessionSqlDbError to a gRPC Status with appropriate error codes.
+fn sqldb_error_to_status(e: everruns_core::session_sqldb::SessionSqlDbError) -> Status {
+    use everruns_core::session_sqldb::SessionSqlDbError;
+    match &e {
+        SessionSqlDbError::DatabaseNotFound(_) => Status::not_found(e.to_string()),
+        SessionSqlDbError::DatabaseAlreadyExists(_) => Status::already_exists(e.to_string()),
+        SessionSqlDbError::InvalidDatabaseName(_) => Status::invalid_argument(e.to_string()),
+        SessionSqlDbError::LimitExceeded(_) => Status::resource_exhausted(e.to_string()),
+        SessionSqlDbError::QueryTimeout(_) => Status::deadline_exceeded(e.to_string()),
+        SessionSqlDbError::AuthorizerBlocked(_) => Status::permission_denied(e.to_string()),
+        SessionSqlDbError::QueryError(_) | SessionSqlDbError::ResultTooLarge(_) => {
+            Status::failed_precondition(e.to_string())
+        }
+        SessionSqlDbError::Internal(_) => {
+            tracing::error!("Internal sqldb error: {}", e);
+            Status::internal("Internal SQL database error")
+        }
+    }
+}
+
+/// Convert a DatabaseInfo to its proto representation.
+fn db_info_to_proto(
+    db: everruns_core::session_sqldb::DatabaseInfo,
+) -> proto::SessionSqlDbDatabaseInfo {
+    use everruns_internal_protocol::datetime_to_proto_timestamp;
+    proto::SessionSqlDbDatabaseInfo {
+        name: db.name,
+        size_bytes: db.size_bytes,
+        page_count: db.page_count,
+        created_at: Some(datetime_to_proto_timestamp(db.created_at)),
+        updated_at: Some(datetime_to_proto_timestamp(db.updated_at)),
+    }
+}
+
+/// Convert a serde_json::Value to a proto Value for query result rows.
+fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
+    let kind = match value {
+        serde_json::Value::Null => Some(prost_types::value::Kind::NullValue(0)),
+        serde_json::Value::Bool(b) => Some(prost_types::value::Kind::BoolValue(b)),
+        serde_json::Value::Number(n) => Some(prost_types::value::Kind::NumberValue(
+            n.as_f64().unwrap_or(0.0),
+        )),
+        serde_json::Value::String(s) => Some(prost_types::value::Kind::StringValue(s)),
+        serde_json::Value::Array(arr) => Some(prost_types::value::Kind::ListValue(
+            prost_types::ListValue {
+                values: arr.into_iter().map(json_value_to_proto).collect(),
+            },
+        )),
+        serde_json::Value::Object(map) => {
+            Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                fields: map
+                    .into_iter()
+                    .map(|(k, v)| (k, json_value_to_proto(v)))
+                    .collect(),
+            }))
+        }
+    };
+    prost_types::Value { kind }
 }
 
 /// Extract a Message from an Event's data field
@@ -2757,6 +2851,166 @@ impl WorkerService for WorkerServiceImpl {
     }
 
     // ========================================================================
+    // Session SQL database operations
+    // ========================================================================
+
+    async fn session_sql_db_create_database(
+        &self,
+        request: Request<SessionSqlDbCreateDatabaseRequest>,
+    ) -> Result<Response<SessionSqlDbCreateDatabaseResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let db = store
+            .create_database(session_id.into(), &req.name)
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        Ok(Response::new(SessionSqlDbCreateDatabaseResponse {
+            database: Some(db_info_to_proto(db)),
+        }))
+    }
+
+    async fn session_sql_db_list_databases(
+        &self,
+        request: Request<SessionSqlDbListDatabasesRequest>,
+    ) -> Result<Response<SessionSqlDbListDatabasesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let databases = store
+            .list_databases(session_id.into())
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        Ok(Response::new(SessionSqlDbListDatabasesResponse {
+            databases: databases.into_iter().map(db_info_to_proto).collect(),
+        }))
+    }
+
+    async fn session_sql_db_get_database(
+        &self,
+        request: Request<SessionSqlDbGetDatabaseRequest>,
+    ) -> Result<Response<SessionSqlDbGetDatabaseResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let db = store
+            .get_database(session_id.into(), &req.name)
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        Ok(Response::new(SessionSqlDbGetDatabaseResponse {
+            database: db.map(db_info_to_proto),
+        }))
+    }
+
+    async fn session_sql_db_delete_database(
+        &self,
+        request: Request<SessionSqlDbDeleteDatabaseRequest>,
+    ) -> Result<Response<SessionSqlDbDeleteDatabaseResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let deleted = store
+            .delete_database(session_id.into(), &req.name)
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        Ok(Response::new(SessionSqlDbDeleteDatabaseResponse {
+            deleted,
+        }))
+    }
+
+    async fn session_sql_db_execute(
+        &self,
+        request: Request<SessionSqlDbExecuteRequest>,
+    ) -> Result<Response<SessionSqlDbExecuteResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let result = store
+            .sql_execute(session_id.into(), &req.db_name, &req.sql)
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        Ok(Response::new(SessionSqlDbExecuteResponse {
+            rows_affected: result.rows_affected,
+        }))
+    }
+
+    async fn session_sql_db_query(
+        &self,
+        request: Request<SessionSqlDbQueryRequest>,
+    ) -> Result<Response<SessionSqlDbQueryResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let result = store
+            .sql_query(session_id.into(), &req.db_name, &req.sql)
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        let proto_rows: Vec<prost_types::ListValue> = result
+            .rows
+            .into_iter()
+            .map(|row| prost_types::ListValue {
+                values: row.into_iter().map(json_value_to_proto).collect(),
+            })
+            .collect();
+
+        Ok(Response::new(SessionSqlDbQueryResponse {
+            columns: result.columns,
+            rows: proto_rows,
+            row_count: result.row_count as u64,
+            truncated: result.truncated,
+        }))
+    }
+
+    async fn session_sql_db_schema(
+        &self,
+        request: Request<SessionSqlDbSchemaRequest>,
+    ) -> Result<Response<SessionSqlDbSchemaResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.sqldb_store()?;
+
+        let tables = store
+            .sql_schema(session_id.into(), &req.db_name, req.table.as_deref())
+            .await
+            .map_err(sqldb_error_to_status)?;
+
+        let proto_tables: Vec<proto::SessionSqlDbTableSchema> = tables
+            .into_iter()
+            .map(|t| proto::SessionSqlDbTableSchema {
+                name: t.name,
+                columns: t
+                    .columns
+                    .into_iter()
+                    .map(|c| proto::SessionSqlDbColumnSchema {
+                        name: c.name,
+                        column_type: c.column_type,
+                        notnull: c.notnull,
+                        pk: c.pk,
+                        default_value: c.default_value,
+                    })
+                    .collect(),
+                row_count: t.row_count,
+            })
+            .collect();
+
+        Ok(Response::new(SessionSqlDbSchemaResponse {
+            tables: proto_tables,
+        }))
+    }
+
+    // ========================================================================
     // Platform management operations
     // ========================================================================
 
@@ -3523,5 +3777,170 @@ mod tests {
         }
         let _config = grpc_server_tls_from_env();
         // cleanup won't run due to panic, but that's fine for test
+    }
+
+    // ========================================================================
+    // Session SQL database helper tests
+    // ========================================================================
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_not_found() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::DatabaseNotFound("test_db".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_already_exists() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::DatabaseAlreadyExists("test_db".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::AlreadyExists);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_invalid_name() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::InvalidDatabaseName("bad!name".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_limit_exceeded() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::LimitExceeded("max 10".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_query_error() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::QueryError("syntax error".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_timeout() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::QueryTimeout(30);
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_authorizer_blocked() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::AuthorizerBlocked("DROP TABLE".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::PermissionDenied);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_result_too_large() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::ResultTooLarge("1MB limit".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[test]
+    fn test_sqldb_error_to_status_maps_internal() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::Internal("unexpected".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    #[test]
+    fn test_json_value_to_proto_null() {
+        let val = json_value_to_proto(serde_json::Value::Null);
+        assert!(matches!(
+            val.kind,
+            Some(prost_types::value::Kind::NullValue(0))
+        ));
+    }
+
+    #[test]
+    fn test_json_value_to_proto_string() {
+        let val = json_value_to_proto(serde_json::Value::String("hello".into()));
+        assert!(
+            matches!(val.kind, Some(prost_types::value::Kind::StringValue(ref s)) if s == "hello")
+        );
+    }
+
+    #[test]
+    fn test_json_value_to_proto_number() {
+        let val = json_value_to_proto(serde_json::json!(42.0));
+        assert!(
+            matches!(val.kind, Some(prost_types::value::Kind::NumberValue(n)) if (n - 42.0).abs() < f64::EPSILON)
+        );
+    }
+
+    #[test]
+    fn test_json_value_to_proto_bool() {
+        let val = json_value_to_proto(serde_json::Value::Bool(true));
+        assert!(matches!(
+            val.kind,
+            Some(prost_types::value::Kind::BoolValue(true))
+        ));
+    }
+
+    #[test]
+    fn test_json_value_to_proto_array() {
+        let val = json_value_to_proto(serde_json::json!([1, "two", null]));
+        match val.kind {
+            Some(prost_types::value::Kind::ListValue(list)) => {
+                assert_eq!(list.values.len(), 3);
+                assert!(matches!(
+                    list.values[0].kind,
+                    Some(prost_types::value::Kind::NumberValue(_))
+                ));
+                assert!(matches!(
+                    list.values[1].kind,
+                    Some(prost_types::value::Kind::StringValue(_))
+                ));
+                assert!(matches!(
+                    list.values[2].kind,
+                    Some(prost_types::value::Kind::NullValue(_))
+                ));
+            }
+            _ => panic!("Expected ListValue"),
+        }
+    }
+
+    #[test]
+    fn test_json_value_to_proto_object() {
+        let val = json_value_to_proto(serde_json::json!({"key": "value", "num": 42}));
+        match val.kind {
+            Some(prost_types::value::Kind::StructValue(s)) => {
+                assert_eq!(s.fields.len(), 2);
+                assert!(s.fields.contains_key("key"));
+                assert!(s.fields.contains_key("num"));
+            }
+            _ => panic!("Expected StructValue"),
+        }
+    }
+
+    #[test]
+    fn test_db_info_to_proto_roundtrip() {
+        use chrono::Utc;
+        let now = Utc::now();
+        let info = everruns_core::session_sqldb::DatabaseInfo {
+            name: "test_db".into(),
+            size_bytes: 4096,
+            page_count: 1,
+            created_at: now,
+            updated_at: now,
+        };
+        let proto = db_info_to_proto(info);
+        assert_eq!(proto.name, "test_db");
+        assert_eq!(proto.size_bytes, 4096);
+        assert_eq!(proto.page_count, 1);
+        assert!(proto.created_at.is_some());
+        assert!(proto.updated_at.is_some());
     }
 }

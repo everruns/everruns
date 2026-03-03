@@ -71,6 +71,7 @@ image.workspace = true  # For image thumbnail generation
 # gRPC
 tonic.workspace = true
 prost.workspace = true
+prost-types.workspace = true
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "http2"] }

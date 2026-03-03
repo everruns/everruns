@@ -38,3 +38,4 @@ url = "2.5"
 
 # gRPC dependencies
 tonic.workspace = true
+prost-types.workspace = true

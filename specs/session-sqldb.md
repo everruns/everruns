@@ -418,6 +418,8 @@ CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id
 - [x] Seed agent: Data Analyst
 - [x] Integration tests (CRUD, schema, validation)
 - [x] E2E verified: agent session with LLM using sql_execute/sql_query tools
+- [x] gRPC support: proto RPCs, GrpcSessionSqlDbStore adapter, server handlers
+- [x] WorkerAdapters::sqldb_store() returns non-optional (enforced at compile time)
 - [ ] PostgreSQL VFS backend (production)
 - [ ] UI integration
 - [ ] Load testing (concurrent queries, size limit enforcement, connection pool exhaustion)

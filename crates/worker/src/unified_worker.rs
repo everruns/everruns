@@ -792,10 +792,8 @@ async fn execute_act_activity<A: WorkerAdapters>(
         .with_session_store(session_store)
         .with_session_mutator(session_mutator)
         .with_agent_store(agent_store);
-    if let Some(sqldb_store) = adapters.sqldb_store() {
-        atom = atom.with_sqldb_store(sqldb_store);
-    }
     atom = atom
+        .with_sqldb_store(adapters.sqldb_store())
         .with_storage_store(adapters.storage_store())
         .with_connection_resolver(adapters.connection_resolver())
         .with_schedule_store(adapters.schedule_store())

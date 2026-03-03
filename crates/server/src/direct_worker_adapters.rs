@@ -61,7 +61,7 @@ pub struct DirectWorkerAdapters {
     llm_resolver: Arc<LlmResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
-    sqldb_store: Option<everruns_core::traits::SessionSqlDbStoreRef>,
+    sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
     schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>>,
@@ -76,6 +76,7 @@ impl DirectWorkerAdapters {
         llm_resolver: Arc<LlmResolverService>,
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
+        sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     ) -> Self {
         Self {
             db,
@@ -83,7 +84,7 @@ impl DirectWorkerAdapters {
             llm_resolver,
             mcp_server_service,
             capability_registry,
-            sqldb_store: None,
+            sqldb_store,
             storage_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -94,12 +95,6 @@ impl DirectWorkerAdapters {
     /// Set the agent runner for platform management tools (send_message, etc.)
     pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
         self.runner = Some(runner);
-        self
-    }
-
-    /// Set the SQL database store for session-scoped SQL databases
-    pub fn with_sqldb_store(mut self, store: everruns_core::traits::SessionSqlDbStoreRef) -> Self {
-        self.sqldb_store = Some(store);
         self
     }
 
@@ -816,7 +811,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         create_driver_registry()
     }
 
-    fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
+    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
         self.sqldb_store.clone()
     }
 
