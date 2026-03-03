@@ -214,9 +214,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session SQL database store (if available).
     ///
-    /// Returns None when the backend can't support session SQL databases
-    /// (e.g. gRPC workers — SQLite is inherently local/in-memory).
-    // TODO(EVE-44): Add gRPC proxy for session SQL databases
+    /// Returns None when the backend doesn't yet expose session SQL databases
+    /// via gRPC. The store is PostgreSQL-backed and should be available in all
+    /// deployment modes once gRPC support is added (EVE-44).
     fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
         None
     }
