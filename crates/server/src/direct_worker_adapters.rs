@@ -820,26 +820,30 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
-        self.storage_store.clone()
+    fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
+        self.storage_store
+            .clone()
+            .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
     }
 
-    fn connection_resolver(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
-        self.connection_resolver.clone()
+    fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+        self.connection_resolver.clone().expect(
+            "DirectWorkerAdapters: connection_resolver not set (call with_connection_resolver)",
+        )
     }
 
-    fn schedule_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
-        self.schedule_store.clone()
+    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+        self.schedule_store
+            .clone()
+            .expect("DirectWorkerAdapters: schedule_store not set (call with_schedule_store)")
     }
 
-    fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
-        Some(Arc::new(DirectPlatformStore::new(
+    fn platform_store(&self) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+        Arc::new(DirectPlatformStore::new(
             self.db.clone(),
             self.event_service.clone(),
             self.runner.clone(),
-        )))
+        ))
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

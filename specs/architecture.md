@@ -276,6 +276,8 @@ The `TaskWorker` provides a unified worker implementation that works with both i
    - `emit_event()`, `get_model_with_provider()`
    - `read_file()`, `write_file()` (session filesystem)
    - `load_turn_context()` - Batched context loading
+   - `storage_store()`, `platform_store()`, `connection_resolver()`, `schedule_store()` — **required**, non-optional
+   - `sqldb_store()` — optional with default `None` until gRPC support added (EVE-44)
 
 2. **Implementations**:
    - `DirectWorkerAdapters` - Direct storage access (in-process workers)
@@ -288,11 +290,14 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 | DEV_MODE | `InMemoryWorkflowEventStore` | `DirectWorkerAdapters` | Local development |
 | Production | `PostgresWorkflowEventStore` | `GrpcWorkerAdapters` | External workers |
 
+**Adapter Parity Principle**: Both `DirectWorkerAdapters` and `GrpcWorkerAdapters` must implement every `WorkerAdapters` method. The trait enforces this at compile time: store accessors have no default implementations, so adding a new store requires updating both adapters or the build fails. Methods return `Arc<dyn T>` (non-optional) to guarantee the store is available in both backends. The only exception is `sqldb_store()` which returns `Option` with a default `None` until gRPC support is added (tracked in EVE-44).
+
 **Benefits of Unified Architecture**:
 - Single codebase for activity implementations (input, reason, act)
 - Shared task scheduling logic
 - Easy to test with mock adapters
 - Consistent behavior across deployment modes
+- Compile-time enforcement of adapter parity
 
 ### Core Abstractions (`everruns-core`)
 

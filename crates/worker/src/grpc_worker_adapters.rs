@@ -325,15 +325,27 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         create_driver_registry()
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
-        Some(Arc::new(GrpcSessionStorageStore::new(self.client.clone())))
+    fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
+        Arc::new(GrpcSessionStorageStore::new(self.client.clone()))
     }
 
-    fn platform_store(&self) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
-        Some(Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
+    fn platform_store(&self) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+        Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
             self.client.clone(),
             everruns_core::DEFAULT_ORG_ID,
-        )))
+        ))
+    }
+
+    fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+        Arc::new(crate::grpc_adapters::GrpcConnectionResolver::new(
+            self.client.clone(),
+        ))
+    }
+
+    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+        Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
+            self.client.clone(),
+        ))
     }
 
     async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {

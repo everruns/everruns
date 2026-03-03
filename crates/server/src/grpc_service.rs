@@ -25,6 +25,9 @@ use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
     AddMessageResponse,
+    // Session schedule operations
+    CancelSessionScheduleRequest,
+    CancelSessionScheduleResponse,
     CheckCircuitBreakerRequest,
     CheckCircuitBreakerResponse,
     CircuitBreakerState as ProtoCircuitBreakerState,
@@ -36,8 +39,12 @@ use everruns_internal_protocol::proto::{
     CompleteDurableTaskResponse,
     CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse,
+    CountActiveSessionSchedulesRequest,
+    CountActiveSessionSchedulesResponse,
     CreateDurableWorkflowRequest,
     CreateDurableWorkflowResponse,
+    CreateSessionScheduleRequest,
+    CreateSessionScheduleResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DurableWorkflowStatus,
@@ -50,6 +57,9 @@ use everruns_internal_protocol::proto::{
     FailDurableTaskResponse,
     GetAgentRequest,
     GetAgentResponse,
+    // Connection token resolution
+    GetConnectionTokenRequest,
+    GetConnectionTokenResponse,
     GetDefaultModelRequest,
     GetDefaultModelResponse,
     GetDurableWorkflowStatusRequest,
@@ -68,6 +78,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    ListSessionSchedulesRequest,
+    ListSessionSchedulesResponse,
     LoadMessagesRequest,
     LoadMessagesResponse,
     McpServerInfo,
@@ -285,6 +297,10 @@ pub struct WorkerServiceImpl {
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
+    connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    /// Session schedule store for schedule CRUD
+    schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>>,
 }
 
 impl WorkerServiceImpl {
@@ -326,6 +342,29 @@ impl WorkerServiceImpl {
                 }
             });
 
+        // Create connection resolver (requires encryption for token decryption)
+        let connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> =
+            encryption.as_ref().map(|enc| {
+                // GitHub App token minting requires env vars (set in production via Doppler)
+                let github_app_minter = Self::github_app_minter_from_env();
+                Arc::new(crate::storage::DbConnectionResolver::new(
+                    db.as_ref().clone(),
+                    enc.as_ref().clone(),
+                    github_app_minter,
+                )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
+            });
+
+        // Create schedule store (PostgreSQL mode only)
+        let schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> =
+            if db.pool().is_some() {
+                Some(Arc::new(crate::storage::DbSessionScheduleStore::new(
+                    db.clone(),
+                    DEFAULT_ORG_ID,
+                )))
+            } else {
+                None
+            };
+
         Self {
             event_service,
             agent_service,
@@ -340,6 +379,8 @@ impl WorkerServiceImpl {
             db,
             session_storage_store,
             runner,
+            connection_resolver,
+            schedule_store,
         }
     }
 
@@ -364,6 +405,40 @@ impl WorkerServiceImpl {
         self.session_storage_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Session storage not available"))
+    }
+
+    /// Get connection resolver or return unavailable error
+    #[allow(clippy::result_large_err)]
+    fn connection_resolver(
+        &self,
+    ) -> Result<&Arc<dyn everruns_core::traits::UserConnectionResolver>, Status> {
+        self.connection_resolver
+            .as_ref()
+            .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
+    }
+
+    /// Get schedule store or return unavailable error
+    #[allow(clippy::result_large_err)]
+    fn schedule_store(
+        &self,
+    ) -> Result<&Arc<dyn everruns_core::traits::SessionScheduleStore>, Status> {
+        self.schedule_store
+            .as_ref()
+            .ok_or_else(|| Status::unavailable("Schedule store not available"))
+    }
+
+    /// Build a GitHubAppTokenMinter from environment variables (if configured).
+    fn github_app_minter_from_env() -> Option<crate::storage::GitHubAppTokenMinter> {
+        let app_id = std::env::var("GITHUB_APP_ID")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        let private_key = std::env::var("GITHUB_APP_PRIVATE_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        Some(crate::storage::GitHubAppTokenMinter::new(
+            app_id,
+            private_key,
+        ))
     }
 
     /// Get organization public_id from org_id
@@ -487,6 +562,38 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .ok_or_else(|| Status::invalid_argument("Missing UUID"))?;
     uuid::Uuid::parse_str(uuid_str)
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
+}
+
+/// Convert a SessionSchedule to proto representation.
+fn session_schedule_to_proto(
+    s: &everruns_core::session_schedule::SessionSchedule,
+) -> proto::SessionScheduleProto {
+    use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+    let schedule_type = match s.schedule_type {
+        everruns_core::session_schedule::ScheduleType::Recurring => "recurring".to_string(),
+        everruns_core::session_schedule::ScheduleType::OneShot => "oneshot".to_string(),
+    };
+
+    proto::SessionScheduleProto {
+        id: Some(proto::Uuid {
+            value: s.id.uuid().to_string(),
+        }),
+        session_id: Some(proto::Uuid {
+            value: s.session_id.uuid().to_string(),
+        }),
+        description: s.description.clone(),
+        cron_expression: s.cron_expression.clone(),
+        scheduled_at: s.scheduled_at.map(datetime_to_proto_timestamp),
+        timezone: s.timezone.clone(),
+        schedule_type,
+        enabled: s.enabled,
+        next_trigger_at: s.next_trigger_at.map(datetime_to_proto_timestamp),
+        last_triggered_at: s.last_triggered_at.map(datetime_to_proto_timestamp),
+        trigger_count: s.trigger_count as i32,
+        created_at: Some(datetime_to_proto_timestamp(s.created_at)),
+        updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+    }
 }
 
 /// Extract a Message from an Event's data field
@@ -2524,6 +2631,129 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(SessionStorageListSecretsResponse {
             secrets: proto_secrets,
         }))
+    }
+
+    // ========================================================================
+    // Connection token resolution
+    // ========================================================================
+
+    async fn get_connection_token(
+        &self,
+        request: Request<GetConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let resolver = self.connection_resolver()?;
+
+        let token = resolver
+            .get_connection_token(session_id.into(), &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve connection token: {}", e);
+                Status::internal("Failed to resolve connection token")
+            })?;
+
+        Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
+    // ========================================================================
+    // Session schedule operations
+    // ========================================================================
+
+    async fn create_session_schedule(
+        &self,
+        request: Request<CreateSessionScheduleRequest>,
+    ) -> Result<Response<CreateSessionScheduleResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.schedule_store()?;
+
+        let scheduled_at = req
+            .scheduled_at
+            .as_ref()
+            .map(everruns_internal_protocol::proto_timestamp_to_datetime);
+
+        let schedule = store
+            .create_schedule(
+                session_id.into(),
+                req.description,
+                req.cron_expression,
+                scheduled_at,
+                req.timezone,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create schedule: {}", e);
+                Status::internal(format!("Failed to create schedule: {}", e))
+            })?;
+
+        Ok(Response::new(CreateSessionScheduleResponse {
+            schedule: Some(session_schedule_to_proto(&schedule)),
+        }))
+    }
+
+    async fn cancel_session_schedule(
+        &self,
+        request: Request<CancelSessionScheduleRequest>,
+    ) -> Result<Response<CancelSessionScheduleResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let schedule_id = parse_uuid(req.schedule_id.as_ref())?;
+        let store = self.schedule_store()?;
+
+        let schedule = store
+            .cancel_schedule(
+                session_id.into(),
+                everruns_core::typed_id::ScheduleId::from_uuid(schedule_id),
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to cancel schedule: {}", e);
+                Status::internal(format!("Failed to cancel schedule: {}", e))
+            })?;
+
+        Ok(Response::new(CancelSessionScheduleResponse {
+            schedule: Some(session_schedule_to_proto(&schedule)),
+        }))
+    }
+
+    async fn list_session_schedules(
+        &self,
+        request: Request<ListSessionSchedulesRequest>,
+    ) -> Result<Response<ListSessionSchedulesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.schedule_store()?;
+
+        let schedules = store.list_schedules(session_id.into()).await.map_err(|e| {
+            tracing::error!("Failed to list schedules: {}", e);
+            Status::internal(format!("Failed to list schedules: {}", e))
+        })?;
+
+        let proto_schedules = schedules.iter().map(session_schedule_to_proto).collect();
+
+        Ok(Response::new(ListSessionSchedulesResponse {
+            schedules: proto_schedules,
+        }))
+    }
+
+    async fn count_active_session_schedules(
+        &self,
+        request: Request<CountActiveSessionSchedulesRequest>,
+    ) -> Result<Response<CountActiveSessionSchedulesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.schedule_store()?;
+
+        let count = store
+            .count_active_schedules(session_id.into())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to count active schedules: {}", e);
+                Status::internal(format!("Failed to count active schedules: {}", e))
+            })?;
+
+        Ok(Response::new(CountActiveSessionSchedulesResponse { count }))
     }
 
     // ========================================================================

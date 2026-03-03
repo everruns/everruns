@@ -125,6 +125,18 @@ service WorkerService {
     // Get MCP server info by name prefix (for tool execution)
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
 
+    // === User connection token resolution ===
+    // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
+    // Server-side decrypts stored tokens or mints fresh GitHub App tokens
+    rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
+
+    // === Session schedule operations ===
+    // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
+    rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
+    rpc CancelSessionSchedule(CancelSessionScheduleRequest) returns (CancelSessionScheduleResponse);
+    rpc ListSessionSchedules(ListSessionSchedulesRequest) returns (ListSessionSchedulesResponse);
+    rpc CountActiveSessionSchedules(CountActiveSessionSchedulesRequest) returns (CountActiveSessionSchedulesResponse);
+
     // === Session storage operations ===
     // Key/value and secret storage for session-scoped data
 
@@ -1002,6 +1014,76 @@ message SessionStorageListSecretsRequest {
 
 message SessionStorageListSecretsResponse {
     repeated StorageSecretInfo secrets = 1;
+}
+
+// ============================================================================
+// User connection token types
+// ============================================================================
+
+message GetConnectionTokenRequest {
+    Uuid session_id = 1;
+    string provider = 2;  // e.g. "github", "daytona", "gitlab"
+}
+
+message GetConnectionTokenResponse {
+    optional string token = 1;  // Decrypted token, or None if not connected
+}
+
+// ============================================================================
+// Session schedule types
+// ============================================================================
+
+message SessionScheduleProto {
+    Uuid id = 1;
+    Uuid session_id = 2;
+    string description = 3;
+    optional string cron_expression = 4;
+    optional Timestamp scheduled_at = 5;
+    string timezone = 6;
+    string schedule_type = 7;  // "oneshot" or "recurring"
+    bool enabled = 8;
+    optional Timestamp next_trigger_at = 9;
+    optional Timestamp last_triggered_at = 10;
+    int32 trigger_count = 11;
+    Timestamp created_at = 12;
+    Timestamp updated_at = 13;
+}
+
+message CreateSessionScheduleRequest {
+    Uuid session_id = 1;
+    string description = 2;
+    optional string cron_expression = 3;
+    optional Timestamp scheduled_at = 4;
+    string timezone = 5;
+}
+
+message CreateSessionScheduleResponse {
+    SessionScheduleProto schedule = 1;
+}
+
+message CancelSessionScheduleRequest {
+    Uuid session_id = 1;
+    Uuid schedule_id = 2;
+}
+
+message CancelSessionScheduleResponse {
+    SessionScheduleProto schedule = 1;
+}
+
+message ListSessionSchedulesRequest {
+    Uuid session_id = 1;
+}
+
+message ListSessionSchedulesResponse {
+    repeated SessionScheduleProto schedules = 1;
+}
+
+message CountActiveSessionSchedulesRequest {
+    Uuid session_id = 1;
+}
+
+message CountActiveSessionSchedulesResponse {
+    uint32 count = 1;
 }
 
 // ============================================================================

@@ -795,18 +795,11 @@ async fn execute_act_activity<A: WorkerAdapters>(
     if let Some(sqldb_store) = adapters.sqldb_store() {
         atom = atom.with_sqldb_store(sqldb_store);
     }
-    if let Some(storage_store) = adapters.storage_store() {
-        atom = atom.with_storage_store(storage_store);
-    }
-    if let Some(connection_resolver) = adapters.connection_resolver() {
-        atom = atom.with_connection_resolver(connection_resolver);
-    }
-    if let Some(schedule_store) = adapters.schedule_store() {
-        atom = atom.with_schedule_store(schedule_store);
-    }
-    if let Some(platform_store) = adapters.platform_store() {
-        atom = atom.with_platform_store(platform_store);
-    }
+    atom = atom
+        .with_storage_store(adapters.storage_store())
+        .with_connection_resolver(adapters.connection_resolver())
+        .with_schedule_store(adapters.schedule_store())
+        .with_platform_store(adapters.platform_store());
 
     let result = atom.execute(input.clone()).await?;
 
