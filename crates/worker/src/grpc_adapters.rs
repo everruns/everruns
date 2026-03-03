@@ -2275,6 +2275,38 @@ mod tests {
     }
 
     #[test]
+    fn test_proto_value_to_json_struct() {
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert(
+            "key".to_string(),
+            prost_types::Value {
+                kind: Some(prost_types::value::Kind::StringValue("value".into())),
+            },
+        );
+        fields.insert(
+            "num".to_string(),
+            prost_types::Value {
+                kind: Some(prost_types::value::Kind::NumberValue(42.0)),
+            },
+        );
+        let val = prost_types::Value {
+            kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                fields: fields.into_iter().collect(),
+            })),
+        };
+        let json = proto_value_to_json(val);
+        assert_eq!(json["key"], "value");
+        assert_eq!(json["num"], 42.0);
+    }
+
+    #[test]
+    fn test_grpc_status_to_sqldb_error_unmapped_code_falls_to_internal() {
+        let status = tonic::Status::unimplemented("not implemented");
+        let err = grpc_status_to_sqldb_error(status);
+        assert!(matches!(err, SessionSqlDbError::Internal(_)));
+    }
+
+    #[test]
     fn test_proto_db_info_to_core() {
         let proto = proto::SessionSqlDbDatabaseInfo {
             name: "test".into(),

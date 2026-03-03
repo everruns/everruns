@@ -690,7 +690,6 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
     prost_types::Value { kind }
 }
 
-
 /// Extract a Message from an Event's data field
 ///
 /// Events returned from EventService already have data parsed into EventData.
@@ -3841,6 +3840,14 @@ mod tests {
     }
 
     #[test]
+    fn test_sqldb_error_to_status_maps_result_too_large() {
+        use everruns_core::session_sqldb::SessionSqlDbError;
+        let err = SessionSqlDbError::ResultTooLarge("1MB limit".into());
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[test]
     fn test_sqldb_error_to_status_maps_internal() {
         use everruns_core::session_sqldb::SessionSqlDbError;
         let err = SessionSqlDbError::Internal("unexpected".into());
@@ -3880,6 +3887,42 @@ mod tests {
             val.kind,
             Some(prost_types::value::Kind::BoolValue(true))
         ));
+    }
+
+    #[test]
+    fn test_json_value_to_proto_array() {
+        let val = json_value_to_proto(serde_json::json!([1, "two", null]));
+        match val.kind {
+            Some(prost_types::value::Kind::ListValue(list)) => {
+                assert_eq!(list.values.len(), 3);
+                assert!(matches!(
+                    list.values[0].kind,
+                    Some(prost_types::value::Kind::NumberValue(_))
+                ));
+                assert!(matches!(
+                    list.values[1].kind,
+                    Some(prost_types::value::Kind::StringValue(_))
+                ));
+                assert!(matches!(
+                    list.values[2].kind,
+                    Some(prost_types::value::Kind::NullValue(_))
+                ));
+            }
+            _ => panic!("Expected ListValue"),
+        }
+    }
+
+    #[test]
+    fn test_json_value_to_proto_object() {
+        let val = json_value_to_proto(serde_json::json!({"key": "value", "num": 42}));
+        match val.kind {
+            Some(prost_types::value::Kind::StructValue(s)) => {
+                assert_eq!(s.fields.len(), 2);
+                assert!(s.fields.contains_key("key"));
+                assert!(s.fields.contains_key("num"));
+            }
+            _ => panic!("Expected StructValue"),
+        }
     }
 
     #[test]
