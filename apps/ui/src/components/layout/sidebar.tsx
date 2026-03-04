@@ -83,8 +83,10 @@ const durableNavigation = [
 const devNavigation = [{ name: "Dev Tools", href: "/dev", icon: FlaskConical }];
 
 function getInitials(name: string): string {
+  if (!name.trim()) return "";
   return name
     .split(" ")
+    .filter((n) => n.length > 0)
     .map((n) => n[0])
     .join("")
     .toUpperCase()
@@ -335,12 +337,18 @@ export function Sidebar() {
           <DropdownMenu>
             <DropdownMenuTrigger className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-muted transition-colors">
               <Avatar className="h-8 w-8">
-                {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
-                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                {user.avatar_url && (
+                  <AvatarImage src={user.avatar_url} alt={user.name || user.email} />
+                )}
+                <AvatarFallback>
+                  {user.name ? getInitials(user.name) : <User className="h-4 w-4" />}
+                </AvatarFallback>
               </Avatar>
               <div className="flex-1 text-left">
-                <p className="font-medium truncate">{user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                <p className="font-medium truncate">{user.name || user.email}</p>
+                {user.name && (
+                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                )}
               </div>
               <ChevronUp className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>

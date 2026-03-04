@@ -1015,6 +1015,19 @@ export interface ListUsersQuery {
   search?: string;
 }
 
+/** Request to update current user profile */
+export interface UpdateProfileRequest {
+  name: string;
+}
+
+/** Response from profile update */
+export interface ProfileResponse {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+}
+
 // ============================================
 // Session File types (Virtual Filesystem)
 // ============================================

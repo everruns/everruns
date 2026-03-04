@@ -38,6 +38,7 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(screen.getByText("MCP Servers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.getByText("Profile")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
     expect(screen.getByText("API Keys")).toBeInTheDocument();
   });
@@ -64,6 +65,7 @@ describe("SettingsLayout", () => {
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const mcpServersLink = screen.getByRole("link", { name: /MCP Servers/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
+    const profileLink = screen.getByRole("link", { name: /Profile/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
 
@@ -71,6 +73,7 @@ describe("SettingsLayout", () => {
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(mcpServersLink).toHaveAttribute("href", "/settings/mcp-servers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
+    expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
   });
@@ -122,7 +125,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 6 navigation items", () => {
+  it("has exactly 7 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -130,7 +133,7 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(6);
+    expect(navLinks).toHaveLength(7);
   });
 
   it("groups items under correct sections", () => {
@@ -154,6 +157,7 @@ describe("SettingsLayout", () => {
 
     // Personal section contains its items
     const personalSection = personalLabel.closest("div[class]")!.parentElement!;
+    expect(personalSection).toHaveTextContent("Profile");
     expect(personalSection).toHaveTextContent("Connections");
     expect(personalSection).toHaveTextContent("API Keys");
     expect(personalSection).not.toHaveTextContent("General");
@@ -219,6 +223,18 @@ describe("SettingsLayout", () => {
 
     const mcpLink = screen.getByRole("link", { name: /MCP Servers/i });
     expect(mcpLink).toHaveClass("border-accent");
+  });
+
+  it("highlights active item for Profile page", () => {
+    mockPathname.mockReturnValue("/settings/profile");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const profileLink = screen.getByRole("link", { name: /Profile/i });
+    expect(profileLink).toHaveClass("border-accent");
   });
 
   it("highlights active item for Connections page", () => {

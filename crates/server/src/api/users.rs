@@ -7,7 +7,7 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
@@ -19,6 +19,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthState, AuthUser, ResolvedOrg};
+use crate::storage::models::UpdateUser;
 use axum::extract::FromRef;
 
 /// Cookie name for storing selected organization
@@ -76,10 +77,29 @@ pub struct SwitchOrgResponse {
     pub org_id: String,
 }
 
+/// Request to update current user's profile
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateProfileRequest {
+    /// New display name
+    #[schema(example = "Jane Doe")]
+    pub name: String,
+}
+
+/// Response from profile update
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProfileResponse {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
 /// Create users routes
 pub fn routes(state: UsersState) -> Router {
     Router::new()
         .route("/v1/users", get(list_users))
+        .route("/v1/users/me", patch(update_profile))
         .route("/v1/users/me/switch-org", post(switch_org))
         .with_state(state)
 }
@@ -133,6 +153,52 @@ pub async fn list_users(
         .collect();
 
     Ok(Json(ListResponse::new(users)))
+}
+
+/// PATCH /v1/users/me - Update current user's profile
+#[utoipa::path(
+    patch,
+    path = "/v1/users/me",
+    request_body = UpdateProfileRequest,
+    responses(
+        (status = 200, description = "Profile updated", body = ProfileResponse),
+        (status = 400, description = "Invalid request (empty name)"),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+pub async fn update_profile(
+    State(state): State<UsersState>,
+    auth: AuthUser,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Result<Json<ProfileResponse>, StatusCode> {
+    let name = req.name.trim().to_string();
+    if name.is_empty() || name.len() > 255 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let input = UpdateUser {
+        name: Some(name),
+        ..Default::default()
+    };
+
+    let row = state
+        .db
+        .update_user(auth.id, input)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update user profile: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(ProfileResponse {
+        id: row.id.to_string(),
+        email: row.email,
+        name: row.name,
+        avatar_url: row.avatar_url,
+    }))
 }
 
 /// POST /v1/users/me/switch-org - Switch current organization
@@ -226,5 +292,24 @@ mod tests {
 
         let query: ListUsersQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert_eq!(query.search, None);
+    }
+
+    #[test]
+    fn test_update_profile_request_deserialize() {
+        let req: UpdateProfileRequest = serde_json::from_str(r#"{"name": "New Name"}"#).unwrap();
+        assert_eq!(req.name, "New Name");
+    }
+
+    #[test]
+    fn test_profile_response_serialization() {
+        let resp = ProfileResponse {
+            id: "123".to_string(),
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            avatar_url: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("Test User"));
+        assert!(!json.contains("avatar_url"));
     }
 }

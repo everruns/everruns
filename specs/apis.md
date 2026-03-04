@@ -342,6 +342,14 @@ User-scoped external service accounts (e.g., GitHub) for repo access. See [user-
 | GET | `/v1/user/connections/github/authorize` | Start GitHub OAuth flow |
 | GET | `/v1/user/connections/github/callback` | GitHub OAuth callback |
 
+### Users
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/users` | List users in current organization (supports `?search=` query) |
+| PATCH | `/v1/users/me` | Update current user's profile (name). Max 255 chars. |
+| POST | `/v1/users/me/switch-org` | Switch current organization context |
+
 ### Agent Capabilities
 
 | Method | Path | Description |

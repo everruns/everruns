@@ -10,7 +10,13 @@ import {
   createApiKey,
   deleteApiKey,
 } from "@/lib/api/auth";
-import type { LoginRequest, RegisterRequest, CreateApiKeyRequest } from "@/lib/api/types";
+import { updateProfile } from "@/lib/api/users";
+import type {
+  LoginRequest,
+  RegisterRequest,
+  CreateApiKeyRequest,
+  UpdateProfileRequest,
+} from "@/lib/api/types";
 
 // Query keys
 export const authKeys = {
@@ -129,6 +135,20 @@ export function useDeleteApiKey() {
     mutationFn: (keyId: string) => deleteApiKey(keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: authKeys.apiKeys() });
+    },
+  });
+}
+
+/**
+ * Hook to update current user's profile
+ */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateProfileRequest) => updateProfile(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: authKeys.user() });
     },
   });
 }

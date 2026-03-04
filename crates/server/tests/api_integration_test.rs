@@ -1786,3 +1786,67 @@ async fn test_chat_harness_has_platform_management() {
         "Platform Chat harness should include platform_management capability"
     );
 }
+
+// ============================================
+// User Profile Tests
+// ============================================
+
+#[tokio::test]
+async fn test_update_profile_name() {
+    let server = TestServer::in_memory().await;
+
+    // Update profile name
+    let resp: Value = server
+        .patch("/v1/users/me", json!({ "name": "New Display Name" }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(resp["name"], "New Display Name");
+    assert!(resp["id"].is_string());
+    assert!(resp["email"].is_string());
+}
+
+#[tokio::test]
+async fn test_update_profile_trims_whitespace() {
+    let server = TestServer::in_memory().await;
+
+    let resp: Value = server
+        .patch("/v1/users/me", json!({ "name": "  Trimmed Name  " }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(resp["name"], "Trimmed Name");
+}
+
+#[tokio::test]
+async fn test_update_profile_rejects_empty_name() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .patch("/v1/users/me", json!({ "name": "" }))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_update_profile_rejects_whitespace_only_name() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .patch("/v1/users/me", json!({ "name": "   " }))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_update_profile_rejects_too_long_name() {
+    let server = TestServer::in_memory().await;
+
+    let long_name = "a".repeat(256);
+    server
+        .patch("/v1/users/me", json!({ "name": long_name }))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
