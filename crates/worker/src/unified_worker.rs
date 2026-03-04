@@ -797,7 +797,7 @@ async fn execute_act_activity<A: WorkerAdapters>(
         .with_storage_store(adapters.storage_store())
         .with_connection_resolver(adapters.connection_resolver())
         .with_schedule_store(adapters.schedule_store())
-        .with_platform_store(adapters.platform_store());
+        .with_platform_store(adapters.platform_store(org_id));
 
     let result = atom.execute(input.clone()).await?;
 

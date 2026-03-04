@@ -1964,9 +1964,9 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
         // Called infrequently, value stable across runtime
         static BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         BASE_URL.get_or_init(|| {
-            std::env::var("APP_URL")
-                .or_else(|_| std::env::var("PUBLIC_URL"))
-                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+            std::env::var("PUBLIC_APP_URL")
+                .or_else(|_| std::env::var("APP_URL"))
+                .unwrap_or_else(|_| "http://localhost:9300".to_string())
         })
     }
 }

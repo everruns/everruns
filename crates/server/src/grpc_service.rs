@@ -3578,9 +3578,9 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<PlatformGetBaseUrlRequest>,
     ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        let base_url = std::env::var("APP_URL")
-            .or_else(|_| std::env::var("PUBLIC_URL"))
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let base_url = std::env::var("PUBLIC_APP_URL")
+            .or_else(|_| std::env::var("APP_URL"))
+            .unwrap_or_else(|_| "http://localhost:9300".to_string());
 
         Ok(Response::new(PlatformGetBaseUrlResponse { base_url }))
     }

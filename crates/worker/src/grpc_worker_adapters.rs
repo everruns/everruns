@@ -333,10 +333,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcSessionStorageStore::new(self.client.clone()))
     }
 
-    fn platform_store(&self) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
         Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
             self.client.clone(),
-            everruns_core::DEFAULT_ORG_ID,
+            org_id,
         ))
     }
 
