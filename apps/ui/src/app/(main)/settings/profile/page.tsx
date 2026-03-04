@@ -110,15 +110,8 @@ export default function ProfilePage() {
             {/* Email (read-only) */}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                value={user?.email || ""}
-                readOnly
-                className="bg-muted"
-              />
-              <p className="text-xs text-muted-foreground">
-                Email cannot be changed.
-              </p>
+              <Input id="email" value={user?.email || ""} readOnly className="bg-muted" />
+              <p className="text-xs text-muted-foreground">Email cannot be changed.</p>
             </div>
           </div>
         </Card>

@@ -1,6 +1,12 @@
 // Users API client functions
 import { api } from "./client";
-import type { ListResponse, User, ListUsersQuery, UpdateProfileRequest, ProfileResponse } from "./types";
+import type {
+  ListResponse,
+  User,
+  ListUsersQuery,
+  UpdateProfileRequest,
+  ProfileResponse,
+} from "./types";
 
 /**
  * List all users with optional search
