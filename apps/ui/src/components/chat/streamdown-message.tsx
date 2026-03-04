@@ -11,6 +11,7 @@
 
 import { Streamdown, type StreamdownProps } from "streamdown";
 import { code } from "@streamdown/code";
+import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
 import type { ComponentType, AnchorHTMLAttributes } from "react";
@@ -120,7 +121,7 @@ export function StreamdownMessage({
         <Streamdown
           plugins={plugins}
           isAnimating={isAnimating}
-          remarkPlugins={[remarkGithubAlerts]}
+          remarkPlugins={[remarkGfm, remarkGithubAlerts]}
           components={markdownComponents}
         >
           {children}

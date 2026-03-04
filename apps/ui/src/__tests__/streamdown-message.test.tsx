@@ -15,6 +15,7 @@ jest.mock("@streamdown/code", () => ({
   code: { name: "mock-code-plugin" },
 }));
 
+jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 
 import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
@@ -108,6 +109,13 @@ describe("StreamdownMessage", () => {
 
     const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
     expect(plugins.code).toBeUndefined();
+  });
+
+  it("enables GFM parsing so plain URLs render as links", () => {
+    render(<StreamdownMessage>UI link: http://localhost:3000</StreamdownMessage>);
+
+    const remarkPlugins = capturedStreamdownProps.remarkPlugins as unknown[];
+    expect(remarkPlugins).toHaveLength(2);
   });
 });
 
