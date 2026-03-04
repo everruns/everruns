@@ -59,7 +59,7 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 |----------|-------|
 | Name | Platform Chat |
 | Seed ID | `harness_01933b5a000070008000000000000603` |
-| System Prompt | "You are a helpful assistant." |
+| System Prompt | See `crates/server/src/seed.rs` (CHAT_HARNESS) for full prompt |
 | Tags | `chat`, `seed` |
 
 **Capabilities:** Generic capabilities plus `platform_management`:
@@ -73,6 +73,11 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
 | `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools |
+
+**System prompt guidance includes:**
+- "Run agent" workflow: create session → send message → wait for idle → get results
+- Prefer built-in Generic harness over creating new ones
+- Confirm before creating harnesses or agents; use common sense for sessions
 
 **Use cases:**
 - Global chat interface (web UI at `/chat`)
