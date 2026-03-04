@@ -1,6 +1,6 @@
 // Users API client functions
 import { api } from "./client";
-import type { ListResponse, User, ListUsersQuery } from "./types";
+import type { ListResponse, User, ListUsersQuery, UpdateProfileRequest, ProfileResponse } from "./types";
 
 /**
  * List all users with optional search
@@ -20,6 +20,14 @@ export async function listUsers(query?: ListUsersQuery): Promise<User[]> {
 interface SwitchOrgResponse {
   success: boolean;
   org_id: string;
+}
+
+/**
+ * Update current user's profile (name).
+ */
+export async function updateProfile(req: UpdateProfileRequest): Promise<ProfileResponse> {
+  const response = await api.patch<ProfileResponse>("/v1/users/me", req);
+  return response.data;
 }
 
 /**

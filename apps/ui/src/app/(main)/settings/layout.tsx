@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Server, Key, Users, Plug, Building2, Cable } from "lucide-react";
+import { Server, Key, Users, Plug, Building2, Cable, User } from "lucide-react";
 
 interface NavItem {
   name: string;
@@ -51,6 +51,12 @@ const settingsSections: NavSection[] = [
   {
     label: "Personal",
     items: [
+      {
+        name: "Profile",
+        href: "/settings/profile",
+        icon: User,
+        description: "Manage your profile",
+      },
       {
         name: "Connections",
         href: "/settings/connections",
