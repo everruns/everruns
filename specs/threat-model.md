@@ -618,7 +618,7 @@ When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the 
 Agents with the `platform_management` capability can create, update, and delete harnesses, agents, and sessions within their organization. They can also send messages to any session and read responses.
 
 - **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
-- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) `DirectPlatformStore` uses existing storage layer with org_id filtering.
+- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) `DirectPlatformStore` uses existing storage layer with org_id filtering. (4) `WorkerAdapters::platform_store(org_id)` receives the session's actual org_id from activity context, preventing cross-org access via hardcoded defaults.
 - **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High

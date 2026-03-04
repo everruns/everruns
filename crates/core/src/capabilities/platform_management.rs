@@ -1184,7 +1184,7 @@ mod tests {
                     v["ui_link"]
                         .as_str()
                         .unwrap()
-                        .starts_with("http://localhost:3000/harnesses/")
+                        .starts_with("http://localhost:9300/harnesses/")
                 );
             }
             other => panic!("expected success, got: {other:?}"),

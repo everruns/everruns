@@ -162,7 +162,7 @@ pub trait PlatformStore: Send + Sync {
     // UI Links
     // =========================================================================
 
-    /// Base URL for constructing UI links (e.g., "http://localhost:3000").
+    /// Base URL for constructing UI links (e.g., "http://localhost:9300").
     fn base_url(&self) -> &str;
 }
 
@@ -383,7 +383,7 @@ pub mod tests {
             Ok(caps)
         }
         fn base_url(&self) -> &str {
-            "http://localhost:3000"
+            "http://localhost:9300"
         }
     }
 }

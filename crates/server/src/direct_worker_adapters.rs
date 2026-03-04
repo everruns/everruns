@@ -833,7 +833,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .expect("DirectWorkerAdapters: schedule_store not set (call with_schedule_store)")
     }
 
-    fn platform_store(&self) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    fn platform_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             self.db.clone(),
             self.event_service.clone(),
@@ -1069,9 +1072,9 @@ impl DirectPlatformStore {
     }
 
     fn base_url_from_env() -> String {
-        std::env::var("APP_URL")
-            .or_else(|_| std::env::var("PUBLIC_URL"))
-            .unwrap_or_else(|_| "http://localhost:3000".to_string())
+        std::env::var("PUBLIC_APP_URL")
+            .or_else(|_| std::env::var("APP_URL"))
+            .unwrap_or_else(|_| "http://localhost:9300".to_string())
     }
 
     fn row_to_harness(
