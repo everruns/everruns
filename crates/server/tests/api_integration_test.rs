@@ -1839,3 +1839,14 @@ async fn test_update_profile_rejects_whitespace_only_name() {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn test_update_profile_rejects_too_long_name() {
+    let server = TestServer::in_memory().await;
+
+    let long_name = "a".repeat(256);
+    server
+        .patch("/v1/users/me", json!({ "name": long_name }))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}

@@ -174,7 +174,7 @@ pub async fn update_profile(
     Json(req): Json<UpdateProfileRequest>,
 ) -> Result<Json<ProfileResponse>, StatusCode> {
     let name = req.name.trim().to_string();
-    if name.is_empty() {
+    if name.is_empty() || name.len() > 255 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
