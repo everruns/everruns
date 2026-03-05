@@ -29,6 +29,7 @@ use everruns_core::message_retriever::InputMessage;
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
+#[case::openai_gpt54(OPENAI_GPT54)]
 #[tokio::test]
 async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {
@@ -105,6 +106,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[rstest]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
+#[case::openai_gpt54(OPENAI_GPT54)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {

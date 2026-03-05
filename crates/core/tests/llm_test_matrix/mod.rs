@@ -90,6 +90,9 @@ pub const OPENAI_GPT4O_MINI: ProviderModelConfig =
 pub const OPENAI_GPT52: ProviderModelConfig =
     ProviderModelConfig::new(LlmProviderType::Openai, "gpt-5.2", "OPENAI_API_KEY");
 
+pub const OPENAI_GPT54: ProviderModelConfig =
+    ProviderModelConfig::new(LlmProviderType::Openai, "gpt-5.4", "OPENAI_API_KEY");
+
 pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
     LlmProviderType::Gemini,
     "gemini-2.0-flash",
