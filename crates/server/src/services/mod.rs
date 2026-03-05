@@ -2,6 +2,7 @@
 // Services own business logic and validation, calling storage directly
 
 pub mod agent;
+pub mod app;
 pub mod capability;
 pub mod event;
 pub mod harness;
@@ -18,6 +19,7 @@ pub mod skill;
 pub mod usage_tracking;
 
 pub use agent::AgentService;
+pub use app::AppService;
 pub use capability::CapabilityService;
 pub use event::EventService;
 pub use harness::HarnessService;

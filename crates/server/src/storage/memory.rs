@@ -58,6 +58,8 @@ pub struct InMemoryDatabase {
     session_schedules: RwLock<HashMap<ScheduleId, SessionScheduleRow>>,
     // Audit logs (TM-OBS-007)
     audit_logs: RwLock<Vec<AuditLogRow>>,
+    // Apps (deployable agent+harness bundles)
+    apps: RwLock<HashMap<Uuid, AppRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -105,6 +107,7 @@ impl Default for InMemoryDatabase {
             pinned_sessions: RwLock::new(HashMap::new()),
             session_schedules: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
+            apps: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -3703,6 +3706,109 @@ impl InMemoryDatabase {
         let initial = logs.len();
         logs.retain(|r| r.created_at >= before);
         Ok((initial - logs.len()) as u64)
+    }
+
+    // ============================================
+    // App CRUD
+    // ============================================
+
+    pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = AppRow {
+            id,
+            org_id,
+            public_id: input.public_id,
+            name: input.name,
+            description: input.description,
+            harness_id: input.harness_id,
+            agent_id: input.agent_id,
+            channel_type: input.channel_type,
+            channel_config: input.channel_config,
+            status: "draft".to_string(),
+            published_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.apps.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_app_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<AppRow>> {
+        let apps = self.apps.read();
+        Ok(apps
+            .values()
+            .find(|a| a.org_id == org_id && a.public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
+        let apps = self.apps.read();
+        let mut result: Vec<AppRow> = apps
+            .values()
+            .filter(|a| a.org_id == org_id && a.status != "archived")
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn update_app(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateApp,
+    ) -> Result<Option<AppRow>> {
+        let mut apps = self.apps.write();
+        let Some(app) = apps.get_mut(&id) else {
+            return Ok(None);
+        };
+        if app.org_id != org_id {
+            return Ok(None);
+        }
+        if let Some(name) = input.name {
+            app.name = name;
+        }
+        if let Some(description) = input.description {
+            app.description = Some(description);
+        }
+        if let Some(harness_id) = input.harness_id {
+            app.harness_id = harness_id;
+        }
+        if let Some(agent_id) = input.agent_id {
+            app.agent_id = agent_id;
+        }
+        if let Some(channel_type) = input.channel_type {
+            app.channel_type = channel_type;
+        }
+        if let Some(channel_config) = input.channel_config {
+            app.channel_config = channel_config;
+        }
+        if let Some(status) = input.status {
+            app.status = status;
+        }
+        if let Some(published_at) = input.published_at {
+            app.published_at = published_at;
+        }
+        app.updated_at = Self::now();
+        Ok(Some(app.clone()))
+    }
+
+    pub async fn delete_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let mut apps = self.apps.write();
+        let Some(app) = apps.get_mut(&id) else {
+            return Ok(false);
+        };
+        if app.org_id != org_id || app.status == "archived" {
+            return Ok(false);
+        }
+        app.status = "archived".to_string();
+        app.updated_at = Self::now();
+        Ok(true)
     }
 }
 

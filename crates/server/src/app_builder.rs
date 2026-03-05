@@ -396,6 +396,7 @@ impl ServerAppBuilder {
             api::commands::AppState::new(capability_service.clone(), auth_state.clone());
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
+        let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
@@ -462,6 +463,7 @@ impl ServerAppBuilder {
         // =====================================================================
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::apps::routes(apps_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
