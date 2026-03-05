@@ -168,6 +168,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -196,6 +197,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -224,6 +226,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -252,6 +255,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 65_536,
             }),
             modalities: Some(LlmModelModalities {
@@ -280,6 +284,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -308,6 +313,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -336,6 +342,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -364,6 +371,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -392,6 +400,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -421,6 +430,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -449,6 +459,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -477,6 +488,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -507,6 +519,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -535,6 +548,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -563,6 +577,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -591,6 +606,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -619,6 +635,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -648,6 +665,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -676,6 +694,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -704,6 +723,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -733,6 +753,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -762,6 +783,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -790,6 +812,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -818,6 +841,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -847,6 +871,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -876,6 +901,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_050_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -904,6 +930,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_050_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -933,6 +960,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -961,6 +989,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -989,6 +1018,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 16_384,
             }),
             modalities: Some(LlmModelModalities {
@@ -1018,6 +1048,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1046,6 +1077,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 100_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1074,6 +1106,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 32_768,
             }),
             modalities: Some(LlmModelModalities {
@@ -1112,6 +1145,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 128_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1140,6 +1174,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1169,6 +1204,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1197,6 +1233,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1225,6 +1262,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 16_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1254,6 +1292,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 32_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1283,6 +1322,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1311,6 +1351,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 32_000,
             }),
             modalities: Some(LlmModelModalities {
@@ -1340,6 +1381,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 64_000, // Extended output with thinking
             }),
             modalities: Some(LlmModelModalities {
@@ -1369,6 +1411,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 8_192,
             }),
             modalities: Some(LlmModelModalities {
@@ -1397,6 +1440,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 8_192,
             }),
             modalities: Some(LlmModelModalities {
@@ -1425,6 +1469,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 4_096,
             }),
             modalities: Some(LlmModelModalities {
@@ -1453,6 +1498,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 4_096,
             }),
             modalities: Some(LlmModelModalities {
@@ -1481,6 +1527,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
+                input: None,
                 output: 4_096,
             }),
             modalities: Some(LlmModelModalities {
@@ -1541,6 +1588,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
+                input: None,
                 output: 65_536,
             }),
             modalities: Some(LlmModelModalities {
@@ -1574,6 +1622,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
+                input: None,
                 output: 65_536,
             }),
             modalities: Some(LlmModelModalities {
@@ -1607,6 +1656,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
+                input: None,
                 output: 8_192,
             }),
             modalities: Some(LlmModelModalities {
@@ -1640,6 +1690,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 2_097_152,
+                input: None,
                 output: 8_192,
             }),
             modalities: Some(LlmModelModalities {
@@ -1673,6 +1724,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
+                input: None,
                 output: 8_192,
             }),
             modalities: Some(LlmModelModalities {
@@ -1714,6 +1766,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
+                input: None,
                 output: 64_000,
             }),
             modalities: Some(LlmModelModalities {

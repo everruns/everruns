@@ -295,6 +295,7 @@ function ModelRow({
                   Token Limits
                 </div>
                 <div>Context: {formatTokens(profile.limits.context)}</div>
+                {profile.limits.input && <div>Input: {formatTokens(profile.limits.input)}</div>}
                 <div>Output: {formatTokens(profile.limits.output)}</div>
               </div>
             )}

@@ -201,6 +201,9 @@ pub struct LlmModelCost {
 pub struct LlmModelLimits {
     /// Maximum context window size in tokens
     pub context: i32,
+    /// Maximum input tokens (if different from context - output)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<i32>,
     /// Maximum output tokens
     pub output: i32,
 }
