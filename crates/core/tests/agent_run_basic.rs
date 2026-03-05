@@ -33,6 +33,7 @@ use everruns_core::traits::ModelWithProvider;
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
@@ -65,6 +66,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
