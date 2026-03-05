@@ -856,6 +856,63 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             reasoning_effort: Some(reasoning_effort_gpt52()),
         }),
 
+        // GPT-5.4 models: 1.05M context, native computer use, released 2026-03-05
+        "gpt-5.4" => Some(LlmModelProfile {
+            name: "GPT-5.4".into(),
+            family: "gpt-5.4".into(),
+            release_date: Some("2026-03-05".into()),
+            last_updated: Some("2026-03-05".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-12-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 2.50,
+                output: 15.00,
+                cache_read: Some(0.25),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_050_000,
+                output: 128_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()),
+        }),
+
+        "gpt-5.4-pro" => Some(LlmModelProfile {
+            name: "GPT-5.4 Pro".into(),
+            family: "gpt-5.4-pro".into(),
+            release_date: Some("2026-03-05".into()),
+            last_updated: Some("2026-03-05".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-12-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 30.00,
+                output: 180.00,
+                cache_read: None,
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_050_000,
+                output: 128_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52_pro()),
+        }),
+
         // GPT-5 chat-latest models (point to latest chat-optimized versions)
         "gpt-5-chat-latest" => Some(LlmModelProfile {
             name: "GPT-5 Chat".into(),
@@ -1674,6 +1731,9 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
 fn normalize_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
+        // GPT-5.4 models
+        "gpt-5.4-pro",
+        "gpt-5.4",
         // GPT-5.3 models
         "gpt-5.3-codex",
         // GPT-5.2 models
@@ -2022,6 +2082,59 @@ mod tests {
     }
 
     #[test]
+    fn test_gpt54_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4").unwrap();
+        assert_eq!(profile.name, "GPT-5.4");
+        assert_eq!(profile.family, "gpt-5.4");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.structured_output);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 1_050_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 2.50).abs() < f64::EPSILON);
+        assert!((cost.output - 15.00).abs() < f64::EPSILON);
+        assert!((cost.cache_read.unwrap() - 0.25).abs() < f64::EPSILON);
+
+        // gpt-5.4: default none, supports none/low/medium/high/xhigh
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::None);
+        assert_eq!(effort.values.len(), 5);
+    }
+
+    #[test]
+    fn test_gpt54_pro_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-pro").unwrap();
+        assert_eq!(profile.name, "GPT-5.4 Pro");
+        assert_eq!(profile.family, "gpt-5.4-pro");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 1_050_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 30.00).abs() < f64::EPSILON);
+        assert!((cost.output - 180.00).abs() < f64::EPSILON);
+        assert!(cost.cache_read.is_none());
+
+        // gpt-5.4-pro: default medium, supports medium/high/xhigh
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::Medium);
+        assert_eq!(effort.values.len(), 3);
+    }
+
+    #[test]
+    fn test_gpt54_versioned() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-2026-03-05").unwrap();
+        assert_eq!(profile.name, "GPT-5.4");
+    }
+
+    #[test]
     fn test_normalize_gpt5_model_ids() {
         assert_eq!(normalize_model_id("gpt-5"), "gpt-5");
         assert_eq!(normalize_model_id("gpt-5-2025-08-07"), "gpt-5");
@@ -2040,6 +2153,9 @@ mod tests {
         assert_eq!(normalize_model_id("gpt-5.2-pro"), "gpt-5.2-pro");
         assert_eq!(normalize_model_id("gpt-5.2-codex"), "gpt-5.2-codex");
         assert_eq!(normalize_model_id("gpt-5.3-codex"), "gpt-5.3-codex");
+        assert_eq!(normalize_model_id("gpt-5.4"), "gpt-5.4");
+        assert_eq!(normalize_model_id("gpt-5.4-2026-03-05"), "gpt-5.4");
+        assert_eq!(normalize_model_id("gpt-5.4-pro"), "gpt-5.4-pro");
     }
 
     // GPT-4.1 model tests
