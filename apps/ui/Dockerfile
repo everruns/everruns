@@ -1,5 +1,11 @@
 # Multi-stage build for Next.js standalone output
-FROM node:22-alpine AS builder
+#
+# The builder stage is pinned to linux/amd64 because Next.js static page
+# generation runs V8 JIT-compiled code that crashes under QEMU arm64
+# user-mode emulation (SIGILL — V8 emits ARM64 instructions QEMU doesn't
+# support). The standalone output is platform-independent JS, so building
+# on amd64 and copying into the target-platform runtime image is safe.
+FROM --platform=linux/amd64 node:22-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
@@ -10,7 +16,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Production image
+# Production image — uses the target platform (amd64 or arm64)
 FROM node:22-alpine AS ui
 WORKDIR /app
 
