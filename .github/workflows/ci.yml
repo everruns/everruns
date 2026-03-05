@@ -599,10 +599,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
 
   # Aggregation gate for branch protection.
-  # Keeps the old "Build Check" name so existing branch protection rules work.
-  # TODO: rename required check to "CI" in branch protection, then rename this job.
   ci-success:
-    name: Build Check
+    name: CI
     runs-on: ubuntu-latest
     if: always()
     needs:
