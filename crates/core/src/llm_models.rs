@@ -392,6 +392,37 @@ mod tests {
     }
 
     #[test]
+    fn test_llm_model_limits_input_omitted_when_none() {
+        let limits = LlmModelLimits {
+            context: 200_000,
+            input: None,
+            output: 64_000,
+        };
+        let json = serde_json::to_value(&limits).unwrap();
+        assert!(!json.as_object().unwrap().contains_key("input"));
+    }
+
+    #[test]
+    fn test_llm_model_limits_input_included_when_some() {
+        let limits = LlmModelLimits {
+            context: 200_000,
+            input: Some(150_000),
+            output: 64_000,
+        };
+        let json = serde_json::to_value(&limits).unwrap();
+        assert_eq!(json["input"], 150_000);
+    }
+
+    #[test]
+    fn test_llm_model_limits_deserialize_without_input() {
+        let json = r#"{"context": 200000, "output": 64000}"#;
+        let limits: LlmModelLimits = serde_json::from_str(json).unwrap();
+        assert_eq!(limits.context, 200_000);
+        assert!(limits.input.is_none());
+        assert_eq!(limits.output, 64_000);
+    }
+
+    #[test]
     fn test_llm_provider_type_display() {
         // Verify Display works correctly
         assert_eq!(LlmProviderType::Openai.to_string(), "openai");

@@ -2491,6 +2491,7 @@ mod tests {
 
         let limits = profile.limits.unwrap();
         assert_eq!(limits.context, 1_048_576);
+        assert!(limits.input.is_none());
     }
 
     #[test]
