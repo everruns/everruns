@@ -48,6 +48,9 @@ jobs:
             dockerfile: apps/ui/Dockerfile
             image_name: everruns-ui
             context: apps/ui
+            # Next.js static generation crashes under QEMU arm64 emulation
+            # (signal 4 / Illegal instruction), so build amd64 only
+            amd64_only: true
 
     steps:
       - uses: actions/checkout@v4
@@ -95,10 +98,11 @@ jobs:
 
       # Build ARM64 only on main push, version tags, and release dispatches
       # PRs only build amd64 for faster CI
+      # Targets with amd64_only skip arm64 (e.g. Next.js crashes under QEMU)
       - name: Determine platforms
         id: platforms
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ matrix.amd64_only }}" = "true" ]; then
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
           else
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
