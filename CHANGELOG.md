@@ -11,6 +11,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.3] - 2026-03-06
+
+### Highlights
+
+- **GPT-5.4 Support** — Full model profiles for GPT-5.4 and GPT-5.4 Pro with input token limits ([#653](https://github.com/everruns/everruns/pull/653), [#654](https://github.com/everruns/everruns/pull/654), [#657](https://github.com/everruns/everruns/pull/657))
+- **Custom Commands** — Slash command system with UI autocomplete ([#667](https://github.com/everruns/everruns/pull/667))
+- **Security Hardening** — Per-IP rate limiting, structured audit logging, mTLS, security headers, account enumeration prevention ([#627](https://github.com/everruns/everruns/pull/627), [#633](https://github.com/everruns/everruns/pull/633), [#634](https://github.com/everruns/everruns/pull/634), [#636](https://github.com/everruns/everruns/pull/636), [#641](https://github.com/everruns/everruns/pull/641))
+- **Durable Engine Scaling** — Multi-instance control plane, capacity-aware fair-share claiming, worker backpressure ([#637](https://github.com/everruns/everruns/pull/637), [#638](https://github.com/everruns/everruns/pull/638), [#639](https://github.com/everruns/everruns/pull/639), [#640](https://github.com/everruns/everruns/pull/640))
+- **DuckDuckGo Search** — DuckDuckGo Instant Answer search integration ([#663](https://github.com/everruns/everruns/pull/663))
+
+### What's Changed
+
+- feat(core): add GPT-5.4 and GPT-5.4 Pro model profiles ([#653](https://github.com/everruns/everruns/pull/653)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add GPT-5.4 model profiles and integration tests ([#654](https://github.com/everruns/everruns/pull/654)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add optional input token limit to LlmModelLimits ([#657](https://github.com/everruns/everruns/pull/657)) by [@chaliy](https://github.com/chaliy)
+- feat(commands): add custom commands system with UI autocomplete ([#667](https://github.com/everruns/everruns/pull/667)) by [@chaliy](https://github.com/chaliy)
+- feat(duckduckgo): add DuckDuckGo Instant Answer search integration ([#663](https://github.com/everruns/everruns/pull/663)) by [@chaliy](https://github.com/chaliy)
+- feat(users): add profile page with full name editing ([#649](https://github.com/everruns/everruns/pull/649)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): Claude Code-style bash tool rendering ([#644](https://github.com/everruns/everruns/pull/644)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add list_capabilities tool to platform management ([#642](https://github.com/everruns/everruns/pull/642)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add risk level classification and admin approval ([#631](https://github.com/everruns/everruns/pull/631)) by [@chaliy](https://github.com/chaliy)
+- feat(grpc): add mutual TLS (mTLS) support for worker-server communication ([#641](https://github.com/everruns/everruns/pull/641)) by [@chaliy](https://github.com/chaliy)
+- feat(grpc): add gRPC support for sqldb_store in WorkerAdapters ([#645](https://github.com/everruns/everruns/pull/645)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): resource-based worker backpressure ([#638](https://github.com/everruns/everruns/pull/638)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): capacity-aware fair-share task claiming ([#639](https://github.com/everruns/everruns/pull/639)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): load-proportional claim jitter ([#640](https://github.com/everruns/everruns/pull/640)) by [@chaliy](https://github.com/chaliy)
+- feat(server): multi-instance control plane support ([#637](https://github.com/everruns/everruns/pull/637)) by [@chaliy](https://github.com/chaliy)
+- feat(server): structured audit logging for auth events ([#636](https://github.com/everruns/everruns/pull/636)) by [@chaliy](https://github.com/chaliy)
+- feat(server): add security response headers ([#634](https://github.com/everruns/everruns/pull/634)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): add per-IP rate limiting on auth endpoints ([#627](https://github.com/everruns/everruns/pull/627)) by [@chaliy](https://github.com/chaliy)
+- feat(storage): add encrypted system_prompt columns ([#630](https://github.com/everruns/everruns/pull/630)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): add run-agent, harness-avoidance, and confirmation guidelines to chat system prompt ([#648](https://github.com/everruns/everruns/pull/648)) by [@chaliy](https://github.com/chaliy)
+- feat(docs): add horizontal navigation tabs ([#662](https://github.com/everruns/everruns/pull/662)) by [@chaliy](https://github.com/chaliy)
+- feat: Slack bot integration with Apps abstraction ([#671](https://github.com/everruns/everruns/pull/671)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): provider icons invisible on light theme ([#670](https://github.com/everruns/everruns/pull/670)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): render plain URLs as links in chat markdown ([#646](https://github.com/everruns/everruns/pull/646)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): default to Generic harness in New Session dialog ([#632](https://github.com/everruns/everruns/pull/632)) by [@chaliy](https://github.com/chaliy)
+- fix(vfs): block deletion of readonly files ([#669](https://github.com/everruns/everruns/pull/669)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): scope platform store to session org and fix public URL default ([#647](https://github.com/everruns/everruns/pull/647)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): prevent account enumeration via registration endpoint ([#633](https://github.com/everruns/everruns/pull/633)) by [@chaliy](https://github.com/chaliy)
+- fix(api): add regex pattern length limit on grep endpoint ([#629](https://github.com/everruns/everruns/pull/629)) by [@chaliy](https://github.com/chaliy)
+- fix(server): warn when DATABASE_URL lacks TLS in production ([#628](https://github.com/everruns/everruns/pull/628)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): enforce WorkerAdapters parity at compile time ([#643](https://github.com/everruns/everruns/pull/643)) by [@chaliy](https://github.com/chaliy)
+- fix(docker): pin UI builder stage to amd64 to avoid QEMU SIGILL ([#652](https://github.com/everruns/everruns/pull/652)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): merge env-var SSE tests to prevent flaky race condition ([#656](https://github.com/everruns/everruns/pull/656)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): skip arm64 QEMU build for UI Docker image ([#651](https://github.com/everruns/everruns/pull/651)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): adjust risk levels, rename capabilities, add Daytona docs ([#675](https://github.com/everruns/everruns/pull/675)) by [@chaliy](https://github.com/chaliy)
+- refactor: rename GRPC_* env vars to WORKER_GRPC_* prefix ([#635](https://github.com/everruns/everruns/pull/635)) by [@chaliy](https://github.com/chaliy)
+- revert(server): remove system_prompt_encrypted ([#659](https://github.com/everruns/everruns/pull/659)) by [@chaliy](https://github.com/chaliy)
+- docs(capabilities): add Capabilities navigation tab with top 15 capability reference pages ([#672](https://github.com/everruns/everruns/pull/672)) by [@chaliy](https://github.com/chaliy)
+- docs: add tutorial for building agents using the Everruns SDK ([#661](https://github.com/everruns/everruns/pull/661)) by [@chaliy](https://github.com/chaliy)
+- docs: reduce duplication in building-agents-using-sdk tutorial ([#674](https://github.com/everruns/everruns/pull/674)) by [@chaliy](https://github.com/chaliy)
+- docs: improve meta descriptions for SEO ([#660](https://github.com/everruns/everruns/pull/660)) by [@chaliy](https://github.com/chaliy)
+- chore: pre-release maintenance — update dependencies ([#668](https://github.com/everruns/everruns/pull/668)) by [@chaliy](https://github.com/chaliy)
+- chore(migrations): squash 005_apps into 004_v0.8.3 ([#678](https://github.com/everruns/everruns/pull/678)) by [@chaliy](https://github.com/chaliy)
+- chore(db): squash migrations 004-006 into 004_v0.8.3 ([#673](https://github.com/everruns/everruns/pull/673)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump dompurify from 3.3.1 to 3.3.2 in /apps/docs ([#655](https://github.com/everruns/everruns/pull/655)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump svgo from 4.0.0 to 4.0.1 in /apps/docs ([#650](https://github.com/everruns/everruns/pull/650)) by [@dependabot](https://github.com/dependabot)
+- chore(docs): add IndexNow verification key file ([#658](https://github.com/everruns/everruns/pull/658)) by [@chaliy](https://github.com/chaliy)
+
+### Migration Notes
+
+**0.8.2 → 0.8.3:** Requires fresh database (new migration squash). The `GRPC_*` environment variables have been renamed to `WORKER_GRPC_*` — update your configuration accordingly.
+
 ## [0.8.2] - 2026-03-01
 
 ### Highlights
