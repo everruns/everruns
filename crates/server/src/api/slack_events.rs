@@ -168,7 +168,7 @@ async fn handle_slack_event(
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
-    // 4. Verify Slack signing secret
+    // 4. Verify Slack signing secret // THREAT[TM-SLACK-001]
     verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
         tracing::warn!(app_id = %app_id, error = %e, "Slack signature verification failed");
         ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
@@ -192,7 +192,7 @@ async fn handle_slack_event(
         }
         "event_callback" => {
             if let Some(event) = envelope.event {
-                // Skip bot messages to avoid loops
+                // Skip bot messages to avoid loops // THREAT[TM-SLACK-002]
                 if event.bot_id.is_some() || event.subtype.as_deref() == Some("bot_message") {
                     tracing::debug!(app_id = %app_id, "Skipping bot message");
                     return Ok((StatusCode::OK, Json(ack_json())));
