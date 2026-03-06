@@ -1,6 +1,6 @@
 ---
 title: Environment Variables
-description: Configuration environment variables for Everruns
+description: Complete reference for all Everruns environment variables, including database connections, authentication, encryption, and development mode configuration.
 ---
 
 ## DEV_MODE

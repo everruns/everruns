@@ -1,6 +1,6 @@
 ---
 title: Encryption Key Rotation
-description: How to rotate the secrets encryption key (KEK) used to encrypt sensitive data
+description: Step-by-step runbook for safely rotating the secrets encryption key (KEK) in Everruns, including key deployment, data re-encryption, and old key removal.
 ---
 
 This runbook describes how to rotate the secrets encryption key (KEK) used to encrypt sensitive data in the database.
