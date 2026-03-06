@@ -29,6 +29,7 @@ System-level feature flags that control feature availability across the platform
 | Flag | Env Var | Type | Description |
 |------|---------|------|-------------|
 | `global_chat` | `FEATURE_GLOBAL_CHAT` | Experimental | Per-user singleton chat session |
+| `apps` | `FEATURE_APPS` | Experimental | Apps (agent deployment to distribution channels) |
 
 ## Architecture
 

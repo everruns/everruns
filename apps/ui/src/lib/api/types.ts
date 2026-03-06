@@ -712,6 +712,7 @@ export type AuthMode = "none" | "admin" | "full" | "external";
 
 export interface FeatureFlags {
   global_chat: boolean;
+  apps: boolean;
 }
 
 export interface AuthConfigResponse {

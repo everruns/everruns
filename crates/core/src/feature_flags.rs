@@ -19,6 +19,8 @@ use crate::deployment::DeploymentGrade;
 pub struct FeatureFlags {
     /// Global chat (per-user singleton chat session). Experimental.
     pub global_chat: bool,
+    /// Apps (agent deployment to distribution channels). Experimental.
+    pub apps: bool,
 }
 
 impl FeatureFlags {
@@ -26,6 +28,7 @@ impl FeatureFlags {
     pub fn from_env(grade: &DeploymentGrade) -> Self {
         Self {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
+            apps: experimental_flag("FEATURE_APPS", grade),
         }
     }
 
@@ -33,6 +36,7 @@ impl FeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "global_chat" => self.global_chat,
+            "apps" => self.apps,
             _ => false,
         }
     }
@@ -40,7 +44,10 @@ impl FeatureFlags {
     /// All flags enabled (for testing).
     #[cfg(test)]
     pub fn all_enabled() -> Self {
-        Self { global_chat: true }
+        Self {
+            global_chat: true,
+            apps: true,
+        }
     }
 }
 
@@ -72,6 +79,7 @@ mod tests {
     fn test_default_flags() {
         let flags = FeatureFlags::default();
         assert!(!flags.global_chat);
+        assert!(!flags.apps);
     }
 
     // SAFETY: env var tests must run single-threaded (--test-threads=1).
@@ -80,15 +88,19 @@ mod tests {
     #[test]
     fn test_experimental_enabled_in_dev() {
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
+        unsafe { std::env::remove_var("FEATURE_APPS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
         assert!(flags.global_chat);
+        assert!(flags.apps);
     }
 
     #[test]
     fn test_experimental_disabled_in_prod() {
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
+        unsafe { std::env::remove_var("FEATURE_APPS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.global_chat);
+        assert!(!flags.apps);
     }
 
     #[test]
@@ -109,14 +121,21 @@ mod tests {
 
     #[test]
     fn test_is_enabled_dynamic() {
-        let flags = FeatureFlags { global_chat: true };
+        let flags = FeatureFlags {
+            global_chat: true,
+            apps: true,
+        };
         assert!(flags.is_enabled("global_chat"));
+        assert!(flags.is_enabled("apps"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
     #[test]
     fn test_serialization() {
-        let flags = FeatureFlags { global_chat: true };
+        let flags = FeatureFlags {
+            global_chat: true,
+            apps: true,
+        };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
 

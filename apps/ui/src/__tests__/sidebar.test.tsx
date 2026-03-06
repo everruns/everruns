@@ -65,6 +65,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({
     global_chat: true,
+    apps: true,
   }),
 }));
 
