@@ -420,7 +420,6 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
-            system_prompt_encrypted: None,
             default_model_id: input.default_model_id,
             tags: input.tags,
             tools: input.tools,
@@ -479,7 +478,6 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
-            system_prompt_encrypted: None,
             default_model_id: input.default_model_id,
             tags: input.tags,
             tools: input.tools,
@@ -619,7 +617,6 @@ impl InMemoryDatabase {
                 name: input.name,
                 description: input.description,
                 system_prompt: input.system_prompt,
-                system_prompt_encrypted: None,
                 default_model_id: input.default_model_id,
                 tags: input.tags,
                 tools: input.tools,
@@ -646,28 +643,6 @@ impl InMemoryDatabase {
             .map(|a| a.public_id.clone()))
     }
 
-    pub async fn set_agent_encrypted_prompt(
-        &self,
-        agent_id: AgentId,
-        encrypted: &[u8],
-    ) -> Result<()> {
-        if let Some(agent) = self.agents.write().get_mut(&agent_id) {
-            agent.system_prompt_encrypted = Some(encrypted.to_vec());
-        }
-        Ok(())
-    }
-
-    pub async fn set_harness_encrypted_prompt(
-        &self,
-        harness_id: HarnessId,
-        encrypted: &[u8],
-    ) -> Result<()> {
-        if let Some(harness) = self.harnesses.write().get_mut(&harness_id) {
-            harness.system_prompt_encrypted = Some(encrypted.to_vec());
-        }
-        Ok(())
-    }
-
     // ============================================
     // Harnesses
     // ============================================
@@ -681,7 +656,6 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
-            system_prompt_encrypted: None,
             default_model_id: input.default_model_id,
             tags: input.tags,
             status: "active".to_string(),
@@ -730,7 +704,6 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
-            system_prompt_encrypted: None,
             default_model_id: input.default_model_id,
             tags: input.tags,
             status: "active".to_string(),
