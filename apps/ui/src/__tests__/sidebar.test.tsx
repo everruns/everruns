@@ -61,6 +61,13 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
+// Mock feature flags provider
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlags: () => ({
+    global_chat: true,
+  }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
