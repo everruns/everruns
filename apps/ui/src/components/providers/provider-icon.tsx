@@ -50,10 +50,7 @@ function GeminiIcon({ size }: { size: number }) {
   );
 }
 
-const PROVIDER_ICON_COMPONENTS: Record<
-  LlmProviderType,
-  React.ComponentType<{ size: number }>
-> = {
+const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
   openai_completions: OpenAiIcon,
   anthropic: AnthropicIcon,

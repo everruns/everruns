@@ -28,9 +28,7 @@ describe("ProviderIcon", () => {
 
   it("renders fallback Server icon for unknown provider type", () => {
     // Cast to simulate an unknown provider type
-    const { container } = render(
-      <ProviderIcon providerType={"unknown" as LlmProviderType} />,
-    );
+    const { container } = render(<ProviderIcon providerType={"unknown" as LlmProviderType} />);
     // Should not render an SVG from our icon set
     const svg = container.querySelector("svg");
     // lucide-react Server icon renders as SVG too, so just confirm no <img>
@@ -40,17 +38,13 @@ describe("ProviderIcon", () => {
   });
 
   it("applies showBackground styles when true", () => {
-    const { container } = render(
-      <ProviderIcon providerType="openai" showBackground={true} />,
-    );
+    const { container } = render(<ProviderIcon providerType="openai" showBackground={true} />);
     const wrapper = container.firstElementChild;
     expect(wrapper?.className).toContain("bg-primary/10");
   });
 
   it("omits background styles when showBackground is false", () => {
-    const { container } = render(
-      <ProviderIcon providerType="openai" showBackground={false} />,
-    );
+    const { container } = render(<ProviderIcon providerType="openai" showBackground={false} />);
     const wrapper = container.firstElementChild;
     expect(wrapper?.className).not.toContain("bg-primary/10");
   });
