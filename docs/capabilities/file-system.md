@@ -7,7 +7,6 @@ description: Read, write, search, and manage files in an isolated per-session wo
 |---|---|
 | **ID** | `session_file_system` |
 | **Category** | File Operations |
-| **Risk** | Low |
 | **Features** | `file_system` (unlocks Workspace tab) |
 | **Dependencies** | None |
 
@@ -94,5 +93,5 @@ Agent:
 ## See Also
 
 - [Virtual Bash](/capabilities/virtual-bash/) — execute commands against these files
-- [Session Storage](/capabilities/session-storage/) — key/value and secret storage
+- [Storage](/capabilities/session-storage/) — key/value and secret storage
 - [Capabilities Overview](/capabilities/)

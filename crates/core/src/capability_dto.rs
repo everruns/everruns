@@ -233,7 +233,7 @@ mod tests {
     fn test_capability_with_features_serialization() {
         let cap = CapabilityInfo {
             id: CapabilityId::new("session_storage"),
-            name: "Session Storage".to_string(),
+            name: "Storage".to_string(),
             description: "Storage capability".to_string(),
             status: CapabilityStatus::Available,
             icon: None,
@@ -307,15 +307,15 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // virtual_bash is High risk
+        // virtual_bash is Low risk (in-memory sandboxed execution)
         let bash_cap = registry.get("virtual_bash").unwrap();
         let info = CapabilityInfo::from_core(bash_cap.as_ref());
-        assert_eq!(info.risk_level, RiskLevel::High);
+        assert_eq!(info.risk_level, RiskLevel::Low);
 
-        // web_fetch is High risk
+        // web_fetch is Medium risk (network access)
         let fetch_cap = registry.get("web_fetch").unwrap();
         let info = CapabilityInfo::from_core(fetch_cap.as_ref());
-        assert_eq!(info.risk_level, RiskLevel::High);
+        assert_eq!(info.risk_level, RiskLevel::Medium);
 
         // noop is Low risk (default)
         let noop_cap = registry.get("noop").unwrap();

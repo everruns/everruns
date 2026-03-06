@@ -7,7 +7,6 @@ description: Discover and activate portable instruction packages from the sessio
 |---|---|
 | **ID** | `skills` |
 | **Category** | Skills |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 
@@ -80,6 +79,6 @@ Agent:
 
 - [Agent Skills feature guide](/features/skills/) — detailed skills documentation
 - [Skills Registry](/features/skills-registry/) — API-managed skills
-- [Agent Instructions](/capabilities/agent-instructions/) — simpler alternative for project context
+- [AGENTS.md](/capabilities/agent-instructions/) — simpler alternative for project context
 - [File System](/capabilities/file-system/) — upload skill files
 - [Capabilities Overview](/capabilities/)

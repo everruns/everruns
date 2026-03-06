@@ -39,7 +39,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn risk_level(&self) -> RiskLevel {
-        RiskLevel::High
+        RiskLevel::Medium
     }
 
     fn icon(&self) -> Option<&str> {

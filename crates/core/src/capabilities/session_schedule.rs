@@ -23,7 +23,7 @@ impl Capability for SessionScheduleCapability {
     }
 
     fn name(&self) -> &str {
-        "Session Schedules"
+        "Schedules"
     }
 
     fn description(&self) -> &str {

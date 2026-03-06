@@ -17,44 +17,45 @@ Agents compose capabilities — enable only what you need.
 
 Fundamental capabilities for file operations, command execution, web access, and session management.
 
-| Capability | ID | Tools | Risk |
-|---|---|---|---|
-| [File System](/capabilities/file-system/) | `session_file_system` | 6 | Low |
-| [Virtual Bash](/capabilities/virtual-bash/) | `virtual_bash` | 1 | High |
-| [Session](/capabilities/session/) | `session` | 2 | Low |
-| [Session Storage](/capabilities/session-storage/) | `session_storage` | 2 | Low |
-| [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 | High |
+| Capability | ID | Tools |
+|---|---|---|
+| [File System](/capabilities/file-system/) | `session_file_system` | 6 |
+| [Virtual Bash](/capabilities/virtual-bash/) | `virtual_bash` | 1 |
+| [Session](/capabilities/session/) | `session` | 2 |
+| [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
+| [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
+| [Daytona](/capabilities/daytona/) | `daytona` | 9 |
 
 ### Data & Productivity
 
 Structured data, time awareness, task tracking, and scheduling.
 
-| Capability | ID | Tools | Risk |
-|---|---|---|---|
-| [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 | Low |
-| [Current Time](/capabilities/current-time/) | `current_time` | 1 | Low |
-| [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 | Low |
-| [Session Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 | Low |
+| Capability | ID | Tools |
+|---|---|---|
+| [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
+| [Current Time](/capabilities/current-time/) | `current_time` | 1 |
+| [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
+| [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 
 ### Platform & Configuration
 
 Agent self-management, dynamic instructions, and skill discovery.
 
-| Capability | ID | Tools | Risk |
-|---|---|---|---|
-| [Platform Management](/capabilities/platform-management/) | `platform_management` | 5 | Low |
-| [Agent Instructions](/capabilities/agent-instructions/) | `agent_instructions` | 0 | Low |
-| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 | Low |
+| Capability | ID | Tools |
+|---|---|---|
+| [Platform Management](/capabilities/platform-management/) | `platform_management` | 5 |
+| [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
+| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
 
 ### Demo
 
 Pre-built domain simulations for testing and demonstrations.
 
-| Capability | ID | Tools | Risk |
-|---|---|---|---|
-| [Fake Warehouse](/capabilities/fake-warehouse/) | `fake_warehouse` | 10 | Low |
-| [Fake AWS](/capabilities/fake-aws/) | `fake_aws` | 11 | Low |
-| [Fake CRM](/capabilities/fake-crm/) | `fake_crm` | 8 | Low |
+| Capability | ID | Tools |
+|---|---|---|
+| [Fake Warehouse](/capabilities/fake-warehouse/) | `fake_warehouse` | 10 |
+| [Fake AWS](/capabilities/fake-aws/) | `fake_aws` | 11 |
+| [Fake CRM](/capabilities/fake-crm/) | `fake_crm` | 8 |
 
 ## Quick Start
 
@@ -102,17 +103,10 @@ Capabilities declare UI features they contribute. The session aggregates feature
 | Feature | UI Element | Contributed By |
 |---|---|---|
 | `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Virtual Bash](/capabilities/virtual-bash/) |
-| `secrets` | Storage tab | [Session Storage](/capabilities/session-storage/) |
-| `key_value` | Storage tab | [Session Storage](/capabilities/session-storage/) |
-| `schedules` | Schedules tab | [Session Schedules](/capabilities/session-schedules/) |
+| `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
+| `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
+| `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
-
-### Risk Levels
-
-| Level | Who Can Assign | Examples |
-|---|---|---|
-| Low | Any org member | File System, Current Time |
-| High | Admin only | Virtual Bash, Web Fetch |
 
 ### Ordering
 

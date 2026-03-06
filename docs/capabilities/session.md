@@ -7,7 +7,6 @@ description: Read and update current session metadata
 |---|---|
 | **ID** | `session` |
 | **Category** | Session |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 
@@ -47,6 +46,6 @@ Agent:
 
 ## See Also
 
-- [Session Storage](/capabilities/session-storage/) — persist data within the session
-- [Session Schedules](/capabilities/session-schedules/) — schedule future tasks
+- [Storage](/capabilities/session-storage/) — persist data within the session
+- [Schedules](/capabilities/session-schedules/) — schedule future tasks
 - [Capabilities Overview](/capabilities/)

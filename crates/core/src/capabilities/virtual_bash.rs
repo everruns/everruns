@@ -11,7 +11,7 @@
 //! - Resource limits prevent runaway scripts (max commands, loop iterations)
 //! - Context-aware tool that requires session filesystem access
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
@@ -86,10 +86,6 @@ impl Capability for VirtualBashCapability {
 
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
-    }
-
-    fn risk_level(&self) -> RiskLevel {
-        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {

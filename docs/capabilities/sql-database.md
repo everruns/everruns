@@ -7,7 +7,6 @@ description: Session-scoped SQLite databases for structured data storage and que
 |---|---|
 | **ID** | `session_sql_database` |
 | **Category** | Data |
-| **Risk** | Low |
 | **Features** | `sql_database` |
 | **Dependencies** | None |
 
@@ -63,6 +62,6 @@ Agent:
 
 ## See Also
 
-- [Session Storage](/capabilities/session-storage/) — simpler key/value alternative
+- [Storage](/capabilities/session-storage/) — simpler key/value alternative
 - [File System](/capabilities/file-system/) — file-based data storage
 - [Capabilities Overview](/capabilities/)

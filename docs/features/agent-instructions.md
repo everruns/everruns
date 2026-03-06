@@ -3,7 +3,7 @@ title: AGENTS.md
 description: Provide project-level instructions to agents via AGENTS.md
 ---
 
-The **Agent Instructions** capability reads an `AGENTS.md` file from the session workspace and automatically includes it in the agent's system prompt on every turn. This gives you a simple, standard way to provide project-level context — coding conventions, style guides, build instructions, or any other guidance — to your agents.
+The **AGENTS.md** capability reads an `AGENTS.md` file from the session workspace and automatically includes it in the agent's system prompt on every turn. This gives you a simple, standard way to provide project-level context — coding conventions, style guides, build instructions, or any other guidance — to your agents.
 
 ## Overview
 
@@ -102,7 +102,7 @@ The file is re-read on every LLM turn. You can edit `AGENTS.md` at any point dur
 
 1. Navigate to the Agent detail page
 2. Find **Capabilities** in the sidebar
-3. Enable **Agent Instructions**
+3. Enable **AGENTS.md**
 4. Save changes
 
 Then write an `AGENTS.md` file to the session workspace using the file tools or bash.

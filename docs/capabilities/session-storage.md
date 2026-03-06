@@ -1,5 +1,5 @@
 ---
-title: Session Storage
+title: Storage
 description: Key/value storage and encrypted secret storage within a session
 ---
 
@@ -7,7 +7,6 @@ description: Key/value storage and encrypted secret storage within a session
 |---|---|
 | **ID** | `session_storage` |
 | **Category** | Storage |
-| **Risk** | Low |
 | **Features** | `secrets`, `key_value` (unlocks Storage tab) |
 | **Dependencies** | None |
 
