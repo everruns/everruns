@@ -106,7 +106,6 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 `.claude/skills/` contains development skills.
 
-- `smoke-test/` - API and UI smoke testing
 - `no-docker-setup/` - PostgreSQL setup for cloud agents
 - `ui-screenshots/` - agent-browser UI screenshots
 
