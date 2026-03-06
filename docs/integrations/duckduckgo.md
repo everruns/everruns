@@ -1,5 +1,5 @@
 ---
-title: DuckDuckGo Integration
+title: DuckDuckGo
 description: Free instant answers, definitions, and topic summaries via DuckDuckGo
 ---
 
