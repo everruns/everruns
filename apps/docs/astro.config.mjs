@@ -2,6 +2,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
+import starlightSidebarTopics from "starlight-sidebar-topics";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -66,47 +67,90 @@ export default defineConfig({
           },
         ]),
         starlightClientMermaid(),
-      ],
-      sidebar: [
-        {
-          label: "Getting Started",
-          items: [
-            { label: "Introduction", slug: "getting-started/introduction" },
-            { label: "Concepts", slug: "getting-started/concepts" },
-            { label: "Docker Compose", slug: "getting-started/docker-compose" },
-            { label: "Architecture", slug: "getting-started/architecture" },
-          ],
-        },
-        {
-          label: "Features",
-          autogenerate: { directory: "features" },
-        },
-        {
-          label: "SRE Guide",
-          items: [
-            { label: "Environment Variables", slug: "sre/environment-variables" },
-            { label: "Admin Container", slug: "sre/admin-container" },
+        starlightSidebarTopics(
+          [
             {
-              label: "Runbooks",
-              autogenerate: { directory: "sre/runbooks" },
+              label: "Guides",
+              link: "/getting-started/introduction/",
+              icon: "open-book",
+              items: [
+                {
+                  label: "Getting Started",
+                  items: [
+                    { label: "Introduction", slug: "getting-started/introduction" },
+                    { label: "Concepts", slug: "getting-started/concepts" },
+                    { label: "Docker Compose", slug: "getting-started/docker-compose" },
+                    { label: "Architecture", slug: "getting-started/architecture" },
+                  ],
+                },
+              ],
+            },
+            {
+              label: "Features",
+              link: "/features/capabilities/",
+              icon: "puzzle",
+              items: [
+                {
+                  label: "Features",
+                  autogenerate: { directory: "features" },
+                },
+              ],
+            },
+            {
+              label: "Operations",
+              link: "/sre/environment-variables/",
+              icon: "setting",
+              items: [
+                {
+                  label: "SRE Guide",
+                  items: [
+                    { label: "Environment Variables", slug: "sre/environment-variables" },
+                    { label: "Admin Container", slug: "sre/admin-container" },
+                    {
+                      label: "Runbooks",
+                      autogenerate: { directory: "sre/runbooks" },
+                    },
+                  ],
+                },
+                {
+                  label: "Observability",
+                  autogenerate: { directory: "observability" },
+                },
+              ],
+            },
+            {
+              label: "Integrations",
+              link: "/integrations/daytona/",
+              icon: "laptop",
+              items: [
+                {
+                  label: "Integrations",
+                  autogenerate: { directory: "integrations" },
+                },
+                {
+                  label: "Ecosystem",
+                  autogenerate: { directory: "ecosystem" },
+                },
+              ],
+            },
+            {
+              label: "Reference",
+              link: "/api/",
+              icon: "information",
+              id: "reference",
+              items: [
+                { label: "Event Reference", slug: "event-reference" },
+                ...openAPISidebarGroups,
+              ],
             },
           ],
-        },
-        {
-          label: "Ecosystem",
-          autogenerate: { directory: "ecosystem" },
-        },
-        {
-          label: "Integrations",
-          autogenerate: { directory: "integrations" },
-        },
-        {
-          label: "Observability",
-          autogenerate: { directory: "observability" },
-        },
-        { label: "Event Reference", slug: "event-reference" },
-        // Auto-generated API Reference from OpenAPI spec
-        ...openAPISidebarGroups,
+          {
+            exclude: ["/index.mdx"],
+            topics: {
+              reference: ["/api/**"],
+            },
+          },
+        ),
       ],
       editLink: {
         baseUrl: "https://github.com/everruns/everruns/edit/main/apps/docs/",
