@@ -3746,6 +3746,12 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+    pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
+        let apps = self.apps.read();
+        Ok(apps.values().find(|a| a.public_id == public_id).cloned())
+    }
+
     pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
         let apps = self.apps.read();
         let mut result: Vec<AppRow> = apps

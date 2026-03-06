@@ -1264,6 +1264,11 @@ impl StorageBackend {
         dispatch!(self, get_app_by_public_id, org_id, public_id)
     }
 
+    /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+    pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
+        dispatch!(self, get_app_by_public_id_unscoped, public_id)
+    }
+
     pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
         dispatch!(self, list_apps, org_id)
     }

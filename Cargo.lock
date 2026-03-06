@@ -1478,6 +1478,7 @@ dependencies = [
  "futures",
  "governor",
  "hex",
+ "hmac",
  "http-body-util",
  "hyper",
  "hyper-util",

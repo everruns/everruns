@@ -6,6 +6,10 @@
 //
 // An App binds a Harness + Agent to a distribution channel (Slack, etc.)
 // with a publish/unpublish lifecycle.
+//
+// Design Decision: Slack ingestion is app-scoped (POST /v1/apps/{app_id}/slack/events)
+// because the App defines the agent, harness, signing secret, and session strategy.
+// Webhooks are unauthenticated — security comes from Slack signing secret verification.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -111,4 +115,49 @@ pub struct App {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the app was last updated.
     pub updated_at: DateTime<Utc>,
+}
+
+/// Session strategy for incoming messages (how messages map to sessions).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionStrategy {
+    /// Each Slack thread gets its own session (default).
+    #[default]
+    PerThread,
+    /// One session per channel.
+    PerChannel,
+    /// One session per user.
+    PerUser,
+}
+
+/// Typed Slack channel configuration.
+/// Parsed from the `channel_config` JSON field on App.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SlackChannelConfig {
+    /// Slack signing secret for verifying webhook requests.
+    pub signing_secret: String,
+    /// Slack Bot OAuth token for sending responses.
+    pub bot_token: String,
+    /// Slack channel ID to listen on (e.g., "C0123456789").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    /// Slack team/workspace ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// How incoming messages map to sessions.
+    #[serde(default)]
+    pub session_strategy: SessionStrategy,
+}
+
+impl App {
+    /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack app
+    /// or if the config is invalid.
+    pub fn slack_config(&self) -> Option<SlackChannelConfig> {
+        if self.channel_type != ChannelType::Slack {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }

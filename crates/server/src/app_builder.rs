@@ -397,6 +397,7 @@ impl ServerAppBuilder {
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
+        let slack_state = api::slack_events::SlackState::new(db.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
@@ -485,7 +486,8 @@ impl ServerAppBuilder {
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
-            .merge(api::commands::routes(commands_state));
+            .merge(api::commands::routes(commands_state))
+            .merge(api::slack_events::routes(slack_state));
 
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {

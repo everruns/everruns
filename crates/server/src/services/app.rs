@@ -60,6 +60,19 @@ impl AppService {
         }
     }
 
+    /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+    /// The org_id is derived from the row itself.
+    pub async fn get_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<App>> {
+        let row = self.db.get_app_by_public_id_unscoped(public_id).await?;
+        match row {
+            Some(row) => {
+                let org_id = row.org_id;
+                Ok(Some(self.row_to_app(row, org_id).await))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub async fn list(&self, org_id: i64) -> Result<Vec<App>> {
         let rows = self.db.list_apps(org_id).await?;
         let mut apps = Vec::with_capacity(rows.len());

@@ -89,6 +89,7 @@ governor = "0.8"
 argon2 = "0.5"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 sha2 = "0.10"
+hmac = "0.12"
 hex = "0.4"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }

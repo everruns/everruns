@@ -25,6 +25,7 @@ pub mod session_schedules;
 pub mod session_storage;
 pub mod sessions;
 pub mod skills;
+pub mod slack_events;
 pub mod sse;
 pub mod tool_results;
 pub mod user_connections;

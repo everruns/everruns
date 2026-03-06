@@ -4173,6 +4173,22 @@ impl Database {
         Ok(row)
     }
 
+    /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+    pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
+        let row = sqlx::query_as::<_, AppRow>(
+            r#"
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            FROM apps
+            WHERE public_id = $1
+            "#,
+        )
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
         let rows = sqlx::query_as::<_, AppRow>(
             r#"
