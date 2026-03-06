@@ -354,18 +354,6 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
-    // TM-CRYPTO-007: Agent system prompts encrypted at rest
-    EncryptedColumn {
-        table: "agents",
-        column: "system_prompt_encrypted",
-        id_column: "id",
-    },
-    // TM-CRYPTO-007: Harness system prompts encrypted at rest
-    EncryptedColumn {
-        table: "harnesses",
-        column: "system_prompt_encrypted",
-        id_column: "id",
-    },
 ];
 
 #[cfg(test)]

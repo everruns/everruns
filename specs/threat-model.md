@@ -136,7 +136,7 @@ Display:   evr_<first-8-chars>...   (prefix for identification)
 | TM-CRYPTO-004 | Known-plaintext attack | Medium | Unique DEK per encryption; same plaintext produces different ciphertext | MITIGATED |
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
-| TM-CRYPTO-007 | Limited encryption scope | Medium | System prompts encrypted via envelope encryption (migration 004); LLM API keys encrypted | MITIGATED |
+| TM-CRYPTO-007 | Limited encryption scope | Medium | LLM API keys encrypted; system prompt encryption reverted (PII should not be in prompts) | **OPEN** |
 
 ### Mitigation Details
 
@@ -549,7 +549,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
 | TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform_management` capability can modify agents/sessions via tools; capability must be explicitly assigned; org-scoped | **OPEN** |
 | TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform_management` capability can create agents/sessions; capability must be explicitly assigned; no recursive depth limit | **OPEN** |
-| TM-AGENT-011 | Sensitive data in system prompt | Medium | System prompts encrypted at rest via envelope encryption (TM-CRYPTO-007) | MITIGATED |
+| TM-AGENT-011 | Sensitive data in system prompt | Medium | PII must not be placed in system prompts; no encryption at rest for prompts | **OPEN** |
 | TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
@@ -611,7 +611,7 @@ This is accepted because:
 When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the user to provide one in chat. The user types the key as a chat message, which is stored as plaintext in the `events` table (message content). The `session_secrets` table encrypts the value separately, but the original chat message retains plaintext indefinitely.
 
 - **Impact:** API keys visible in session history, event exports, and any observability pipeline that captures events.
-- **Recommendation:** Prefer Settings UI for credential entry (user connections). Phase out in-chat secret collection. For tools that need credentials, guide users to Settings > Connections instead of requesting secrets in chat. See also TM-CRYPTO-007.
+- **Recommendation:** Prefer Settings UI for credential entry (user connections). Phase out in-chat secret collection. For tools that need credentials, guide users to Settings > Connections instead of requesting secrets in chat.
 - **Priority:** High
 
 **TM-AGENT-017 — Agent-Initiated Entity Management (OPEN):**

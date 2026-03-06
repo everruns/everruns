@@ -201,9 +201,6 @@ pub struct AgentRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
-    /// TM-CRYPTO-007: Encrypted system prompt (envelope encryption)
-    #[sqlx(default)]
-    pub system_prompt_encrypted: Option<Vec<u8>>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
     pub status: String,
@@ -260,9 +257,6 @@ pub struct HarnessRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
-    /// TM-CRYPTO-007: Encrypted system prompt (envelope encryption)
-    #[sqlx(default)]
-    pub system_prompt_encrypted: Option<Vec<u8>>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
     pub status: String,
