@@ -1,4 +1,13 @@
--- Structured audit log for security-relevant events (TM-OBS-007)
+-- Everruns v0.8.3
+-- Squashed migration for changes between v0.8.0 and v0.8.3
+-- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
+--
+-- Includes:
+-- - Structured audit log for security-relevant events (TM-OBS-007)
+
+-- ============================================
+-- Audit Logs (TM-OBS-007)
+-- ============================================
 -- Covers: authentication, API key management, OAuth, org membership changes
 
 CREATE TABLE IF NOT EXISTS audit_logs (
