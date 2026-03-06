@@ -201,6 +201,7 @@ impl AppService {
         App {
             public_id,
             internal_id: row.id,
+            org_id,
             name: row.name,
             description: row.description,
             harness_id,

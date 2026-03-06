@@ -397,7 +397,7 @@ impl ServerAppBuilder {
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
-        let slack_state = api::slack_events::SlackState::new(db.clone());
+        let slack_state = api::slack_events::SlackState::new(db.clone(), runner.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());

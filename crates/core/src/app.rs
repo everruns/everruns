@@ -90,6 +90,9 @@ pub struct App {
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
+    /// Organization ID. Internal only, not exposed in API.
+    #[serde(skip, default)]
+    pub org_id: i64,
     /// Display name of the app.
     pub name: String,
     /// Human-readable description of what the app does.

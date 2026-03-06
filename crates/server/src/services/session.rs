@@ -462,7 +462,7 @@ impl SessionService {
         Ok(())
     }
 
-    fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {
+    pub fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
             Some(TokenUsage::with_cache(

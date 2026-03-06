@@ -1,5 +1,6 @@
 // Hooks exports
 export * from "./use-agents";
+export * from "./use-apps";
 export * from "./use-harnesses";
 export * from "./use-capabilities";
 export * from "./use-sessions";
