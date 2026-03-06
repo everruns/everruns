@@ -171,13 +171,34 @@ h6 {
   line-height: 1.6;
 }
 
-/* Hide sidebar topic list on desktop — shown as header tabs instead */
+/* Topic tabs: offset sidebar and content below the fixed tab bar */
 @media (min-width: 50rem) {
-  .starlight-sidebar-topics {
-    display: none;
+  :root {
+    --topic-tabs-height: 2.25rem;
   }
+
+  /* Push sidebar below the tab bar */
+  .sidebar-pane {
+    top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
+  }
+
+  /* Push main content below the tab bar */
+  .main-frame {
+    padding-top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
+  }
+
+  /* Push right sidebar (TOC) below the tab bar */
+  .right-sidebar {
+    padding-top: calc(var(--sl-nav-height) + var(--topic-tabs-height)) !important;
+  }
+
+  /* Hide sidebar topic list on desktop — shown as header tabs instead */
+  .starlight-sidebar-topics {
+    display: none !important;
+  }
+
+  /* Remove separator line left by hidden topic list */
   .starlight-sidebar-topics + * {
-    /* Remove top margin from first sidebar group after hidden topics */
     margin-top: 0;
   }
 }

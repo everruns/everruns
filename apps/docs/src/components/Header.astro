@@ -9,38 +9,47 @@ const hasTopics = topics.length > 0;
 <DefaultHeader {...Astro.props} />
 
 {hasTopics && (
-  <nav class="topic-tabs" aria-label="Documentation sections">
-    <ul>
-      {topics.map((topic: any) => (
-        <li>
-          <a
-            href={topic.link}
-            class:list={{ active: topic.isCurrent }}
-            aria-current={topic.isCurrent ? "true" : undefined}
-          >
-            {topic.label}
-          </a>
-        </li>
-      ))}
-    </ul>
-  </nav>
+  <div class="topic-tabs-wrapper">
+    <nav class="topic-tabs" aria-label="Documentation sections">
+      <ul>
+        {topics.map((topic: any) => (
+          <li>
+            <a
+              href={topic.link}
+              class:list={{ active: topic.isCurrent }}
+              aria-current={topic.isCurrent ? "true" : undefined}
+            >
+              {topic.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  </div>
 )}
 
 <style>
-  .topic-tabs {
-    grid-column: 1 / -1;
+  .topic-tabs-wrapper {
+    position: fixed;
+    top: var(--sl-nav-height);
+    left: 0;
+    right: 0;
+    z-index: var(--sl-z-index-navbar);
+    background: var(--sl-color-bg-nav);
     border-bottom: 1px solid var(--sl-color-hairline-light);
-    padding: 0 var(--sl-nav-pad-x);
   }
 
   .topic-tabs ul {
     display: flex;
-    gap: 0;
     list-style: none;
-    padding: 0;
+    padding: 0 var(--sl-nav-pad-x);
     margin: 0;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .topic-tabs ul::-webkit-scrollbar {
+    display: none;
   }
 
   .topic-tabs a {
@@ -52,6 +61,7 @@ const hasTopics = topics.length > 0;
     text-decoration: none;
     white-space: nowrap;
     border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
     transition: color 0.15s, border-color 0.15s;
   }
 
@@ -64,9 +74,9 @@ const hasTopics = topics.length > 0;
     border-bottom-color: var(--sl-color-text-accent);
   }
 
-  /* Hide on mobile — use sidebar topics there */
+  /* Hide on mobile — sidebar topics used there instead */
   @media (max-width: 49.99rem) {
-    .topic-tabs {
+    .topic-tabs-wrapper {
       display: none;
     }
   }
