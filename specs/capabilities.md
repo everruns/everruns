@@ -586,6 +586,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 2. Register in `CapabilityRegistry::with_builtins()` (same file)
 3. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 4. No database migration required — capability ID validated at runtime
+5. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
 
 ### Capability Mount Points
 

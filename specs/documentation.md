@@ -23,6 +23,9 @@ docs/
 ├── index.mdx             # Landing page (template: splash)
 ├── getting-started/
 │   └── introduction.md
+├── capabilities/
+│   ├── index.md          # Capabilities overview + reference table
+│   └── *.md              # Per-capability pages (file-system, virtual-bash, etc.)
 ├── features/
 │   └── capabilities.md
 ├── integrations/
@@ -48,6 +51,7 @@ rendered as horizontal tabs below the header on desktop:
 |-----|---------|
 | Get Started | Getting Started guides + Features |
 | Integrations | Integrations + Observability + Ecosystem |
+| Capabilities | Per-capability reference pages (tools, examples, use cases) |
 | Operations | SRE Guide + Runbooks |
 | Reference | Event Reference + API Reference (OpenAPI) |
 
