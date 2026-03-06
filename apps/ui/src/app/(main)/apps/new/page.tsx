@@ -125,7 +125,10 @@ export default function NewAppPage() {
             </p>
 
             <div className="flex gap-4">
-              <Button type="submit" disabled={createApp.isPending || !name || !agentId || !harnessId}>
+              <Button
+                type="submit"
+                disabled={createApp.isPending || !name || !agentId || !harnessId}
+              >
                 {createApp.isPending ? "Creating..." : "Create App"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>

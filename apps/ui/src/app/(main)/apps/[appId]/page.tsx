@@ -34,17 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  ArrowLeft,
-  Globe,
-  GlobeLock,
-  Copy,
-  Trash2,
-  Pencil,
-  Check,
-  X,
-  Rocket,
-} from "lucide-react";
+import { ArrowLeft, Globe, GlobeLock, Copy, Trash2, Pencil, Check, X, Rocket } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { SessionStrategy, SlackChannelConfig, UpdateAppRequest } from "@/lib/api/types";
 
@@ -181,9 +171,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <CopyButton value={app.id} />
             <Badge variant={isPublished ? "default" : "secondary"}>{app.status}</Badge>
           </h1>
-          {app.description && (
-            <p className="text-muted-foreground mt-1">{app.description}</p>
-          )}
+          {app.description && <p className="text-muted-foreground mt-1">{app.description}</p>}
         </div>
         <div className="flex gap-2">
           {isPublished ? (
@@ -322,11 +310,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                       <Check className="w-3 h-3 mr-1" />
                       {updateApp.isPending ? "Saving..." : "Save"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditingSlack(false)}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => setEditingSlack(false)}>
                       <X className="w-3 h-3 mr-1" />
                       Cancel
                     </Button>
@@ -337,15 +321,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm font-medium">Signing Secret</p>
-                      <p className="text-sm text-muted-foreground font-mono">
-                        {"•".repeat(12)}
-                      </p>
+                      <p className="text-sm text-muted-foreground font-mono">{"•".repeat(12)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium">Bot User OAuth Token</p>
-                      <p className="text-sm text-muted-foreground font-mono">
-                        {"•".repeat(12)}
-                      </p>
+                      <p className="text-sm text-muted-foreground font-mono">{"•".repeat(12)}</p>
                     </div>
                   </div>
 
