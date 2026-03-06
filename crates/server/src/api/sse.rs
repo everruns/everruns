@@ -850,9 +850,16 @@ mod tests {
         );
     }
 
+    // These tests share env vars and MUST run sequentially within a single
+    // test to avoid races with parallel test threads.
     #[test]
-    fn test_sse_limits_default_single_instance() {
-        // SAFETY: test is run single-threaded
+    fn test_sse_limits_from_env() {
+        // Serialize env-var access via a process-wide mutex to prevent races.
+        use std::sync::Mutex;
+        static ENV_MUTEX: Mutex<()> = Mutex::new(());
+        let _lock = ENV_MUTEX.lock().unwrap();
+
+        // --- default / single instance ---
         unsafe {
             std::env::remove_var("EXPECTED_INSTANCES");
             std::env::remove_var("SSE_GLOBAL_MAX");
@@ -863,11 +870,8 @@ mod tests {
         assert_eq!(limits.global_max, 10_000);
         assert_eq!(limits.per_org_max, 1_000);
         assert_eq!(limits.per_session_max, 5);
-    }
 
-    #[test]
-    fn test_sse_limits_multi_instance_divides_global_and_org() {
-        // SAFETY: test is run single-threaded
+        // --- multi-instance divides global and org ---
         unsafe {
             std::env::set_var("EXPECTED_INSTANCES", "4");
             std::env::remove_var("SSE_GLOBAL_MAX");
@@ -881,6 +885,8 @@ mod tests {
         assert_eq!(limits.per_org_max, 250);
         // Per-session NOT divided
         assert_eq!(limits.per_session_max, 5);
+
+        // Clean up
         unsafe {
             std::env::remove_var("EXPECTED_INSTANCES");
         }
