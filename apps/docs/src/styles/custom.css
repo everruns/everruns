@@ -171,6 +171,17 @@ h6 {
   line-height: 1.6;
 }
 
+/* Hide sidebar topic list on desktop — shown as header tabs instead */
+@media (min-width: 50rem) {
+  .starlight-sidebar-topics {
+    display: none;
+  }
+  .starlight-sidebar-topics + * {
+    /* Remove top margin from first sidebar group after hidden topics */
+    margin-top: 0;
+  }
+}
+
 /* Branded dot grid background */
 :root,
 :root[data-theme="light"] {

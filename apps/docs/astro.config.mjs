@@ -57,6 +57,9 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
+      components: {
+        Header: "./src/components/Header.astro",
+      },
       customCss: ["./src/styles/custom.css"],
       plugins: [
         starlightOpenAPI([
