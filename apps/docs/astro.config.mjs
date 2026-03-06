@@ -70,7 +70,7 @@ export default defineConfig({
         starlightSidebarTopics(
           [
             {
-              label: "Guides",
+              label: "Get Started",
               link: "/getting-started/introduction/",
               icon: "open-book",
               items: [
