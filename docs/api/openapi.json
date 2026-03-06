@@ -7163,6 +7163,14 @@
             "format": "int32",
             "description": "Maximum context window size in tokens"
           },
+          "input": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum input tokens (if different from context - output)"
+          },
           "output": {
             "type": "integer",
             "format": "int32",

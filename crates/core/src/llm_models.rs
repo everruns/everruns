@@ -201,6 +201,9 @@ pub struct LlmModelCost {
 pub struct LlmModelLimits {
     /// Maximum context window size in tokens
     pub context: i32,
+    /// Maximum input tokens (if different from context - output)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<i32>,
     /// Maximum output tokens
     pub output: i32,
 }
@@ -386,6 +389,37 @@ mod tests {
             "llmsim".parse::<LlmProviderType>().unwrap(),
             LlmProviderType::LlmSim
         ));
+    }
+
+    #[test]
+    fn test_llm_model_limits_input_omitted_when_none() {
+        let limits = LlmModelLimits {
+            context: 200_000,
+            input: None,
+            output: 64_000,
+        };
+        let json = serde_json::to_value(&limits).unwrap();
+        assert!(!json.as_object().unwrap().contains_key("input"));
+    }
+
+    #[test]
+    fn test_llm_model_limits_input_included_when_some() {
+        let limits = LlmModelLimits {
+            context: 200_000,
+            input: Some(150_000),
+            output: 64_000,
+        };
+        let json = serde_json::to_value(&limits).unwrap();
+        assert_eq!(json["input"], 150_000);
+    }
+
+    #[test]
+    fn test_llm_model_limits_deserialize_without_input() {
+        let json = r#"{"context": 200000, "output": 64000}"#;
+        let limits: LlmModelLimits = serde_json::from_str(json).unwrap();
+        assert_eq!(limits.context, 200_000);
+        assert!(limits.input.is_none());
+        assert_eq!(limits.output, 64_000);
     }
 
     #[test]

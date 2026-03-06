@@ -862,6 +862,8 @@ export interface LlmModelCost {
 export interface LlmModelLimits {
   /** Maximum context window size in tokens */
   context: number;
+  /** Maximum input tokens (if different from context - output) */
+  input?: number;
   /** Maximum output tokens */
   output: number;
 }
