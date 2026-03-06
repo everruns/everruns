@@ -2229,6 +2229,24 @@ impl InMemoryDatabase {
             .any(|f| f.session_id == session_id && f.path.starts_with(&prefix)))
     }
 
+    pub async fn has_readonly_session_files(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        let session_id = SessionId::from_uuid(session_id);
+        let files = self.session_files.read();
+
+        if path == "/" {
+            return Ok(files
+                .values()
+                .any(|f| f.session_id == session_id && f.is_readonly));
+        }
+
+        let prefix = format!("{}/", path.trim_end_matches('/'));
+        Ok(files.values().any(|f| {
+            f.session_id == session_id
+                && (f.path == path || f.path.starts_with(&prefix))
+                && f.is_readonly
+        }))
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

@@ -552,6 +552,7 @@ pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
     responses(
         (status = 200, description = "Deleted", body = DeleteResponse),
         (status = 400, description = "Invalid session ID or directory not empty"),
+        (status = 403, description = "Cannot delete readonly file or directory containing readonly files"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
@@ -578,7 +579,9 @@ pub async fn delete_path(
         .map_err(|e| {
             tracing::error!("Failed to delete: {}", e);
             let msg = e.to_string();
-            if msg.contains("not empty") || msg.contains("Cannot delete root") {
+            if msg.contains("readonly") {
+                (StatusCode::FORBIDDEN, msg)
+            } else if msg.contains("not empty") || msg.contains("Cannot delete root") {
                 (StatusCode::BAD_REQUEST, msg)
             } else {
                 (

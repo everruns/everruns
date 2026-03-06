@@ -1850,3 +1850,180 @@ async fn test_update_profile_rejects_too_long_name() {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
+
+// ============================================
+// Readonly File Deletion Tests
+// ============================================
+
+#[tokio::test]
+async fn test_cannot_delete_readonly_file() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Readonly Delete Test",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+
+    // Create a readonly file
+    let _file: SessionFile = server
+        .post(
+            &format!("{}/protected.txt", fs_url),
+            json!({
+                "content": "Do not delete me",
+                "is_readonly": true
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Attempt to delete should fail with 403 Forbidden
+    server
+        .delete(&format!("{}/protected.txt", fs_url))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+
+    // File should still exist
+    let file: SessionFile = server
+        .get(&format!("{}/protected.txt", fs_url))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(file.content.as_deref(), Some("Do not delete me"));
+}
+
+#[tokio::test]
+async fn test_cannot_recursively_delete_directory_with_readonly_file() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Readonly Recursive Delete Test",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+
+    // Create directory with a readonly file inside
+    let _dir: SessionFile = server
+        .post(&format!("{}/docs", fs_url), json!({ "is_directory": true }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let _file: SessionFile = server
+        .post(
+            &format!("{}/docs/readme.txt", fs_url),
+            json!({
+                "content": "Protected content",
+                "is_readonly": true
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Recursive delete of parent directory should fail with 403 Forbidden
+    server
+        .delete(&format!("{}/docs?recursive=true", fs_url))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+
+    // Readonly file should still exist
+    let file: SessionFile = server
+        .get(&format!("{}/docs/readme.txt", fs_url))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(file.content.as_deref(), Some("Protected content"));
+}
+
+#[tokio::test]
+async fn test_can_delete_non_readonly_file() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Normal Delete Test",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+
+    // Create a normal (non-readonly) file
+    let _file: SessionFile = server
+        .post(
+            &format!("{}/temp.txt", fs_url),
+            json!({
+                "content": "Delete me"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Should succeed
+    let result: Value = server
+        .delete(&format!("{}/temp.txt", fs_url))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(result["deleted"], true);
+}

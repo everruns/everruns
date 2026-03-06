@@ -707,6 +707,10 @@ impl StorageBackend {
         dispatch!(self, session_file_exists, session_id, path)
     }
 
+    pub async fn has_readonly_session_files(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, has_readonly_session_files, session_id, path)
+    }
+
     pub async fn session_directory_has_children(
         &self,
         session_id: Uuid,

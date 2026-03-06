@@ -285,7 +285,7 @@ Fetchkit v0.1.2 implements DNS pinning: the hostname is resolved once, all resol
 | TM-FS-002 | Cross-session file access | Critical | Files scoped by `session_id` FK; session scoped by org via agent join | MITIGATED |
 | TM-FS-003 | Null byte injection | High | Regex constraint rejects `\0` bytes | MITIGATED |
 | TM-FS-004 | Double-slash bypass | Medium | Regex constraint rejects `//` | MITIGATED |
-| TM-FS-005 | Readonly file modification | Medium | `is_readonly` flag enforced; readonly files cannot have content updated | MITIGATED |
+| TM-FS-005 | Readonly file modification or deletion | Medium | `is_readonly` flag enforced; readonly files cannot be modified or deleted; recursive directory deletion blocked if subtree contains readonly files | MITIGATED |
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
 | TM-FS-008 | Large file storage abuse | Medium | No per-session storage quota enforced at application level | **OPEN** |

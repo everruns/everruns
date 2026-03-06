@@ -2541,6 +2541,25 @@ impl Database {
         Ok(result.is_some())
     }
 
+    /// Check if a path or its subtree contains any readonly files
+    pub async fn has_readonly_session_files(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        let pattern = if path == "/" {
+            "^/".to_string()
+        } else {
+            format!("^{}(/|$)", regex::escape(path))
+        };
+
+        let result: Option<(bool,)> = sqlx::query_as(
+            "SELECT TRUE FROM session_files WHERE session_id = $1 AND path ~ $2 AND is_readonly = true LIMIT 1",
+        )
+        .bind(session_id)
+        .bind(&pattern)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.is_some())
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

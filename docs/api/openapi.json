@@ -3289,6 +3289,9 @@
           "400": {
             "description": "Invalid session ID or directory not empty"
           },
+          "403": {
+            "description": "Cannot delete readonly file or directory containing readonly files"
+          },
           "500": {
             "description": "Internal server error"
           }

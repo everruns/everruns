@@ -326,7 +326,11 @@ impl SessionFileService {
 
         if path == "/" {
             if recursive {
-                // Delete all files in session
+                // Check for readonly files before deleting all
+                let has_readonly = self.db.has_readonly_session_files(session_id, "/").await?;
+                if has_readonly {
+                    return Err(anyhow!("Cannot delete: directory contains readonly files"));
+                }
                 self.db
                     .delete_session_file_recursive(session_id, "/")
                     .await?;
@@ -338,8 +342,16 @@ impl SessionFileService {
             }
         }
 
-        // Check if it's a directory with children
+        // Check if file/directory exists
         let file = self.db.get_session_file(session_id, &path).await?;
+
+        // Check readonly on the target itself
+        if let Some(ref f) = file
+            && f.is_readonly
+        {
+            return Err(anyhow!("Cannot delete readonly file: {}", path));
+        }
+
         if let Some(ref f) = file
             && f.is_directory
             && !recursive
@@ -356,6 +368,14 @@ impl SessionFileService {
         }
 
         if recursive {
+            // Check for readonly files in subtree before deleting
+            let has_readonly = self
+                .db
+                .has_readonly_session_files(session_id, &path)
+                .await?;
+            if has_readonly {
+                return Err(anyhow!("Cannot delete: directory contains readonly files"));
+            }
             let deleted = self
                 .db
                 .delete_session_file_recursive(session_id, &path)
