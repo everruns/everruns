@@ -164,3 +164,169 @@ impl App {
         serde_json::from_value(self.channel_config.clone()).ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_status_display() {
+        assert_eq!(AppStatus::Draft.to_string(), "draft");
+        assert_eq!(AppStatus::Published.to_string(), "published");
+        assert_eq!(AppStatus::Archived.to_string(), "archived");
+    }
+
+    #[test]
+    fn test_app_status_from_str() {
+        assert_eq!(AppStatus::from("draft"), AppStatus::Draft);
+        assert_eq!(AppStatus::from("published"), AppStatus::Published);
+        assert_eq!(AppStatus::from("archived"), AppStatus::Archived);
+        assert_eq!(AppStatus::from("unknown"), AppStatus::Draft);
+        assert_eq!(AppStatus::from(""), AppStatus::Draft);
+    }
+
+    #[test]
+    fn test_app_status_serde_roundtrip() {
+        let json = serde_json::to_string(&AppStatus::Published).unwrap();
+        assert_eq!(json, r#""published""#);
+        let parsed: AppStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, AppStatus::Published);
+    }
+
+    #[test]
+    fn test_channel_type_display() {
+        assert_eq!(ChannelType::Slack.to_string(), "slack");
+    }
+
+    #[test]
+    fn test_channel_type_from_str_opt() {
+        assert_eq!(ChannelType::from_str_opt("slack"), Some(ChannelType::Slack));
+        assert_eq!(ChannelType::from_str_opt("unknown"), None);
+        assert_eq!(ChannelType::from_str_opt(""), None);
+    }
+
+    #[test]
+    fn test_channel_type_serde_roundtrip() {
+        let json = serde_json::to_string(&ChannelType::Slack).unwrap();
+        assert_eq!(json, r#""slack""#);
+        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ChannelType::Slack);
+    }
+
+    #[test]
+    fn test_session_strategy_default() {
+        assert_eq!(SessionStrategy::default(), SessionStrategy::PerThread);
+    }
+
+    #[test]
+    fn test_session_strategy_serde() {
+        let json = serde_json::to_string(&SessionStrategy::PerChannel).unwrap();
+        assert_eq!(json, r#""per_channel""#);
+        let parsed: SessionStrategy = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, SessionStrategy::PerChannel);
+
+        let json = serde_json::to_string(&SessionStrategy::PerUser).unwrap();
+        assert_eq!(json, r#""per_user""#);
+    }
+
+    #[test]
+    fn test_slack_channel_config_full() {
+        let json = r#"{
+            "signing_secret": "sec123",
+            "bot_token": "xoxb-tok",
+            "channel_id": "C123",
+            "team_id": "T123",
+            "session_strategy": "per_channel"
+        }"#;
+        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.signing_secret, "sec123");
+        assert_eq!(config.bot_token, "xoxb-tok");
+        assert_eq!(config.channel_id.as_deref(), Some("C123"));
+        assert_eq!(config.team_id.as_deref(), Some("T123"));
+        assert_eq!(config.session_strategy, SessionStrategy::PerChannel);
+    }
+
+    #[test]
+    fn test_slack_channel_config_minimal() {
+        let json = r#"{"signing_secret": "s", "bot_token": "t"}"#;
+        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
+        assert!(config.channel_id.is_none());
+        assert!(config.team_id.is_none());
+        assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+    }
+
+    #[test]
+    fn test_slack_channel_config_missing_required_field() {
+        let json = r#"{"signing_secret": "s"}"#;
+        assert!(serde_json::from_str::<SlackChannelConfig>(json).is_err());
+    }
+
+    #[test]
+    fn test_app_slack_config_valid() {
+        let config_json = serde_json::json!({
+            "signing_secret": "sec",
+            "bot_token": "tok"
+        });
+        let app = App {
+            public_id: AppId::from_uuid(Uuid::nil()),
+            internal_id: Uuid::nil(),
+            org_id: 1,
+            name: "test".into(),
+            description: None,
+            harness_id: HarnessId::from_uuid(Uuid::nil()),
+            agent_id: AgentId::from_uuid(Uuid::nil()),
+            channel_type: ChannelType::Slack,
+            channel_config: config_json,
+            status: AppStatus::Draft,
+            published_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let config = app.slack_config().unwrap();
+        assert_eq!(config.signing_secret, "sec");
+    }
+
+    #[test]
+    fn test_app_slack_config_invalid_json() {
+        let app = App {
+            public_id: AppId::from_uuid(Uuid::nil()),
+            internal_id: Uuid::nil(),
+            org_id: 1,
+            name: "test".into(),
+            description: None,
+            harness_id: HarnessId::from_uuid(Uuid::nil()),
+            agent_id: AgentId::from_uuid(Uuid::nil()),
+            channel_type: ChannelType::Slack,
+            channel_config: serde_json::json!({"bad": "data"}),
+            status: AppStatus::Draft,
+            published_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!(app.slack_config().is_none());
+    }
+
+    #[test]
+    fn test_app_serde_skips_internal_fields() {
+        let app = App {
+            public_id: AppId::from_uuid(Uuid::nil()),
+            internal_id: Uuid::nil(),
+            org_id: 42,
+            name: "test".into(),
+            description: None,
+            harness_id: HarnessId::from_uuid(Uuid::nil()),
+            agent_id: AgentId::from_uuid(Uuid::nil()),
+            channel_type: ChannelType::Slack,
+            channel_config: serde_json::json!({}),
+            status: AppStatus::Draft,
+            published_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let json = serde_json::to_value(&app).unwrap();
+        assert!(json.get("id").is_some()); // public_id serialized as "id"
+        assert!(json.get("internal_id").is_none()); // skipped
+        assert!(json.get("org_id").is_none()); // skipped
+        assert!(json.get("published_at").is_none()); // None skipped
+    }
+}
