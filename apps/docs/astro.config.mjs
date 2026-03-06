@@ -139,6 +139,19 @@ export default defineConfig({
                 ...openAPISidebarGroups,
               ],
             },
+            {
+              label: "Tutorials",
+              link: "/tutorials/building-agents-using-sdk/",
+              icon: "rocket",
+              items: [
+                {
+                  label: "Tutorials",
+                  items: [
+                    { label: "Building Agents Using the SDK", slug: "tutorials/building-agents-using-sdk" },
+                  ],
+                },
+              ],
+            },
           ],
           {
             exclude: ["/index.mdx"],
