@@ -6,7 +6,7 @@ Slash commands for session interaction, following patterns from Claude Code, Cod
 
 Two command sources, unified under `CommandDescriptor`:
 
-1. **System Commands** — from capabilities via `Capability::commands()`. Execute directly without LLM (session control).
+1. **System Commands** — from capabilities via `Capability::commands()`. Execute directly without LLM (session control). No system commands are registered yet; the `SystemCommandsCapability` is the extension point.
 2. **Skill Commands** — from skills marked `user-invocable: true` in SKILL.md frontmatter. Expand to prompt injection (LLM processes the skill instructions).
 
 Commands are NOT tools. They either execute directly (system) or inject instructions into the conversation (skills).
@@ -19,7 +19,7 @@ See `crates/core/src/command.rs` for `CommandDescriptor`, `CommandSource`, `Comm
 
 `Capability::commands()` returns `Vec<CommandDescriptor>` (default: empty). Capabilities that provide commands override this method.
 
-See `crates/core/src/capabilities/system_commands.rs` for the built-in system commands capability (`/clear`, `/status`, `/compact`, `/model`).
+See `crates/core/src/capabilities/system_commands.rs` for the system commands capability (currently empty; add commands as handlers are implemented).
 
 ## Skill Invocability
 
@@ -30,10 +30,13 @@ For DB-backed skills, `user_invocable` is stored in the metadata JSON field (no 
 ## API
 
 - `GET /v1/sessions/{session_id}/commands` — returns all available commands (system + invocable skills)
-- `POST /v1/sessions/{session_id}/commands/{command_name}` — execute a command (placeholder)
 
-See `crates/server/src/api/commands.rs` for route handlers.
+See `crates/server/src/api/commands.rs` for route handler.
 
 ## UI Integration
 
-The UI fetches commands via the GET endpoint to populate command palette / autocomplete when the user types `/`. System commands execute immediately; skill commands expand the skill's instructions into the conversation.
+- `apps/ui/src/components/chat/command-autocomplete.tsx` — autocomplete popup component
+- `apps/ui/src/hooks/use-commands.ts` — `useSessionCommands` React Query hook
+- `apps/ui/src/lib/api/commands.ts` — API client
+
+The UI fetches commands via the GET endpoint to populate autocomplete when the user types `/` in the chat input. Keyboard navigation (arrows, Enter/Tab, Escape) is supported. System commands would execute immediately; skill commands fill the input with `/{name}` for the user to send.
