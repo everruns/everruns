@@ -23,6 +23,9 @@ pub mod tool_types;
 // Deployment configuration
 pub mod deployment;
 
+// Feature flags
+pub mod feature_flags;
+
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;
 
@@ -237,6 +240,9 @@ pub use typed_id::{
 
 // Deployment configuration
 pub use deployment::DeploymentGrade;
+
+// Feature flags
+pub use feature_flags::FeatureFlags;
 
 // Observation backends
 pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};

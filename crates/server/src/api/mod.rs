@@ -11,6 +11,7 @@ pub mod commands;
 pub mod common;
 pub mod durable;
 pub mod events;
+pub mod feature_flags;
 pub mod harnesses;
 pub mod images;
 pub mod llm_models;

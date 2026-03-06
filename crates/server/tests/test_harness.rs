@@ -190,6 +190,10 @@ impl TestServer {
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+        let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
+        let feature_flags_state = api::feature_flags::AppState {
+            flags: feature_flags,
+        };
 
         // Build API routes
         let api_routes = Router::new()
@@ -211,6 +215,7 @@ impl TestServer {
             .merge(api::skills::routes(skills_state))
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::feature_flags::routes(feature_flags_state))
             .merge(auth::routes(auth_backend));
 
         // Build main router with health endpoint

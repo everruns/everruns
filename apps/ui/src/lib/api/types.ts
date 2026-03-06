@@ -710,6 +710,10 @@ export interface HealthResponse {
 
 export type AuthMode = "none" | "admin" | "full" | "external";
 
+export interface FeatureFlags {
+  global_chat: boolean;
+}
+
 export interface AuthConfigResponse {
   mode: AuthMode;
   password_auth_enabled: boolean;

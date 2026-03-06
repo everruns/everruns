@@ -43,6 +43,27 @@ async fn test_health_endpoint() {
 }
 
 // ============================================
+// Feature Flags Endpoint Tests
+// ============================================
+
+#[tokio::test]
+async fn test_feature_flags_endpoint() {
+    let server = TestServer::new().await;
+
+    let body: Value = server
+        .get("/v1/feature-flags")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    // Should return a JSON object with boolean flags
+    assert!(body.is_object());
+    assert!(body.get("global_chat").is_some());
+    // In test env (DEV_MODE=true), experimental flags are enabled
+    assert!(body["global_chat"].is_boolean());
+}
+
+// ============================================
 // Agent CRUD Tests
 // ============================================
 
