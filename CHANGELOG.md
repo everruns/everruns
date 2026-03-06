@@ -11,6 +11,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.3] - 2026-03-06
+
+### Highlights
+
+- **Custom Commands** — Slash command system with UI autocomplete for agent workflows ([#667](https://github.com/everruns/everruns/pull/667))
+- **Production Security Hardening** — mTLS for gRPC, per-IP auth rate limiting, security headers, audit logging, account enumeration prevention ([#627](https://github.com/everruns/everruns/pull/627), [#633](https://github.com/everruns/everruns/pull/633), [#634](https://github.com/everruns/everruns/pull/634), [#636](https://github.com/everruns/everruns/pull/636), [#641](https://github.com/everruns/everruns/pull/641))
+- **Multi-Instance & Scaling** — Multi-instance control plane, capacity-aware fair-share task claiming, resource-based worker backpressure ([#637](https://github.com/everruns/everruns/pull/637), [#638](https://github.com/everruns/everruns/pull/638), [#639](https://github.com/everruns/everruns/pull/639))
+- **DuckDuckGo Search** — New DuckDuckGo Instant Answer search integration ([#663](https://github.com/everruns/everruns/pull/663))
+- **GPT-5.4 Support** — Model profiles for GPT-5.4 and GPT-5.4 Pro ([#653](https://github.com/everruns/everruns/pull/653), [#654](https://github.com/everruns/everruns/pull/654))
+
+### What's Changed
+
+- chore(db): squash migrations 004-006 into 004_v0.8.3 ([#673](https://github.com/everruns/everruns/pull/673))
+- docs: reduce duplication in building-agents-using-sdk tutorial ([#674](https://github.com/everruns/everruns/pull/674))
+- docs(capabilities): add Capabilities navigation tab with top 15 capability reference pages ([#672](https://github.com/everruns/everruns/pull/672))
+- fix(ui): provider icons invisible on light theme ([#670](https://github.com/everruns/everruns/pull/670))
+- chore: pre-release maintenance — update dependencies ([#668](https://github.com/everruns/everruns/pull/668))
+- feat(commands): add custom commands system with UI autocomplete ([#667](https://github.com/everruns/everruns/pull/667))
+- docs: add tutorial for building agents using the Everruns SDK ([#661](https://github.com/everruns/everruns/pull/661))
+- feat(docs): add horizontal navigation tabs ([#662](https://github.com/everruns/everruns/pull/662))
+- revert: remove Playwright smoke tests for deployed environments ([#666](https://github.com/everruns/everruns/pull/666))
+- feat(duckduckgo): add DuckDuckGo Instant Answer search integration ([#663](https://github.com/everruns/everruns/pull/663))
+- docs: improve meta descriptions for SEO ([#660](https://github.com/everruns/everruns/pull/660))
+- revert(server): remove system_prompt_encrypted (TM-CRYPTO-007) ([#659](https://github.com/everruns/everruns/pull/659))
+- feat(core): add optional input token limit to LlmModelLimits ([#657](https://github.com/everruns/everruns/pull/657))
+- fix(ci): merge env-var SSE tests to prevent flaky race condition ([#656](https://github.com/everruns/everruns/pull/656))
+- feat(core): add GPT-5.4 model profiles and integration tests ([#654](https://github.com/everruns/everruns/pull/654))
+- feat(core): add GPT-5.4 and GPT-5.4 Pro model profiles ([#653](https://github.com/everruns/everruns/pull/653))
+- fix(docker): pin UI builder stage to amd64 to avoid QEMU SIGILL ([#652](https://github.com/everruns/everruns/pull/652))
+- fix(ci): skip arm64 QEMU build for UI Docker image ([#651](https://github.com/everruns/everruns/pull/651))
+- feat(users): add profile page with full name editing ([#649](https://github.com/everruns/everruns/pull/649))
+- feat(chat): add run-agent, harness-avoidance, and confirmation guidelines to chat system prompt ([#648](https://github.com/everruns/everruns/pull/648))
+- fix(capabilities): scope platform store to session org and fix public URL default ([#647](https://github.com/everruns/everruns/pull/647))
+- fix(ui): render plain URLs as links in chat markdown ([#646](https://github.com/everruns/everruns/pull/646))
+- feat(grpc): add gRPC support for sqldb_store in WorkerAdapters (EVE-44) ([#645](https://github.com/everruns/everruns/pull/645))
+- fix(worker): enforce WorkerAdapters parity at compile time (EVE-44) ([#643](https://github.com/everruns/everruns/pull/643))
+- feat(ui): Claude Code-style bash tool rendering ([#644](https://github.com/everruns/everruns/pull/644))
+- feat(capabilities): add list_capabilities tool to platform management ([#642](https://github.com/everruns/everruns/pull/642))
+- feat(grpc): add mutual TLS (mTLS) support for worker-server communication ([#641](https://github.com/everruns/everruns/pull/641))
+- feat(durable): load-proportional claim jitter (EVE-43) ([#640](https://github.com/everruns/everruns/pull/640))
+- feat(durable): capacity-aware fair-share task claiming (EVE-42) ([#639](https://github.com/everruns/everruns/pull/639))
+- feat(durable): implement resource-based worker backpressure (EVE-41) ([#638](https://github.com/everruns/everruns/pull/638))
+- feat(server): multi-instance control plane support (EVE-40) ([#637](https://github.com/everruns/everruns/pull/637))
+- feat(server): structured audit logging for auth events (EVE-34) ([#636](https://github.com/everruns/everruns/pull/636))
+- feat(server): add security response headers (EVE-33) ([#634](https://github.com/everruns/everruns/pull/634))
+- refactor: rename GRPC_* env vars to WORKER_GRPC_* prefix ([#635](https://github.com/everruns/everruns/pull/635))
+- fix(auth): prevent account enumeration via registration endpoint (EVE-32) ([#633](https://github.com/everruns/everruns/pull/633))
+- feat(storage): add encrypted system_prompt columns (EVE-38) ([#630](https://github.com/everruns/everruns/pull/630))
+- fix(ui): default to Generic harness in New Session dialog ([#632](https://github.com/everruns/everruns/pull/632))
+- feat(capabilities): add risk level classification and admin approval (EVE-17) ([#631](https://github.com/everruns/everruns/pull/631))
+- fix(api): add regex pattern length limit on grep endpoint (EVE-36) ([#629](https://github.com/everruns/everruns/pull/629))
+- fix(server): warn when DATABASE_URL lacks TLS in production (EVE-39) ([#628](https://github.com/everruns/everruns/pull/628))
+- feat(auth): add per-IP rate limiting on auth endpoints (EVE-31) ([#627](https://github.com/everruns/everruns/pull/627))
+- fix(grpc): require GRPC_AUTH_TOKEN in production mode (EVE-37) ([#624](https://github.com/everruns/everruns/pull/624))
+- fix(auth): require AUTH_JWT_SECRET when authentication is enabled (EVE-35) ([#625](https://github.com/everruns/everruns/pull/625))
+- fix(auth): validate OAuth CSRF state parameter in callback (EVE-28) ([#623](https://github.com/everruns/everruns/pull/623))
+- fix(api): require authentication on all durable API endpoints (EVE-29) ([#621](https://github.com/everruns/everruns/pull/621))
+
 ## [0.8.2] - 2026-03-01
 
 ### Highlights
