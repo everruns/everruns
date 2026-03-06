@@ -552,6 +552,7 @@ pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
     responses(
         (status = 200, description = "Deleted", body = DeleteResponse),
         (status = 400, description = "Invalid session ID or directory not empty"),
+        (status = 403, description = "Cannot delete readonly file or directory containing readonly files"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
