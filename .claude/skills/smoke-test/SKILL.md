@@ -66,6 +66,20 @@ curl -s -X POST "http://localhost:9300/api/v1/agents" \
   -d '{"name": "Test", "system_prompt": "You are helpful."}' | jq '.id'
 ```
 
+### 6. Deployed Environment Smoke Tests
+
+```bash
+# Against dev.everruns.com (cloud agent with Doppler)
+PLAYWRIGHT_CHROMIUM_PATH=/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome \
+  doppler run -- npx playwright test --project smoke
+
+# Against custom URL
+SMOKE_BASE_URL=https://staging.everruns.com \
+  npx playwright test --project smoke
+```
+
+Tests health, auth config, login page. Password-auth tests auto-skip on external auth deployments. See `specs/smoke-test-spec.md`.
+
 ## Full API Reference
 
 See https://docs.everruns.com for complete API documentation.
