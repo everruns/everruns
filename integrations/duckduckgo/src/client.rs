@@ -1,5 +1,6 @@
 //! DuckDuckGo Instant Answer API client.
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -23,7 +24,8 @@ pub struct InstantAnswerResponse {
     pub abstract_url: String,
 
     /// Instant answer text.
-    #[serde(rename = "Answer", default)]
+    /// DuckDuckGo returns this as a string or an object depending on query type.
+    #[serde(rename = "Answer", default, deserialize_with = "string_or_stringify")]
     pub answer: String,
 
     /// Type of answer (e.g. "calc", "color", "ip", etc.).
@@ -93,6 +95,21 @@ impl TopicResult {
     /// Whether this is a topic group (has nested topics).
     pub fn is_group(&self) -> bool {
         !self.topics.is_empty()
+    }
+}
+
+/// Deserialize a value that may be a string or an object (stringify objects).
+/// DuckDuckGo API returns `Answer` as a string for some queries and as an
+/// object for others (e.g. calculations).
+fn string_or_stringify<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer).map_err(de::Error::custom)?;
+    match value {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Null => Ok(String::new()),
+        other => Ok(other.to_string()),
     }
 }
 
@@ -380,5 +397,25 @@ mod tests {
         assert!(response.heading.is_empty());
         assert!(response.related_topics.is_empty());
         assert!(response.results.is_empty());
+    }
+
+    #[test]
+    fn test_response_answer_as_object() {
+        // DuckDuckGo returns Answer as an object for some queries (e.g. calculations)
+        let json = r#"{
+            "Answer": {"data": "2+2=4", "type": "calc"},
+            "Heading": "2+2",
+            "Type": ""
+        }"#;
+        let response: InstantAnswerResponse = serde_json::from_str(json).unwrap();
+        assert!(!response.answer.is_empty());
+        assert!(response.answer.contains("2+2=4"));
+    }
+
+    #[test]
+    fn test_response_answer_as_null() {
+        let json = r#"{"Answer": null}"#;
+        let response: InstantAnswerResponse = serde_json::from_str(json).unwrap();
+        assert!(response.answer.is_empty());
     }
 }
