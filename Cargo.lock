@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1212,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1226,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1300,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-codesandbox"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1350,7 +1350,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1366,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -1396,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1513,7 +1513,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1532,7 +1532,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
