@@ -114,6 +114,46 @@ A Turn is one iteration of the agent loop: reason (call the LLM) then act (execu
 - A turn produces messages and emits events
 - Lifecycle: `turn.started` → reason → act → `turn.completed` (or `turn.failed`)
 
+#### The Agentic Loop
+
+Understanding the reason-act loop is key to building effective agents. Here's what happens inside each turn:
+
+```mermaid
+graph TD
+    Start([Message received]) --> Input[InputAtom<br/>Load user message]
+    Input --> Reason[ReasonAtom<br/>Call LLM with context]
+    Reason --> Decision{Tool calls<br/>in response?}
+    Decision -->|Yes| Act[ActAtom<br/>Execute tools in parallel]
+    Act --> Reason
+    Decision -->|No| Done([Turn complete<br/>Agent response emitted])
+
+    classDef atom fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef decision fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+    classDef terminal fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+
+    class Input,Reason,Act atom
+    class Decision decision
+    class Start,Done terminal
+```
+
+Each iteration:
+
+1. **Reason** — The LLM receives the full conversation history (system prompt + messages + tool results) and produces either a text response or tool calls
+2. **Act** — All tool calls from the LLM are executed in parallel. Results are added to the conversation history
+3. **Loop** — If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
+
+The loop runs for a maximum of **10 iterations** per turn to prevent runaway execution.
+
+#### Durable Execution
+
+In production mode (PostgreSQL-backed), each step is a separate durable task:
+
+```
+SetupStep → ExecuteLlmStep → ExecuteToolStep(s) → ExecuteLlmStep → ... → FinalizeStep
+```
+
+If a worker crashes mid-turn, the control plane detects the missed heartbeat and re-queues the task for another worker. Your application sees a brief delay, not a failure.
+
 ### Message
 
 A Message is a conversation entry reconstructed from the event log. Messages are not stored in a separate table.

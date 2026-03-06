@@ -100,7 +100,7 @@ The `Everruns` client is the entry point for all API interactions. It organizes 
     from everruns_sdk import Everruns
 
     # Reads EVERRUNS_API_KEY from environment
-    # Reads EVERRUNS_API_URL from environment (default: http://localhost:9000)
+    # Reads EVERRUNS_API_URL from environment (default: http://localhost:9300/api)
     client = Everruns()
     ```
   </TabItem>
@@ -110,7 +110,7 @@ The `Everruns` client is the entry point for all API interactions. It organizes 
 
     client = Everruns(
         api_key="your-api-key",
-        base_url="http://localhost:9000"
+        base_url="http://localhost:9300/api"
     )
     ```
   </TabItem>
@@ -119,7 +119,7 @@ The `Everruns` client is the entry point for all API interactions. It organizes 
     from everruns_sdk import Everruns
 
     # Dev mode (just start-dev) requires no real key
-    client = Everruns(api_key="dev", base_url="http://localhost:9000")
+    client = Everruns(api_key="dev", base_url="http://localhost:9300/api")
     ```
   </TabItem>
 </Tabs>
@@ -130,7 +130,7 @@ An agent defines *what* the AI should do (system prompt) and *what tools* it has
 
 ```python
 async def main():
-    client = Everruns(api_key="dev", base_url="http://localhost:9000")
+    client = Everruns(api_key="dev", base_url="http://localhost:9300/api")
 
     agent = await client.agents.create(
         name="Research Assistant",
@@ -379,7 +379,7 @@ points, and comment count.
 async def main():
     client = Everruns(
         api_key=os.environ.get("EVERRUNS_API_KEY", "dev"),
-        base_url=os.environ.get("EVERRUNS_API_URL", "http://localhost:9000"),
+        base_url=os.environ.get("EVERRUNS_API_URL", "http://localhost:9300/api"),
     )
 
     # Import agent from markdown
@@ -469,87 +469,9 @@ pip install everruns-sdk
 python hackernews_reader.py
 ```
 
-## The Agentic Loop in Depth
+## See Also: Event Types
 
-Understanding the reason-act loop is key to building effective agents. Here's what happens inside each turn:
-
-```mermaid
-graph TD
-    Start([Message received]) --> Input[InputAtom<br/>Load user message]
-    Input --> Reason[ReasonAtom<br/>Call LLM with context]
-    Reason --> Decision{Tool calls<br/>in response?}
-    Decision -->|Yes| Act[ActAtom<br/>Execute tools in parallel]
-    Act --> Reason
-    Decision -->|No| Done([Turn complete<br/>Agent response emitted])
-
-    classDef atom fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef decision fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef terminal fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-
-    class Input,Reason,Act atom
-    class Decision decision
-    class Start,Done terminal
-```
-
-Each iteration:
-
-1. **Reason** — The LLM receives the full conversation history (system prompt + messages + tool results) and produces either a text response or tool calls
-2. **Act** — All tool calls from the LLM are executed in parallel. Results are added to the conversation history
-3. **Loop** — If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
-
-The loop runs for a maximum of **10 iterations** per turn to prevent runaway execution.
-
-### Durable Execution
-
-In production mode (PostgreSQL-backed), each step is a separate durable task:
-
-```
-SetupStep → ExecuteLlmStep → ExecuteToolStep(s) → ExecuteLlmStep → ... → FinalizeStep
-```
-
-If a worker crashes mid-turn, the control plane detects the missed heartbeat and re-queues the task for another worker. Your application sees a brief delay, not a failure.
-
-## Event Types Reference
-
-Events follow the `{category}.{action}` naming convention. Here are the events you'll encounter most:
-
-### Message Events
-
-| Event | When | Key Fields |
-|-------|------|-----------|
-| `input.message` | User message stored | `data.message.content` |
-| `output.message.started` | LLM generation begins | `data.model` |
-| `output.message.delta` | Streaming text chunk | `data.delta`, `data.accumulated` |
-| `output.message.completed` | Final agent response | `data.message.content`, `data.usage` |
-
-### Turn Events
-
-| Event | When | Key Fields |
-|-------|------|-----------|
-| `turn.started` | Agentic loop begins | `data.turn_id` |
-| `turn.completed` | Loop finished | `data.iterations`, `data.duration_ms` |
-| `turn.failed` | Unrecoverable error | `data.error`, `data.error_code` |
-| `turn.cancelled` | User cancelled | `data.reason` |
-
-### Tool Events
-
-| Event | When | Key Fields |
-|-------|------|-----------|
-| `tool.started` | Tool execution begins | `data.tool_call.name`, `data.tool_call.arguments` |
-| `tool.completed` | Tool finished | `data.tool_name`, `data.success`, `data.result` |
-
-### Session Events
-
-| Event | When | Key Fields |
-|-------|------|-----------|
-| `session.activated` | Turn started (session active) | `data.turn_id` |
-| `session.idled` | Turn completed (session idle) | `data.usage` (cumulative tokens) |
-
-### LLM Events
-
-| Event | When | Key Fields |
-|-------|------|-----------|
-| `llm.generation` | After each LLM API call | `data.messages`, `data.output`, `data.metadata.usage` |
+Events follow the `{category}.{action}` naming convention (e.g., `turn.started`, `output.message.delta`, `tool.completed`). For the complete event type catalog with field descriptions and JSON examples, see the [Event Reference](/event-reference/).
 
 ## Practical Patterns
 
@@ -694,47 +616,14 @@ graph TB
 ```
 
 **Control Plane** (Server) owns all state. It exposes two interfaces:
-- **REST API** (port 9000) — The SDK connects here
+- **REST API** (port 9000) — Internal API server
 - **gRPC** (port 9001) — Workers connect here (internal)
+
+A **Caddy reverse proxy** (port 9300) unifies the API and UI behind a single port. The SDK connects to `http://localhost:9300/api`.
 
 **Workers** are stateless executors. They claim tasks from a durable queue, execute the reason-act loop, and report results back via gRPC. If a worker crashes, the task is automatically re-queued.
 
-**Your application** only talks to the REST API via the SDK. You never interact with workers or the database directly.
-
-## SDK API Coverage
-
-The SDK provides access to the full Everruns API through organized sub-clients:
-
-| Sub-client | Operations |
-|------------|------------|
-| `client.agents` | `create`, `list`, `get`, `update`, `upsert`, `delete`, `import_agent`, `export`, `preview` |
-| `client.sessions` | `create`, `list`, `get`, `update`, `delete`, `cancel` |
-| `client.messages` | `create`, `list` |
-| `client.events` | `list`, `stream` (SSE with auto-reconnection) |
-| `client.filesystem` | `list`, `read`, `create`, `update`, `delete`, `move`, `copy`, `grep`, `stat` |
-| `client.capabilities` | `list`, `get` |
-| `client.llm_providers` | `create`, `list`, `get`, `update`, `delete`, `sync_models` |
-| `client.llm_models` | `create`, `list`, `get`, `update`, `delete` |
-| `client.mcp_servers` | `create`, `list`, `get`, `update`, `delete` |
-| `client.images` | `upload`, `list`, `get`, `thumbnail`, `delete` |
-| `client.scheduled_tasks` | `create`, `list`, `get`, `update`, `delete`, `pause`, `resume`, `trigger` |
-
-### Error Handling
-
-The SDK provides typed exceptions for common API errors:
-
-```python
-from everruns_sdk import Everruns, NotFoundError, AuthenticationError
-
-client = Everruns()
-
-try:
-    agent = await client.agents.get("invalid-id")
-except NotFoundError as e:
-    print(f"Not found: {e}")
-except AuthenticationError as e:
-    print(f"Auth error: {e}")
-```
+**Your application** only talks to the REST API via the SDK through the Caddy proxy. You never interact with workers or the database directly.
 
 ## What's Next
 
