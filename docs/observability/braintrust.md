@@ -1,5 +1,5 @@
 ---
-title: Braintrust Integration
+title: Braintrust
 description: LLM observability, evaluation, and trace visualization with Braintrust
 ---
 

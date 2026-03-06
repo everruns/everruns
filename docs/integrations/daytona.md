@@ -1,5 +1,5 @@
 ---
-title: Daytona Integration
+title: Daytona
 description: Cloud sandbox environments for secure code execution with Daytona
 ---
 
