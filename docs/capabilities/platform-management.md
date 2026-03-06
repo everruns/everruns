@@ -7,7 +7,6 @@ description: Programmatic management of harnesses, agents, and sessions
 |---|---|
 | **ID** | `platform_management` |
 | **Category** | Platform |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 

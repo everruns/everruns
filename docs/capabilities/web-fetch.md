@@ -7,7 +7,6 @@ description: Fetch web content from URLs with HTML-to-markdown conversion
 |---|---|
 | **ID** | `web_fetch` |
 | **Category** | Network |
-| **Risk** | High (admin required) |
 | **Features** | None |
 | **Dependencies** | None |
 

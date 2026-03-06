@@ -15,7 +15,7 @@ When you assign capabilities to an agent, those capabilities enhance what the ag
 
 ## Available Capabilities
 
-### Agent Instructions
+### AGENTS.md
 
 **Status**: Available
 
@@ -24,7 +24,7 @@ Reads `AGENTS.md` from the session workspace and includes it in the system promp
 - **No tools** — this capability only injects context into the system prompt
 - **File**: `/workspace/AGENTS.md` (plain Markdown, max 32 KiB)
 - **Use cases**: Project conventions, coding style, build instructions, architecture notes
-- See [Agent Instructions](/features/agent-instructions/) for full documentation
+- See [AGENTS.md](/features/agent-instructions/) for full documentation
 
 ### Current Time
 

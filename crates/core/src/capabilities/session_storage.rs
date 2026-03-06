@@ -22,7 +22,7 @@ impl Capability for SessionStorageCapability {
     }
 
     fn name(&self) -> &str {
-        "Session Storage"
+        "Storage"
     }
 
     fn description(&self) -> &str {
@@ -471,7 +471,7 @@ mod tests {
     fn test_capability_metadata() {
         let cap = SessionStorageCapability;
         assert_eq!(cap.id(), "session_storage");
-        assert_eq!(cap.name(), "Session Storage");
+        assert_eq!(cap.name(), "Storage");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("database"));
         assert_eq!(cap.category(), Some("Storage"));

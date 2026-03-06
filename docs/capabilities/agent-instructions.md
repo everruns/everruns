@@ -1,5 +1,5 @@
 ---
-title: Agent Instructions
+title: AGENTS.md
 description: Dynamic project instructions from AGENTS.md in the session workspace
 ---
 
@@ -7,7 +7,6 @@ description: Dynamic project instructions from AGENTS.md in the session workspac
 |---|---|
 | **ID** | `agent_instructions` |
 | **Category** | Configuration |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 
@@ -64,7 +63,7 @@ The agent will follow these instructions for every turn in the session.
 
 ## See Also
 
-- [Agent Instructions feature guide](/features/agent-instructions/) — detailed documentation
+- [AGENTS.md feature guide](/features/agent-instructions/) — detailed documentation
 - [File System](/capabilities/file-system/) — manage the AGENTS.md file
 - [Agent Skills](/capabilities/agent-skills/) — another way to inject specialized instructions
 - [Capabilities Overview](/capabilities/)

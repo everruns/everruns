@@ -35,7 +35,7 @@ impl Capability for AgentInstructionsCapability {
     }
 
     fn name(&self) -> &str {
-        "Agent Instructions"
+        "AGENTS.md"
     }
 
     fn description(&self) -> &str {
@@ -215,7 +215,7 @@ mod tests {
         let cap = AgentInstructionsCapability;
 
         assert_eq!(cap.id(), "agent_instructions");
-        assert_eq!(cap.name(), "Agent Instructions");
+        assert_eq!(cap.name(), "AGENTS.md");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("file-text"));
         assert_eq!(cap.category(), Some("Configuration"));
@@ -303,7 +303,7 @@ mod tests {
         let cap = registry.get("agent_instructions").unwrap();
 
         assert_eq!(cap.id(), "agent_instructions");
-        assert_eq!(cap.name(), "Agent Instructions");
+        assert_eq!(cap.name(), "AGENTS.md");
     }
 
     #[test]

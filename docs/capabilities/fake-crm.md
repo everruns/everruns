@@ -7,7 +7,6 @@ description: Demo capability with simulated CRM and customer support tools
 |---|---|
 | **ID** | `fake_crm` |
 | **Category** | Demo |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 

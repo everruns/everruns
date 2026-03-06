@@ -1,8 +1,8 @@
-# Agent Instructions (AGENTS.md) Specification
+# AGENTS.md Specification
 
 ## Abstract
 
-The Agent Instructions capability reads an `AGENTS.md` file from the session workspace and dynamically injects its content into the system prompt on every LLM turn. This provides project-level context and coding conventions to agents without modifying the agent's system prompt directly.
+The AGENTS.md capability reads an `AGENTS.md` file from the session workspace and dynamically injects its content into the system prompt on every LLM turn. This provides project-level context and coding conventions to agents without modifying the agent's system prompt directly.
 
 ## Background
 
@@ -36,7 +36,7 @@ pub struct AgentInstructionsCapability;
 #[async_trait]
 impl Capability for AgentInstructionsCapability {
     fn id(&self) -> &str { "agent_instructions" }
-    fn name(&self) -> &str { "Agent Instructions" }
+    fn name(&self) -> &str { "AGENTS.md" }
     fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
     fn icon(&self) -> Option<&str> { Some("file-text") }
     fn category(&self) -> Option<&str> { Some("Configuration") }
@@ -136,7 +136,7 @@ GET /v1/capabilities
 Response includes:
 {
   "id": "agent_instructions",
-  "name": "Agent Instructions",
+  "name": "AGENTS.md",
   "description": "Reads AGENTS.md from the session workspace...",
   "status": "available",
   "icon": "file-text",

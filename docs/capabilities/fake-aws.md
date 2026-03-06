@@ -7,7 +7,6 @@ description: Demo capability with simulated AWS infrastructure management tools
 |---|---|
 | **ID** | `fake_aws` |
 | **Category** | Demo |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 

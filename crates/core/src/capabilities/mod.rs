@@ -2367,15 +2367,16 @@ mod tests {
     }
 
     #[test]
-    fn test_high_risk_capabilities() {
+    fn test_capability_risk_levels() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // virtual_bash and web_fetch should be High
+        // virtual_bash is Low (in-memory sandboxed execution)
         let bash = registry.get("virtual_bash").unwrap();
-        assert_eq!(bash.risk_level(), RiskLevel::High);
+        assert_eq!(bash.risk_level(), RiskLevel::Low);
 
+        // web_fetch is Medium (network access)
         let fetch = registry.get("web_fetch").unwrap();
-        assert_eq!(fetch.risk_level(), RiskLevel::High);
+        assert_eq!(fetch.risk_level(), RiskLevel::Medium);
 
         // Default capabilities should be Low
         let noop = registry.get("noop").unwrap();

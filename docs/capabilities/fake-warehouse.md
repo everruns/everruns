@@ -7,7 +7,6 @@ description: Demo capability with simulated warehouse management tools
 |---|---|
 | **ID** | `fake_warehouse` |
 | **Category** | Demo |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 

@@ -1,5 +1,5 @@
 ---
-title: Session Schedules
+title: Schedules
 description: Schedule one-shot and recurring tasks within a session
 ---
 
@@ -7,7 +7,6 @@ description: Schedule one-shot and recurring tasks within a session
 |---|---|
 | **ID** | `session_schedule` |
 | **Category** | Session |
-| **Risk** | Low |
 | **Features** | `schedules` (unlocks Schedules tab) |
 | **Dependencies** | None |
 

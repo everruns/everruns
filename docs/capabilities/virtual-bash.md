@@ -7,7 +7,6 @@ description: Sandboxed bash command execution in an isolated environment
 |---|---|
 | **ID** | `virtual_bash` |
 | **Category** | Execution |
-| **Risk** | High (admin required) |
 | **Features** | `file_system` (unlocks Workspace tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 

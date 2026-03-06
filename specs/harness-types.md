@@ -40,9 +40,9 @@ The recommended default harness. Bundles the core capabilities needed for genera
 |---------------|------|---------|
 | `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` |
 | `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
-| `session_storage` | Session Storage | Key/value store and encrypted secret storage |
+| `session_storage` | Storage | Key/value store and encrypted secret storage |
 | `session` | Session | Session info access and title management |
-| `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
+| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt |
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
 
 **Use cases:**
@@ -68,9 +68,9 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 |---------------|------|---------|
 | `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` |
 | `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
-| `session_storage` | Session Storage | Key/value store and encrypted secret storage |
+| `session_storage` | Storage | Key/value store and encrypted secret storage |
 | `session` | Session | Session info access and title management |
-| `agent_instructions` | Agent Instructions | Reads AGENTS.md from workspace and injects into system prompt |
+| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt |
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
 | `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools |
 

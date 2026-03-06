@@ -7,7 +7,6 @@ description: Structured task lists for tracking multi-step work progress
 |---|---|
 | **ID** | `stateless_todo_list` |
 | **Category** | Productivity |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 

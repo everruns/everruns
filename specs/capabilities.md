@@ -226,9 +226,9 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 |-------|-------------|-------------|
 | `low` | Default. No special requirements. | Any org member |
 | `medium` | Logged but allowed for org members. | Any org member |
-| `high` | Can execute arbitrary code or access external resources. | Requires Admin role |
+| `high` | Can access external compute or resources. | Requires Admin role |
 
-High-risk built-in capabilities: `virtual_bash`, `web_fetch`, `docker_container`, `daytona`, `codesandbox`.
+High-risk built-in capabilities: `docker_container`, `daytona`, `codesandbox`.
 
 See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 

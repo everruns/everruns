@@ -7,7 +7,6 @@ description: Get the current date and time in various formats and timezones
 |---|---|
 | **ID** | `current_time` |
 | **Category** | Utilities |
-| **Risk** | Low |
 | **Features** | None |
 | **Dependencies** | None |
 
@@ -43,5 +42,5 @@ Agent:
 
 ## See Also
 
-- [Session Schedules](/capabilities/session-schedules/) — schedule future tasks
+- [Schedules](/capabilities/session-schedules/) — schedule future tasks
 - [Capabilities Overview](/capabilities/)
