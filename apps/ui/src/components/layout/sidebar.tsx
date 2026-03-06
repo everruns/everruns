@@ -79,7 +79,7 @@ const buildingBlocksNavigation = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { name: "Apps", href: "/apps", icon: Rocket },
+  { name: "Apps", href: "/apps", icon: Rocket, flag: "apps" },
 ];
 
 const bottomNavigation = [{ name: "Settings", href: "/settings", icon: Settings }];
