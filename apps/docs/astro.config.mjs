@@ -93,6 +93,17 @@ export default defineConfig({
               ],
             },
             {
+              label: "Capabilities",
+              link: "/capabilities/",
+              icon: "puzzle",
+              items: [
+                {
+                  label: "Capabilities",
+                  autogenerate: { directory: "capabilities" },
+                },
+              ],
+            },
+            {
               label: "Integrations",
               link: "/integrations/daytona/",
               icon: "laptop",
@@ -112,14 +123,26 @@ export default defineConfig({
               ],
             },
             {
-              label: "Capabilities",
-              link: "/capabilities/",
-              icon: "puzzle",
+              label: "Tutorials",
+              link: "/tutorials/building-agents-using-sdk/",
+              icon: "rocket",
               items: [
                 {
-                  label: "Capabilities",
-                  autogenerate: { directory: "capabilities" },
+                  label: "Tutorials",
+                  items: [
+                    { label: "Building Agents Using the SDK", slug: "tutorials/building-agents-using-sdk" },
+                  ],
                 },
+              ],
+            },
+            {
+              label: "Reference",
+              link: "/api/",
+              icon: "information",
+              id: "reference",
+              items: [
+                { label: "Event Reference", slug: "event-reference" },
+                ...openAPISidebarGroups,
               ],
             },
             {
@@ -136,29 +159,6 @@ export default defineConfig({
                       label: "Runbooks",
                       autogenerate: { directory: "sre/runbooks" },
                     },
-                  ],
-                },
-              ],
-            },
-            {
-              label: "Reference",
-              link: "/api/",
-              icon: "information",
-              id: "reference",
-              items: [
-                { label: "Event Reference", slug: "event-reference" },
-                ...openAPISidebarGroups,
-              ],
-            },
-            {
-              label: "Tutorials",
-              link: "/tutorials/building-agents-using-sdk/",
-              icon: "rocket",
-              items: [
-                {
-                  label: "Tutorials",
-                  items: [
-                    { label: "Building Agents Using the SDK", slug: "tutorials/building-agents-using-sdk" },
                   ],
                 },
               ],
