@@ -3622,6 +3622,9 @@ mod tests {
     use super::*;
     use tonic::service::Interceptor;
 
+    // Env-var-mutating tests must not run in parallel.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_interceptor_allows_when_no_token_configured() {
         let mut interceptor = GrpcAuthInterceptor::new(None);
@@ -3671,18 +3674,23 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
     }
 
+    /// Acquire env lock, tolerating poison from #[should_panic] tests.
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     // TM-DURABLE-002: require_grpc_auth_token panics when WORKER_GRPC_AUTH_TOKEN is unset
     #[test]
     #[should_panic(expected = "WORKER_GRPC_AUTH_TOKEN must be set")]
     fn test_require_grpc_auth_token_panics_without_env() {
-        // SAFETY: single-threaded test; no other thread reads this var concurrently
+        let _lock = lock_env();
         unsafe { std::env::remove_var("WORKER_GRPC_AUTH_TOKEN") };
         require_grpc_auth_token();
     }
 
     #[test]
     fn test_require_grpc_auth_token_returns_value() {
-        // SAFETY: single-threaded test; no other thread reads this var concurrently
+        let _lock = lock_env();
         unsafe { std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "test-token-123") };
         let token = require_grpc_auth_token();
         assert_eq!(token, "test-token-123");
@@ -3691,7 +3699,7 @@ mod tests {
 
     #[test]
     fn test_grpc_server_tls_returns_none_when_no_env_vars() {
-        // SAFETY: single-threaded test
+        let _lock = lock_env();
         unsafe {
             std::env::remove_var("WORKER_GRPC_TLS_CERT");
             std::env::remove_var("WORKER_GRPC_TLS_KEY");
@@ -3706,6 +3714,7 @@ mod tests {
 
     #[test]
     fn test_grpc_server_tls_returns_none_when_cert_empty() {
+        let _lock = lock_env();
         unsafe {
             std::env::set_var("WORKER_GRPC_TLS_CERT", "");
             std::env::set_var("WORKER_GRPC_TLS_KEY", "");
@@ -3720,6 +3729,7 @@ mod tests {
 
     #[test]
     fn test_grpc_server_tls_returns_config_with_valid_certs() {
+        let _lock = lock_env();
         let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let cert_path = format!("{}/tests/fixtures/test-server-cert.pem", manifest);
         let key_path = format!("{}/tests/fixtures/test-server-key.pem", manifest);
@@ -3744,6 +3754,7 @@ mod tests {
 
     #[test]
     fn test_grpc_server_tls_with_client_ca() {
+        let _lock = lock_env();
         let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let cert_path = format!("{}/tests/fixtures/test-server-cert.pem", manifest);
         let key_path = format!("{}/tests/fixtures/test-server-key.pem", manifest);
@@ -3771,6 +3782,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Failed to read WORKER_GRPC_TLS_CERT")]
     fn test_grpc_server_tls_panics_on_missing_cert_file() {
+        let _lock = lock_env();
         unsafe {
             std::env::set_var("WORKER_GRPC_TLS_CERT", "/nonexistent/cert.pem");
             std::env::set_var("WORKER_GRPC_TLS_KEY", "/nonexistent/key.pem");

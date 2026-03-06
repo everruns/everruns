@@ -410,8 +410,12 @@ impl Drop for SseConnectionGuard {
 mod tests {
     use super::*;
 
+    // Env-var-mutating tests must not run in parallel.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_realtime_config() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
             std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
@@ -426,6 +430,7 @@ mod tests {
 
     #[test]
     fn test_monitoring_config() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
             std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
@@ -749,12 +754,9 @@ mod tests {
         );
     }
 
-    // NOTE: Env var tests are inherently racy with parallel tests.
-    // These test the override mechanism; we accept that parallel test
-    // interference may cause occasional failures in isolation.
-    // Run with --test-threads=1 if needed for determinism.
     #[test]
     fn test_realtime_cycle_secs_env_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::set_var("SSE_REALTIME_CYCLE_SECS", "900");
         }
@@ -768,6 +770,7 @@ mod tests {
 
     #[test]
     fn test_monitoring_cycle_secs_env_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::set_var("SSE_MONITORING_CYCLE_SECS", "1800");
         }
@@ -781,6 +784,7 @@ mod tests {
 
     #[test]
     fn test_cycle_secs_env_invalid_fallback() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::set_var("SSE_REALTIME_CYCLE_SECS", "not_a_number");
         }
@@ -797,6 +801,7 @@ mod tests {
 
     #[test]
     fn test_heartbeat_interval_default() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
         }
@@ -811,6 +816,7 @@ mod tests {
 
     #[test]
     fn test_heartbeat_interval_env_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "15");
         }
@@ -824,6 +830,7 @@ mod tests {
 
     #[test]
     fn test_heartbeat_interval_env_invalid_fallback() {
+        let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
             std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "not_a_number");
         }
@@ -836,6 +843,7 @@ mod tests {
 
     #[test]
     fn test_heartbeat_interval_less_than_sdk_read_timeout() {
+        let _lock = ENV_LOCK.lock().unwrap();
         // SDK read timeout is 60s. Heartbeat must be less than that.
         unsafe {
             std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
@@ -850,14 +858,9 @@ mod tests {
         );
     }
 
-    // These tests share env vars and MUST run sequentially within a single
-    // test to avoid races with parallel test threads.
     #[test]
     fn test_sse_limits_from_env() {
-        // Serialize env-var access via a process-wide mutex to prevent races.
-        use std::sync::Mutex;
-        static ENV_MUTEX: Mutex<()> = Mutex::new(());
-        let _lock = ENV_MUTEX.lock().unwrap();
+        let _lock = ENV_LOCK.lock().unwrap();
 
         // --- default / single instance ---
         unsafe {
