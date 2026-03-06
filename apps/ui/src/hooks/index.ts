@@ -10,3 +10,4 @@ export * from "./use-durable";
 export * from "./use-image-attachments";
 export * from "./use-session-schedules";
 export * from "./use-global-chat";
+export * from "./use-commands";
