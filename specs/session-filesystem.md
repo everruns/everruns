@@ -118,7 +118,7 @@ See the OpenAPI spec (`./scripts/export-openapi.sh`) for detailed request/respon
 1. **Auto-create parents:** Creating `/a/b/c.txt` automatically creates `/a` and `/a/b` directories
 2. **Delete cascade:** Deleting a session deletes all its files (via FK cascade)
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded
-4. **Readonly protection:** Cannot modify content of readonly files (can still delete)
+4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files
 5. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
 
 ### Database Schema

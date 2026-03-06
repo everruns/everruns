@@ -578,7 +578,9 @@ pub async fn delete_path(
         .map_err(|e| {
             tracing::error!("Failed to delete: {}", e);
             let msg = e.to_string();
-            if msg.contains("not empty") || msg.contains("Cannot delete root") {
+            if msg.contains("readonly") {
+                (StatusCode::FORBIDDEN, msg)
+            } else if msg.contains("not empty") || msg.contains("Cannot delete root") {
                 (StatusCode::BAD_REQUEST, msg)
             } else {
                 (
