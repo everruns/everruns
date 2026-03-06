@@ -86,16 +86,28 @@ export default defineConfig({
                     { label: "Architecture", slug: "getting-started/architecture" },
                   ],
                 },
-              ],
-            },
-            {
-              label: "Features",
-              link: "/features/capabilities/",
-              icon: "puzzle",
-              items: [
                 {
                   label: "Features",
                   autogenerate: { directory: "features" },
+                },
+              ],
+            },
+            {
+              label: "Integrations",
+              link: "/integrations/daytona/",
+              icon: "laptop",
+              items: [
+                {
+                  label: "Integrations",
+                  autogenerate: { directory: "integrations" },
+                },
+                {
+                  label: "Observability",
+                  autogenerate: { directory: "observability" },
+                },
+                {
+                  label: "Ecosystem",
+                  autogenerate: { directory: "ecosystem" },
                 },
               ],
             },
@@ -114,25 +126,6 @@ export default defineConfig({
                       autogenerate: { directory: "sre/runbooks" },
                     },
                   ],
-                },
-                {
-                  label: "Observability",
-                  autogenerate: { directory: "observability" },
-                },
-              ],
-            },
-            {
-              label: "Integrations",
-              link: "/integrations/daytona/",
-              icon: "laptop",
-              items: [
-                {
-                  label: "Integrations",
-                  autogenerate: { directory: "integrations" },
-                },
-                {
-                  label: "Ecosystem",
-                  autogenerate: { directory: "ecosystem" },
                 },
               ],
             },
