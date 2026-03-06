@@ -20,7 +20,7 @@ Everruns integrates with [Slack](https://slack.com) to deploy agents as bots tha
 2. Name your app and select the workspace
 3. Navigate to **OAuth & Permissions** and add these **Bot Token Scopes**:
    - `chat:write` — Send messages
-   - `app_mentions:events` — React to @mentions (optional)
+   - `app_mentions:read` — React to @mentions (optional)
 4. Click **Install to Workspace** and authorize
 5. Copy the **Bot User OAuth Token** (`xoxb-...`) from the OAuth page
 
