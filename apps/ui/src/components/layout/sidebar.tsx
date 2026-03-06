@@ -7,6 +7,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/auth-provider";
+import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useLogout } from "@/hooks/use-auth";
 import { useCreateOrganization } from "@/hooks/use-organizations";
@@ -59,8 +60,16 @@ import {
 
 const isDev = process.env.NODE_ENV === "development";
 
-const topNavigation = [
-  { name: "Chat", href: "/chat", icon: MessageCircle },
+type NavItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  flag?: keyof import("@/lib/api/types").FeatureFlags;
+  exact?: boolean;
+};
+
+const topNavigation: NavItem[] = [
+  { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat" },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];
@@ -160,6 +169,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, requiresAuth } = useAuth();
+  const featureFlags = useFeatureFlags();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const logoutMutation = useLogout();
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
@@ -220,24 +230,26 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 py-4">
-        {topNavigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
-          );
-        })}
+        {topNavigation
+          .filter((item) => !item.flag || featureFlags[item.flag])
+          .map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.name}
+              </Link>
+            );
+          })}
 
         {/* Building Blocks section */}
         <div className="my-3 border-t" />

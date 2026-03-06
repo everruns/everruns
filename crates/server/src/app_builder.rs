@@ -444,6 +444,14 @@ impl ServerAppBuilder {
             auth_mode: format!("{:?}", auth_config.mode),
         };
 
+        // Feature flags (computed from env vars + deployment grade)
+        let feature_flags =
+            everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
+        tracing::info!(?feature_flags, "Feature flags computed");
+        let feature_flags_state = api::feature_flags::AppState {
+            flags: feature_flags,
+        };
+
         if !self.config.api_prefix.is_empty() {
             tracing::info!(
                 prefix = %self.config.api_prefix,
@@ -487,7 +495,8 @@ impl ServerAppBuilder {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
-            .merge(api::slack_events::routes(slack_state));
+            .merge(api::slack_events::routes(slack_state))
+            .merge(api::feature_flags::routes(feature_flags_state));
 
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {

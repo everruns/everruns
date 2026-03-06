@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
+import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { OrgProvider } from "@/providers/org-provider";
 
@@ -18,9 +19,11 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased bg-brand-dots">
         <QueryProvider>
-          <AuthProvider>
-            <OrgProvider>{children}</OrgProvider>
-          </AuthProvider>
+          <FeatureFlagsProvider>
+            <AuthProvider>
+              <OrgProvider>{children}</OrgProvider>
+            </AuthProvider>
+          </FeatureFlagsProvider>
         </QueryProvider>
       </body>
     </html>

@@ -104,6 +104,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
 - `specs/slack-integration.md` - Slack bot integration (app-scoped webhook, session routing)
+- `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 
 ### Skills
 
