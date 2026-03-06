@@ -112,6 +112,17 @@ export default defineConfig({
               ],
             },
             {
+              label: "Capabilities",
+              link: "/capabilities/",
+              icon: "puzzle",
+              items: [
+                {
+                  label: "Capabilities",
+                  autogenerate: { directory: "capabilities" },
+                },
+              ],
+            },
+            {
               label: "Operations",
               link: "/sre/environment-variables/",
               icon: "setting",
