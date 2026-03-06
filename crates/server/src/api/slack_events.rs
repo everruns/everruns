@@ -27,7 +27,9 @@ use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
@@ -37,6 +39,12 @@ use crate::storage::StorageBackend;
 use super::common::ErrorResponse;
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Dedup cache for Slack events. Keyed by message `ts`, entries expire after 60s.
+/// Prevents double-processing when Slack sends both `app_mention` and `message`
+/// events for the same @mention.
+static SLACK_EVENT_DEDUP: std::sync::LazyLock<StdMutex<HashMap<String, Instant>>> =
+    std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
 
 /// Slack event wrapper (Events API envelope).
 #[derive(Debug, Deserialize)]
@@ -209,6 +217,27 @@ async fn handle_slack_event(
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
+                // Dedup: Slack sends both app_mention and message events for @mentions.
+                // Use the message ts as a dedup key with a 60s expiry window.
+                let event_ts = event.ts.clone().unwrap_or_default();
+                if !event_ts.is_empty() {
+                    let mut dedup = SLACK_EVENT_DEDUP.lock().unwrap();
+                    let now = Instant::now();
+                    // Purge stale entries
+                    dedup
+                        .retain(|_, t| now.duration_since(*t) < std::time::Duration::from_secs(60));
+                    if dedup.contains_key(&event_ts) {
+                        tracing::debug!(
+                            app_id = %app_id,
+                            ts = %event_ts,
+                            event_type = %event.event_type,
+                            "Skipping duplicate Slack event (already processed this ts)"
+                        );
+                        return Ok((StatusCode::OK, Json(ack_json())));
+                    }
+                    dedup.insert(event_ts, now);
+                }
+
                 tracing::info!(
                     app_id = %app_id,
                     event_type = %event.event_type,
@@ -362,11 +391,14 @@ async fn process_slack_message(
         .or_else(|| event.ts.clone())
         .unwrap_or_default();
     let session_id = session.id.uuid();
+    let message_id = message.id;
     let db = state.db.clone();
 
     tokio::spawn(async move {
-        if let Err(e) =
-            wait_and_post_response(&db, session_id, &bot_token, &channel, &thread_ts).await
+        if let Err(e) = wait_and_post_response(
+            &db, session_id, message_id, &bot_token, &channel, &thread_ts,
+        )
+        .await
         {
             tracing::error!(
                 session_id = %session_id,
@@ -432,11 +464,14 @@ fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) ->
 
 /// Wait for agent response events and post the result back to Slack.
 ///
-/// Polls for output.message.completed events on the session, then sends
-/// the agent's response text to the Slack channel/thread.
+/// Polls for output.message.completed events on the session that match the
+/// given `input_message_id`, then sends the agent's response text to Slack.
+/// Filtering by `input_message_id` ensures each Slack message gets the correct
+/// response, not the first response in the session.
 async fn wait_and_post_response(
     db: &StorageBackend,
     session_id: uuid::Uuid,
+    input_message_id: everruns_core::typed_id::MessageId,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
@@ -444,6 +479,7 @@ async fn wait_and_post_response(
     use everruns_core::typed_id::{EventId, SessionId};
 
     let session_id_typed = SessionId::from_uuid(session_id);
+    let input_msg_str = input_message_id.to_string();
 
     // Poll for output.message.completed events (max 120 seconds)
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
@@ -463,7 +499,14 @@ async fn wait_and_post_response(
         for event_row in &events {
             since_id = Some(event_row.id);
 
-            if event_row.event_type == "output.message.completed" {
+            // Only consider events triggered by our input message
+            let event_input_msg = event_row
+                .context
+                .get("input_message_id")
+                .and_then(|v| v.as_str());
+            let is_our_turn = event_input_msg == Some(&input_msg_str);
+
+            if event_row.event_type == "output.message.completed" && is_our_turn {
                 // Extract the text from the event data
                 if let Some(text) = extract_response_text(&event_row.data) {
                     post_to_slack(bot_token, channel, thread_ts, &text).await?;
@@ -472,7 +515,9 @@ async fn wait_and_post_response(
             }
 
             // Also check for turn.completed or turn.failed as terminal states
-            if event_row.event_type == "turn.completed" || event_row.event_type == "turn.failed" {
+            if (event_row.event_type == "turn.completed" || event_row.event_type == "turn.failed")
+                && is_our_turn
+            {
                 tracing::debug!(
                     session_id = %session_id,
                     event_type = %event_row.event_type,
@@ -872,5 +917,68 @@ mod tests {
             bot_id: None,
             subtype: None,
         }
+    }
+
+    #[test]
+    fn test_dedup_cache_blocks_duplicate_ts() {
+        let ts = format!("dedup_test_{}", uuid::Uuid::new_v4());
+        {
+            let mut dedup = SLACK_EVENT_DEDUP.lock().unwrap();
+            assert!(!dedup.contains_key(&ts));
+            dedup.insert(ts.clone(), Instant::now());
+        }
+        {
+            let dedup = SLACK_EVENT_DEDUP.lock().unwrap();
+            assert!(dedup.contains_key(&ts));
+        }
+    }
+
+    #[test]
+    fn test_dedup_cache_allows_different_ts() {
+        let ts1 = format!("dedup_a_{}", uuid::Uuid::new_v4());
+        let ts2 = format!("dedup_b_{}", uuid::Uuid::new_v4());
+        {
+            let mut dedup = SLACK_EVENT_DEDUP.lock().unwrap();
+            dedup.insert(ts1.clone(), Instant::now());
+        }
+        {
+            let dedup = SLACK_EVENT_DEDUP.lock().unwrap();
+            assert!(dedup.contains_key(&ts1));
+            assert!(!dedup.contains_key(&ts2));
+        }
+    }
+
+    #[test]
+    fn test_event_context_input_message_id_matching() {
+        // Simulate the filtering logic from wait_and_post_response
+        let input_msg_str = "message_01933b5a00007000800000000000001";
+
+        // Event with matching input_message_id
+        let context_match = serde_json::json!({
+            "input_message_id": "message_01933b5a00007000800000000000001",
+            "turn_id": "turn_01933b5a00007000800000000000001"
+        });
+        let event_input_msg = context_match
+            .get("input_message_id")
+            .and_then(|v| v.as_str());
+        assert_eq!(event_input_msg, Some(input_msg_str));
+
+        // Event with different input_message_id (should NOT match)
+        let context_other = serde_json::json!({
+            "input_message_id": "message_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+            "turn_id": "turn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+        });
+        let other_msg = context_other
+            .get("input_message_id")
+            .and_then(|v| v.as_str());
+        assert_ne!(other_msg, Some(input_msg_str));
+
+        // Event with no context (session-level event, should NOT match)
+        let context_empty = serde_json::json!({});
+        let empty_msg = context_empty
+            .get("input_message_id")
+            .and_then(|v| v.as_str());
+        assert_eq!(empty_msg, None);
+        assert_ne!(empty_msg, Some(input_msg_str));
     }
 }
