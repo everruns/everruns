@@ -55,6 +55,7 @@ pub mod skill;
 
 pub mod atoms;
 pub mod capabilities;
+pub mod command;
 pub mod error;
 pub mod llm_driver_registry;
 pub mod llm_retry;

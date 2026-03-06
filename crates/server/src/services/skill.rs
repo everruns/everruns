@@ -50,7 +50,11 @@ impl SkillService {
         }
 
         let public_id = SkillId::new().to_string();
-        let metadata = serde_json::to_value(&parsed.metadata)?;
+        let mut metadata_map = parsed.metadata.clone();
+        if !parsed.user_invocable {
+            metadata_map.insert("user_invocable".to_string(), serde_json::Value::Bool(false));
+        }
+        let metadata = serde_json::to_value(&metadata_map)?;
 
         let input = CreateSkillRow {
             public_id,
@@ -103,7 +107,11 @@ impl SkillService {
         }
 
         let public_id = SkillId::new().to_string();
-        let metadata = serde_json::to_value(&parsed.metadata)?;
+        let mut metadata_map = parsed.metadata.clone();
+        if !parsed.user_invocable {
+            metadata_map.insert("user_invocable".to_string(), serde_json::Value::Bool(false));
+        }
+        let metadata = serde_json::to_value(&metadata_map)?;
 
         let input = CreateSkillRow {
             public_id,
@@ -262,6 +270,12 @@ impl SkillService {
         let metadata: HashMap<String, serde_json::Value> =
             serde_json::from_value(row.metadata.clone()).unwrap_or_default();
 
+        // user_invocable defaults to true; only false if explicitly set in metadata
+        let user_invocable = metadata
+            .get("user_invocable")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         Skill {
             id: row.id,
             name: row.name.clone(),
@@ -273,6 +287,7 @@ impl SkillService {
             source_type: SkillSourceType::from(row.source_type.as_str()),
             status: SkillStatus::from(row.status.as_str()),
             version: row.version.clone(),
+            user_invocable,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }

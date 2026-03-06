@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod audit_logs;
 pub mod capabilities;
+pub mod commands;
 pub mod common;
 pub mod durable;
 pub mod events;

@@ -239,6 +239,38 @@ impl CapabilityService {
         &self.db
     }
 
+    /// List system commands from all registered capabilities.
+    ///
+    /// System commands execute directly without the LLM (e.g., /clear, /status).
+    pub fn list_system_commands(&self) -> Vec<everruns_core::command::CommandDescriptor> {
+        self.registry
+            .list()
+            .iter()
+            .flat_map(|cap| cap.commands())
+            .collect()
+    }
+
+    /// List invocable skill commands from the org's skills registry.
+    ///
+    /// Returns skills where user_invocable is true, formatted as commands.
+    pub async fn list_skill_commands(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
+        let skills = self.skill_service.list(org_id).await?;
+        let commands = skills
+            .into_iter()
+            .filter(|s| s.status == everruns_core::SkillStatus::Active && s.user_invocable)
+            .map(|s| everruns_core::command::CommandDescriptor {
+                name: s.name,
+                description: s.description,
+                source: everruns_core::command::CommandSource::Skill,
+                args: vec![],
+            })
+            .collect();
+        Ok(commands)
+    }
+
     /// Preview the final agent shape by computing the merged system prompt and tools.
     ///
     /// This collects contributions from all specified capabilities and their dependencies:
