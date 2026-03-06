@@ -1,0 +1,35 @@
+# DuckDuckGo Integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
+# Decision: No API key required (DuckDuckGo Instant Answer API is free)
+
+[package]
+name = "everruns-integrations-duckduckgo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "DuckDuckGo Instant Answer search integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+
+# HTTP client for DuckDuckGo API
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[features]
+integration = [] # Gate real-API tests; CI passes --features integration
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
