@@ -100,6 +100,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/codesandbox.md` - CodeSandbox cloud sandbox integration
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
+- `specs/smoke-test-spec.md` - Playwright smoke tests for deployed environments
 
 ### Skills
 
