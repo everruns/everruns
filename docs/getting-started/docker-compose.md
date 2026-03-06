@@ -1,6 +1,6 @@
 ---
 title: Docker Compose
-description: Deploy Everruns with Docker Compose in minutes
+description: Step-by-step guide to deploying the complete Everruns platform with Docker Compose, including the control plane, workers, UI, and PostgreSQL database.
 ---
 
 Deploy the complete Everruns platform using Docker Compose. This guide sets up the control plane, workers, UI, and database in a single command.

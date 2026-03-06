@@ -107,12 +107,12 @@ function deriveDescription(slug: string, title: string): string {
   // API tag group pages: derive tag name from slug (e.g. "api/operations/tags/agents" → "agents")
   if (slug.startsWith("api/operations/tags/")) {
     const tagName = slug.split("/").pop() ?? title;
-    return `Everruns API ${tagName} endpoints`;
+    return `Browse all Everruns API ${tagName} endpoints, including request parameters, response schemas, and usage examples for each operation.`;
   }
 
   // API operation pages (title is already cleaned of method+path prefix)
   if (slug.startsWith("api/operations/")) {
-    return `${title} - Everruns API reference`;
+    return `${title} — Everruns REST API reference. View request parameters, response schema, and example payloads for this endpoint.`;
   }
 
   // API overview page
@@ -122,9 +122,9 @@ function deriveDescription(slug: string, title: string): string {
 
   // API schema pages
   if (slug.startsWith("api/schemas/")) {
-    return `${title} schema - Everruns API reference`;
+    return `${title} schema definition in the Everruns REST API. View fields, types, required properties, and relationships for this data model.`;
   }
 
   // Generic fallback
-  return `${title} - Everruns documentation`;
+  return `${title} — Everruns documentation. Learn how to deploy, configure, and build AI agent applications with the durable harness engine.`;
 }
