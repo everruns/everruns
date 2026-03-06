@@ -4,6 +4,7 @@
 // Each submodule handles a specific resource type with its own AppState.
 
 pub mod agents;
+pub mod apps;
 pub mod audit_logs;
 pub mod capabilities;
 pub mod commands;
@@ -24,6 +25,7 @@ pub mod session_schedules;
 pub mod session_storage;
 pub mod sessions;
 pub mod skills;
+pub mod slack_events;
 pub mod sse;
 pub mod tool_results;
 pub mod user_connections;

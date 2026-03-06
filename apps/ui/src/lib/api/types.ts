@@ -1677,3 +1677,52 @@ export interface CommandDescriptor {
 export interface CommandsResponse {
   commands: CommandDescriptor[];
 }
+
+// ============================================
+// App types (deployable agent+harness bundles)
+// ============================================
+
+export type AppStatus = "draft" | "published" | "archived";
+export type ChannelType = "slack";
+export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
+
+export interface SlackChannelConfig {
+  signing_secret: string;
+  bot_token: string;
+  channel_id?: string;
+  team_id?: string;
+  session_strategy: SessionStrategy;
+}
+
+export interface App {
+  id: string;
+  name: string;
+  description: string | null;
+  harness_id: string;
+  agent_id: string;
+  channel_type: ChannelType;
+  channel_config: SlackChannelConfig | Record<string, unknown>;
+  status: AppStatus;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAppRequest {
+  name: string;
+  description?: string;
+  harness_id: string;
+  agent_id: string;
+  channel_type: ChannelType;
+  channel_config?: SlackChannelConfig | Record<string, unknown>;
+}
+
+export interface UpdateAppRequest {
+  name?: string;
+  description?: string;
+  harness_id?: string;
+  agent_id?: string;
+  channel_type?: ChannelType;
+  channel_config?: SlackChannelConfig | Record<string, unknown>;
+  status?: AppStatus;
+}

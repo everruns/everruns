@@ -945,3 +945,50 @@ pub struct UpdateSessionScheduleRow {
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub trigger_count_increment: bool,
 }
+
+// ============================================
+// App models (deployable agent+harness bundles)
+// ============================================
+
+/// App row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct AppRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub harness_id: Uuid,
+    pub agent_id: Uuid,
+    pub channel_type: String,
+    pub channel_config: serde_json::Value,
+    pub status: String,
+    pub published_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an app
+#[derive(Debug, Clone)]
+pub struct CreateAppRow {
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub harness_id: Uuid,
+    pub agent_id: Uuid,
+    pub channel_type: String,
+    pub channel_config: serde_json::Value,
+}
+
+/// Input for updating an app
+#[derive(Debug, Clone, Default)]
+pub struct UpdateApp {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub harness_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub channel_type: Option<String>,
+    pub channel_config: Option<serde_json::Value>,
+    pub status: Option<String>,
+    pub published_at: Option<Option<DateTime<Utc>>>,
+}

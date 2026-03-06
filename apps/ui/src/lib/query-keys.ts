@@ -137,6 +137,13 @@ export const queryKeys = {
     list: (sessionId: string) => ["commands", sessionId] as const,
   },
 
+  // App queries
+  apps: {
+    all: ["apps"] as const,
+    list: () => ["apps"] as const,
+    detail: (appId: string) => ["app", appId] as const,
+  },
+
   // Skill queries
   skills: {
     all: ["skills"] as const,

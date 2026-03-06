@@ -21,13 +21,19 @@ graph LR
 
     RuntimeAgent -.->|executes in| Session
 
+    App -->|uses| Harness
+    App -->|uses| Agent
+    App -.->|creates| Session
+
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
     classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef deploy fill:#e8daef,stroke:#7d3c98,color:#4a235a
 
     class Harness,Agent,Capability config
     class RuntimeAgent assembly
     class Session runtime
+    class App deploy
 ```
 
 - **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
@@ -85,6 +91,17 @@ A Tool is a function the agent can invoke during execution. Tools are provided b
 - Built-in tools have no name prefix
 - MCP tools are prefixed: `mcp_{server_name}__{tool_name}`
 - Executed during the act phase of a turn
+
+### App
+
+An App is a deployable unit that binds a Harness and Agent to a distribution channel such as Slack. Apps provide a publish/unpublish lifecycle — only published apps accept incoming requests from their configured channel.
+
+- Each app references exactly one Harness and one Agent
+- Each app has a channel type (e.g., `slack`) with channel-specific configuration
+- Lifecycle: `draft` → `published` → `draft` (or `archived`)
+- Incoming messages are routed to sessions based on a configurable strategy (e.g., per-thread, per-channel, per-user)
+
+See [Apps](/features/apps/) for setup and configuration.
 
 ---
 

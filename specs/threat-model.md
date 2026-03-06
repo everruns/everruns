@@ -27,6 +27,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
 | TM-CSB | CodeSandbox | Sandbox token compromise, resource exhaustion |
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
+| TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
 
 ### Managing Threat IDs
 
@@ -861,6 +862,9 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
+| Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window |
+| Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
+| Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |
 
 ## References
 
@@ -882,6 +886,8 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/daytona.md` — Daytona cloud sandbox integration
 - `specs/codesandbox.md` — CodeSandbox cloud sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
+- `specs/apps.md` — Apps system (agent deployment to channels)
+- `specs/slack-integration.md` — Slack bot integration
 - `specs/brave-search.md` — Brave Search web search integration
 - `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry

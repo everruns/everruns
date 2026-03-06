@@ -54,6 +54,7 @@ import {
   Shield,
   BookOpen,
   Plus,
+  Rocket,
 } from "lucide-react";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -69,6 +70,7 @@ const buildingBlocksNavigation = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
+  { name: "Apps", href: "/apps", icon: Rocket },
 ];
 
 const bottomNavigation = [{ name: "Settings", href: "/settings", icon: Settings }];

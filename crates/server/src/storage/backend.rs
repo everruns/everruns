@@ -1247,4 +1247,42 @@ impl StorageBackend {
     pub async fn delete_audit_logs_before(&self, before: DateTime<Utc>) -> Result<u64> {
         dispatch!(self, delete_audit_logs_before, before)
     }
+
+    // ============================================
+    // App CRUD
+    // ============================================
+
+    pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
+        dispatch!(self, create_app, org_id, input)
+    }
+
+    pub async fn get_app_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<AppRow>> {
+        dispatch!(self, get_app_by_public_id, org_id, public_id)
+    }
+
+    /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+    pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
+        dispatch!(self, get_app_by_public_id_unscoped, public_id)
+    }
+
+    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
+        dispatch!(self, list_apps, org_id)
+    }
+
+    pub async fn update_app(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateApp,
+    ) -> Result<Option<AppRow>> {
+        dispatch!(self, update_app, org_id, id, input)
+    }
+
+    pub async fn delete_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_app, org_id, id)
+    }
 }

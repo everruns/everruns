@@ -18,17 +18,24 @@ graph LR
 
     RuntimeAgent -.->|executes in| Session
 
+    App -->|uses| Harness
+    App -->|uses| Agent
+    App -.->|creates| Session
+
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
     classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef deploy fill:#e8daef,stroke:#7d3c98,color:#4a235a
 
     class Harness,Agent,Capability config
     class RuntimeAgent assembly
     class Session runtime
+    class App deploy
 ```
 
 - **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
 - **Dashed arrows** — runtime assembly: config merges into RuntimeAgent, which executes in a Session
+- **Purple** — deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
 
 ### Harness
 
@@ -159,6 +166,10 @@ erDiagram
 
     McpServer ||--o{ Tool : "exposes"
     McpServer ||--|| Capability : "virtual capability"
+
+    App }o--|| Harness : "uses"
+    App }o--|| Agent : "uses"
+    App ||--o{ Session : "creates via channel"
 ```
 
 ### LLM Provider
@@ -185,6 +196,19 @@ A remote server that exposes tools via the Model Context Protocol. Integrated as
 - Tools are discovered at runtime and cached with a 24-hour TTL
 - Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
 - Execution happens via HTTP JSON-RPC
+
+### App
+
+A deployable unit that binds a Harness and Agent to a distribution channel (Slack, WhatsApp, web widget, etc.). Provides a publish/unpublish lifecycle controlling whether incoming requests are accepted.
+
+- Many apps in the system
+- Each app references exactly one Harness (required) and one Agent (required)
+- Each app has a channel type and channel-specific config (JSONB)
+- Lifecycle: `draft` → `published` → `draft` (or `archived`)
+- Only published apps accept incoming requests
+- Channel types: `slack` (more planned)
+- Session routing is channel-specific (e.g., per-thread, per-channel, per-user for Slack)
+- See [apps.md](apps.md) for full specification
 
 ### User Connection
 
