@@ -594,6 +594,24 @@ mod tests {
                 }
             }
 
+            // Detect ALTER TABLE ... DROP COLUMN [IF EXISTS] ... _encrypted
+            if trimmed.starts_with("alter table") && trimmed.contains("drop column") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // Without IF EXISTS: ["alter", "table", "<table>", "drop", "column", "<col>", ...]
+                // With IF EXISTS: ["alter", "table", "<table>", "drop", "column", "if", "exists", "<col>", ...]
+                let col_idx = if parts.len() >= 8 && parts[5] == "if" && parts[6] == "exists" {
+                    7
+                } else {
+                    5
+                };
+                if parts.len() > col_idx {
+                    let col_name = parts[col_idx].trim_end_matches(';');
+                    if col_name.ends_with("_encrypted") {
+                        found.remove(&(parts[2].to_string(), col_name.to_string()));
+                    }
+                }
+            }
+
             // Detect CREATE TABLE
             if trimmed.starts_with("create table") {
                 in_create_table = true;
