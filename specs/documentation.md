@@ -20,11 +20,15 @@ All documentation content lives in `docs/` at the repository root:
 
 ```
 docs/
-├── index.md              # Landing page
+├── index.mdx             # Landing page (template: splash)
 ├── getting-started/
 │   └── introduction.md
 ├── features/
 │   └── capabilities.md
+├── integrations/
+│   └── daytona.md
+├── observability/
+│   └── braintrust.md
 ├── sre/
 │   ├── environment-variables.md
 │   ├── admin-container.md
@@ -34,6 +38,21 @@ docs/
 └── api/
     └── openapi.json      # Auto-generated OpenAPI spec
 ```
+
+### Navigation
+
+The docs site uses `starlight-sidebar-topics` for section-based navigation,
+rendered as horizontal tabs below the header on desktop:
+
+| Tab | Content |
+|-----|---------|
+| Get Started | Getting Started guides + Features |
+| Integrations | Integrations + Observability + Ecosystem |
+| Operations | SRE Guide + Runbooks |
+| Reference | Event Reference + API Reference (OpenAPI) |
+
+Custom `Header.astro` override renders topics as a fixed tab bar below the
+main header. Sidebar topic list is hidden on desktop (visible on mobile).
 
 ### Content Requirements
 
@@ -134,27 +153,8 @@ cd apps/docs && npm run build
 #### Starlight Integration
 
 In `apps/docs/astro.config.mjs`:
-```javascript
-import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
-
-export default defineConfig({
-  integrations: [
-    starlight({
-      plugins: [
-        starlightOpenAPI([{
-          base: "api",
-          label: "API Reference",
-          schema: "../../docs/api/openapi.json",
-        }]),
-      ],
-      sidebar: [
-        // ... other items
-        ...openAPISidebarGroups,  // Auto-generated from spec
-      ],
-    }),
-  ],
-});
-```
+See `apps/docs/astro.config.mjs` for the full sidebar topics and OpenAPI
+plugin configuration.
 
 #### CI/CD Integration
 
