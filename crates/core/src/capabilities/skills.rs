@@ -145,7 +145,11 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             if let Ok(Some(file)) = file_store.read_file(ctx.session_id, &skill_md_path).await {
                 let content = file.content.as_deref().unwrap_or("");
                 if let Ok(parsed) = crate::skill::parse_skill_md(content) {
-                    discovered_skills.push((parsed.name, parsed.description));
+                    discovered_skills.push((
+                        parsed.name,
+                        parsed.description,
+                        parsed.user_invocable,
+                    ));
                 }
             }
         }
@@ -155,9 +159,12 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         if !discovered_skills.is_empty() {
             let total = discovered_skills.len();
             prompt.push_str("\n\nAvailable skills:\n");
-            for (name, description) in discovered_skills.iter().take(MAX_SKILLS_IN_PROMPT) {
+            for (name, description, user_invocable) in
+                discovered_skills.iter().take(MAX_SKILLS_IN_PROMPT)
+            {
                 let desc = truncate_description(description, MAX_DESCRIPTION_CHARS);
-                prompt.push_str(&format!("- **{}**: {}\n", name, desc));
+                let invocable_hint = if *user_invocable { " (/{name})" } else { "" };
+                prompt.push_str(&format!("- **{name}**: {desc}{invocable_hint}\n"));
             }
             if total > MAX_SKILLS_IN_PROMPT {
                 prompt.push_str(&format!(
@@ -310,6 +317,7 @@ impl Tool for ListSkillsTool {
                             "description": parsed.description,
                             "path": workspace_path(&skill_md_path),
                             "version": parsed.version,
+                            "user_invocable": parsed.user_invocable,
                         }));
                     }
                     Err(errors) => {

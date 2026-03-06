@@ -93,6 +93,9 @@ pub struct Skill {
     pub source_type: SkillSourceType,
     pub status: SkillStatus,
     pub version: String,
+    /// Whether this skill appears as a /slash command for users
+    #[serde(default = "default_true")]
+    pub user_invocable: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -116,6 +119,8 @@ pub struct ParsedSkillMd {
     pub version: String,
     /// Markdown body (after frontmatter)
     pub instructions: String,
+    /// Whether this skill appears as a /slash command for users (default: true)
+    pub user_invocable: bool,
 }
 
 /// YAML frontmatter structure
@@ -129,6 +134,13 @@ struct SkillFrontmatter {
     metadata: HashMap<String, serde_json::Value>,
     #[serde(rename = "allowed-tools")]
     allowed_tools: Option<String>,
+    /// Whether this skill appears as a /slash command (default: true)
+    #[serde(rename = "user-invocable", default = "default_true")]
+    user_invocable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Skill content response (for /content endpoint)
@@ -239,6 +251,7 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         allowed_tools: fm.allowed_tools,
         version,
         instructions: body,
+        user_invocable: fm.user_invocable,
     })
 }
 
@@ -450,6 +463,50 @@ Body.
         let result = validate_skill_md(content);
         assert!(!result.valid);
         assert!(!result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_parse_user_invocable_default_true() {
+        let content = r#"---
+name: my-skill
+description: A skill without explicit invocable field.
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(
+            parsed.user_invocable,
+            "user_invocable should default to true"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_invocable_explicit_true() {
+        let content = r#"---
+name: my-skill
+description: An invocable skill.
+user-invocable: true
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(parsed.user_invocable);
+    }
+
+    #[test]
+    fn test_parse_user_invocable_false() {
+        let content = r#"---
+name: background-context
+description: Context the agent should know but not a user command.
+user-invocable: false
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(!parsed.user_invocable);
     }
 
     #[test]

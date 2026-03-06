@@ -18,6 +18,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::command::CommandDescriptor;
 use crate::deployment::DeploymentGrade;
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
@@ -89,6 +90,7 @@ mod session_sql_database;
 mod session_storage;
 mod skills;
 mod stateless_todo_list;
+mod system_commands;
 mod test_math;
 mod test_weather;
 mod virtual_bash;
@@ -153,6 +155,7 @@ pub use session_sql_database::{
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
+pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use virtual_bash::{BashTool, VirtualBashCapability};
@@ -373,6 +376,17 @@ pub trait Capability: Send + Sync {
     fn risk_level(&self) -> RiskLevel {
         RiskLevel::Low
     }
+
+    /// Returns system commands this capability provides.
+    ///
+    /// System commands are user-invocable /slash commands that execute directly
+    /// without involving the LLM. They are surfaced in the UI command palette
+    /// alongside invocable skills.
+    ///
+    /// By default, returns an empty vector (no commands).
+    fn commands(&self) -> Vec<CommandDescriptor> {
+        vec![]
+    }
 }
 
 /// Risk classification for capabilities (TM-AGENT-005).
@@ -465,6 +479,9 @@ impl CapabilityRegistry {
 
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
+
+        // System commands (/clear, /status, /compact, /model)
+        registry.register(SystemCommandsCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
@@ -1101,9 +1118,10 @@ mod tests {
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
         assert!(registry.has("platform_management"));
-        // 21 core built-in capabilities
+        assert!(registry.has("system_commands"));
+        // 22 core built-in capabilities
         // (integration plugins like docker_container, codesandbox add more when linked)
-        assert!(registry.len() >= 21);
+        assert!(registry.len() >= 22);
     }
 
     #[test]
@@ -1132,9 +1150,10 @@ mod tests {
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
         assert!(registry.has("platform_management"));
+        assert!(registry.has("system_commands"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 21);
+        assert_eq!(registry.len(), 22);
     }
 
     #[test]

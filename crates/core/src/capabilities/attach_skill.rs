@@ -56,6 +56,13 @@ pub struct SkillMeta {
     pub description: String,
     /// Source location (filesystem path or "registry")
     pub source: SkillSource,
+    /// Whether this skill appears as a /slash command for users
+    #[serde(default = "default_true")]
+    pub user_invocable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Where a skill was discovered from
@@ -95,6 +102,8 @@ pub struct AttachSkillCapability {
     skill_md_content: String,
     /// Bundled files (path -> content)
     files: Vec<(String, String)>,
+    /// Whether this skill is user-invocable as a /slash command
+    user_invocable: bool,
 }
 
 impl AttachSkillCapability {
@@ -109,7 +118,19 @@ impl AttachSkillCapability {
         instructions: String,
         files: Vec<(String, String)>,
     ) -> Self {
-        let skill_md_content = reconstruct_skill_md(&name, &description, &instructions);
+        Self::from_registry_with_invocable(skill_id, name, description, instructions, files, true)
+    }
+
+    pub fn from_registry_with_invocable(
+        skill_id: Uuid,
+        name: String,
+        description: String,
+        instructions: String,
+        files: Vec<(String, String)>,
+        user_invocable: bool,
+    ) -> Self {
+        let skill_md_content =
+            reconstruct_skill_md(&name, &description, &instructions, user_invocable);
 
         Self {
             capability_id: skill_capability_id(skill_id),
@@ -117,12 +138,18 @@ impl AttachSkillCapability {
             skill_description: description,
             skill_md_content,
             files,
+            user_invocable,
         }
     }
 
     /// Get the skill name
     pub fn skill_name(&self) -> &str {
         &self.skill_name
+    }
+
+    /// Whether this skill is user-invocable as a /slash command
+    pub fn user_invocable(&self) -> bool {
+        self.user_invocable
     }
 
     /// Build mount points for the skill directory.
@@ -185,10 +212,22 @@ impl Capability for AttachSkillCapability {
 ///
 /// <instructions body>
 /// ```
-fn reconstruct_skill_md(name: &str, description: &str, instructions: &str) -> String {
+fn reconstruct_skill_md(
+    name: &str,
+    description: &str,
+    instructions: &str,
+    user_invocable: bool,
+) -> String {
     // Quote description to handle YAML-special characters (:, #, etc.)
     let safe_description = format!("\"{}\"", description.replace('"', "\\\""));
-    format!("---\nname: {name}\ndescription: {safe_description}\n---\n\n{instructions}")
+    let invocable_line = if user_invocable {
+        String::new()
+    } else {
+        "user-invocable: false\n".to_string()
+    };
+    format!(
+        "---\nname: {name}\ndescription: {safe_description}\n{invocable_line}---\n\n{instructions}"
+    )
 }
 
 /// Parse SKILL.md files from a list of (path, content) entries discovered in the session VFS.
@@ -207,6 +246,7 @@ pub fn discover_skills_from_entries(
                     name: parsed.name.clone(),
                     description: parsed.description.clone(),
                     source: SkillSource::Filesystem { path: path.clone() },
+                    user_invocable: parsed.user_invocable,
                 };
                 let instructions = SkillInstructions {
                     instructions: parsed.instructions,
@@ -396,6 +436,7 @@ mod tests {
             "test-skill",
             "A test skill",
             "# Instructions\nDo the thing.",
+            true,
         );
 
         // Should be parseable by parse_skill_md
@@ -403,6 +444,7 @@ mod tests {
         assert_eq!(parsed.name, "test-skill");
         assert_eq!(parsed.description, "A test skill");
         assert!(parsed.instructions.contains("# Instructions"));
+        assert!(parsed.user_invocable);
     }
 
     #[test]
@@ -411,6 +453,7 @@ mod tests {
             "test-skill",
             "Description with: colons and \"quotes\"",
             "# Body",
+            true,
         );
 
         let parsed = crate::skill::parse_skill_md(&content).unwrap();
@@ -419,6 +462,15 @@ mod tests {
             parsed.description,
             "Description with: colons and \"quotes\""
         );
+    }
+
+    #[test]
+    fn test_reconstruct_skill_md_not_invocable() {
+        let content = reconstruct_skill_md("bg-skill", "Background context", "# Body", false);
+
+        let parsed = crate::skill::parse_skill_md(&content).unwrap();
+        assert_eq!(parsed.name, "bg-skill");
+        assert!(!parsed.user_invocable);
     }
 
     #[test]
@@ -441,6 +493,7 @@ mod tests {
             source: SkillSource::Registry {
                 skill_id: "abc".to_string(),
             },
+            user_invocable: true,
         };
 
         let json = serde_json::to_string(&meta).unwrap();

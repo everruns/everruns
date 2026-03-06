@@ -392,6 +392,8 @@ impl ServerAppBuilder {
             capability_service.clone(),
             auth_state.clone(),
         );
+        let commands_state =
+            api::commands::AppState::new(capability_service.clone(), auth_state.clone());
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
@@ -480,7 +482,8 @@ impl ServerAppBuilder {
             .merge(api::organizations::routes(organizations_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::session_schedules::routes(session_schedules_state))
-            .merge(api::audit_logs::routes(audit_logs_state));
+            .merge(api::audit_logs::routes(audit_logs_state))
+            .merge(api::commands::routes(commands_state));
 
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {

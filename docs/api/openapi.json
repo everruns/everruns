@@ -6753,6 +6753,10 @@
                   "type": "string",
                   "format": "date-time"
                 },
+                "user_invocable": {
+                  "type": "boolean",
+                  "description": "Whether this skill appears as a /slash command for users"
+                },
                 "version": {
                   "type": "string"
                 }
@@ -8971,6 +8975,10 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "user_invocable": {
+            "type": "boolean",
+            "description": "Whether this skill appears as a /slash command for users"
           },
           "version": {
             "type": "string"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,16 +18,21 @@ import type {
   OutputMessageCompletedData,
   ToolCallRequestedData,
   ContentPart,
+  CommandDescriptor,
 } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
+import {
+  CommandAutocomplete,
+  shouldShowCommandAutocomplete,
+} from "@/components/chat/command-autocomplete";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { useLlmModels, useImageAttachments } from "@/hooks";
+import { useLlmModels, useImageAttachments, useSessionCommands } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
@@ -77,6 +82,38 @@ export function ChatPanel() {
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
+
+  // Commands autocomplete
+  const { data: commandsData } = useSessionCommands(sessionId);
+  const commands = commandsData?.commands ?? [];
+  const [showCommands, setShowCommands] = useState(false);
+
+  const handleCommandSelect = useCallback(
+    (cmd: CommandDescriptor) => {
+      setShowCommands(false);
+      if (cmd.source === "system") {
+        // System commands: send as slash message directly
+        setInputValue(`/${cmd.name}`);
+        // Submit immediately
+        const controls: Controls | undefined = selectedModelId
+          ? { model_id: selectedModelId }
+          : undefined;
+        sendMessage.mutateAsync({
+          sessionId,
+          content: `/${cmd.name}`,
+          controls,
+        });
+        setInputValue("");
+        setIsWaitingForResponse(true);
+        textareaRef.current?.focus();
+      } else {
+        // Skill commands: inject as message to trigger prompt expansion
+        setInputValue(`/${cmd.name} `);
+        textareaRef.current?.focus();
+      }
+    },
+    [sessionId, selectedModelId, sendMessage, setIsWaitingForResponse],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -201,6 +238,8 @@ export function ChatPanel() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Let command autocomplete handle keyboard when visible
+    if (showCommands) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -444,10 +483,21 @@ export function ChatPanel() {
               }
             }}
           >
+            <CommandAutocomplete
+              commands={commands}
+              inputValue={inputValue}
+              visible={showCommands}
+              onSelect={handleCommandSelect}
+              onDismiss={() => setShowCommands(false)}
+            />
             <Textarea
               ref={textareaRef}
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setInputValue(val);
+                setShowCommands(shouldShowCommandAutocomplete(val));
+              }}
               onKeyDown={handleKeyDown}
               onPaste={(e) => {
                 const items = e.clipboardData?.items;
@@ -464,7 +514,7 @@ export function ChatPanel() {
                   addFiles(imageFiles);
                 }
               }}
-              placeholder="Type a message... (Paste or drop images, Enter to send)"
+              placeholder="Type a message or / for commands... (Enter to send)"
               className="w-full min-h-[60px] max-h-[200px] resize-none"
             />
           </div>
