@@ -307,6 +307,25 @@ async fn process_slack_message(
         }
     };
 
+    // Dedup: Slack sends both app_mention and message events for @mentions.
+    // Check if we already have an input.message with this slack_ts in the session.
+    // This works across server instances because the check is DB-level.
+    let slack_ts = event.ts.clone().unwrap_or_default();
+    if !slack_ts.is_empty() {
+        let already_exists = state
+            .db
+            .has_event_with_slack_ts(session.id, &slack_ts)
+            .await?;
+        if already_exists {
+            tracing::debug!(
+                session_id = %session.id,
+                slack_ts = %slack_ts,
+                "Skipping duplicate Slack event (already processed this ts)"
+            );
+            return Ok(());
+        }
+    }
+
     // Create user message (triggers agent workflow)
     let create_msg = CreateMessageRequest {
         message: InputMessage {
@@ -362,11 +381,14 @@ async fn process_slack_message(
         .or_else(|| event.ts.clone())
         .unwrap_or_default();
     let session_id = session.id.uuid();
+    let message_id = message.id;
     let db = state.db.clone();
 
     tokio::spawn(async move {
-        if let Err(e) =
-            wait_and_post_response(&db, session_id, &bot_token, &channel, &thread_ts).await
+        if let Err(e) = wait_and_post_response(
+            &db, session_id, message_id, &bot_token, &channel, &thread_ts,
+        )
+        .await
         {
             tracing::error!(
                 session_id = %session_id,
@@ -430,13 +452,16 @@ fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) ->
     }
 }
 
-/// Wait for agent response events and post the result back to Slack.
+/// Wait for the agent turn to complete and stream responses to Slack.
 ///
-/// Polls for output.message.completed events on the session, then sends
-/// the agent's response text to the Slack channel/thread.
+/// Posts each `output.message.completed` text to Slack as it arrives, giving
+/// users real-time progress during multi-step turns (Reason→Act cycles).
+/// Filtering by `input_message_id` ensures we only see events from our turn.
+/// Stops polling when `turn.completed` or `turn.failed` fires.
 async fn wait_and_post_response(
     db: &StorageBackend,
     session_id: uuid::Uuid,
+    input_message_id: everruns_core::typed_id::MessageId,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
@@ -444,8 +469,9 @@ async fn wait_and_post_response(
     use everruns_core::typed_id::{EventId, SessionId};
 
     let session_id_typed = SessionId::from_uuid(session_id);
+    let input_msg_str = input_message_id.to_string();
 
-    // Poll for output.message.completed events (max 120 seconds)
+    // Poll for events (max 120 seconds)
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
     let mut since_id: Option<EventId> = None;
     let empty: Vec<String> = vec![];
@@ -463,21 +489,30 @@ async fn wait_and_post_response(
         for event_row in &events {
             since_id = Some(event_row.id);
 
-            if event_row.event_type == "output.message.completed" {
-                // Extract the text from the event data
-                if let Some(text) = extract_response_text(&event_row.data) {
-                    post_to_slack(bot_token, channel, thread_ts, &text).await?;
-                    return Ok(());
-                }
+            // Only consider events triggered by our input message
+            let event_input_msg = event_row
+                .context
+                .get("input_message_id")
+                .and_then(|v| v.as_str());
+            let is_our_turn = event_input_msg == Some(&input_msg_str);
+
+            // Post each assistant message to Slack as it arrives. This gives
+            // users progress visibility during multi-step agent turns (e.g.
+            // "Let me search for that..." before tool execution).
+            if event_row.event_type == "output.message.completed"
+                && is_our_turn
+                && let Some(text) = extract_response_text(&event_row.data)
+            {
+                post_to_slack(bot_token, channel, thread_ts, &text).await?;
             }
 
-            // Also check for turn.completed or turn.failed as terminal states
-            if event_row.event_type == "turn.completed" || event_row.event_type == "turn.failed" {
-                tracing::debug!(
-                    session_id = %session_id,
-                    event_type = %event_row.event_type,
-                    "Turn ended"
-                );
+            // Stop polling once the turn ends
+            if event_row.event_type == "turn.completed" && is_our_turn {
+                return Ok(());
+            }
+
+            if event_row.event_type == "turn.failed" && is_our_turn {
+                tracing::warn!(session_id = %session_id, "Turn failed");
                 return Ok(());
             }
         }
@@ -872,5 +907,213 @@ mod tests {
             bot_id: None,
             subtype: None,
         }
+    }
+
+    // ==========================================
+    // Event context input_message_id filtering
+    // ==========================================
+
+    #[test]
+    fn test_event_context_matches_correct_input_message() {
+        let input_msg_str = "message_01933b5a00007000800000000000001";
+
+        let context = serde_json::json!({
+            "input_message_id": "message_01933b5a00007000800000000000001",
+            "turn_id": "turn_01933b5a00007000800000000000001"
+        });
+        let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
+        assert_eq!(event_input_msg, Some(input_msg_str));
+    }
+
+    #[test]
+    fn test_event_context_rejects_different_input_message() {
+        let input_msg_str = "message_01933b5a00007000800000000000001";
+
+        let context = serde_json::json!({
+            "input_message_id": "message_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+            "turn_id": "turn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+        });
+        let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
+        assert_ne!(event_input_msg, Some(input_msg_str));
+    }
+
+    #[test]
+    fn test_event_context_rejects_empty_context() {
+        let input_msg_str = "message_01933b5a00007000800000000000001";
+        let context = serde_json::json!({});
+        let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
+        assert_eq!(event_input_msg, None);
+        assert_ne!(event_input_msg, Some(input_msg_str));
+    }
+
+    // ==========================================
+    // DB-level dedup via has_event_with_slack_ts
+    // ==========================================
+
+    #[tokio::test]
+    async fn test_has_event_with_slack_ts_no_match() {
+        let db = StorageBackend::in_memory();
+        let session_id = setup_test_session(&db).await;
+        let result = db
+            .has_event_with_slack_ts(session_id, "1234567890.123456")
+            .await
+            .unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_has_event_with_slack_ts_match() {
+        use crate::storage::models::CreateEventRow;
+
+        let db = StorageBackend::in_memory();
+        let session_id = setup_test_session(&db).await;
+
+        // Insert an input.message event with slack_ts in metadata
+        let event = CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "message": {
+                    "id": "message_00000000000000000000000000000001",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "metadata": {
+                        "slack_ts": "1234567890.123456",
+                        "slack_user": "U123",
+                        "slack_channel": "C456"
+                    },
+                    "created_at": "2024-01-01T00:00:00Z"
+                }
+            }),
+            metadata: None,
+            tags: None,
+        };
+        db.create_event(event).await.unwrap();
+
+        // Same slack_ts should be found
+        assert!(
+            db.has_event_with_slack_ts(session_id, "1234567890.123456")
+                .await
+                .unwrap()
+        );
+
+        // Different slack_ts should NOT be found
+        assert!(
+            !db.has_event_with_slack_ts(session_id, "9999999999.999999")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_has_event_with_slack_ts_wrong_session() {
+        use crate::storage::models::CreateEventRow;
+
+        let db = StorageBackend::in_memory();
+        let session_id = setup_test_session(&db).await;
+        let other_session_id = everruns_core::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
+
+        // Insert event in session_id
+        let event = CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "message": {
+                    "id": "message_00000000000000000000000000000001",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "metadata": { "slack_ts": "1234567890.123456" },
+                    "created_at": "2024-01-01T00:00:00Z"
+                }
+            }),
+            metadata: None,
+            tags: None,
+        };
+        db.create_event(event).await.unwrap();
+
+        // Different session should NOT find it
+        assert!(
+            !db.has_event_with_slack_ts(other_session_id, "1234567890.123456")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_has_event_with_slack_ts_ignores_non_input_events() {
+        use crate::storage::models::CreateEventRow;
+
+        let db = StorageBackend::in_memory();
+        let session_id = setup_test_session(&db).await;
+
+        // Insert an output.message.completed event (not input.message)
+        let event = CreateEventRow {
+            session_id,
+            event_type: "output.message.completed".to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "message": {
+                    "id": "message_00000000000000000000000000000001",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hi"}],
+                    "metadata": { "slack_ts": "1234567890.123456" },
+                    "created_at": "2024-01-01T00:00:00Z"
+                }
+            }),
+            metadata: None,
+            tags: None,
+        };
+        db.create_event(event).await.unwrap();
+
+        // Should NOT match — only input.message events count
+        assert!(
+            !db.has_event_with_slack_ts(session_id, "1234567890.123456")
+                .await
+                .unwrap()
+        );
+    }
+
+    // ==========================================
+    // Response text extraction — last vs first
+    // ==========================================
+
+    #[test]
+    fn test_extract_response_text_ignores_non_text_parts() {
+        let data = serde_json::json!({
+            "message": {
+                "content": [
+                    {"type": "image", "url": "https://example.com/img.png"},
+                    {"type": "text", "text": "Only this."}
+                ]
+            }
+        });
+        assert_eq!(extract_response_text(&data).unwrap(), "Only this.");
+    }
+
+    /// Helper: create an in-memory session for dedup tests
+    async fn setup_test_session(db: &StorageBackend) -> everruns_core::typed_id::SessionId {
+        use crate::storage::models::CreateSessionRow;
+
+        let row = CreateSessionRow {
+            org_id: 1,
+            harness_id: Some(everruns_core::typed_id::HarnessId::from_uuid(
+                uuid::Uuid::nil(),
+            )),
+            agent_id: Some(everruns_core::typed_id::AgentId::from_uuid(
+                uuid::Uuid::nil(),
+            )),
+            title: Some("test".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        };
+        let session = db.create_session(row).await.unwrap();
+        session.id
     }
 }

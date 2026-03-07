@@ -358,6 +358,16 @@ impl StorageBackend {
         dispatch!(self, create_event, input)
     }
 
+    /// Check if an input.message event with a given slack_ts already exists in a session.
+    /// Used for Slack event dedup across server instances.
+    pub async fn has_event_with_slack_ts(
+        &self,
+        session_id: SessionId,
+        slack_ts: &str,
+    ) -> Result<bool> {
+        dispatch!(self, has_event_with_slack_ts, session_id, slack_ts)
+    }
+
     pub async fn list_events(
         &self,
         session_id: SessionId,

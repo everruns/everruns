@@ -1201,6 +1201,33 @@ impl Database {
         Ok(row)
     }
 
+    /// Check if an input.message event with a given slack_ts already exists in a session.
+    /// Used for dedup when Slack sends duplicate events (app_mention + message).
+    pub async fn has_event_with_slack_ts(
+        &self,
+        session_id: SessionId,
+        slack_ts: &str,
+    ) -> Result<bool> {
+        let pattern = serde_json::json!({
+            "message": { "metadata": { "slack_ts": slack_ts } }
+        });
+        let row: (bool,) = sqlx::query_as(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM events
+                WHERE session_id = $1
+                  AND event_type = 'input.message'
+                  AND data @> $2
+            )
+            "#,
+        )
+        .bind(session_id)
+        .bind(&pattern)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
     pub async fn list_events(
         &self,
         session_id: SessionId,
