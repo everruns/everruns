@@ -16,6 +16,8 @@ use crate::capabilities::{
 };
 use crate::harness::Harness;
 use crate::llm_driver_registry::ToolSearchConfig;
+use crate::llm_model_profiles::get_model_profile;
+use crate::llm_models::LlmProviderType;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -269,8 +271,30 @@ impl RuntimeAgentBuilder {
         self
     }
 
-    /// Build the runtime agent
-    pub fn build(self) -> RuntimeAgent {
+    /// Set tool_search configuration
+    pub fn tool_search(mut self, config: ToolSearchConfig) -> Self {
+        self.runtime_agent.tool_search = Some(config);
+        self
+    }
+
+    /// Build the runtime agent.
+    ///
+    /// Validates that tool_search is only enabled for models that support it
+    /// (currently GPT-5.4+). Clears tool_search for unsupported models to
+    /// prevent 400 errors from the OpenAI API.
+    pub fn build(mut self) -> RuntimeAgent {
+        if self.runtime_agent.tool_search.is_some() {
+            let model_supports =
+                get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
+                    .is_some_and(|p| p.tool_search);
+            if !model_supports {
+                tracing::debug!(
+                    model = %self.runtime_agent.model,
+                    "tool_search capability configured but model does not support it; disabling"
+                );
+                self.runtime_agent.tool_search = None;
+            }
+        }
         self.runtime_agent
     }
 }
@@ -696,6 +720,38 @@ mod tests {
         assert_eq!(
             system_prompt_count, 1,
             "Should have exactly one <system-prompt> tag, not double-wrapped"
+        );
+    }
+
+    #[test]
+    fn test_build_clears_tool_search_for_unsupported_model() {
+        let agent = RuntimeAgentBuilder::new()
+            .model("gpt-5.2")
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            })
+            .build();
+
+        assert!(
+            agent.tool_search.is_none(),
+            "tool_search should be cleared for gpt-5.2 (unsupported)"
+        );
+    }
+
+    #[test]
+    fn test_build_keeps_tool_search_for_supported_model() {
+        let agent = RuntimeAgentBuilder::new()
+            .model("gpt-5.4")
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            })
+            .build();
+
+        assert!(
+            agent.tool_search.is_some(),
+            "tool_search should be kept for gpt-5.4 (supported)"
         );
     }
 }
