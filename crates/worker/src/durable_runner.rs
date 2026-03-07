@@ -224,7 +224,7 @@ impl DurableStoreBackend for DirectDurableStore {
         input: serde_json::Value,
     ) -> Result<Uuid> {
         let task = everruns_durable::TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id,
             activity_type,
             input,
@@ -337,7 +337,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
         input: serde_json::Value,
     ) -> Result<Uuid> {
         let task = everruns_durable::TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id,
             activity_type,
             input,

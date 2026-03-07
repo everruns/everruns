@@ -345,29 +345,52 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self, task))]
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
-        let limit = self.max_pending_tasks_per_workflow;
+        // Check pending task limits: per-workflow for workflow tasks, global for standalone
+        if let Some(wf_id) = task.workflow_id {
+            let limit = self.max_pending_tasks_per_workflow;
+            let pending_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM durable_task_queue
+                WHERE workflow_id = $1 AND status = 'pending'
+                "#,
+            )
+            .bind(wf_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to count pending tasks: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
 
-        // Check per-workflow pending task count before inserting
-        let pending_count: i64 = sqlx::query_scalar(
-            r#"
-            SELECT COUNT(*) FROM durable_task_queue
-            WHERE workflow_id = $1 AND status = 'pending'
-            "#,
-        )
-        .bind(task.workflow_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to count pending tasks: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+            if pending_count >= limit as i64 {
+                return Err(StoreError::TaskQueueLimitExceeded {
+                    workflow_id: wf_id,
+                    current: pending_count as u32,
+                    limit,
+                });
+            }
+        } else {
+            // Standalone task: check global standalone limit
+            let limit = super::store::DEFAULT_MAX_PENDING_STANDALONE_TASKS;
+            let pending_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM durable_task_queue
+                WHERE workflow_id IS NULL AND status = 'pending'
+                "#,
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to count standalone pending tasks: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
 
-        if pending_count >= limit as i64 {
-            return Err(StoreError::TaskQueueLimitExceeded {
-                workflow_id: task.workflow_id,
-                current: pending_count as u32,
-                limit,
-            });
+            if pending_count >= limit as i64 {
+                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
+                    current: pending_count as u32,
+                    limit,
+                });
+            }
         }
 
         let task_id = Uuid::now_v7();
@@ -480,7 +503,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
             claimed.push(ClaimedTask {
                 id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
+                workflow_id: row.get::<Option<Uuid>, _>("workflow_id"),
                 activity_id: row.get("activity_id"),
                 activity_type: row.get("activity_type"),
                 input: row.get("input"),
@@ -699,7 +722,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         Ok(TaskInfo {
             id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
+            workflow_id: row.get::<Option<Uuid>, _>("workflow_id"),
             activity_id: row.get("activity_id"),
             activity_type: row.get("activity_type"),
             status,
@@ -1255,7 +1278,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 DlqEntry {
                     id: row.get("id"),
                     original_task_id: row.get("original_task_id"),
-                    workflow_id: row.get("workflow_id"),
+                    workflow_id: row.get::<Option<Uuid>, _>("workflow_id"),
                     activity_id: row.get("activity_id"),
                     activity_type: row.get("activity_type"),
                     input: row.get("input"),
@@ -1497,6 +1520,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::text IS NULL OR activity_type = $2)
               AND ($3::uuid IS NULL OR workflow_id = $3)
+              AND (NOT $6 OR workflow_id IS NULL)
             ORDER BY created_at ASC
             OFFSET $4
             LIMIT $5
@@ -1507,6 +1531,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(filter.workflow_id)
         .bind(pagination.offset as i64)
         .bind(pagination.limit as i64)
+        .bind(filter.standalone_only)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| {
@@ -1530,7 +1555,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
                 TaskInfo {
                     id: row.get("id"),
-                    workflow_id: row.get("workflow_id"),
+                    workflow_id: row.get::<Option<Uuid>, _>("workflow_id"),
                     activity_id: row.get("activity_id"),
                     activity_type: row.get("activity_type"),
                     status,

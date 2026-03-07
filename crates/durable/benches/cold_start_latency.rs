@@ -58,7 +58,7 @@ async fn measure_single_cold_start(
     let enqueue_time = Instant::now();
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: format!("cold-start-{}", task_num),
             activity_type: "cold_start_activity".to_string(),
             input: serde_json::json!({ "task_num": task_num }),

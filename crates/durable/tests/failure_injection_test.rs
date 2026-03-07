@@ -243,7 +243,7 @@ async fn test_claim_task_failure_after_db_commit_preserves_state() {
     // Enqueue task
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step-1".to_string(),
             activity_type: "failpoint_test".to_string(),
             input: json!({}),
@@ -306,7 +306,7 @@ async fn test_complete_task_failure_after_db_commit_is_idempotent() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step-1".to_string(),
             activity_type: "failpoint_test".to_string(),
             input: json!({}),
@@ -368,7 +368,7 @@ async fn test_heartbeat_failure_does_not_lose_task() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step-1".to_string(),
             activity_type: "failpoint_test".to_string(),
             input: json!({}),

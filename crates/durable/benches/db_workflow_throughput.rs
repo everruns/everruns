@@ -113,7 +113,7 @@ impl DbWorkflowScenario {
         let task_id = self
             .store
             .enqueue_task(TaskDefinition {
-                workflow_id: workflow.id,
+                workflow_id: Some(workflow.id),
                 activity_id: format!("step-{}", step),
                 activity_type: self.activity_type.clone(),
                 input: serde_json::json!({ "step": step }),
@@ -215,7 +215,8 @@ impl DbWorkflowScenario {
                         }
 
                         // Find the workflow and advance it
-                        if let Some(workflow) = workflows.iter().find(|w| w.id == task.workflow_id)
+                        if let Some(workflow) =
+                            workflows.iter().find(|w| Some(w.id) == task.workflow_id)
                         {
                             let current = workflow.current_step.fetch_add(1, Ordering::SeqCst);
                             let next_step = current + 1;
@@ -229,7 +230,7 @@ impl DbWorkflowScenario {
                                 let enqueue_time = Instant::now();
                                 let next_task_id = store
                                     .enqueue_task(TaskDefinition {
-                                        workflow_id: workflow.id,
+                                        workflow_id: Some(workflow.id),
                                         activity_id: format!("step-{}", next_step),
                                         activity_type: activity_type.clone(),
                                         input: serde_json::json!({ "step": next_step }),

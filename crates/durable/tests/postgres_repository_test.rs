@@ -318,7 +318,7 @@ async fn test_get_task() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "task1".to_string(),
             activity_type: "test_activity".to_string(),
             input: json!({"data": "value"}),
@@ -330,7 +330,7 @@ async fn test_get_task() {
     // Get task by ID
     let task = store.get_task(task_id).await.unwrap();
     assert_eq!(task.id, task_id);
-    assert_eq!(task.workflow_id, workflow_id);
+    assert_eq!(task.workflow_id, Some(workflow_id));
     assert_eq!(task.activity_id, "task1");
     assert_eq!(task.activity_type, "test_activity");
 
@@ -368,7 +368,7 @@ async fn test_list_tasks_with_filter() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "filtered_task".to_string(),
             activity_type: "filterable_activity".to_string(),
             input: json!({}),
@@ -384,6 +384,7 @@ async fn test_list_tasks_with_filter() {
                 status: Some(TaskStatus::Pending),
                 activity_type: None,
                 workflow_id: None,
+                standalone_only: false,
             },
             Pagination {
                 offset: 0,
@@ -401,6 +402,7 @@ async fn test_list_tasks_with_filter() {
                 status: None,
                 activity_type: Some("filterable_activity".to_string()),
                 workflow_id: None,
+                standalone_only: false,
             },
             Pagination {
                 offset: 0,
@@ -659,7 +661,7 @@ async fn test_get_system_health_with_data() {
     // Create a pending task
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "health_task".to_string(),
             activity_type: "test".to_string(),
             input: json!({}),

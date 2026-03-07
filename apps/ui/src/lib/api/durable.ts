@@ -127,6 +127,7 @@ export async function signalWorkflow(
 export interface ListTasksParams {
   status?: string;
   activity_type?: string;
+  standalone_only?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -135,12 +136,30 @@ export async function listTasks(params?: ListTasksParams): Promise<TasksResponse
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
   if (params?.activity_type) searchParams.set("activity_type", params.activity_type);
+  if (params?.standalone_only) searchParams.set("standalone_only", "true");
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
   const url = `/v1/durable/tasks${query ? `?${query}` : ""}`;
   const response = await api.get<TasksResponse>(url);
+  return response.data;
+}
+
+export interface EnqueueTaskRequest {
+  activity_type: string;
+  input: Record<string, unknown>;
+  max_attempts?: number;
+  priority?: number;
+  timeout_seconds?: number;
+}
+
+export interface EnqueueTaskResponse {
+  task_id: string;
+}
+
+export async function enqueueTask(request: EnqueueTaskRequest): Promise<EnqueueTaskResponse> {
+  const response = await api.post<EnqueueTaskResponse>("/v1/durable/tasks", request);
   return response.data;
 }
 

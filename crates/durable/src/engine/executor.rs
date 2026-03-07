@@ -557,7 +557,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
 
                     // Enqueue the task
                     let task = TaskDefinition {
-                        workflow_id,
+                        workflow_id: Some(workflow_id),
                         activity_id,
                         activity_type,
                         input,

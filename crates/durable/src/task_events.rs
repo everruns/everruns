@@ -92,22 +92,27 @@ pub async fn append_event<S: WorkflowEventStore>(
 /// Record that an activity has started execution.
 ///
 /// This should be called when a worker claims a task and begins execution.
+/// For standalone tasks (workflow_id is None), this is a no-op.
 pub async fn record_activity_started<S: WorkflowEventStore>(
     store: &S,
-    workflow_id: Uuid,
+    workflow_id: Option<Uuid>,
     activity_id: String,
     attempt: u32,
     worker_id: String,
 ) {
+    let Some(wf_id) = workflow_id else {
+        return; // Standalone task: no workflow events to record
+    };
+
     let event = WorkflowEvent::ActivityStarted {
         activity_id,
         attempt,
         worker_id,
     };
 
-    if let Err(e) = append_event(store, workflow_id, event).await {
+    if let Err(e) = append_event(store, wf_id, event).await {
         warn!(
-            %workflow_id,
+            workflow_id = %wf_id,
             error = %e,
             "Failed to record ActivityStarted event"
         );
@@ -117,20 +122,25 @@ pub async fn record_activity_started<S: WorkflowEventStore>(
 /// Record that an activity has completed successfully.
 ///
 /// This should be called when a worker completes a task with a result.
+/// For standalone tasks (workflow_id is None), this is a no-op.
 pub async fn record_activity_completed<S: WorkflowEventStore>(
     store: &S,
-    workflow_id: Uuid,
+    workflow_id: Option<Uuid>,
     activity_id: String,
     result: serde_json::Value,
 ) {
+    let Some(wf_id) = workflow_id else {
+        return; // Standalone task: no workflow events to record
+    };
+
     let event = WorkflowEvent::ActivityCompleted {
         activity_id,
         result,
     };
 
-    if let Err(e) = append_event(store, workflow_id, event).await {
+    if let Err(e) = append_event(store, wf_id, event).await {
         warn!(
-            %workflow_id,
+            workflow_id = %wf_id,
             error = %e,
             "Failed to record ActivityCompleted event"
         );
@@ -140,13 +150,18 @@ pub async fn record_activity_completed<S: WorkflowEventStore>(
 /// Record that an activity has failed.
 ///
 /// This should be called when a worker fails a task.
+/// For standalone tasks (workflow_id is None), this is a no-op.
 pub async fn record_activity_failed<S: WorkflowEventStore>(
     store: &S,
-    workflow_id: Uuid,
+    workflow_id: Option<Uuid>,
     activity_id: String,
     error_message: String,
     will_retry: bool,
 ) {
+    let Some(wf_id) = workflow_id else {
+        return; // Standalone task: no workflow events to record
+    };
+
     let error = if will_retry {
         ActivityError::retryable(error_message)
     } else {
@@ -159,9 +174,9 @@ pub async fn record_activity_failed<S: WorkflowEventStore>(
         will_retry,
     };
 
-    if let Err(e) = append_event(store, workflow_id, event).await {
+    if let Err(e) = append_event(store, wf_id, event).await {
         warn!(
-            %workflow_id,
+            workflow_id = %wf_id,
             error = %e,
             "Failed to record ActivityFailed event"
         );
