@@ -59,6 +59,9 @@ pub use server::ServerConfig;
 // Valkey (Redis-compatible) client for distributed rate limiting
 pub mod valkey;
 
+// Slack delivery dispatcher for event-driven message posting
+pub mod slack_delivery;
+
 // App builder for composable server configurations
 pub mod app_builder;
 pub use app_builder::{ServerAppBuilder, ServerContext};
