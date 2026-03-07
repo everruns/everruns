@@ -1,7 +1,6 @@
 "use client";
 
 import { use } from "react";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,9 +191,11 @@ export default function WorkflowDetailPage({
 
   if (workflowLoading) {
     return (
-      <>
-        <Header title="Workflow Details" />
-        <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workflow Details</h1>
+        </div>
+        <div className="space-y-6">
           <Skeleton className="h-8 w-32" />
           <div className="grid gap-6 md:grid-cols-2">
             <Skeleton className="h-64" />
@@ -202,38 +203,38 @@ export default function WorkflowDetailPage({
           </div>
           <Skeleton className="h-96" />
         </div>
-      </>
+      </div>
     );
   }
 
   if (workflowError || !workflow) {
     return (
-      <>
-        <Header title="Workflow Details" />
-        <div className="p-6">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Workflow Not Found</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-                The workflow could not be loaded. It may not exist or the API is unavailable.
-              </p>
-              <div className="flex gap-2">
-                <Link href="/durable/workflows">
-                  <Button variant="outline">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Workflows
-                  </Button>
-                </Link>
-                <Button onClick={() => refetch()} variant="outline">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workflow Details</h1>
         </div>
-      </>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">Workflow Not Found</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+              The workflow could not be loaded. It may not exist or the API is unavailable.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/durable/workflows">
+                <Button variant="outline">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Workflows
+                </Button>
+              </Link>
+              <Button onClick={() => refetch()} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -250,9 +251,11 @@ export default function WorkflowDetailPage({
   };
 
   return (
-    <>
-      <Header title="Workflow Details" />
-      <div className="p-6 space-y-6">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Workflow Details</h1>
+      </div>
+      <div className="space-y-6">
         {/* Back link */}
         <Link
           href="/durable/workflows"
@@ -395,6 +398,6 @@ export default function WorkflowDetailPage({
           </CardContent>
         </Card>
       </div>
-    </>
+    </div>
   );
 }
