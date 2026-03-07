@@ -11,7 +11,6 @@ import {
   useCreateSession,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
-import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
 import { RecentSessions } from "@/components/dashboard/recent-sessions";
@@ -69,9 +68,11 @@ export default function DashboardPage() {
 
   if (agentsLoading || sessionsLoading) {
     return (
-      <>
-        <Header title="Dashboard" />
-        <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+        </div>
+        <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-32" />
@@ -82,7 +83,7 @@ export default function DashboardPage() {
             <Skeleton className="h-96" />
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
@@ -90,10 +91,12 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Header title="Dashboard" />
-      <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+        </div>
         <StatsCards agents={agents} sessionStats={sessionStats} />
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 mt-6">
           <AgentListWidget agents={agents} allCapabilities={allCapabilities} />
 
           <Card>

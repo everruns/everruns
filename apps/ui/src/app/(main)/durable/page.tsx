@@ -1,6 +1,5 @@
 "use client";
 
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,9 +64,11 @@ export default function DurableDashboardPage() {
 
   if (isLoading) {
     return (
-      <>
-        <Header title="Durable Execution" />
-        <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Durable Execution</h1>
+        </div>
+        <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-32" />
@@ -78,28 +79,28 @@ export default function DurableDashboardPage() {
             <Skeleton className="h-80" />
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
   // Handle error state - show empty state when API not available
   if (healthError) {
     return (
-      <>
-        <Header title="Durable Execution" />
-        <div className="p-6">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Durable API Not Available</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md">
-                The durable execution API endpoints are not yet available. This dashboard will show
-                worker and workflow information once the backend is ready.
-              </p>
-            </CardContent>
-          </Card>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Durable Execution</h1>
         </div>
-      </>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">Durable API Not Available</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md">
+              The durable execution API endpoints are not yet available. This dashboard will show
+              worker and workflow information once the backend is ready.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -136,9 +137,11 @@ export default function DurableDashboardPage() {
   ];
 
   return (
-    <>
-      <Header title="Durable Execution" />
-      <div className="p-6 space-y-6">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Durable Execution</h1>
+      </div>
+      <div className="space-y-6">
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
@@ -434,7 +437,7 @@ export default function DurableDashboardPage() {
             </Card>
           )}
       </div>
-    </>
+    </div>
   );
 }
 

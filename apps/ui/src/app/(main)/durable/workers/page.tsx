@@ -1,6 +1,5 @@
 "use client";
 
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -216,9 +215,11 @@ export default function WorkersPage() {
 
   if (isLoading) {
     return (
-      <>
-        <Header title="Workers" />
-        <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workers</h1>
+        </div>
+        <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4">
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-24" />
@@ -226,30 +227,30 @@ export default function WorkersPage() {
           </div>
           <Skeleton className="h-96" />
         </div>
-      </>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <>
-        <Header title="Workers" />
-        <div className="p-6">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Unable to Load Workers</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-                The durable workers API is not available. Please ensure the backend is running.
-              </p>
-              <Button onClick={() => refetch()} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workers</h1>
         </div>
-      </>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">Unable to Load Workers</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+              The durable workers API is not available. Please ensure the backend is running.
+            </p>
+            <Button onClick={() => refetch()} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -300,9 +301,11 @@ export default function WorkersPage() {
   };
 
   return (
-    <>
-      <Header title="Workers" />
-      <div className="p-6 space-y-6">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Workers</h1>
+      </div>
+      <div className="space-y-6">
         {/* Summary Stats */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {summaryStats.map((stat) => (
@@ -368,6 +371,6 @@ export default function WorkersPage() {
           </CardContent>
         </Card>
       </div>
-    </>
+    </div>
   );
 }

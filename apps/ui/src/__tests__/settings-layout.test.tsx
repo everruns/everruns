@@ -7,11 +7,6 @@ jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
 }));
 
-// Mock the Header component
-jest.mock("@/components/layout/header", () => ({
-  Header: ({ title }: { title: string }) => <header data-testid="header">{title}</header>,
-}));
-
 describe("SettingsLayout", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/settings/providers");
@@ -24,7 +19,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getByTestId("header")).toHaveTextContent("Settings");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
   });
 
   it("renders all navigation items", () => {

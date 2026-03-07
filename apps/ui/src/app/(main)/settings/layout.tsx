@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Header } from "@/components/layout/header";
 import { Server, Key, Users, Plug, Building2, Cable, User } from "lucide-react";
 
 interface NavItem {
@@ -82,7 +81,9 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <Header title="Settings" />
+      <div className="flex items-center justify-between border-b px-6 py-4">
+        <h1 className="text-2xl font-bold">Settings</h1>
+      </div>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Settings Sidebar */}
         <nav className="w-64 border-r bg-card p-4 overflow-y-auto">

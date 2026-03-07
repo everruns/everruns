@@ -1,7 +1,6 @@
 "use client";
 
 import { useCapabilities } from "@/hooks";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -148,26 +147,22 @@ export default function CapabilitiesPage() {
 
   if (error) {
     return (
-      <>
-        <Header
-          title="Capabilities"
-          description="Capabilities add functionality to agents - tools, system prompt additions, and behavior modifications."
-        />
-        <div className="p-6">
-          <div className="text-red-500">Error loading capabilities: {error.message}</div>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Capabilities</h1>
         </div>
-      </>
+        <div className="text-red-500">Error loading capabilities: {error.message}</div>
+      </div>
     );
   }
 
   return (
-    <>
-      <Header
-        title="Capabilities"
-        description="Capabilities add functionality to agents - tools, system prompt additions, and behavior modifications."
-      />
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Capabilities</h1>
+      </div>
 
-      <div className="p-6">
+      <div>
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             {isLoading ? (
@@ -229,6 +224,6 @@ export default function CapabilitiesPage() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -333,36 +332,38 @@ export default function WorkflowsPage() {
 
   if (isLoading) {
     return (
-      <>
-        <Header title="Workflows" />
-        <div className="p-6 space-y-6">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workflows</h1>
+        </div>
+        <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-96" />
         </div>
-      </>
+      </div>
     );
   }
 
   if (workflowsError) {
     return (
-      <>
-        <Header title="Workflows" />
-        <div className="p-6">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Unable to Load Workflows</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-                The durable workflows API is not available.
-              </p>
-              <Button onClick={() => refetchWorkflows()} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Workflows</h1>
         </div>
-      </>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">Unable to Load Workflows</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+              The durable workflows API is not available.
+            </p>
+            <Button onClick={() => refetchWorkflows()} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -391,9 +392,11 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <>
-      <Header title="Workflows" />
-      <div className="p-6 space-y-6">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Workflows</h1>
+      </div>
+      <div className="space-y-6">
         {/* Tab Navigation */}
         <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
           <button
@@ -632,6 +635,6 @@ export default function WorkflowsPage() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
