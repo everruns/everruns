@@ -294,20 +294,6 @@ jobs:
           path: target/release/export-openapi
           retention-days: 1
 
-      # Build workflow test binary while release deps are still warm in sccache
-      - name: Build workflow test binary
-        run: |
-          cargo test -p everruns-server --test workflow_test --no-run --release --message-format=json 2>/dev/null \
-            | jq -r 'select(.executable != null and (.target.name == "workflow_test")) | .executable' > /tmp/workflow-test-path.txt
-          cp "$(cat /tmp/workflow-test-path.txt)" target/release/workflow-test-binary
-
-      - name: Upload workflow test binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: workflow-test-binary
-          path: target/release/workflow-test-binary
-          retention-days: 1
-
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
@@ -339,25 +325,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
       - name: Cache sqlx-cli
-        id: cache-sqlx
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/sqlx
           key: ${{ runner.os }}-sqlx-cli-0.8
 
-      - name: Install Rust toolchain (for sqlx-cli only)
-        if: steps.cache-sqlx.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Install sqlx-cli
-        if: steps.cache-sqlx.outputs.cache-hit != 'true'
-        run: cargo install sqlx-cli --no-default-features --features postgres
-        env:
-          RUSTC_WRAPPER: ""
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
 
       - name: Run migrations
-        run: ~/.cargo/bin/sqlx migrate run --source crates/server/migrations
+        run: sqlx migrate run --source crates/server/migrations
 
       - name: Download server binary
         uses: actions/download-artifact@v4
@@ -369,12 +368,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: everruns-worker
-          path: ./bin
-
-      - name: Download workflow test binary
-        uses: actions/download-artifact@v4
-        with:
-          name: workflow-test-binary
           path: ./bin
 
       - name: Make binaries executable
@@ -392,38 +385,23 @@ jobs:
           echo $! > worker.pid
           echo "Worker PID: $(cat worker.pid)"
 
-      - name: Wait for server and worker to be ready
+      - name: Wait for server to be ready
         run: |
           echo "Waiting for server to be ready..."
           for i in {1..30}; do
             if curl -s http://localhost:9000/health > /dev/null 2>&1; then
               echo "Server is ready!"
-              break
+              exit 0
             fi
             echo "Attempt $i: Server not ready yet..."
             sleep 2
           done
-          if ! curl -s http://localhost:9000/health > /dev/null 2>&1; then
-            echo "Server failed to start"
-            cat server.log
-            exit 1
-          fi
-          echo "Waiting for worker to connect..."
-          for i in {1..15}; do
-            WORKERS=$(curl -sf http://localhost:9000/v1/durable/workers 2>/dev/null | jq '.workers | length' 2>/dev/null || echo "0")
-            if [ "$WORKERS" -gt 0 ]; then
-              echo "Worker connected! ($WORKERS worker(s))"
-              exit 0
-            fi
-            echo "Attempt $i: Worker not connected yet..."
-            sleep 2
-          done
-          echo "Worker failed to connect"
-          cat worker.log
+          echo "Server failed to start"
+          cat server.log
           exit 1
 
       - name: Run workflow tests
-        run: ./bin/workflow-test-binary --test-threads=1
+        run: cargo test -p everruns-server --test workflow_test -- --test-threads=1
 
       - name: Stop services
         if: always()
