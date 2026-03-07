@@ -57,6 +57,7 @@ fred.workspace = true
 parking_lot.workspace = true
 cron = "0.15"
 inventory.workspace = true
+moka.workspace = true
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
