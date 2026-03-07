@@ -19,11 +19,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   RUSTC_WRAPPER: sccache
-  SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
-  SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
-  SCCACHE_S3_KEY_PREFIX: ${{ secrets.SCCACHE_S3_KEY_PREFIX }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_AWS_SECRET_ACCESS_KEY }}
+  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
 jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
@@ -113,6 +109,10 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
 
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
@@ -140,6 +140,10 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -195,6 +199,10 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -255,6 +263,10 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -331,6 +343,10 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
