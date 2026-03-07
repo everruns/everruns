@@ -67,6 +67,7 @@ If you prefer to set up everything manually without the manifest:
    - `im:history` — Read direct messages (optional)
    - `mpim:history` — Read group direct messages (optional)
    - `app_mentions:read` — React to @mentions (optional)
+   - `users:read` — Resolve user display names
 4. Click **Install to Workspace** and authorize
 5. Copy the **Bot User OAuth Token** (`xoxb-...`) from the OAuth page
 
