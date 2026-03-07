@@ -3,9 +3,8 @@
 //! Gated behind `integration` feature — only compiled when run with:
 //!   cargo test -p everruns-integrations-brave-search --features integration
 //!
-//! CI workflow passes BRAVE_SEARCH_API_KEY and enables the feature automatically.
-//! Tests skip gracefully if the key is missing (avoids CI failures when secret
-//! is not yet configured).
+//! CI workflow passes BRAVE_SEARCH_API_KEY via Doppler and enables the feature
+//! automatically. Tests panic if the key is missing to prevent silent failures.
 
 #![cfg(feature = "integration")]
 
@@ -15,10 +14,7 @@ macro_rules! require_api_key {
     () => {
         match std::env::var("BRAVE_SEARCH_API_KEY") {
             Ok(k) if !k.is_empty() => k,
-            _ => {
-                eprintln!("BRAVE_SEARCH_API_KEY not set — skipping");
-                return;
-            }
+            _ => panic!("BRAVE_SEARCH_API_KEY not set — cannot run integration tests"),
         }
     };
 }

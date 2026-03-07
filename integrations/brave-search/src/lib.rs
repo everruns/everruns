@@ -8,21 +8,31 @@
 //! Decision: Stateless — no per-resource state management needed
 
 pub mod client;
+pub mod connection;
 mod tools;
 
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
+use connection::BraveSearchConnectionProvider;
 use tools::BraveWebSearchTool;
 
 // ============================================================================
-// Integration Plugin Registration
+// Plugin Registration
 // ============================================================================
 
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: true,
         factory: || Box::new(BraveSearchCapability),
+    }
+}
+
+inventory::submit! {
+    ConnectionProviderPlugin {
+        experimental_only: true,
+        factory: || Box::new(BraveSearchConnectionProvider),
     }
 }
 
