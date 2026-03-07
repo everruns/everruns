@@ -32,6 +32,8 @@ use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::llm_model_profiles::get_model_profile;
+use crate::llm_models::LlmProviderType;
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -537,14 +539,30 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
     ) -> Result<LlmResponseStream> {
         let (instructions, input_items) = Self::build_input(&messages);
 
+        // Only use tool_search when the model actually supports it (currently GPT-5.4+).
+        // Sending tool_search to unsupported models causes 400 errors.
+        let model_supports_tool_search = get_model_profile(&LlmProviderType::Openai, &config.model)
+            .is_some_and(|p| p.tool_search);
+
+        if config.tool_search.as_ref().is_some_and(|ts| ts.enabled) && !model_supports_tool_search {
+            tracing::debug!(
+                model = %config.model,
+                "tool_search capability enabled but model does not support it; falling back to standard tools"
+            );
+        }
+
         let tools = if config.tools.is_empty() {
             None
-        } else if let Some(ref ts_config) = config.tool_search {
-            if ts_config.enabled {
-                Some(Self::convert_tools_with_search(
-                    &config.tools,
-                    ts_config.threshold,
-                ))
+        } else if model_supports_tool_search {
+            if let Some(ref ts_config) = config.tool_search {
+                if ts_config.enabled {
+                    Some(Self::convert_tools_with_search(
+                        &config.tools,
+                        ts_config.threshold,
+                    ))
+                } else {
+                    Some(Self::convert_tools(&config.tools))
+                }
             } else {
                 Some(Self::convert_tools(&config.tools))
             }
