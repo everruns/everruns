@@ -154,11 +154,7 @@ jobs:
 
       - name: Run pure unit tests
         run: |
-          cargo test -p everruns-anthropic --lib --all-features
-          cargo test -p everruns-openai --lib --all-features
-          cargo test -p everruns-gemini --lib --all-features
-          cargo test -p everruns-internal-protocol --lib --all-features
-          cargo test -p everruns-core --lib --all-features
+          cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-integrations-daytona --all-features
 
   # Integration tests requiring PostgreSQL
@@ -229,23 +225,15 @@ jobs:
       - name: Run server unit tests (require DB for storage layer)
         run: cargo test -p everruns-server --lib
 
-      - name: Run API integration tests (in-process)
-        run: cargo test -p everruns-server --test api_integration_test -- --test-threads=1
-
-      - name: Run repository integration tests
-        run: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+      - name: Run server integration tests (API + repository)
+        run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test -- --test-threads=1
 
       - name: Run durable integration tests
-        run: cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
-
-      - name: Run durable repository tests
-        run: cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
       - name: Run LLM integration tests (skips providers without API keys)
         timeout-minutes: 10
-        run: |
-          cargo test -p everruns-core --test agent_run_basic --all-features
-          cargo test -p everruns-core --test agent_run_with_thinking --all-features
+        run: cargo test -p everruns-core --test agent_run_basic --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
@@ -306,6 +294,20 @@ jobs:
           path: target/release/export-openapi
           retention-days: 1
 
+      # Build workflow test binary while release deps are still warm in sccache
+      - name: Build workflow test binary
+        run: |
+          cargo test -p everruns-server --test workflow_test --no-run --release --message-format=json 2>/dev/null \
+            | jq -r 'select(.executable != null) | .executable' > /tmp/workflow-test-path.txt
+          cp "$(cat /tmp/workflow-test-path.txt)" target/release/workflow-test-binary
+
+      - name: Upload workflow test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-test-binary
+          path: target/release/workflow-test-binary
+          retention-days: 1
+
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
@@ -337,38 +339,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-
-      - name: Configure sccache S3 backend
-        if: env.DOPPLER_TOKEN != ''
-        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "test"
-
       - name: Cache sqlx-cli
+        id: cache-sqlx
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/sqlx
           key: ${{ runner.os }}-sqlx-cli-0.8
 
+      - name: Install Rust toolchain (for sqlx-cli only)
+        if: steps.cache-sqlx.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install sqlx-cli
-        run: |
-          if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
-          fi
+        if: steps.cache-sqlx.outputs.cache-hit != 'true'
+        run: cargo install sqlx-cli --no-default-features --features postgres
+        env:
+          RUSTC_WRAPPER: ""
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/server/migrations
+        run: ~/.cargo/bin/sqlx migrate run --source crates/server/migrations
 
       - name: Download server binary
         uses: actions/download-artifact@v4
@@ -380,6 +369,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: everruns-worker
+          path: ./bin
+
+      - name: Download workflow test binary
+        uses: actions/download-artifact@v4
+        with:
+          name: workflow-test-binary
           path: ./bin
 
       - name: Make binaries executable
@@ -413,7 +408,7 @@ jobs:
           exit 1
 
       - name: Run workflow tests
-        run: cargo test -p everruns-server --test workflow_test -- --test-threads=1
+        run: ./bin/workflow-test-binary --test-threads=1
 
       - name: Stop services
         if: always()
