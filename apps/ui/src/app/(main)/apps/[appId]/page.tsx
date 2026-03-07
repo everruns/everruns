@@ -91,6 +91,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       ? `${window.location.origin}/api/v1/apps/${appId}/slack/events`
       : `/api/v1/apps/${appId}/slack/events`;
 
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const webhookPath = `/api/v1/apps/${appId}/slack/events`;
+
   const handleCreateSlackApp = useCallback(async () => {
     setCreatingSlackApp(true);
     try {
@@ -397,6 +402,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                         hasSlackConfig={true}
                         isPublished={false}
                         webhookUrl={webhookUrl}
+                        webhookPath={webhookPath}
+                        isLocalhost={isLocalhost}
                         onCreateSlackApp={handleCreateSlackApp}
                         creatingSlackApp={creatingSlackApp}
                         onConfigure={startEditSlack}
@@ -409,6 +416,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   hasSlackConfig={false}
                   isPublished={isPublished}
                   webhookUrl={webhookUrl}
+                  webhookPath={webhookPath}
+                  isLocalhost={isLocalhost}
                   onCreateSlackApp={handleCreateSlackApp}
                   creatingSlackApp={creatingSlackApp}
                   onConfigure={startEditSlack}
@@ -555,24 +564,59 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
-              <strong>Request URL</strong>. Then subscribe to bot events:{" "}
-              <code className="text-xs">message.channels</code>,{" "}
-              <code className="text-xs">message.groups</code>,{" "}
-              <code className="text-xs">message.im</code>,{" "}
-              <code className="text-xs">app_mention</code>.
-            </p>
-            <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
-              <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
-              <code className="text-sm flex-1 truncate">{webhookUrl}</code>
-              <button
-                className="shrink-0 hover:text-foreground text-muted-foreground"
-                onClick={() => navigator.clipboard.writeText(webhookUrl)}
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-            </div>
+            {isLocalhost ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Slack can&apos;t reach <code className="text-xs">localhost</code>. Use{" "}
+                  <a href="https://ngrok.com" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a>{" "}
+                  to expose your local server:
+                </p>
+                <div className="bg-muted p-3 rounded-md space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">1. Start ngrok:</p>
+                  <code className="text-xs block">ngrok http {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}</code>
+                  <p className="text-xs font-medium text-muted-foreground mt-2">2. Copy your Request URL:</p>
+                  <code className="text-xs block">https://&lt;your-id&gt;.ngrok-free.app{webhookPath}</code>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Paste that URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
+                  <strong>Request URL</strong>. Then subscribe to bot events:{" "}
+                  <code className="text-xs">message.channels</code>,{" "}
+                  <code className="text-xs">message.groups</code>,{" "}
+                  <code className="text-xs">message.im</code>,{" "}
+                  <code className="text-xs">app_mention</code>.
+                </p>
+                <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                  <code className="text-xs flex-1 truncate text-muted-foreground">{webhookPath}</code>
+                  <button
+                    className="shrink-0 hover:text-foreground text-muted-foreground"
+                    onClick={() => navigator.clipboard.writeText(webhookPath)}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
+                  <strong>Request URL</strong>. Then subscribe to bot events:{" "}
+                  <code className="text-xs">message.channels</code>,{" "}
+                  <code className="text-xs">message.groups</code>,{" "}
+                  <code className="text-xs">message.im</code>,{" "}
+                  <code className="text-xs">app_mention</code>.
+                </p>
+                <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
+                  <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  <code className="text-sm flex-1 truncate">{webhookUrl}</code>
+                  <button
+                    className="shrink-0 hover:text-foreground text-muted-foreground"
+                    onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            )}
             <p className="text-xs text-muted-foreground">
               After saving, invite the bot to a channel (<code>/invite @{app?.name}</code>) and send
               a message to test.
@@ -625,6 +669,8 @@ function SetupSteps({
   hasSlackConfig,
   isPublished,
   webhookUrl,
+  webhookPath,
+  isLocalhost,
   onCreateSlackApp,
   creatingSlackApp,
   onConfigure,
@@ -632,6 +678,8 @@ function SetupSteps({
   hasSlackConfig: boolean;
   isPublished: boolean;
   webhookUrl: string;
+  webhookPath: string;
+  isLocalhost: boolean;
   onCreateSlackApp: () => void;
   creatingSlackApp: boolean;
   onConfigure: () => void;
@@ -729,19 +777,40 @@ function SetupSteps({
           <p className="text-sm font-medium">4. Configure Event Subscriptions</p>
           {currentStep === 4 ? (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                In your Slack app settings, go to <strong>Event Subscriptions</strong>, enable
-                events, and paste this Request URL:
-              </p>
-              <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
-                <code className="text-xs flex-1 truncate">{webhookUrl}</code>
-                <button
-                  className="shrink-0 hover:text-foreground text-muted-foreground"
-                  onClick={() => navigator.clipboard.writeText(webhookUrl)}
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              </div>
+              {isLocalhost ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Slack can&apos;t reach localhost. Run{" "}
+                    <code>ngrok http {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}</code>{" "}
+                    then use the ngrok URL with this path as your Request URL:
+                  </p>
+                  <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                    <code className="text-xs flex-1 truncate">{webhookPath}</code>
+                    <button
+                      className="shrink-0 hover:text-foreground text-muted-foreground"
+                      onClick={() => navigator.clipboard.writeText(webhookPath)}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    In your Slack app settings, go to <strong>Event Subscriptions</strong>, enable
+                    events, and paste this Request URL:
+                  </p>
+                  <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                    <code className="text-xs flex-1 truncate">{webhookUrl}</code>
+                    <button
+                      className="shrink-0 hover:text-foreground text-muted-foreground"
+                      onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </>
+              )}
               <p className="text-xs text-muted-foreground">
                 Then subscribe to bot events: <code>message.channels</code>,{" "}
                 <code>message.groups</code>, <code>message.im</code>, <code>app_mention</code>
