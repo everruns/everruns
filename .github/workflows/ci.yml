@@ -18,6 +18,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  RUSTC_WRAPPER: sccache
+  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
 jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
@@ -86,6 +88,8 @@ jobs:
 
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
+        env:
+          RUSTC_WRAPPER: ""
 
   clippy:
     name: Clippy Lints
@@ -103,6 +107,13 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -128,6 +139,13 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -180,6 +198,13 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -237,6 +262,13 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -310,6 +342,13 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -402,6 +441,7 @@ jobs:
     timeout-minutes: 10
 
     env:
+      RUSTC_WRAPPER: ""
       DEV_MODE: "true"
       AUTH_MODE: none
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
