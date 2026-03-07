@@ -1,5 +1,9 @@
 // LLM Provider service for business logic
+//
+// On create/update/delete, the LLM resolver cache is invalidated so that
+// subsequent model resolutions pick up the new provider config.
 
+use crate::services::LlmResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
@@ -15,11 +19,35 @@ use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderReque
 pub struct LlmProviderService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
+    llm_resolver: Option<Arc<LlmResolverService>>,
 }
 
 impl LlmProviderService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self { db, encryption }
+        Self {
+            db,
+            encryption,
+            llm_resolver: None,
+        }
+    }
+
+    pub fn with_resolver(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        resolver: Arc<LlmResolverService>,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            llm_resolver: Some(resolver),
+        }
+    }
+
+    /// Invalidate resolver cache after provider mutation.
+    async fn invalidate_resolver_cache(&self, org_id: i64) {
+        if let Some(ref resolver) = self.llm_resolver {
+            resolver.invalidate_cache(org_id).await;
+        }
     }
 
     pub async fn create(&self, org_id: i64, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
@@ -43,6 +71,7 @@ impl LlmProviderService {
         };
 
         let row = self.db.create_llm_provider(org_id, input).await?;
+        self.invalidate_resolver_cache(org_id).await;
         Ok(Self::row_to_provider(&row))
     }
 
@@ -86,11 +115,18 @@ impl LlmProviderService {
         };
 
         let row = self.db.update_llm_provider(org_id, id, input).await?;
+        if row.is_some() {
+            self.invalidate_resolver_cache(org_id).await;
+        }
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_llm_provider(org_id, id).await
+        let deleted = self.db.delete_llm_provider(org_id, id).await?;
+        if deleted {
+            self.invalidate_resolver_cache(org_id).await;
+        }
+        Ok(deleted)
     }
 
     fn row_to_provider(row: &LlmProviderRow) -> LlmProvider {

@@ -119,6 +119,9 @@ prost-types = "0.14"
 # Image processing (for thumbnail generation)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
+# In-process caching
+moka = { version = "0.12", features = ["future"] }
+
 # Fault injection testing
 fail = "0.5"
 rstest = "0.25"

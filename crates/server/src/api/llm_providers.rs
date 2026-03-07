@@ -2,7 +2,7 @@
 // Routes: /v1/llm-providers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::{LlmProviderService, ModelSyncService, SyncResult};
+use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService, SyncResult};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
 use axum::{
@@ -33,9 +33,15 @@ impl AppState {
         encryption: Option<Arc<EncryptionService>>,
         driver_registry: Arc<DriverRegistry>,
         auth: AuthState,
+        llm_resolver: Option<Arc<LlmResolverService>>,
     ) -> Self {
+        let service = if let Some(resolver) = llm_resolver {
+            LlmProviderService::with_resolver(db.clone(), encryption, resolver)
+        } else {
+            LlmProviderService::new(db.clone(), encryption)
+        };
         Self {
-            service: Arc::new(LlmProviderService::new(db.clone(), encryption)),
+            service: Arc::new(service),
             sync_service: Arc::new(ModelSyncService::new(db, driver_registry)),
             auth,
         }
