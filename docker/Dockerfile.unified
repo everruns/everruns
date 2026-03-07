@@ -52,9 +52,11 @@ COPY crates crates
 COPY integrations integrations
 
 # ============================================================================
-# Stage 2a: Build Server binary
+# Stage 2: Build all Rust binaries in a single invocation
 # ============================================================================
-FROM builder-base AS builder-server
+# Compiles server, worker, and reencrypt-secrets together so shared dependencies
+# (tokio, axum, sqlx, etc.) are compiled once per architecture instead of 3x.
+FROM builder-base AS builder-all
 
 ARG TARGETPLATFORM
 
@@ -63,35 +65,9 @@ ARG TARGETPLATFORM
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
-    xx-cargo build --release -p everruns-server && \
-    cp target/$(xx-cargo --print-target-triple)/release/everruns-server /app/everruns-server
-
-# ============================================================================
-# Stage 2b: Build Worker binary
-# ============================================================================
-FROM builder-base AS builder-worker
-
-ARG TARGETPLATFORM
-
-# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
-    --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
-    xx-cargo build --release -p everruns-worker && \
-    cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker
-
-# ============================================================================
-# Stage 2c: Build Admin tools (reencrypt-secrets + sqlx-cli)
-# ============================================================================
-FROM builder-base AS builder-admin
-
-ARG TARGETPLATFORM
-
-# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
-    --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
-    xx-cargo build --release --bin reencrypt-secrets && \
+    xx-cargo build --release -p everruns-server -p everruns-worker --bin reencrypt-secrets && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-server /app/everruns-server && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
     xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
@@ -102,7 +78,7 @@ FROM gcr.io/distroless/cc-debian12 AS server
 
 WORKDIR /app
 
-COPY --from=builder-server /app/everruns-server /app/everruns-server
+COPY --from=builder-all /app/everruns-server /app/everruns-server
 
 EXPOSE 9000
 EXPOSE 9001
@@ -120,7 +96,7 @@ FROM gcr.io/distroless/cc-debian12 AS worker
 
 WORKDIR /app
 
-COPY --from=builder-worker /app/everruns-worker /app/everruns-worker
+COPY --from=builder-all /app/everruns-worker /app/everruns-worker
 
 ENV RUST_LOG=info
 
@@ -156,10 +132,10 @@ WORKDIR /app
 COPY --from=ca-certs /etc/ssl/certs /etc/ssl/certs
 
 # Copy sqlx-cli from builder (cross-compiled for target architecture)
-COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
+COPY --from=builder-all /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
-COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
+COPY --from=builder-all /app/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
 COPY crates/server/migrations /app/migrations

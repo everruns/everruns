@@ -24,30 +24,14 @@ env:
   IMAGE_BASE: ghcr.io/${{ github.repository_owner }}
 
 jobs:
-  build-and-push:
-    name: Build & Push (${{ matrix.target }})
+  # Build all Rust images on a single runner so the shared builder-all stage
+  # is compiled once (per architecture) instead of 3x across separate runners.
+  build-rust-images:
+    name: Build Rust Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: server
-            dockerfile: docker/Dockerfile.unified
-            image_name: everruns-server
-          - target: worker
-            dockerfile: docker/Dockerfile.unified
-            image_name: everruns-worker
-          - target: admin
-            dockerfile: docker/Dockerfile.unified
-            image_name: everruns-admin
-          - target: ui
-            dockerfile: apps/ui/Dockerfile
-            image_name: everruns-ui
-            context: apps/ui
 
     steps:
       - uses: actions/checkout@v4
@@ -104,31 +88,170 @@ jobs:
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           fi
 
-      - name: Extract metadata for Docker
-        id: meta
+      # --- Server image ---
+      - name: Extract metadata (server)
+        id: meta-server
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_BASE }}/${{ matrix.image_name }}
+          images: ${{ env.IMAGE_BASE }}/everruns-server
           tags: |
-            # On version tags (push or workflow_dispatch): use the tag name + update latest
             type=ref,event=tag
             type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            # On main push: tag as 'development' (mutable, tracks main branch)
             type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            # Always tag with short and full SHA
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
 
-      - name: Build and push ${{ matrix.target }}
+      - name: Build and push server
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context || '.' }}
-          file: ${{ matrix.dockerfile }}
-          target: ${{ matrix.target }}
+          context: .
+          file: docker/Dockerfile.unified
+          target: server
           platforms: ${{ steps.platforms.outputs.platforms }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
+          tags: ${{ steps.meta-server.outputs.tags }}
+          labels: ${{ steps.meta-server.outputs.labels }}
+          cache-from: type=gha,scope=docker-rust
+          cache-to: type=gha,mode=max,scope=docker-rust
+
+      # --- Worker image ---
+      - name: Extract metadata (worker)
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BASE }}/everruns-worker
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.sha.outputs.sha_short }}
+            type=raw,value=${{ steps.sha.outputs.sha }}
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.unified
+          target: worker
+          platforms: ${{ steps.platforms.outputs.platforms }}
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha,scope=docker-rust
+          cache-to: type=gha,mode=max,scope=docker-rust
+
+      # --- Admin image (skip on PRs — not needed for CI validation) ---
+      - name: Extract metadata (admin)
+        if: github.event_name != 'pull_request'
+        id: meta-admin
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BASE }}/everruns-admin
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.sha.outputs.sha_short }}
+            type=raw,value=${{ steps.sha.outputs.sha }}
+
+      - name: Build and push admin
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.unified
+          target: admin
+          platforms: ${{ steps.platforms.outputs.platforms }}
+          push: true
+          tags: ${{ steps.meta-admin.outputs.tags }}
+          labels: ${{ steps.meta-admin.outputs.labels }}
+          cache-from: type=gha,scope=docker-rust
+          cache-to: type=gha,mode=max,scope=docker-rust
+
+  # UI image builds independently (different Dockerfile, Node.js stack)
+  build-ui-image:
+    name: Build UI Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "sha_short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine release tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag=" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine platforms
+        id: platforms
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          else
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract metadata (ui)
+        id: meta-ui
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BASE }}/everruns-ui
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
+            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.sha.outputs.sha_short }}
+            type=raw,value=${{ steps.sha.outputs.sha }}
+
+      - name: Build and push UI
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/ui
+          file: apps/ui/Dockerfile
+          target: ui
+          platforms: ${{ steps.platforms.outputs.platforms }}
+          push: true
+          tags: ${{ steps.meta-ui.outputs.tags }}
+          labels: ${{ steps.meta-ui.outputs.labels }}
+          cache-from: type=gha,scope=docker-ui
+          cache-to: type=gha,mode=max,scope=docker-ui
