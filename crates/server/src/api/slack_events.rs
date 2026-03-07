@@ -20,7 +20,7 @@ use axum::{
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::post,
+    routing::{get, post},
 };
 use everruns_core::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig};
 use everruns_worker::AgentRunner;
@@ -131,6 +131,10 @@ impl SlackState {
 pub fn routes(state: SlackState) -> Router {
     Router::new()
         .route("/v1/apps/{app_id}/slack/events", post(handle_slack_event))
+        .route(
+            "/v1/apps/{app_id}/slack/manifest",
+            get(handle_slack_manifest),
+        )
         .with_state(state)
 }
 
@@ -787,6 +791,117 @@ fn verify_slack_signature(
     Ok(())
 }
 
+// =========================================================================
+// Slack App Manifest generation — per-app "Create in Slack" helper
+// =========================================================================
+
+/// Response for the manifest endpoint.
+#[derive(Serialize)]
+struct ManifestResponse {
+    /// YAML manifest string for creating a Slack app
+    manifest_yaml: String,
+    /// Pre-filled URL to create a Slack app from the manifest
+    create_url: String,
+}
+
+/// GET /v1/apps/{app_id}/slack/manifest — Generate a Slack App manifest.
+///
+/// Returns a pre-filled YAML manifest and a URL that opens Slack's "Create app
+/// from manifest" flow. The manifest includes the correct webhook URL and bot
+/// scopes but omits `event_subscriptions` (requires a live URL, so must be
+/// configured manually after the app is created and published).
+async fn handle_slack_manifest(
+    State(state): State<SlackState>,
+    Path(app_id): Path<String>,
+) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Look up app (unscoped — no auth for this endpoint)
+    let app = state
+        .app_service
+        .get_by_public_id_unscoped(&app_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for manifest");
+            ErrorResponse::internal_error()
+        })?
+        .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+
+    let display_name = truncate_display_name(&app.name);
+
+    // Build the YAML manifest (no event_subscriptions — requires live URL)
+    let manifest_yaml = format!(
+        "display_information:\n\
+         \x20 name: \"{name}\"\n\
+         \x20 description: \"AI agent powered by Everruns\"\n\
+         \x20 background_color: \"#1a1a2e\"\n\
+         features:\n\
+         \x20 bot_user:\n\
+         \x20   display_name: \"{display_name}\"\n\
+         \x20   always_online: true\n\
+         oauth_config:\n\
+         \x20 scopes:\n\
+         \x20   bot:\n\
+         \x20     - chat:write\n\
+         \x20     - channels:history\n\
+         \x20     - groups:history\n\
+         \x20     - im:history\n\
+         \x20     - mpim:history\n\
+         \x20     - app_mentions:read\n\
+         settings:\n\
+         \x20 org_deploy_enabled: false\n\
+         \x20 socket_mode_enabled: false\n\
+         \x20 token_rotation_enabled: false\n",
+        name = yaml_escape(&app.name),
+        display_name = yaml_escape(&display_name),
+    );
+
+    // URL-encode the manifest for the Slack "create from manifest" URL
+    let encoded = urlencoding_encode(&manifest_yaml);
+    let create_url = format!(
+        "https://api.slack.com/apps?new_app=1&manifest_yaml={}",
+        encoded
+    );
+
+    Ok(Json(ManifestResponse {
+        manifest_yaml,
+        create_url,
+    }))
+}
+
+/// Truncate display name to 80 chars (Slack limit for bot_user display_name).
+/// Uses char boundary to avoid panicking on multi-byte UTF-8.
+fn truncate_display_name(name: &str) -> String {
+    if name.len() <= 80 {
+        return name.to_string();
+    }
+    // Find the last char boundary at or before 80 bytes
+    let mut end = 80;
+    while !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    name[..end].to_string()
+}
+
+/// Simple YAML string escaping: escape backslashes and double quotes.
+fn yaml_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Percent-encode a string for URL query parameters.
+fn urlencoding_encode(s: &str) -> String {
+    let mut result = String::new();
+    for byte in s.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(*byte as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1351,5 +1466,73 @@ mod tests {
         };
         let session = db.create_session(row).await.unwrap();
         session.id
+    }
+
+    // ==========================================
+    // Manifest helper tests
+    // ==========================================
+
+    #[test]
+    fn test_truncate_display_name_short() {
+        assert_eq!(truncate_display_name("My Bot"), "My Bot");
+    }
+
+    #[test]
+    fn test_truncate_display_name_exact_80() {
+        let exact = "a".repeat(80);
+        assert_eq!(truncate_display_name(&exact), exact);
+    }
+
+    #[test]
+    fn test_truncate_display_name_long() {
+        let long = "a".repeat(100);
+        assert_eq!(truncate_display_name(&long).len(), 80);
+    }
+
+    #[test]
+    fn test_truncate_display_name_empty() {
+        assert_eq!(truncate_display_name(""), "");
+    }
+
+    #[test]
+    fn test_truncate_display_name_multibyte() {
+        // 27 emoji × 4 bytes = 108 bytes, should truncate to 80 bytes (20 emoji)
+        let name = "🤖".repeat(27);
+        let truncated = truncate_display_name(&name);
+        assert!(truncated.len() <= 80);
+        assert!(truncated.is_char_boundary(truncated.len()));
+    }
+
+    #[test]
+    fn test_yaml_escape() {
+        assert_eq!(yaml_escape(r#"hello "world""#), r#"hello \"world\""#);
+        assert_eq!(yaml_escape(r#"back\slash"#), r#"back\\slash"#);
+    }
+
+    #[test]
+    fn test_yaml_escape_no_special_chars() {
+        assert_eq!(yaml_escape("plain text"), "plain text");
+    }
+
+    #[test]
+    fn test_yaml_escape_empty() {
+        assert_eq!(yaml_escape(""), "");
+    }
+
+    #[test]
+    fn test_urlencoding_encode() {
+        assert_eq!(urlencoding_encode("hello world"), "hello%20world");
+        assert_eq!(urlencoding_encode("a=b&c=d"), "a%3Db%26c%3Dd");
+        assert_eq!(urlencoding_encode("safe-_.~"), "safe-_.~");
+    }
+
+    #[test]
+    fn test_urlencoding_encode_empty() {
+        assert_eq!(urlencoding_encode(""), "");
+    }
+
+    #[test]
+    fn test_urlencoding_encode_newlines() {
+        assert_eq!(urlencoding_encode("a\nb"), "a%0Ab");
     }
 }
