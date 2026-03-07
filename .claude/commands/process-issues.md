@@ -63,7 +63,18 @@ Run `/ship` to implement, test, validate, create PR, and merge. Pass the Linear 
 
 `/ship` handles: test coverage, code simplification, security review, artifact updates, smoke testing, quality gates (including rebase on main), PR creation, CI wait, and merge.
 
-#### 3e. Close Issue
+#### 3e. Merge PRs Sequentially
+
+When multiple issues produce PRs, merge them one at a time with rebase between each:
+
+1. Merge the first PR (CI must be green)
+2. Before merging the next PR, rebase it onto the updated `main`: `git fetch origin main && git rebase origin/main`
+3. Push the rebased branch and wait for CI to pass
+4. Repeat until all PRs are merged
+
+This prevents combined-merge breakage (e.g., duplicate Cargo.toml workspace deps, overlapping file edits).
+
+#### 3f. Close Issue
 
 After PR is merged:
 

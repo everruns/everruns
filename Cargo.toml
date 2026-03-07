@@ -120,20 +120,14 @@ prost-types = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 # In-process caching
-moka = { version = "0.12", features = ["future"] }
+moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
 rstest = "0.25"
 
-# In-process caching
-moka = { version = "0.12", features = ["future", "sync"] }
-
 # Plugin system for external integrations
 inventory = "0.3"
-
-# In-process caching (async-aware)
-moka = { version = "0.12", features = ["future"] }
 
 [profile.dev]
 opt-level = 0

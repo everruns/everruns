@@ -30,6 +30,14 @@ Each issue follows: pick up → analyze → branch → implement → ship → cl
 
 **Branch naming:** `{issue-id}-{short-description}` from `main` (lowercase kebab-case).
 
+### Merge Conflict Prevention
+
+When processing multiple issues in parallel, PRs that merge independently can create conflicts on `main` (e.g., duplicate workspace dependencies, overlapping file edits). To prevent this:
+
+1. **Sequential merging with rebase:** After merging each PR, rebase remaining open PRs onto the updated `main` before merging the next one. Do not merge multiple PRs without rebasing in between.
+2. **Workspace dependency deduplication:** When multiple PRs add the same workspace dependency, the second merge creates a duplicate key error. After merging a PR that touches `Cargo.toml` workspace deps, check remaining PRs for conflicts and rebase them.
+3. **CI validation after rebase:** After rebasing a PR onto updated `main`, wait for CI to pass before merging. Never merge a PR whose CI ran against a stale base.
+
 ### Issue Prioritization
 
 Process issues in this order:
