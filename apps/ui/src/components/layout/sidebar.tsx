@@ -57,6 +57,7 @@ import {
   Plus,
   Rocket,
 } from "lucide-react";
+import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -66,10 +67,11 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   flag?: keyof import("@/lib/api/types").FeatureFlags;
   exact?: boolean;
+  experimental?: boolean;
 };
 
 const topNavigation: NavItem[] = [
-  { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat" },
+  { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];
@@ -79,7 +81,7 @@ const buildingBlocksNavigation = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { name: "Apps", href: "/apps", icon: Rocket, flag: "apps" },
+  { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
 ];
 
 const bottomNavigation = [{ name: "Settings", href: "/settings", icon: Settings }];
@@ -247,6 +249,7 @@ export function Sidebar() {
               >
                 <item.icon className="h-5 w-5" />
                 {item.name}
+                {item.experimental && <ExperimentalBadge />}
               </Link>
             );
           })}
@@ -269,6 +272,7 @@ export function Sidebar() {
             >
               <item.icon className="h-5 w-5" />
               {item.name}
+              {item.experimental && <ExperimentalBadge />}
             </Link>
           );
         })}

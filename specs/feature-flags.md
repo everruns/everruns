@@ -63,6 +63,15 @@ passed via gRPC turn context.
 6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
 7. Use `useFeatureFlag("flag_name")` in UI components
 
+## UI Indication
+
+Features gated behind experimental flags display visual badges to signal their status:
+
+- **Sidebar**: Flask icon (`FlaskConical`) next to the nav item name, with tooltip on hover
+- **Page header**: Handwritten-style "experimental" label (Caveat font) with hand-drawn circle border, placed inline next to the page title
+
+Both are driven by `experimental: true` on the `NavItem` type in the sidebar, and `<ExperimentalPageBadge />` on individual pages. See `apps/ui/src/components/ui/experimental-badge.tsx`.
+
 ## Future Extensions
 
 - **Per-org flags**: Add `org_id` column to a `feature_flag_overrides` table

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
 import Link from "next/link";
 import type { App } from "@/lib/api/types";
+import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 
 export default function AppsPage() {
   const { data: apps, isLoading, error } = useApps();
@@ -23,7 +24,10 @@ export default function AppsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Apps</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-3">
+          Apps
+          <ExperimentalPageBadge />
+        </h1>
         <Link href="/apps/new">
           <Button variant="accent">
             <Plus className="w-4 h-4 mr-2" />

@@ -5,6 +5,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useGlobalChat } from "@/hooks/use-global-chat";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 
 export default function GlobalChatPage() {
   const globalChatEnabled = useFeatureFlag("global_chat");
@@ -41,7 +42,10 @@ export default function GlobalChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      <div className="absolute top-3 right-4 z-10">
+        <ExperimentalPageBadge />
+      </div>
       <SessionProvider sessionId={sessionId}>
         <ChatPanel />
       </SessionProvider>

@@ -114,3 +114,26 @@
 .dark .bg-brand-dots {
   background-image: radial-gradient(circle at center, hsl(43 60% 53% / 0.1) 1px, transparent 1px);
 }
+
+/* Experimental page badge — hand-drawn stamp with Caveat font */
+.experimental-page-badge {
+  font-family: "Caveat", cursive;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #d97706;
+  position: relative;
+  display: inline-block;
+  padding: 0 0.5rem;
+  cursor: default;
+  user-select: none;
+  transform: rotate(-1.5deg);
+  vertical-align: middle;
+}
+.experimental-page-badge::before {
+  content: "";
+  position: absolute;
+  inset: -2px -5px;
+  border: 1.5px solid #d97706;
+  border-radius: 50% 40% 45% 42% / 50% 45% 40% 48%;
+  opacity: 0.45;
+}
