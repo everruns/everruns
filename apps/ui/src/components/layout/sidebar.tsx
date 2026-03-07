@@ -298,7 +298,8 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const sections = config?.navigation ?? defaultNavigationSections;
   const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
 
-  const handleCreateOrg = config?.orgActions?.createOrg ?? createOrgOverride ?? (() => setCreateOrgOpen(true));
+  const handleCreateOrg =
+    config?.orgActions?.createOrg ?? createOrgOverride ?? (() => setCreateOrgOpen(true));
   const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
 
   const handleLogout = async () => {

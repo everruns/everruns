@@ -7,11 +7,7 @@
 //   SaaS layers can inject overrides without re-exporting every hook from use-auth.ts
 
 import { createContext, useContext, useCallback, type ReactNode } from "react";
-import {
-  useAuthConfig,
-  useCurrentUser,
-  useLogout as useLogoutMutation,
-} from "@/hooks/use-auth";
+import { useAuthConfig, useCurrentUser, useLogout as useLogoutMutation } from "@/hooks/use-auth";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
 export interface AuthContextValue {
@@ -36,9 +32,7 @@ export interface AuthContextValue {
   createOrganization?: () => void;
 }
 
-export const AuthContext = createContext<AuthContextValue | undefined>(
-  undefined,
-);
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -53,19 +47,11 @@ export function AuthProvider({
   logout: logoutOverride,
   createOrganization,
 }: AuthProviderProps) {
-  const {
-    data: config,
-    isLoading: configLoading,
-    error: configError,
-  } = useAuthConfig();
+  const { data: config, isLoading: configLoading, error: configError } = useAuthConfig();
 
   // Always fetch user - this also sets the org cookie if missing
   // In "none" mode, returns anonymous user with default org
-  const {
-    data: user,
-    isLoading: userLoading,
-    error: userError,
-  } = useCurrentUser(!!config);
+  const { data: user, isLoading: userLoading, error: userError } = useCurrentUser(!!config);
 
   // Default logout via React Query mutation
   const logoutMutation = useLogoutMutation();
@@ -99,9 +85,7 @@ export function AuthProvider({
     createOrganization,
   };
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
