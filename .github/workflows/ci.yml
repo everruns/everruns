@@ -154,11 +154,7 @@ jobs:
 
       - name: Run pure unit tests
         run: |
-          cargo test -p everruns-anthropic --lib --all-features
-          cargo test -p everruns-openai --lib --all-features
-          cargo test -p everruns-gemini --lib --all-features
-          cargo test -p everruns-internal-protocol --lib --all-features
-          cargo test -p everruns-core --lib --all-features
+          cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-integrations-daytona --all-features
 
   # Integration tests requiring PostgreSQL
@@ -229,23 +225,15 @@ jobs:
       - name: Run server unit tests (require DB for storage layer)
         run: cargo test -p everruns-server --lib
 
-      - name: Run API integration tests (in-process)
-        run: cargo test -p everruns-server --test api_integration_test -- --test-threads=1
-
-      - name: Run repository integration tests
-        run: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+      - name: Run server integration tests (API + repository)
+        run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test -- --test-threads=1
 
       - name: Run durable integration tests
-        run: cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
-
-      - name: Run durable repository tests
-        run: cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
       - name: Run LLM integration tests (skips providers without API keys)
         timeout-minutes: 10
-        run: |
-          cargo test -p everruns-core --test agent_run_basic --all-features
-          cargo test -p everruns-core --test agent_run_with_thinking --all-features
+        run: cargo test -p everruns-core --test agent_run_basic --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
