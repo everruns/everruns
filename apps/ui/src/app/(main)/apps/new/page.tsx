@@ -42,6 +42,7 @@ export default function NewAppPage() {
         channel_type: "slack",
       });
 
+      // Redirect to detail page where user can create the Slack app
       router.push(`/apps/${app.id}`);
     } catch (error) {
       console.error("Failed to create app:", error);
@@ -120,8 +121,8 @@ export default function NewAppPage() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              After creating the app, you can configure the Slack integration on the app detail
-              page.
+              After creating the app, you&apos;ll be able to generate a Slack App manifest
+              and create the Slack bot on the detail page.
             </p>
 
             <div className="flex gap-4">

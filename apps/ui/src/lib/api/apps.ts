@@ -37,3 +37,17 @@ export async function unpublishApp(appId: string): Promise<App> {
   const response = await api.post<App>(`/v1/apps/${appId}/unpublish`);
   return response.data;
 }
+
+/** Get the Slack App manifest for an app. Returns manifest YAML and create URL. */
+export async function getSlackManifest(
+  appId: string,
+): Promise<{ manifest_yaml: string; create_url: string } | null> {
+  try {
+    const response = await api.get<{ manifest_yaml: string; create_url: string }>(
+      `/v1/apps/${appId}/slack/manifest`,
+    );
+    return response.data;
+  } catch {
+    return null;
+  }
+}

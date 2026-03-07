@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useCallback } from "react";
 import {
   useApp,
   useUpdateApp,
@@ -10,6 +10,7 @@ import {
 } from "@/hooks/use-apps";
 import { useAgents } from "@/hooks";
 import { useHarnesses } from "@/hooks/use-harnesses";
+import { getSlackManifest } from "@/lib/api/apps";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Globe, GlobeLock, Copy, Trash2, Pencil, Check, X, Rocket } from "lucide-react";
+import {
+  ArrowLeft,
+  Globe,
+  GlobeLock,
+  Copy,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Rocket,
+  ExternalLink,
+  CircleCheck,
+  Circle,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { SessionStrategy, SlackChannelConfig, UpdateAppRequest } from "@/lib/api/types";
 
@@ -66,6 +80,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editTeamId, setEditTeamId] = useState("");
   const [editSessionStrategy, setEditSessionStrategy] = useState<SessionStrategy>("per_thread");
 
+  const [creatingSlackApp, setCreatingSlackApp] = useState(false);
+
   const isPublished = app?.status === "published";
   const slackConfig = app?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
@@ -74,6 +90,18 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/apps/${appId}/slack/events`
       : `/api/v1/apps/${appId}/slack/events`;
+
+  const handleCreateSlackApp = useCallback(async () => {
+    setCreatingSlackApp(true);
+    try {
+      const manifest = await getSlackManifest(appId);
+      if (manifest?.create_url) {
+        window.open(manifest.create_url, "_blank");
+      }
+    } finally {
+      setCreatingSlackApp(false);
+    }
+  }, [appId]);
 
   const startEditBasic = () => {
     if (!app) return;
@@ -321,11 +349,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm font-medium">Signing Secret</p>
-                      <p className="text-sm text-muted-foreground font-mono">{"•".repeat(12)}</p>
+                      <p className="text-sm text-muted-foreground font-mono">{"*".repeat(12)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium">Bot User OAuth Token</p>
-                      <p className="text-sm text-muted-foreground font-mono">{"•".repeat(12)}</p>
+                      <p className="text-sm text-muted-foreground font-mono">{"*".repeat(12)}</p>
                     </div>
                   </div>
 
@@ -360,42 +388,35 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                           : "Per User"}
                     </p>
                   </div>
+
+                  {/* Remaining setup steps after credentials are saved */}
+                  {!isPublished && (
+                    <>
+                      <Separator />
+                      <SetupSteps
+                        hasSlackConfig={true}
+                        isPublished={false}
+                        webhookUrl={webhookUrl}
+                        onCreateSlackApp={handleCreateSlackApp}
+                        creatingSlackApp={creatingSlackApp}
+                        onConfigure={startEditSlack}
+                      />
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-6 text-muted-foreground">
-                  <p className="mb-2">Slack integration not configured yet.</p>
-                  <p className="text-xs">
-                    Click &quot;Configure&quot; to add your Slack app credentials.
-                  </p>
-                </div>
+                <SetupSteps
+                  hasSlackConfig={false}
+                  isPublished={isPublished}
+                  webhookUrl={webhookUrl}
+                  onCreateSlackApp={handleCreateSlackApp}
+                  creatingSlackApp={creatingSlackApp}
+                  onConfigure={startEditSlack}
+                />
               )}
             </CardContent>
           </Card>
 
-          {/* Request URL Card - shown when published */}
-          {isPublished && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Request URL</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Use this URL in your Slack app&apos;s Event Subscriptions &rarr; Request URL
-                  field.
-                </p>
-                <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
-                  <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
-                  <code className="text-sm flex-1 truncate">{webhookUrl}</code>
-                  <button
-                    className="shrink-0 hover:text-foreground text-muted-foreground"
-                    onClick={() => navigator.clipboard.writeText(webhookUrl)}
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
 
         {/* Sidebar */}
@@ -525,6 +546,42 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         </div>
       </div>
 
+      {/* Webhook URL Card - shown when published and configured */}
+      {isPublished && hasSlackConfig && (
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5" />
+              Event Subscriptions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
+              <strong>Request URL</strong>. Then subscribe to bot events:{" "}
+              <code className="text-xs">message.channels</code>,{" "}
+              <code className="text-xs">message.groups</code>,{" "}
+              <code className="text-xs">message.im</code>,{" "}
+              <code className="text-xs">app_mention</code>.
+            </p>
+            <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
+              <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
+              <code className="text-sm flex-1 truncate">{webhookUrl}</code>
+              <button
+                className="shrink-0 hover:text-foreground text-muted-foreground"
+                onClick={() => navigator.clipboard.writeText(webhookUrl)}
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              After saving, invite the bot to a channel (<code>/invite @{app?.name}</code>) and
+              send a message to test.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Delete confirmation dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
@@ -549,6 +606,166 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// =========================================================================
+// Setup Steps — inline guide for Slack integration setup
+// =========================================================================
+
+function StepIcon({ done }: { done: boolean }) {
+  return done ? (
+    <CircleCheck className="w-5 h-5 text-green-600 shrink-0" />
+  ) : (
+    <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+  );
+}
+
+function SetupSteps({
+  hasSlackConfig,
+  isPublished,
+  webhookUrl,
+  onCreateSlackApp,
+  creatingSlackApp,
+  onConfigure,
+}: {
+  hasSlackConfig: boolean;
+  isPublished: boolean;
+  webhookUrl: string;
+  onCreateSlackApp: () => void;
+  creatingSlackApp: boolean;
+  onConfigure: () => void;
+}) {
+  // Determine the current active step
+  const currentStep = !hasSlackConfig ? 1 : !isPublished ? 3 : 4;
+
+  return (
+    <div className="space-y-4">
+      {!hasSlackConfig && (
+        <p className="text-sm text-muted-foreground">
+          Follow these steps to connect a Slack bot to this app.
+        </p>
+      )}
+
+      {/* Step 1: Create Slack App */}
+      <div className="flex gap-3">
+        <StepIcon done={hasSlackConfig} />
+        <div className="flex-1 space-y-1">
+          <p className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}>
+            1. Create a Slack App
+          </p>
+          {currentStep === 1 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Opens Slack with a pre-filled manifest (bot scopes and settings are already
+                configured). Review and click <strong>Create</strong>, then install to your
+                workspace.
+              </p>
+              <Button
+                size="sm"
+                onClick={onCreateSlackApp}
+                disabled={creatingSlackApp}
+              >
+                <ExternalLink className="w-3 h-3 mr-1" />
+                {creatingSlackApp ? "Opening..." : "Create Slack App"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Step 2: Copy credentials */}
+      <div className="flex gap-3">
+        <StepIcon done={hasSlackConfig} />
+        <div className="flex-1 space-y-1">
+          <p className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}>
+            2. Copy credentials back
+          </p>
+          {currentStep === 1 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                After creating the Slack app, copy two values back here:
+              </p>
+              <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+                <li>
+                  <strong>Signing Secret</strong> — Slack app &rarr; Basic Information &rarr; App Credentials
+                </li>
+                <li>
+                  <strong>Bot Token</strong> (<code>xoxb-...</code>) — Slack app &rarr; OAuth &amp; Permissions
+                </li>
+              </ul>
+              <Button size="sm" variant="outline" onClick={onConfigure}>
+                <Pencil className="w-3 h-3 mr-1" />
+                Configure
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Step 3: Publish */}
+      <div className="flex gap-3">
+        <StepIcon done={isPublished} />
+        <div className="flex-1 space-y-1">
+          <p className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}>
+            3. Publish the app
+          </p>
+          {currentStep === 3 && (
+            <p className="text-xs text-muted-foreground">
+              Click the <strong>Publish</strong> button above to activate the webhook endpoint.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Step 4: Event Subscriptions */}
+      <div className="flex gap-3">
+        <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+        <div className="flex-1 space-y-1">
+          <p className="text-sm font-medium">
+            4. Configure Event Subscriptions
+          </p>
+          {currentStep === 4 ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                In your Slack app settings, go to <strong>Event Subscriptions</strong>, enable
+                events, and paste this Request URL:
+              </p>
+              <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                <code className="text-xs flex-1 truncate">{webhookUrl}</code>
+                <button
+                  className="shrink-0 hover:text-foreground text-muted-foreground"
+                  onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Then subscribe to bot events: <code>message.channels</code>,{" "}
+                <code>message.groups</code>, <code>message.im</code>, <code>app_mention</code>
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Add the webhook URL to your Slack app&apos;s Event Subscriptions.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Step 5: Invite bot */}
+      <div className="flex gap-3">
+        <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+        <div className="flex-1 space-y-1">
+          <p className="text-sm font-medium">
+            5. Invite the bot and test
+          </p>
+          <p className="text-xs text-muted-foreground">
+            In Slack, use <code>/invite @botname</code> in a channel, then send a message.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

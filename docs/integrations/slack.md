@@ -11,8 +11,50 @@ Everruns integrates with [Slack](https://slack.com) to deploy agents as bots tha
 - **Session routing**: Conversations are mapped to sessions by thread, channel, or user
 - **Secure webhooks**: Requests are verified using Slack's signing secret (HMAC-SHA256)
 - **Async responses**: Slack is acknowledged immediately; the agent response is posted when ready
+- **Per-app Slack bots**: Each Everruns App gets its own Slack App with its own identity, name, and avatar
 
-## Quick Start
+## Quick Start (Manifest)
+
+Everruns generates a pre-filled Slack App manifest for each app, making setup faster.
+
+### 1. Create an App in Everruns
+
+1. Go to **Apps** and click **New App**
+2. Enter a name, select a Harness and Agent
+3. Click **Create App** — you'll be redirected to the detail page
+
+### 2. Create the Slack App
+
+1. On the App detail page, click **Create Slack App**
+2. This opens Slack's "Create app from manifest" page with pre-filled scopes and bot settings
+3. Review the manifest and click **Create**
+4. Install the app to your workspace when prompted
+
+### 3. Copy Credentials Back
+
+1. In your new Slack app, go to **Basic Information** and copy the **Signing Secret**
+2. Go to **OAuth & Permissions** and copy the **Bot User OAuth Token** (`xoxb-...`)
+3. Back in Everruns, click **Configure** on the Slack Integration card
+4. Paste both values and click **Save**
+
+### 4. Configure Event Subscriptions
+
+1. **Publish** the app in Everruns first (so the webhook URL is live)
+2. Copy the **Request URL** shown on the app detail page
+3. In your Slack app settings, go to **Event Subscriptions** → Enable Events
+4. Paste the Request URL — Slack will verify it automatically
+5. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`, `app_mention`
+6. Click **Save Changes**
+
+> **Note:** Event subscriptions require a live webhook URL, so the Everruns app must be published before configuring this step.
+
+### 5. Start Using
+
+Invite the bot to a channel (`/invite @botname`) and send a message. The bot will respond using the configured agent.
+
+## Quick Start (Manual)
+
+If you prefer to set up everything manually without the manifest:
 
 ### 1. Create a Slack App
 
@@ -20,6 +62,10 @@ Everruns integrates with [Slack](https://slack.com) to deploy agents as bots tha
 2. Name your app and select the workspace
 3. Navigate to **OAuth & Permissions** and add these **Bot Token Scopes**:
    - `chat:write` — Send messages
+   - `channels:history` — Read messages in public channels
+   - `groups:history` — Read messages in private channels (optional)
+   - `im:history` — Read direct messages (optional)
+   - `mpim:history` — Read group direct messages (optional)
    - `app_mentions:read` — React to @mentions (optional)
 4. Click **Install to Workspace** and authorize
 5. Copy the **Bot User OAuth Token** (`xoxb-...`) from the OAuth page
@@ -35,13 +81,14 @@ You need a Harness and Agent already configured. Then create an App via the UI o
 
 **Via UI:**
 
-1. Go to **Apps** and click **Create App**
+1. Go to **Apps** and click **New App**
 2. Enter a name (e.g., "Support Bot")
 3. Select your Harness and Agent
-4. Set channel type to **Slack**
-5. Paste the **Signing Secret** and **Bot Token**
-6. Choose a session strategy (default: `per_thread`)
-7. Click **Create**
+4. Click **Create App**
+5. On the detail page, click **Configure** under Slack Integration
+6. Paste the **Signing Secret** and **Bot Token**
+7. Choose a session strategy (default: `per_thread`)
+8. Click **Save**
 
 **Via API:**
 
