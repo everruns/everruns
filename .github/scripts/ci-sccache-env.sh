@@ -5,7 +5,7 @@ set -euo pipefail
 
 # Install Doppler CLI if not present
 if ! command -v doppler &>/dev/null; then
-  curl -sLf --retry 3 https://cli.doppler.com/install.sh | sh >/dev/null 2>&1
+  curl -sLf --retry 3 https://cli.doppler.com/install.sh | sudo sh >/dev/null 2>&1
 fi
 
 echo "SCCACHE_BUCKET=$(doppler secrets get SCCACHE_BUCKET --plain)"
