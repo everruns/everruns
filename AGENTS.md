@@ -15,6 +15,22 @@ Disable incremental compilation in cloud (saves ~3 GB, useless for single builds
 export CARGO_INCREMENTAL=0
 ```
 
+#### sccache (optional, recommended)
+
+Shared S3 compile cache. Cuts clean builds from ~2m to ~1m. Installed automatically by `init-cloud-env.sh`. To activate in your shell:
+
+```bash
+source scripts/lib/sccache.sh && activate_sccache
+```
+
+Or via Doppler (wraps credential mapping):
+
+```bash
+doppler run -- bash -c 'source scripts/lib/sccache.sh && activate_sccache && cargo build'
+```
+
+Check stats: `just sccache-stats`. See `specs/sccache.md` for details.
+
 All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`).
 
 ### Linear
@@ -107,6 +123,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)
+- `specs/sccache.md` - Shared compile cache (sccache with S3 backend)
 
 ### Skills
 
