@@ -41,15 +41,20 @@ rustc invocation
 | File | Purpose |
 |------|---------|
 | `scripts/lib/sccache.sh` | Install, configure, activate helper |
+| `scripts/lib/common.sh` | Auto-activates sccache on source (all dev scripts) |
 | `scripts/init-cloud-env.sh` | Auto-installs sccache during cloud init |
 | `.github/scripts/ci-sccache-env.sh` | CI-specific S3 credential export |
 | `.github/workflows/ci.yml` | Sets `RUSTC_WRAPPER: sccache` globally |
 
 ## Usage
 
+### Automatic activation (just start-dev, just start-all, etc.)
+
+All dev scripts source `scripts/lib/common.sh`, which auto-activates sccache if installed. No manual step needed — `just start-dev`, `just start-all`, `just start-production`, `just build`, etc. all benefit transparently.
+
 ### Cloud agent (recommended)
 
-Installed automatically by `./scripts/init-cloud-env.sh`. Activate before builds:
+Installed automatically by `./scripts/init-cloud-env.sh`. For manual activation in a standalone shell:
 
 ```bash
 source scripts/lib/sccache.sh && activate_sccache
@@ -66,8 +71,7 @@ doppler run -- bash -c 'source scripts/lib/sccache.sh && activate_sccache && car
 
 ```bash
 just sccache-setup          # one-time install + configure
-source scripts/lib/sccache.sh && activate_sccache
-cargo build                 # cached
+just start-dev              # auto-activates sccache
 just sccache-stats          # verify hits
 ```
 
