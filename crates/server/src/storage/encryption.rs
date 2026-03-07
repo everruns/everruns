@@ -8,10 +8,12 @@ use aes_gcm::{
 };
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use moka::sync::Cache;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 const NONCE_SIZE: usize = 12;
 const KEY_SIZE: usize = 32;
@@ -43,14 +45,28 @@ struct VersionedKey {
     cipher: Aes256Gcm,
 }
 
+/// Default TTL for cached unwrapped DEKs (30 minutes).
+/// Keys change only on rotation, but a bounded TTL limits exposure if
+/// a cache reference leaks or rotation invalidation is delayed.
+const DEK_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
+
+/// Max entries in the DEK cache. Each entry is ~32 bytes (DEK) + key overhead.
+const DEK_CACHE_MAX_CAPACITY: u64 = 10_000;
+
 /// Encryption service supporting envelope encryption with key rotation.
 /// Thread-safe and designed for concurrent use.
+///
+/// Includes an in-memory cache for unwrapped DEKs keyed on wrapped DEK bytes.
+/// This avoids repeated AES-GCM KEK decryption for the same encrypted values.
 #[derive(Clone)]
 pub struct EncryptionService {
     /// Primary key for new encryptions
     primary_key: Arc<VersionedKey>,
     /// Map of all available keys (including primary) for decryption
     keys: Arc<HashMap<String, Aes256Gcm>>,
+    /// Cache: wrapped DEK (base64) -> unwrapped DEK bytes.
+    /// Avoids re-decrypting the same DEK on every request.
+    dek_cache: Cache<String, Vec<u8>>,
 }
 
 impl EncryptionService {
@@ -70,12 +86,18 @@ impl EncryptionService {
             keys.insert(id, cipher);
         }
 
+        let dek_cache = Cache::builder()
+            .max_capacity(DEK_CACHE_MAX_CAPACITY)
+            .time_to_live(DEK_CACHE_TTL)
+            .build();
+
         Ok(Self {
             primary_key: Arc::new(VersionedKey {
                 id: primary_id,
                 cipher: primary_cipher,
             }),
             keys: Arc::new(keys),
+            dek_cache,
         })
     }
 
@@ -198,35 +220,42 @@ impl EncryptionService {
             );
         }
 
-        // Get the KEK for this payload
-        let kek_cipher = self.keys.get(&payload.key_id).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Unknown key_id '{}'. Available keys: {:?}",
-                payload.key_id,
-                self.keys.keys().collect::<Vec<_>>()
-            )
-        })?;
+        // Try cache first: wrapped DEK string -> unwrapped DEK bytes
+        let dek_bytes = if let Some(cached) = self.dek_cache.get(&payload.dek_wrapped) {
+            cached
+        } else {
+            // Cache miss: unwrap DEK using KEK
+            let kek_cipher = self.keys.get(&payload.key_id).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Unknown key_id '{}'. Available keys: {:?}",
+                    payload.key_id,
+                    self.keys.keys().collect::<Vec<_>>()
+                )
+            })?;
 
-        // Decode wrapped DEK (nonce + wrapped_dek)
-        let dek_wrapped_bytes = BASE64
-            .decode(&payload.dek_wrapped)
-            .context("Failed to decode wrapped DEK")?;
+            let dek_wrapped_bytes = BASE64
+                .decode(&payload.dek_wrapped)
+                .context("Failed to decode wrapped DEK")?;
 
-        if dek_wrapped_bytes.len() < NONCE_SIZE {
-            anyhow::bail!("Wrapped DEK too short");
-        }
+            if dek_wrapped_bytes.len() < NONCE_SIZE {
+                anyhow::bail!("Wrapped DEK too short");
+            }
 
-        let (dek_nonce_bytes, wrapped_dek) = dek_wrapped_bytes.split_at(NONCE_SIZE);
-        let dek_nonce = Nonce::from_slice(dek_nonce_bytes);
+            let (dek_nonce_bytes, wrapped_dek) = dek_wrapped_bytes.split_at(NONCE_SIZE);
+            let dek_nonce = Nonce::from_slice(dek_nonce_bytes);
 
-        // Unwrap DEK
-        let dek_bytes = kek_cipher
-            .decrypt(dek_nonce, wrapped_dek)
-            .map_err(|e| anyhow::anyhow!("Failed to unwrap DEK: {}", e))?;
+            let unwrapped = kek_cipher
+                .decrypt(dek_nonce, wrapped_dek)
+                .map_err(|e| anyhow::anyhow!("Failed to unwrap DEK: {}", e))?;
 
-        if dek_bytes.len() != DEK_SIZE {
-            anyhow::bail!("Invalid DEK size after unwrap");
-        }
+            if unwrapped.len() != DEK_SIZE {
+                anyhow::bail!("Invalid DEK size after unwrap");
+            }
+
+            self.dek_cache
+                .insert(payload.dek_wrapped.clone(), unwrapped.clone());
+            unwrapped
+        };
 
         // Decrypt data with DEK
         let dek_cipher = Aes256Gcm::new_from_slice(&dek_bytes)
@@ -293,6 +322,18 @@ impl EncryptionService {
     /// Get all available key IDs.
     pub fn available_key_ids(&self) -> Vec<&str> {
         self.keys.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Invalidate all cached DEKs.
+    /// Call after key rotation to force re-decryption with new KEK.
+    pub fn invalidate_dek_cache(&self) {
+        self.dek_cache.invalidate_all();
+    }
+
+    /// Number of entries currently in the DEK cache.
+    /// Exposed for monitoring and testing.
+    pub fn dek_cache_entry_count(&self) -> u64 {
+        self.dek_cache.entry_count()
     }
 }
 
@@ -730,5 +771,120 @@ mod tests {
             found
         );
         assert_eq!(found.len(), 2, "Expected 2 columns, found: {:?}", found);
+    }
+
+    // --- DEK cache tests ---
+
+    #[test]
+    fn test_cache_populated_on_decrypt() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+
+        let encrypted = service.encrypt_string("secret").unwrap();
+
+        // Cache empty before first decrypt
+        assert_eq!(service.dek_cache_entry_count(), 0);
+
+        let _ = service.decrypt_to_string(&encrypted).unwrap();
+
+        // Cache should have one entry after decrypt
+        // moka may need a sync to reflect entry_count
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 1);
+    }
+
+    #[test]
+    fn test_cache_hit_avoids_re_decryption() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+
+        let encrypted = service.encrypt_string("secret").unwrap();
+
+        // First decrypt populates cache
+        let result1 = service.decrypt_to_string(&encrypted).unwrap();
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 1);
+
+        // Second decrypt hits cache, same result
+        let result2 = service.decrypt_to_string(&encrypted).unwrap();
+        assert_eq!(result1, result2);
+
+        // Still one entry (not duplicated)
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 1);
+    }
+
+    #[test]
+    fn test_different_encrypted_values_cached_independently() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+
+        let enc1 = service.encrypt_string("secret-a").unwrap();
+        let enc2 = service.encrypt_string("secret-b").unwrap();
+
+        let _ = service.decrypt_to_string(&enc1).unwrap();
+        let _ = service.decrypt_to_string(&enc2).unwrap();
+
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 2);
+
+        // Both still decrypt correctly
+        assert_eq!(service.decrypt_to_string(&enc1).unwrap(), "secret-a");
+        assert_eq!(service.decrypt_to_string(&enc2).unwrap(), "secret-b");
+    }
+
+    #[test]
+    fn test_invalidate_dek_cache_clears_all() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+
+        let enc1 = service.encrypt_string("a").unwrap();
+        let enc2 = service.encrypt_string("b").unwrap();
+
+        let _ = service.decrypt(&enc1).unwrap();
+        let _ = service.decrypt(&enc2).unwrap();
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 2);
+
+        // Invalidate
+        service.invalidate_dek_cache();
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 0);
+
+        // Decryption still works (re-populates cache)
+        assert_eq!(service.decrypt_to_string(&enc1).unwrap(), "a");
+        assert_eq!(service.decrypt_to_string(&enc2).unwrap(), "b");
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 2);
+    }
+
+    #[test]
+    fn test_cache_works_across_key_rotation() {
+        let key_v1 = test_key("kek-v1");
+        let key_v2 = test_key("kek-v2");
+
+        // Encrypt with v1
+        let svc_v1 = EncryptionService::new(&key_v1, &[]).unwrap();
+        let encrypted = svc_v1.encrypt_string("rotated-secret").unwrap();
+
+        // New service with v2 primary, v1 still available
+        let svc_v2 = EncryptionService::new(&key_v2, &[&key_v1]).unwrap();
+
+        // Decrypt populates cache
+        let result = svc_v2.decrypt_to_string(&encrypted).unwrap();
+        assert_eq!(result, "rotated-secret");
+        svc_v2.dek_cache.run_pending_tasks();
+        assert_eq!(svc_v2.dek_cache_entry_count(), 1);
+
+        // Invalidate after rotation
+        svc_v2.invalidate_dek_cache();
+        svc_v2.dek_cache.run_pending_tasks();
+        assert_eq!(svc_v2.dek_cache_entry_count(), 0);
+
+        // Still decrypts correctly
+        assert_eq!(
+            svc_v2.decrypt_to_string(&encrypted).unwrap(),
+            "rotated-secret"
+        );
     }
 }
