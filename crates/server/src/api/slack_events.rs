@@ -12,8 +12,10 @@
 // "slack:thread:{thread_ts}" or "slack:channel:{channel}" let us find or create
 // sessions based on the configured session strategy.
 //
-// Design Decision: Agent responses are posted back to Slack via a background task
-// that polls for output.message.completed events on the session.
+// Design Decision: Agent responses are posted back to Slack via an event-driven
+// dispatcher (SlackDeliveryDispatcher) that subscribes to EventNotificationBroadcaster.
+// No fixed deadline — handles arbitrarily long agent turns. Falls back to 120s
+// polling in DEV_MODE where EventNotificationBroadcaster is unavailable.
 
 use axum::{
     Json, Router,
@@ -34,6 +36,7 @@ use tokio::sync::RwLock;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::services::{AppService, MessageService, SessionService};
+use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 
 use super::common::ErrorResponse;
@@ -113,16 +116,23 @@ pub struct SlackState {
     pub message_service: Arc<MessageService>,
     /// Cache of Slack user ID → display name. Shared across requests.
     user_name_cache: SlackUserCache,
+    /// Event-driven Slack delivery dispatcher (None in DEV_MODE without PostgreSQL).
+    pub delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
 }
 
 impl SlackState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
+    ) -> Self {
         Self {
             app_service: Arc::new(AppService::new(db.clone())),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(db.clone(), runner)),
             db,
             user_name_cache: Arc::new(RwLock::new(HashMap::new())),
+            delivery_dispatcher,
         }
     }
 }
@@ -419,7 +429,7 @@ async fn process_slack_message(
         "Slack message routed to session"
     );
 
-    // Wait for agent response and post back to Slack
+    // Register delivery for agent response posting
     let bot_token = slack_config.bot_token.clone();
     let channel = event.channel.clone().unwrap_or_default();
     // Reply in thread: use thread_ts if available, otherwise the message ts
@@ -430,21 +440,36 @@ async fn process_slack_message(
         .unwrap_or_default();
     let session_id = session.id.uuid();
     let message_id = message.id;
-    let db = state.db.clone();
 
-    tokio::spawn(async move {
-        if let Err(e) = wait_and_post_response(
-            &db, session_id, message_id, &bot_token, &channel, &thread_ts,
-        )
-        .await
-        {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to post Slack response"
-            );
-        }
-    });
+    if let Some(ref dispatcher) = state.delivery_dispatcher {
+        // Event-driven delivery: no deadline, handles arbitrarily long turns
+        dispatcher
+            .register(
+                session_id,
+                message_id.to_string(),
+                bot_token,
+                channel,
+                thread_ts,
+            )
+            .await;
+    } else {
+        // Fallback for DEV_MODE without EventNotificationBroadcaster:
+        // use the legacy polling approach
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            if let Err(e) = wait_and_post_response(
+                &db, session_id, message_id, &bot_token, &channel, &thread_ts,
+            )
+            .await
+            {
+                tracing::error!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to post Slack response"
+                );
+            }
+        });
+    }
 
     Ok(())
 }

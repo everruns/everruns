@@ -303,6 +303,11 @@ impl StorageBackend {
         dispatch!(self, count_sessions_by_status, org_id)
     }
 
+    /// Find active sessions with Slack tags (for startup recovery).
+    pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
+        dispatch!(self, find_active_slack_sessions)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     pub async fn find_session_by_tags(
         &self,

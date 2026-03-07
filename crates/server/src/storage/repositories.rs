@@ -1056,6 +1056,27 @@ impl Database {
         Ok(row)
     }
 
+    /// Find all active sessions with Slack tags (for startup recovery).
+    /// Returns sessions where status = 'active' and any tag starts with 'slack:app:'.
+    pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
+        let rows = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions
+            WHERE status = 'active'
+              AND EXISTS (
+                  SELECT 1 FROM unnest(tags) AS t
+                  WHERE t LIKE 'slack:app:%'
+              )
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// Update session by org and session id
     pub async fn update_session(
         &self,

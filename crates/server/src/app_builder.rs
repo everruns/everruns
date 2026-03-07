@@ -377,6 +377,20 @@ impl ServerAppBuilder {
             api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
         let tool_results_state =
             api::tool_results::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        // Slack delivery dispatcher: event-driven message posting (replaces 120s polling).
+        // Must be created before events_state takes ownership of event_broadcaster.
+        let slack_dispatcher = if let Some(ref broadcaster) = event_broadcaster {
+            let rx = broadcaster.subscribe();
+            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(db.clone(), rx);
+            tracing::info!("Slack delivery dispatcher started (event-driven)");
+            Some(dispatcher)
+        } else {
+            tracing::info!(
+                "Slack delivery dispatcher not available (DEV_MODE), using polling fallback"
+            );
+            None
+        };
+
         let events_state = api::events::AppState {
             session_service: Arc::new(services::SessionService::new(db.clone())),
             event_service: event_service.clone(),
@@ -410,7 +424,11 @@ impl ServerAppBuilder {
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
-        let slack_state = api::slack_events::SlackState::new(db.clone(), runner.clone());
+        let slack_state = api::slack_events::SlackState::new(
+            db.clone(),
+            runner.clone(),
+            slack_dispatcher.clone(),
+        );
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
@@ -851,6 +869,16 @@ impl ServerAppBuilder {
             } else {
                 tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
             }
+        }
+
+        // -- Slack delivery recovery (re-register active Slack sessions after restart) --
+        if let Some(ref dispatcher) = slack_dispatcher {
+            let dispatcher = dispatcher.clone();
+            let recovery_db = db.clone();
+            tokio::spawn(async move {
+                let app_service = crate::services::AppService::new(recovery_db);
+                dispatcher.recover(&app_service).await;
+            });
         }
 
         // -- Durable task scheduler (both prod and dev) --

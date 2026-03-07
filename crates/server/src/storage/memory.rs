@@ -884,6 +884,17 @@ impl InMemoryDatabase {
         Ok(counts.into_iter().collect())
     }
 
+    /// Find active sessions with Slack tags (for startup recovery).
+    pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
+        let sessions = self.sessions.read();
+        let result: Vec<_> = sessions
+            .values()
+            .filter(|s| s.status == "active" && s.tags.iter().any(|t| t.starts_with("slack:app:")))
+            .cloned()
+            .collect();
+        Ok(result)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     pub async fn find_session_by_tags(
         &self,
