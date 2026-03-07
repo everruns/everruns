@@ -108,6 +108,14 @@ pre-pr:
 clean:
     cargo clean
 
+# Install and configure sccache (S3 backend via Doppler, optional)
+sccache-setup:
+    ./scripts/lib/sccache.sh setup
+
+# Show sccache statistics
+sccache-stats:
+    sccache --show-stats
+
 # === Services ===
 
 # Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)

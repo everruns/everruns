@@ -234,6 +234,24 @@ configure_gh_repo() {
 }
 
 
+install_sccache() {
+    # Optional: speeds up Rust builds via shared S3 cache.
+    # Delegates to scripts/lib/sccache.sh for install logic.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local sccache_script="$script_dir/scripts/lib/sccache.sh"
+    if [[ ! -f "$sccache_script" ]]; then
+        # Fallback: we might be run from the repo root
+        sccache_script="./scripts/lib/sccache.sh"
+    fi
+    if [[ -f "$sccache_script" ]]; then
+        source "$sccache_script"
+        _install_sccache || warn "sccache install failed (non-fatal)"
+    else
+        warn "sccache helper not found, skipping"
+    fi
+}
+
 configure_gh_auth() {
     if ! command -v gh &> /dev/null; then
         warn "gh not installed, skipping GitHub auth check"
@@ -291,12 +309,14 @@ main() {
     install_gh & PID_GH=$!
     install_doppler & PID_DOPPLER=$!
     install_caddy & PID_CADDY=$!
+    install_sccache & PID_SCCACHE=$!
 
     INSTALL_FAILED=0
-    wait $PID_JUST    || INSTALL_FAILED=1
-    wait $PID_GH      || INSTALL_FAILED=1
-    wait $PID_DOPPLER || INSTALL_FAILED=1
-    wait $PID_CADDY   || INSTALL_FAILED=1
+    wait $PID_JUST     || INSTALL_FAILED=1
+    wait $PID_GH       || INSTALL_FAILED=1
+    wait $PID_DOPPLER  || INSTALL_FAILED=1
+    wait $PID_CADDY    || INSTALL_FAILED=1
+    wait $PID_SCCACHE  || true  # sccache is optional, don't fail
 
     if [[ "$INSTALL_FAILED" -eq 1 ]]; then
         error "One or more tool installs failed"
@@ -317,6 +337,7 @@ main() {
     echo "  - gh $(gh --version 2>/dev/null | head -1 || echo '(not in PATH)')"
     echo "  - doppler $(doppler --version 2>/dev/null || echo '(not in PATH)')"
     echo "  - caddy $(caddy version 2>/dev/null || echo '(not in PATH)')"
+    echo "  - sccache $(sccache --version 2>/dev/null || echo '(not installed)')"
     echo ""
     echo "Next steps:"
     echo "  just --list              # See available commands"
