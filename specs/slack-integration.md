@@ -12,8 +12,10 @@ Slack Events API  -->  POST /v1/apps/{app_id}/slack/events  (unauthenticated)
                        +-- Verify HMAC-SHA256 signing secret
                        +-- Find/create session (by tags, per session_strategy)
                        +-- Create user message (triggers agent workflow)
-                       +-- Background: poll for output.message.completed
-                       +-- Post response to Slack via chat.postMessage
+                       +-- Dedup: skip if slack_ts already processed (DB check)
+                       +-- Background: poll events, stream each output.message.completed
+                       +-- Post each response to Slack via chat.postMessage
+                       +-- Stop on turn.completed / turn.failed
 ```
 
 ## Design Decisions
@@ -22,7 +24,8 @@ Slack Events API  -->  POST /v1/apps/{app_id}/slack/events  (unauthenticated)
 - **Unauthenticated**: Webhook requests come from Slack, not our users. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps by public_id across all orgs since there's no auth context on webhook requests.
 - **Session routing via tags**: Sessions are found/created using tags like `slack:thread:{ts}`, `slack:channel:{id}`, or `slack:user:{id}` depending on the session strategy.
-- **Async response delivery**: The webhook acks Slack immediately (<3s), then a background task polls for agent output events and posts the response via Slack's `chat.postMessage` API.
+- **Streaming response delivery**: The webhook acks Slack immediately (<3s), then a background task polls for agent output events. Each `output.message.completed` with text is posted to Slack as it arrives, giving users real-time progress during multi-step turns. The poller stops on `turn.completed` or `turn.failed`. Events are filtered by `input_message_id` to avoid cross-turn interference.
+- **Slack event dedup**: Slack sends both `app_mention` and `message` events for @mentions. DB-level dedup via `has_event_with_slack_ts()` prevents duplicate processing (uses JSONB `@>` containment on input.message events).
 
 ## Channel Config
 
