@@ -22,6 +22,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_utils.sh"
 source "$SCRIPT_DIR/_postgres.sh"
+source "$SCRIPT_DIR/_valkey.sh"
 source "$SCRIPT_DIR/_caddy.sh"
 
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -46,6 +47,7 @@ cleanup() {
     pkill -f "everruns-server" 2>/dev/null || true
     pkill -f "everruns-worker" 2>/dev/null || true
     stop_caddy
+    stop_valkey
     stop_postgres
 }
 
@@ -54,7 +56,7 @@ trap cleanup EXIT
 main() {
     echo "==============================================="
     echo "  No-Docker Setup"
-    echo "  Full Backend (PostgreSQL + Caddy + API + Worker)"
+    echo "  Full Backend (PostgreSQL + Valkey + Caddy + API + Worker)"
     echo "==============================================="
     echo ""
 
@@ -72,6 +74,13 @@ main() {
     init_postgres
     start_postgres
     setup_database
+
+    echo ""
+    echo "--- Valkey Setup ---"
+    echo ""
+    if install_valkey; then
+        start_valkey || true
+    fi
 
     if [ "$USE_CADDY" = true ]; then
         echo ""

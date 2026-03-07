@@ -357,6 +357,30 @@ case "$cmd" in
       export OTEL_SDK_DISABLED=true
     fi
 
+    # Start Valkey for distributed rate limiting
+    if [ "$NO_DOCKER" = true ]; then
+      if command -v valkey-cli &> /dev/null && valkey-cli ping 2>/dev/null | grep -q PONG; then
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
+      elif command -v redis-cli &> /dev/null && redis-cli ping 2>/dev/null | grep -q PONG; then
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Local Redis-compatible server ready (distributed rate limiting enabled)"
+      else
+        echo "   ℹ️  Valkey not available — using per-instance rate limiting"
+      fi
+    elif [ -z "${VALKEY_URL:-}" ]; then
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker ps 2>/dev/null | grep -q valkey; then
+          echo "   ℹ️  Starting Valkey for distributed rate limiting..."
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
+          cd "$PROJECT_ROOT"
+        fi
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Valkey started (distributed rate limiting enabled)"
+      fi
+    fi
+
     print_doppler_secret_hint
 
     # Configure LLM API keys
@@ -639,6 +663,30 @@ case "$cmd" in
     if [ "$JAEGER_STARTED" = false ]; then
       echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
       export OTEL_SDK_DISABLED=true
+    fi
+
+    # Start Valkey for distributed rate limiting
+    if [ "$NO_DOCKER" = true ]; then
+      if command -v valkey-cli &> /dev/null && valkey-cli ping 2>/dev/null | grep -q PONG; then
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
+      elif command -v redis-cli &> /dev/null && redis-cli ping 2>/dev/null | grep -q PONG; then
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Local Redis-compatible server ready (distributed rate limiting enabled)"
+      else
+        echo "   ℹ️  Valkey not available — using per-instance rate limiting"
+      fi
+    elif [ -z "${VALKEY_URL:-}" ]; then
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker ps 2>/dev/null | grep -q valkey; then
+          echo "   ℹ️  Starting Valkey for distributed rate limiting..."
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
+          cd "$PROJECT_ROOT"
+        fi
+        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        echo "   ✅ Valkey started (distributed rate limiting enabled)"
+      fi
     fi
 
     print_doppler_secret_hint

@@ -53,6 +53,7 @@ async-trait.workspace = true
 aes-gcm.workspace = true
 argon2.workspace = true
 governor.workspace = true
+fred.workspace = true
 parking_lot.workspace = true
 cron = "0.15"
 inventory.workspace = true

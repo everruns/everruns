@@ -15,6 +15,7 @@ use super::middleware::{AuthError, AuthMethod, AuthUser};
 use super::rate_limit::AuthRateLimiter;
 use super::routes::{self, AuthConfigResponse};
 use crate::storage::StorageBackend;
+use crate::valkey::ValkeyClient;
 
 /// Built-in authentication backend (JWT + password + OAuth + API keys).
 /// This is the default for OSS deployments.
@@ -27,6 +28,7 @@ pub struct BuiltinAuthBackend {
 }
 
 impl BuiltinAuthBackend {
+    /// Create with in-memory rate limiting (per-instance).
     pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
         Self {
@@ -34,6 +36,17 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::new(),
+        }
+    }
+
+    /// Create with Valkey-backed distributed rate limiting.
+    pub fn with_valkey(config: AuthConfig, db: Arc<StorageBackend>, valkey: ValkeyClient) -> Self {
+        let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
+        Self {
+            config,
+            jwt_service,
+            db,
+            rate_limiter: AuthRateLimiter::with_valkey(valkey),
         }
     }
 }

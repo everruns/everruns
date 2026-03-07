@@ -1,7 +1,10 @@
 // TM-AUTH-001: Per-IP rate limiting for authentication endpoints.
-// Decision: Use governor crate with in-memory state (per-instance).
+// Decision: Dual backend — in-memory (governor) for single-instance/dev, Valkey for distributed.
+// Decision: When VALKEY_URL is set, use Valkey sliding-window counter (Lua script, atomic).
+//   When not set, fall back to governor in-memory (per-instance, same as before).
 // Decision: Different limits for login (strict), register (strict), refresh (relaxed).
 // Decision: Keyed by client IP extracted from X-Forwarded-For or socket addr.
+// Decision: On Valkey errors, fail open (allow request) and log — availability over strictness.
 
 use axum::{
     body::Body,
@@ -12,17 +15,30 @@ use axum::{
 use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DashMapStateStore};
 use std::{net::IpAddr, num::NonZeroU32, sync::Arc};
 
+use crate::valkey::ValkeyClient;
+
 type KeyedLimiter = RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>;
 
 /// Rate limiter for auth endpoints, shared via Arc.
+///
+/// Supports two backends:
+/// - **In-memory** (governor): per-instance, used when `VALKEY_URL` is not set.
+/// - **Valkey**: distributed sliding-window counter, used when `VALKEY_URL` is set.
 #[derive(Clone)]
 pub struct AuthRateLimiter {
-    /// Login: 10 requests per minute per IP
-    login: Arc<KeyedLimiter>,
-    /// Register: 5 requests per minute per IP
-    register: Arc<KeyedLimiter>,
-    /// Refresh: 30 requests per minute per IP
-    refresh: Arc<KeyedLimiter>,
+    backend: RateLimitBackend,
+}
+
+#[derive(Clone)]
+enum RateLimitBackend {
+    /// Per-instance rate limiting (governor crate, DashMap state)
+    InMemory {
+        login: Arc<KeyedLimiter>,
+        register: Arc<KeyedLimiter>,
+        refresh: Arc<KeyedLimiter>,
+    },
+    /// Distributed rate limiting (Valkey sliding-window counter)
+    Valkey(ValkeyClient),
 }
 
 impl Default for AuthRateLimiter {
@@ -31,42 +47,82 @@ impl Default for AuthRateLimiter {
     }
 }
 
+/// Rate limits per endpoint (requests per minute)
+const LOGIN_LIMIT: u32 = 10;
+const REGISTER_LIMIT: u32 = 5;
+const REFRESH_LIMIT: u32 = 30;
+const WINDOW_SECS: u64 = 60;
+
 impl AuthRateLimiter {
+    /// Create an in-memory rate limiter (per-instance, no external deps).
     pub fn new() -> Self {
         Self {
-            login: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                NonZeroU32::new(10).unwrap(),
-            ))),
-            register: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                NonZeroU32::new(5).unwrap(),
-            ))),
-            refresh: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                NonZeroU32::new(30).unwrap(),
-            ))),
+            backend: RateLimitBackend::InMemory {
+                login: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(LOGIN_LIMIT).unwrap(),
+                ))),
+                register: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(REGISTER_LIMIT).unwrap(),
+                ))),
+                refresh: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(REFRESH_LIMIT).unwrap(),
+                ))),
+            },
+        }
+    }
+
+    /// Create a distributed rate limiter backed by Valkey.
+    pub fn with_valkey(client: ValkeyClient) -> Self {
+        Self {
+            backend: RateLimitBackend::Valkey(client),
         }
     }
 
     /// Check login rate limit. Returns Err(429) if exceeded.
-    pub fn check_login(&self, ip: IpAddr) -> Result<(), RateLimitError> {
-        self.check(&self.login, ip)
+    pub async fn check_login(&self, ip: IpAddr) -> Result<(), RateLimitError> {
+        self.check("login", LOGIN_LIMIT, ip).await
     }
 
     /// Check register rate limit. Returns Err(429) if exceeded.
-    pub fn check_register(&self, ip: IpAddr) -> Result<(), RateLimitError> {
-        self.check(&self.register, ip)
+    pub async fn check_register(&self, ip: IpAddr) -> Result<(), RateLimitError> {
+        self.check("register", REGISTER_LIMIT, ip).await
     }
 
     /// Check refresh rate limit. Returns Err(429) if exceeded.
-    pub fn check_refresh(&self, ip: IpAddr) -> Result<(), RateLimitError> {
-        self.check(&self.refresh, ip)
+    pub async fn check_refresh(&self, ip: IpAddr) -> Result<(), RateLimitError> {
+        self.check("refresh", REFRESH_LIMIT, ip).await
     }
 
-    fn check(&self, limiter: &KeyedLimiter, ip: IpAddr) -> Result<(), RateLimitError> {
-        match limiter.check_key(&ip) {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                tracing::warn!(ip = %ip, "Rate limit exceeded on auth endpoint");
-                Err(RateLimitError)
+    async fn check(&self, endpoint: &str, limit: u32, ip: IpAddr) -> Result<(), RateLimitError> {
+        match &self.backend {
+            RateLimitBackend::InMemory {
+                login,
+                register,
+                refresh,
+            } => {
+                let limiter = match endpoint {
+                    "login" => login,
+                    "register" => register,
+                    "refresh" => refresh,
+                    _ => return Ok(()),
+                };
+                match limiter.check_key(&ip) {
+                    Ok(_) => Ok(()),
+                    Err(_) => {
+                        tracing::warn!(ip = %ip, endpoint, "Rate limit exceeded (in-memory)");
+                        Err(RateLimitError)
+                    }
+                }
+            }
+            RateLimitBackend::Valkey(client) => {
+                let key = format!("rl:auth:{endpoint}:{ip}");
+                match client.check_rate_limit(&key, limit, WINDOW_SECS).await {
+                    Ok(_remaining) => Ok(()),
+                    Err(()) => {
+                        tracing::warn!(ip = %ip, endpoint, "Rate limit exceeded (valkey)");
+                        Err(RateLimitError)
+                    }
+                }
             }
         }
     }
@@ -122,46 +178,46 @@ mod tests {
     use super::*;
     use std::net::Ipv4Addr;
 
-    #[test]
-    fn test_login_rate_limit_allows_initial_requests() {
+    #[tokio::test]
+    async fn test_login_rate_limit_allows_initial_requests() {
         let limiter = AuthRateLimiter::new();
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
-        assert!(limiter.check_login(ip).is_ok());
+        assert!(limiter.check_login(ip).await.is_ok());
     }
 
-    #[test]
-    fn test_login_rate_limit_blocks_after_burst() {
+    #[tokio::test]
+    async fn test_login_rate_limit_blocks_after_burst() {
         let limiter = AuthRateLimiter::new();
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
         for _ in 0..10 {
-            let _ = limiter.check_login(ip);
+            let _ = limiter.check_login(ip).await;
         }
-        assert!(limiter.check_login(ip).is_err());
+        assert!(limiter.check_login(ip).await.is_err());
     }
 
-    #[test]
-    fn test_register_rate_limit_stricter_than_login() {
+    #[tokio::test]
+    async fn test_register_rate_limit_stricter_than_login() {
         let limiter = AuthRateLimiter::new();
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
         for _ in 0..5 {
-            let _ = limiter.check_register(ip);
+            let _ = limiter.check_register(ip).await;
         }
         assert!(
-            limiter.check_register(ip).is_err(),
+            limiter.check_register(ip).await.is_err(),
             "Register should be blocked after 5 requests"
         );
     }
 
-    #[test]
-    fn test_different_ips_have_separate_limits() {
+    #[tokio::test]
+    async fn test_different_ips_have_separate_limits() {
         let limiter = AuthRateLimiter::new();
         let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3));
         let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 4));
         for _ in 0..5 {
-            let _ = limiter.check_register(ip1);
+            let _ = limiter.check_register(ip1).await;
         }
-        assert!(limiter.check_register(ip1).is_err());
-        assert!(limiter.check_register(ip2).is_ok());
+        assert!(limiter.check_register(ip1).await.is_err());
+        assert!(limiter.check_register(ip2).await.is_ok());
     }
 
     #[test]
