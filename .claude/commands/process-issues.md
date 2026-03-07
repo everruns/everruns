@@ -1,12 +1,12 @@
 # Process Issues
 
-Process open Linear issues: pick up, fix, ship, close. One PR per issue, max 5 issues in parallel.
+Process open Linear issues in the **OSS** project: pick up, fix, ship, close. One PR per issue, max 5 issues in parallel.
 
 Full workflow design and rationale: `specs/linear-issues.md`.
 
 ## Arguments
 
-- `$ARGUMENTS` - Optional: Linear team/project filter, specific issue IDs, or priority filter
+- `$ARGUMENTS` - Optional: specific issue IDs, priority filter, or project override (defaults to OSS project)
 
 ## Instructions
 
@@ -23,7 +23,7 @@ Linear MCP server must be configured in `.mcp.json`.
 
 ### Phase 2: Query and Prioritize
 
-1. Query open issues from Linear via MCP (apply `$ARGUMENTS` filters if provided)
+1. Query open issues from the **OSS** project in Linear via MCP (apply `$ARGUMENTS` filters if provided)
 2. Read each issue's title, description, labels, priority, and linked PRs
 3. Sort by priority (Urgent > Critical > High > Medium > Low), then oldest first within same priority
 4. Select up to **5 issues** to process in parallel

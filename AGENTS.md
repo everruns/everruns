@@ -19,7 +19,7 @@ All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB
 
 ### Linear
 
-We use [Linear](https://linear.app) for issue tracking. MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/commands/process-issues.md) to batch-process open issues (up to 5 in parallel).
+We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/commands/process-issues.md) to batch-process open issues (up to 5 in parallel). All issues for this repo belong to the OSS project.
 
 For GitHub CLI, map token explicitly:
 

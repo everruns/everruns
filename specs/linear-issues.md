@@ -6,6 +6,14 @@ This specification defines the workflow for processing Linear issues using codin
 
 Executable workflow: `/process-issues` command (`.claude/commands/process-issues.md`).
 
+## Project Scope
+
+This repository manages issues in the **OSS** project within the Everruns Linear workspace. All new issues for this repo should be created in the OSS project. The `/process-issues` command queries the OSS project by default.
+
+- **Linear workspace:** Everruns
+- **Team:** EVE
+- **Project:** OSS
+
 ## Requirements
 
 ### Prerequisites
