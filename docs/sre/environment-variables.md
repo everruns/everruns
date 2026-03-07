@@ -118,6 +118,36 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
 
+## VALKEY_URL
+
+Connection URL for Valkey (Redis-compatible) used for distributed rate limiting across control-plane instances.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (uses per-instance in-memory rate limiting) |
+
+**Example:**
+
+```bash
+# Local Valkey
+VALKEY_URL=redis://localhost:6379
+
+# With authentication
+VALKEY_URL=redis://user:password@valkey.example.com:6379
+
+# TLS (managed cloud service)
+VALKEY_URL=rediss://user:password@valkey.example.com:6380
+```
+
+**Notes:**
+- When not set, rate limiting falls back to in-memory governor (per-instance, no coordination)
+- With N instances behind a load balancer, per-instance rate limiting allows N× the intended budget per IP — set `VALKEY_URL` for coordinated limits
+- Accepts `redis://`, `rediss://` (TLS), `valkey://`, `valkeys://` (TLS) schemes
+- Fail-open: if Valkey is unreachable, requests are allowed (availability over strictness)
+- Only used by control-plane (server); workers don't need this variable
+- Uses sliding-window counters via Lua scripts for atomic rate limit checks
+
 ## LLM Provider API Keys
 
 LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Settings > Providers UI.

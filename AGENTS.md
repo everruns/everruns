@@ -106,12 +106,13 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/slack-integration.md` - Slack bot integration (app-scoped webhook, session routing)
 - `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
+- `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)
 
 ### Skills
 
 `.claude/skills/` contains development skills.
 
-- `no-docker-setup/` - PostgreSQL setup for cloud agents
+- `no-docker-setup/` - PostgreSQL + Valkey setup for cloud agents
 - `ui-screenshots/` - agent-browser UI screenshots
 
 ### Test Cases

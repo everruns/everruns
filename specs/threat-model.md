@@ -89,7 +89,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-AUTH-001 | Brute force login | High | No rate limiting on `/v1/auth/login` | **OPEN** |
+| TM-AUTH-001 | Brute force login | High | Per-IP rate limiting on auth endpoints (login 10/min, register 5/min, refresh 30/min); dual backend: in-memory governor or Valkey distributed sliding-window | MITIGATED |
 | TM-AUTH-002 | JWT secret compromise | Critical | Stored in env var `AUTH_JWT_SECRET`; min 32 bytes recommended; never logged | MITIGATED |
 | TM-AUTH-003 | Token replay after logout | Medium | Refresh tokens stored in DB, revocable via DELETE; access tokens short-lived (15 min) | MITIGATED |
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
@@ -107,10 +107,13 @@ Format: `TM-<CATEGORY>-<NNN>`
 
 ### Mitigation Details
 
-**TM-AUTH-001 — Rate Limiting (OPEN):**
-No rate limiting is currently implemented on authentication endpoints. An attacker can attempt unlimited logins.
-- **Recommendation:** Implement per-IP rate limiting: 5 attempts/min on `/v1/auth/login`, exponential backoff on failures.
-- **Priority:** High
+**TM-AUTH-001 — Rate Limiting (MITIGATED):**
+Per-IP rate limiting implemented on all auth endpoints via `AuthRateLimiter` (`crates/server/src/auth/rate_limit.rs`):
+- Login: 10 requests/min per IP
+- Register: 5 requests/min per IP
+- Refresh: 30 requests/min per IP
+- **Dual backend**: In-memory (governor crate, per-instance) when `VALKEY_URL` not set; Valkey distributed sliding-window counter when set. Fail-open on Valkey errors (availability > strictness).
+- **Residual risk**: Without Valkey, rate limits are per-instance. With N instances behind a load balancer, an attacker gets N× the budget. Set `VALKEY_URL` for coordinated limits in multi-instance deployments.
 
 **TM-AUTH-002 — JWT Secret:**
 ```
@@ -712,6 +715,18 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | `POST /v1/sessions/:id/fs/_/grep` accepts user regex with no complexity limits | **OPEN** |
+| TM-DOS-009 | Valkey unauthenticated access | Medium | Valkey listens on localhost:6379 by default; no AUTH configured in local/example compose | **CALLER RISK** |
+| TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
+
+### Mitigation Details
+
+**TM-DOS-009 — Valkey Network Exposure (CALLER RISK):**
+Valkey (Redis-compatible) is used for distributed rate limiting. In local/dev compose, it runs without authentication on port 6379.
+- **Production:** Deploy Valkey on a private network, not exposed to the internet. Use `rediss://` (TLS) URLs and AUTH passwords for cloud-managed instances (e.g., AWS ElastiCache, GCP Memorystore).
+- **Blast radius if compromised:** Attacker can flush rate limit counters (bypassing rate limits) or inject fake counters (DoS via false rate-limit-exceeded). No sensitive data stored in Valkey.
+
+**TM-DOS-010 — Fail-Open Rate Limiting (ACCEPTED):**
+By design, Valkey errors cause rate limiting to fail open (allow requests). This prioritizes availability over strictness. The blast radius is limited to auth endpoints (login/register/refresh) and only matters if Valkey is persistently down.
 
 ## 16. Daytona Cloud Sandbox (TM-DAYTONA)
 
@@ -790,7 +805,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | ~~TM-API-010~~ | ~~WebFetch internal DNS probing~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 resolve-then-check blocks private IP resolution |
 | ~~TM-API-011~~ | ~~WebFetch internal port scanning~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 blocks private IP ranges |
 | ~~TM-API-012~~ | ~~WebFetch DNS rebinding~~ | ~~Medium~~ | Mitigated: fetchkit v0.1.2 DNS pinning prevents rebinding |
-| TM-AUTH-001 | No rate limiting on login | High | Per-IP rate limiting on auth endpoints |
+| ~~TM-AUTH-001~~ | ~~No rate limiting on login~~ | ~~High~~ | Mitigated: Per-IP rate limiting on auth endpoints with dual backend (in-memory/Valkey) |
 | TM-AUTH-007 | OAuth state not validated | High | Store state in cookie; validate in callback |
 | TM-AUTH-015 | JWT secret insecure default | High | Fail startup if AUTH_JWT_SECRET unset in production |
 | ~~TM-DURABLE-002~~ | ~~gRPC auth optional, no org scoping~~ | ~~High~~ | Mitigated: Bearer token required in production + optional mTLS; workers cross-org by design |
