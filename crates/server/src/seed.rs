@@ -1721,13 +1721,14 @@ mod tests {
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        assert_eq!(generic.capabilities.len(), 6);
+        assert_eq!(generic.capabilities.len(), 7);
         assert!(generic.capabilities.contains(&"session_file_system"));
         assert!(generic.capabilities.contains(&"virtual_bash"));
         assert!(generic.capabilities.contains(&"session_storage"));
         assert!(generic.capabilities.contains(&"session"));
         assert!(generic.capabilities.contains(&"agent_instructions"));
         assert!(generic.capabilities.contains(&"skills"));
+        assert!(generic.capabilities.contains(&"openai_tool_search"));
         assert!(generic.tags.contains(&"generic"));
         assert!(generic.tags.contains(&"default"));
     }

@@ -268,10 +268,11 @@ impl OpenResponsesProtocolLlmDriver {
 
         // Namespaced tools
         for (name, tools) in namespaces {
+            let description = format!("Tools for {name}");
             result.push(ResponsesTool::Namespace {
                 r#type: "namespace".to_string(),
-                name: name.clone(),
-                description: format!("Tools for {}", name),
+                name,
+                description,
                 tools,
             });
         }

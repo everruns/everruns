@@ -960,18 +960,12 @@ pub async fn collect_capabilities_with_configs(
             // Collect tools
             tools.extend(capability.tools());
 
-            // Collect tool definitions with category from capability
-            let cap_category = capability.category().map(|s| s.to_string());
+            // Collect tool definitions, propagating capability category if not already set
+            let cap_category = capability.category();
             for def in capability.tool_definitions() {
-                // Propagate capability category to tool definition if not already set
-                let def = if def.category().is_none() {
-                    if let Some(ref cat) = cap_category {
-                        def.with_category(cat.clone())
-                    } else {
-                        def
-                    }
-                } else {
-                    def
+                let def = match (def.category(), cap_category) {
+                    (None, Some(cat)) => def.with_category(cat),
+                    _ => def,
                 };
                 tool_definitions.push(def);
             }
