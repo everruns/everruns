@@ -17,6 +17,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Handwritten font for experimental badges */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="font-sans antialiased bg-brand-dots">
         <QueryProvider>
           <FeatureFlagsProvider>
