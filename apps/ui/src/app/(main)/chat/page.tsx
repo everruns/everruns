@@ -42,8 +42,8 @@ export default function GlobalChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full relative">
-      <div className="absolute top-3 right-4 z-10">
+    <div className="flex flex-col h-full">
+      <div className="flex justify-end px-4 pt-2 pb-0">
         <ExperimentalPageBadge />
       </div>
       <SessionProvider sessionId={sessionId}>
