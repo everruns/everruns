@@ -25,9 +25,9 @@ export default function AppsPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-3">
-            Apps
-            <ExperimentalPageBadge />
-          </h1>
+          Apps
+          <ExperimentalPageBadge />
+        </h1>
         <Link href="/apps/new">
           <Button variant="accent">
             <Plus className="w-4 h-4 mr-2" />

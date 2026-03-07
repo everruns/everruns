@@ -1,10 +1,5 @@
 import { FlaskConical } from "lucide-react";
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 /**
  * Compact icon-only badge for sidebar nav items.
