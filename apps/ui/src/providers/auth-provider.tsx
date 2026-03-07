@@ -3,9 +3,11 @@
 // AuthProvider - handles authentication state and conditional rendering
 // Decision: Use React Context + React Query for auth state management
 // Decision: Check auth config first, then only require login if auth is enabled
+// Decision: logout and createOrganization are pluggable via provider props (EVE-53)
+//   SaaS layers can inject overrides without re-exporting every hook from use-auth.ts
 
-import { createContext, useContext, type ReactNode } from "react";
-import { useAuthConfig, useCurrentUser } from "@/hooks/use-auth";
+import { createContext, useContext, useCallback, type ReactNode } from "react";
+import { useAuthConfig, useCurrentUser, useLogout as useLogoutMutation } from "@/hooks/use-auth";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
 export interface AuthContextValue {
@@ -23,20 +25,39 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   requiresAuth: boolean;
   isLoading: boolean;
+
+  // Pluggable actions — defaults call OSS endpoints; SaaS can override at provider level
+  logout: () => Promise<void>;
+  logoutPending: boolean;
+  createOrganization?: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;
+  /** Override default logout (POST /v1/auth/logout + cache clear). */
+  logout?: () => Promise<void>;
+  /** Override default create-organization action (shows built-in dialog by default). */
+  createOrganization?: () => void;
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({
+  children,
+  logout: logoutOverride,
+  createOrganization,
+}: AuthProviderProps) {
   const { data: config, isLoading: configLoading, error: configError } = useAuthConfig();
 
   // Always fetch user - this also sets the org cookie if missing
   // In "none" mode, returns anonymous user with default org
   const { data: user, isLoading: userLoading, error: userError } = useCurrentUser(!!config);
+
+  // Default logout via React Query mutation
+  const logoutMutation = useLogoutMutation();
+  const defaultLogout = useCallback(async () => {
+    await logoutMutation.mutateAsync();
+  }, [logoutMutation]);
 
   // Determine if authentication is required based on mode
   const requiresAuth = config ? config.mode !== "none" : false;
@@ -59,6 +80,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated,
     requiresAuth,
     isLoading,
+    logout: logoutOverride ?? defaultLogout,
+    logoutPending: logoutOverride ? false : logoutMutation.isPending,
+    createOrganization,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

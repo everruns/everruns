@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import { useOrg } from "@/providers/org-provider";
-import { useLogout } from "@/hooks/use-auth";
 import { useCreateOrganization } from "@/hooks/use-organizations";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -285,20 +284,26 @@ function CreateOrganizationDialog({
 export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, requiresAuth } = useAuth();
+  const {
+    user,
+    requiresAuth,
+    logout,
+    logoutPending,
+    createOrganization: createOrgOverride,
+  } = useAuth();
   const featureFlags = useFeatureFlags();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
-  const logoutMutation = useLogout();
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
   const sections = config?.navigation ?? defaultNavigationSections;
   const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
 
-  const handleCreateOrg = config?.orgActions?.createOrg ?? (() => setCreateOrgOpen(true));
-  const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg;
+  const handleCreateOrg =
+    config?.orgActions?.createOrg ?? createOrgOverride ?? (() => setCreateOrgOpen(true));
+  const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
 
   const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
+    await logout();
     router.push("/login");
   };
 
@@ -410,10 +415,10 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
                 <DropdownMenuItem
                   variant="destructive"
                   onClick={handleLogout}
-                  disabled={logoutMutation.isPending}
+                  disabled={logoutPending}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  {logoutMutation.isPending ? "Signing out..." : "Sign out"}
+                  {logoutPending ? "Signing out..." : "Sign out"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenuPositioner>
