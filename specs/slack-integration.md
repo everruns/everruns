@@ -20,12 +20,13 @@ Slack Events API         -->  POST /v1/apps/{app_id}/slack/events   (per-app, us
                               +-- Find/create session (by tags, per session_strategy)
                               +-- Create user message (triggers agent workflow)
                               +-- Dedup: skip if slack_ts already processed (DB check)
-                              +-- Background: poll events, stream each output.message.completed
-                              +-- Post each response to Slack via chat.postMessage
-                              +-- Stop on turn.completed / turn.failed
+                              +-- Register with SlackDeliveryDispatcher (event-driven)
+                              +-- Dispatcher: subscribe to EventNotificationBroadcaster
+                              +-- On output.message.completed → post to Slack (with retry)
+                              +-- On turn.completed / turn.failed → unregister
 ```
 
-The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session by tags, creates user message (triggers agent workflow), polls for `output.message.completed`, and posts response to Slack via `chat.postMessage`.
+The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session by tags, creates user message (triggers agent workflow), and registers with the `SlackDeliveryDispatcher` for event-driven response delivery.
 
 ## Design Decisions
 
@@ -35,7 +36,8 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
 - **Session routing via tags**: Sessions are found/created using tags like `slack:thread:{ts}`, `slack:channel:{id}`, or `slack:user:{id}` depending on the session strategy.
-- **Streaming response delivery**: The webhook acks Slack immediately (<3s), then a background task polls for agent output events. Each `output.message.completed` with text is posted to Slack as it arrives, giving users real-time progress during multi-step turns. The poller stops on `turn.completed` or `turn.failed`. Events are filtered by `input_message_id` to avoid cross-turn interference.
+- **Event-driven response delivery**: The webhook acks Slack immediately (<3s), then registers with `SlackDeliveryDispatcher`. The dispatcher subscribes to `EventNotificationBroadcaster` (PostgreSQL NOTIFY) and delivers `output.message.completed` text to Slack as events arrive, with no fixed deadline. Handles arbitrarily long agent turns. Posts are retried with exponential backoff (3 attempts) on transient failures. Non-retryable errors (invalid token, channel not found) fail immediately. The dispatcher unregisters on `turn.completed` or `turn.failed`. Events are filtered by `input_message_id` to avoid cross-turn interference. Falls back to legacy 120s polling in DEV_MODE (no PostgreSQL).
+- **Startup recovery**: On server restart, `SlackDeliveryDispatcher::recover()` queries sessions with `status = 'active'` and `slack:*` tags, looks up the corresponding app for the bot_token, finds the last unfinished turn, and re-registers deliveries.
 - **Slack event dedup**: Slack sends both `app_mention` and `message` events for @mentions. DB-level dedup via `has_event_with_slack_ts()` prevents duplicate processing (uses JSONB `@>` containment on input.message events).
 
 ## Channel Config
@@ -98,6 +100,7 @@ This is channel-agnostic — any future channel adapter (Discord, Teams) populat
 - `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` types
 - `crates/core/src/message.rs` - `ExternalActor` struct
 - `crates/server/src/api/slack_events.rs` - Webhook endpoint, manifest generation, signing verification, session routing, user name resolution
+- `crates/server/src/slack_delivery.rs` - Event-driven Slack delivery dispatcher with retry and startup recovery
 - `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
 - `apps/ui/src/app/(main)/apps/page.tsx` - Apps list UI page
 - `apps/ui/src/app/(main)/apps/new/page.tsx` - App creation page

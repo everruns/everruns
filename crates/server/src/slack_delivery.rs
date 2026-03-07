@@ -448,7 +448,7 @@ impl SlackDeliveryDispatcher {
 }
 
 /// Extract text content from an output.message.completed event's data.
-fn extract_response_text(data: &serde_json::Value) -> Option<String> {
+pub(crate) fn extract_response_text(data: &serde_json::Value) -> Option<String> {
     let message = data.get("message")?;
     let content = message.get("content")?.as_array()?;
 
@@ -518,7 +518,7 @@ async fn post_to_slack_with_retry(
 }
 
 /// Post a message to Slack using the Bot API.
-async fn post_to_slack(
+pub(crate) async fn post_to_slack(
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
@@ -592,6 +592,21 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_response_text_single_part() {
+        let data = serde_json::json!({
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Only one part."}
+                ]
+            }
+        });
+        assert_eq!(
+            extract_response_text(&data),
+            Some("Only one part.".to_string())
+        );
+    }
+
+    #[test]
     fn test_extract_response_text_no_text() {
         let data = serde_json::json!({
             "message": {
@@ -604,9 +619,49 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_response_text_empty_content() {
+        let data = serde_json::json!({
+            "message": {
+                "content": []
+            }
+        });
+        assert_eq!(extract_response_text(&data), None);
+    }
+
+    #[test]
     fn test_extract_response_text_missing_message() {
         let data = serde_json::json!({});
         assert_eq!(extract_response_text(&data), None);
+    }
+
+    #[test]
+    fn test_extract_response_text_missing_content() {
+        let data = serde_json::json!({
+            "message": {}
+        });
+        assert_eq!(extract_response_text(&data), None);
+    }
+
+    #[test]
+    fn test_extract_response_text_mixed_content() {
+        let data = serde_json::json!({
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Part 1"},
+                    {"type": "tool_use", "name": "search"},
+                    {"type": "text", "text": "Part 2"}
+                ]
+            }
+        });
+        // tool_use part causes early return via `?` operator on type check
+        // Only "Part 1" is extracted before the tool_use part returns None from the iterator
+        let result = extract_response_text(&data);
+        // The `?` in part.get("type")?.as_str()? causes the for loop to
+        // short-circuit the entire function when a non-text part doesn't have
+        // the expected structure. But tool_use does have "type", so it just
+        // doesn't match "text" and the `&&` short-circuits. Both text parts
+        // should be captured.
+        assert_eq!(result, Some("Part 1\nPart 2".to_string()));
     }
 
     #[test]
@@ -620,5 +675,43 @@ mod tests {
             input_message_id: "msg_123".to_string(),
         };
         assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn test_delivery_key_different_session() {
+        let k1 = DeliveryKey {
+            session_id: Uuid::nil(),
+            input_message_id: "msg_123".to_string(),
+        };
+        let k2 = DeliveryKey {
+            session_id: Uuid::from_u128(1),
+            input_message_id: "msg_123".to_string(),
+        };
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn test_delivery_key_different_message() {
+        let k1 = DeliveryKey {
+            session_id: Uuid::nil(),
+            input_message_id: "msg_123".to_string(),
+        };
+        let k2 = DeliveryKey {
+            session_id: Uuid::nil(),
+            input_message_id: "msg_456".to_string(),
+        };
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn test_delivery_key_hash_consistency() {
+        use std::collections::HashMap;
+        let key = DeliveryKey {
+            session_id: Uuid::nil(),
+            input_message_id: "msg_123".to_string(),
+        };
+        let mut map = HashMap::new();
+        map.insert(key.clone(), "value");
+        assert_eq!(map.get(&key), Some(&"value"));
     }
 }

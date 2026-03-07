@@ -597,25 +597,9 @@ async fn wait_and_post_response(
 }
 
 /// Extract text content from an output.message.completed event's data.
+/// Delegates to the shared implementation in `slack_delivery`.
 fn extract_response_text(data: &serde_json::Value) -> Option<String> {
-    // The event data contains a message with content parts
-    let message = data.get("message")?;
-    let content = message.get("content")?.as_array()?;
-
-    let mut text_parts = Vec::new();
-    for part in content {
-        if part.get("type")?.as_str()? == "text"
-            && let Some(text) = part.get("text").and_then(|t| t.as_str())
-        {
-            text_parts.push(text.to_string());
-        }
-    }
-
-    if text_parts.is_empty() {
-        None
-    } else {
-        Some(text_parts.join("\n"))
-    }
+    crate::slack_delivery::extract_response_text(data)
 }
 
 /// Resolve a Slack user ID to a display name via `users.info` API.
@@ -714,51 +698,14 @@ async fn resolve_slack_user_name(
 }
 
 /// Post a message to Slack using the Bot API.
+/// Delegates to the shared implementation in `slack_delivery`.
 async fn post_to_slack(
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
     text: &str,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-
-    let mut payload = serde_json::json!({
-        "channel": channel,
-        "text": text,
-    });
-
-    // Reply in thread if we have a thread_ts
-    if !thread_ts.is_empty() {
-        payload["thread_ts"] = serde_json::Value::String(thread_ts.to_string());
-    }
-
-    let response = client
-        .post("https://slack.com/api/chat.postMessage")
-        .header("Authorization", format!("Bearer {}", bot_token))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await?;
-
-    let status = response.status();
-    let body: serde_json::Value = response.json().await?;
-
-    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error = body
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unknown");
-        tracing::error!(
-            channel = channel,
-            error = error,
-            status = %status,
-            "Failed to post message to Slack"
-        );
-        return Err(anyhow::anyhow!("Slack API error: {}", error));
-    }
-
-    tracing::info!(channel = channel, "Posted response to Slack");
-    Ok(())
+    crate::slack_delivery::post_to_slack(bot_token, channel, thread_ts, text).await
 }
 
 /// Verify Slack request signature using HMAC-SHA256.
