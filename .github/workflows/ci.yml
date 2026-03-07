@@ -392,19 +392,34 @@ jobs:
           echo $! > worker.pid
           echo "Worker PID: $(cat worker.pid)"
 
-      - name: Wait for server to be ready
+      - name: Wait for server and worker to be ready
         run: |
           echo "Waiting for server to be ready..."
           for i in {1..30}; do
             if curl -s http://localhost:9000/health > /dev/null 2>&1; then
               echo "Server is ready!"
-              exit 0
+              break
             fi
             echo "Attempt $i: Server not ready yet..."
             sleep 2
           done
-          echo "Server failed to start"
-          cat server.log
+          if ! curl -s http://localhost:9000/health > /dev/null 2>&1; then
+            echo "Server failed to start"
+            cat server.log
+            exit 1
+          fi
+          echo "Waiting for worker to connect..."
+          for i in {1..15}; do
+            WORKERS=$(curl -sf http://localhost:9000/v1/durable/workers 2>/dev/null | jq '.workers | length' 2>/dev/null || echo "0")
+            if [ "$WORKERS" -gt 0 ]; then
+              echo "Worker connected! ($WORKERS worker(s))"
+              exit 0
+            fi
+            echo "Attempt $i: Worker not connected yet..."
+            sleep 2
+          done
+          echo "Worker failed to connect"
+          cat worker.log
           exit 1
 
       - name: Run workflow tests
