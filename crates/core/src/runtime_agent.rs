@@ -15,6 +15,7 @@ use crate::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities, resolve_dependencies,
 };
 use crate::harness::Harness;
+use crate::llm_driver_registry::ToolSearchConfig;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +43,10 @@ pub struct RuntimeAgent {
     /// Maximum tokens to generate per response
     #[serde(default)]
     pub max_tokens: Option<u32>,
+
+    /// Tool search config (set by openai_tool_search capability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_search: Option<ToolSearchConfig>,
 }
 
 fn default_max_iterations() -> usize {
@@ -58,6 +63,7 @@ impl RuntimeAgent {
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
+            tool_search: None,
         }
     }
 }
@@ -71,6 +77,7 @@ impl Default for RuntimeAgent {
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
+            tool_search: None,
         }
     }
 }
@@ -200,6 +207,11 @@ impl RuntimeAgentBuilder {
         // Apply tool definitions
         if !collected.tool_definitions.is_empty() {
             self = self.tools(collected.tool_definitions);
+        }
+
+        // Apply tool_search config if capability provided one
+        if let Some(ts_config) = collected.tool_search {
+            self.runtime_agent.tool_search = Some(ts_config);
         }
 
         self
@@ -520,7 +532,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_agent_client_side_tools() {
-        use crate::tool_types::{ClientSideTool, ToolDefinition};
+        use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
         let registry = CapabilityRegistry::with_builtins();
@@ -537,6 +549,8 @@ mod tests {
                     "selector": {"type": "string"}
                 }
             }),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         let agent = Agent {
@@ -571,7 +585,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_agent_client_side_and_capabilities() {
-        use crate::tool_types::{ClientSideTool, ToolDefinition};
+        use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
         let registry = CapabilityRegistry::with_builtins();
@@ -583,6 +597,8 @@ mod tests {
             display_name: None,
             description: "Deploy to staging".to_string(),
             parameters: serde_json::json!({"type": "object"}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         let agent = Agent {

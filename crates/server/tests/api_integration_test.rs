@@ -891,7 +891,7 @@ async fn test_get_generic_harness() {
     assert!(harness.tags.contains(&"generic".to_string()));
     assert!(harness.tags.contains(&"default".to_string()));
 
-    // Verify Generic harness has the expected 6 capabilities
+    // Verify Generic harness has the expected 7 capabilities
     let cap_ids: Vec<&str> = harness
         .capabilities
         .iter()
@@ -899,8 +899,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        6,
-        "Generic harness should have 6 capabilities"
+        7,
+        "Generic harness should have 7 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -923,6 +923,10 @@ async fn test_get_generic_harness() {
         "Should have agent instructions"
     );
     assert!(cap_ids.contains(&"skills"), "Should have skills discovery");
+    assert!(
+        cap_ids.contains(&"openai_tool_search"),
+        "Should have OpenAI tool search"
+    );
 }
 
 #[tokio::test]
@@ -1091,11 +1095,11 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "Generic (copy)");
-    // Generic harness has 6 capabilities
+    // Generic harness has 7 capabilities
     assert_eq!(
         copied.capabilities.len(),
-        6,
-        "Copied harness should have same 6 capabilities"
+        7,
+        "Copied harness should have same 7 capabilities"
     );
 }
 
@@ -1799,8 +1803,8 @@ async fn test_chat_harness_has_platform_management() {
 
     assert_eq!(
         cap_ids.len(),
-        7,
-        "Platform Chat harness should have 7 capabilities (Generic + platform_management)"
+        8,
+        "Platform Chat harness should have 8 capabilities (Generic + platform_management)"
     );
     assert!(
         cap_ids.contains(&"platform_management"),

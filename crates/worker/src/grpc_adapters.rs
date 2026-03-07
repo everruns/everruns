@@ -1060,7 +1060,7 @@ pub async fn load_turn_context(
 fn proto_mcp_tool_def_to_tool_definition(
     proto_tool: proto::McpToolDef,
 ) -> everruns_core::ToolDefinition {
-    use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+    use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy};
 
     // Convert proto Struct to serde_json::Value
     let parameters = proto_tool
@@ -1074,6 +1074,8 @@ fn proto_mcp_tool_def_to_tool_definition(
         description: proto_tool.description,
         parameters,
         policy: ToolPolicy::Auto, // MCP tools are auto-executed
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     })
 }
 

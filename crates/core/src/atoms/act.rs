@@ -756,6 +756,8 @@ mod tests {
                 "required": ["operation"]
             }),
             policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
         })
     }
 

@@ -17,7 +17,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-use crate::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
+use crate::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+};
 use crate::traits::ToolContext;
 
 use crate::error::Result;
@@ -361,6 +363,8 @@ pub trait Tool: Send + Sync {
             description: self.description().to_string(),
             parameters: self.parameters_schema(),
             policy: self.policy(),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })
     }
 }

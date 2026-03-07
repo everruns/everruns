@@ -389,7 +389,7 @@ mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
     use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-    use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
+    use everruns_core::{BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -456,6 +456,8 @@ mod tests {
                 description: "Get weather".to_string(),
                 parameters: json!({}),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             })],
         };
 

@@ -24,6 +24,25 @@ pub enum ToolPolicy {
     ClientSide,
 }
 
+/// Controls whether a tool's full schema can be deferred (tool_search).
+///
+/// When tool_search is active and a model supports it, tools marked as
+/// `Automatic` or `Always` will have `defer_loading: true` set, meaning
+/// only the name+description are sent upfront and full parameter schemas
+/// are loaded on-demand by the model.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeferrablePolicy {
+    /// Never defer — always send full schema (e.g., high-frequency tools like write_todos)
+    Never,
+    /// Let the driver decide based on tool count threshold (default)
+    #[default]
+    Automatic,
+    /// Always defer when tool_search is active, regardless of threshold
+    Always,
+}
+
 /// Tool definition in agent configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -55,6 +74,12 @@ pub struct BuiltinTool {
     /// Tool policy (auto or requires_approval)
     #[serde(default)]
     pub policy: ToolPolicy,
+    /// Category for tool_search namespace grouping (from parent capability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Whether this tool's schema can be deferred via tool_search
+    #[serde(default)]
+    pub deferrable: DeferrablePolicy,
 }
 
 /// Client-side tool - executed by the client, not the server
@@ -71,6 +96,12 @@ pub struct ClientSideTool {
     pub description: String,
     /// JSON schema for tool parameters
     pub parameters: serde_json::Value,
+    /// Category for tool_search namespace grouping (from parent capability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Whether this tool's schema can be deferred via tool_search
+    #[serde(default)]
+    pub deferrable: DeferrablePolicy,
 }
 
 impl ToolDefinition {
@@ -112,6 +143,31 @@ impl ToolDefinition {
             ToolDefinition::Builtin(b) => &b.policy,
             ToolDefinition::ClientSide(_) => &ToolPolicy::ClientSide,
         }
+    }
+
+    /// Get the tool category for namespace grouping
+    pub fn category(&self) -> Option<&str> {
+        match self {
+            ToolDefinition::Builtin(b) => b.category.as_deref(),
+            ToolDefinition::ClientSide(c) => c.category.as_deref(),
+        }
+    }
+
+    /// Get the deferrable policy for tool_search
+    pub fn deferrable(&self) -> &DeferrablePolicy {
+        match self {
+            ToolDefinition::Builtin(b) => &b.deferrable,
+            ToolDefinition::ClientSide(c) => &c.deferrable,
+        }
+    }
+
+    /// Set the category on this tool definition (builder pattern)
+    pub fn with_category(mut self, category: impl Into<String>) -> Self {
+        match &mut self {
+            ToolDefinition::Builtin(b) => b.category = Some(category.into()),
+            ToolDefinition::ClientSide(c) => c.category = Some(category.into()),
+        }
+        self
     }
 }
 
@@ -241,6 +297,8 @@ mod tests {
             description: "A test tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             policy: ToolPolicy::RequiresApproval,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         assert_eq!(tool.name(), "test_tool");
@@ -258,6 +316,8 @@ mod tests {
             description: "Gets weather".to_string(),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
         assert_eq!(builtin.display_name(), Some("Get Weather"));
 
@@ -266,6 +326,8 @@ mod tests {
             display_name: Some("Deploy".to_string()),
             description: "Deploys".to_string(),
             parameters: serde_json::json!({}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
         assert_eq!(client.display_name(), Some("Deploy"));
     }
@@ -278,6 +340,8 @@ mod tests {
             description: "test".to_string(),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         };
         let json = serde_json::to_string(&tool).unwrap();
         assert!(!json.contains("display_name"));
@@ -288,6 +352,8 @@ mod tests {
             description: "test".to_string(),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         };
         let json = serde_json::to_string(&tool_with).unwrap();
         assert!(json.contains("\"display_name\":\"Test\""));
@@ -357,6 +423,8 @@ mod tests {
             display_name: None,
             description: "Run a test suite".to_string(),
             parameters: serde_json::json!({"type": "object"}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         let json = serde_json::to_string(&tool).unwrap();
@@ -380,6 +448,8 @@ mod tests {
                 },
                 "required": ["env"]
             }),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         assert_eq!(tool.name(), "deploy_app");
@@ -396,6 +466,8 @@ mod tests {
             display_name: None,
             description: "".to_string(),
             parameters: serde_json::json!({}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
         assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
     }
@@ -425,12 +497,16 @@ mod tests {
                 description: "A server tool".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "client_tool".to_string(),
                 display_name: None,
                 description: "A client tool".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
         ];
 

@@ -81,6 +81,7 @@ mod fake_warehouse;
 mod file_system;
 pub mod mcp;
 mod noop;
+mod openai_tool_search;
 mod platform_management;
 mod research;
 mod sample_data;
@@ -138,6 +139,9 @@ pub use mcp::{
     parse_mcp_capability_id,
 };
 pub use noop::NoopCapability;
+pub use openai_tool_search::{
+    DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
+};
 pub use platform_management::{
     ListCapabilitiesTool, ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool,
     PlatformManagementCapability, SessionInteractTool,
@@ -477,6 +481,9 @@ impl CapabilityRegistry {
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
 
+        // OpenAI tool_search (deferred tool loading, all environments)
+        registry.register(OpenAiToolSearchCapability::new());
+
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
 
@@ -625,6 +632,8 @@ pub struct CollectedCapabilities {
     pub message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)>,
     /// IDs of capabilities that were collected
     pub applied_ids: Vec<String>,
+    /// Tool search configuration (set when openai_tool_search capability is present)
+    pub tool_search: Option<crate::llm_driver_registry::ToolSearchConfig>,
 }
 
 impl CollectedCapabilities {
@@ -933,6 +942,7 @@ pub async fn collect_capabilities_with_configs(
     let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
         Vec::new();
     let mut applied_ids: Vec<String> = Vec::new();
+    let mut tool_search: Option<crate::llm_driver_registry::ToolSearchConfig> = None;
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -950,8 +960,30 @@ pub async fn collect_capabilities_with_configs(
             // Collect tools
             tools.extend(capability.tools());
 
-            // Collect tool definitions
-            tool_definitions.extend(capability.tool_definitions());
+            // Collect tool definitions, propagating capability category if not already set
+            let cap_category = capability.category();
+            for def in capability.tool_definitions() {
+                let def = match (def.category(), cap_category) {
+                    (None, Some(cat)) => def.with_category(cat),
+                    _ => def,
+                };
+                tool_definitions.push(def);
+            }
+
+            // Detect OpenAI tool_search capability
+            if cap_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID {
+                // Parse threshold from config, fall back to default
+                let threshold = cap_config
+                    .config
+                    .get("threshold")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize)
+                    .unwrap_or(DEFAULT_TOOL_SEARCH_THRESHOLD);
+                tool_search = Some(crate::llm_driver_registry::ToolSearchConfig {
+                    enabled: true,
+                    threshold,
+                });
+            }
 
             // Collect mount points
             mounts.extend(capability.mounts());
@@ -975,6 +1007,7 @@ pub async fn collect_capabilities_with_configs(
         mounts,
         message_filter_providers,
         applied_ids,
+        tool_search,
     }
 }
 
@@ -1059,6 +1092,7 @@ pub async fn apply_capabilities(
         max_iterations: base_runtime_agent.max_iterations,
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
+        tool_search: collected.tool_search,
     };
 
     AppliedCapabilities {
@@ -1151,9 +1185,10 @@ mod tests {
         assert!(registry.has("session_schedule"));
         assert!(registry.has("platform_management"));
         assert!(registry.has("system_commands"));
+        assert!(registry.has("openai_tool_search"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 22);
+        assert_eq!(registry.len(), 23);
     }
 
     #[test]
@@ -2381,5 +2416,130 @@ mod tests {
         // Default capabilities should be Low
         let noop = registry.get("noop").unwrap();
         assert_eq!(noop.risk_level(), RiskLevel::Low);
+    }
+
+    // =========================================================================
+    // OpenAI tool_search capability collection tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_apply_capabilities_openai_tool_search() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
+
+        let applied = apply_capabilities(
+            base_runtime_agent.clone(),
+            &["openai_tool_search".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        // OpenAiToolSearchCapability provides no tools and no system prompt
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
+        assert!(applied.tool_registry.is_empty());
+        assert_eq!(applied.applied_ids, vec!["openai_tool_search"]);
+
+        // tool_search config should be set on the runtime agent
+        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
+        assert!(ts.enabled);
+        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
+    }
+
+    #[tokio::test]
+    async fn test_apply_capabilities_openai_tool_search_with_other_capabilities() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
+
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &[
+                "current_time".to_string(),
+                "openai_tool_search".to_string(),
+                "test_math".to_string(),
+            ],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        // Should have tools from current_time and test_math
+        assert!(applied.tool_registry.has("get_current_time"));
+        assert!(applied.tool_registry.has("add"));
+        assert!(applied.tool_registry.has("subtract"));
+        assert!(applied.tool_registry.has("multiply"));
+        assert!(applied.tool_registry.has("divide"));
+
+        // tool_search should still be configured
+        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
+        assert!(ts.enabled);
+        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_tool_search_custom_threshold() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("openai_tool_search"),
+            config: serde_json::json!({"threshold": 5}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        let ts = collected.tool_search.as_ref().unwrap();
+        assert!(ts.enabled);
+        assert_eq!(ts.threshold, 5);
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_no_tool_search_without_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("current_time"),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        assert!(collected.tool_search.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_tool_search_category_propagation() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // test_math capability has category "Testing"
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("test_math"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("openai_tool_search"),
+                config: serde_json::json!({}),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        // Verify tool_search is configured
+        assert!(collected.tool_search.is_some());
+
+        // Verify tools have categories from their capability
+        for tool_def in &collected.tool_definitions {
+            // test_math tools should have the Math category
+            if ["add", "subtract", "multiply", "divide"].contains(&tool_def.name()) {
+                assert!(
+                    tool_def.category().is_some(),
+                    "Tool {} should have a category from its capability",
+                    tool_def.name()
+                );
+            }
+        }
     }
 }

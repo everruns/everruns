@@ -47,6 +47,14 @@ Agent self-management, dynamic instructions, and skill discovery.
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
 | [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
 
+### Optimization
+
+Performance and cost optimization for LLM interactions.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [OpenAI Tool Search](/capabilities/openai-tool-search/) | `openai_tool_search` | 0 |
+
 ### Demo
 
 Pre-built domain simulations for testing and demonstrations.

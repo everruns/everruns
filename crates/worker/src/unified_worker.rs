@@ -1012,7 +1012,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
 mod tests {
     use super::*;
     use everruns_core::tool_types::{
-        BuiltinTool, ClientSideTool, ToolCall, ToolDefinition, ToolPolicy,
+        BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
     };
 
     #[test]
@@ -1065,6 +1065,8 @@ mod tests {
             description: "Get weather".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let tool_calls = vec![ToolCall {
@@ -1086,6 +1088,8 @@ mod tests {
             display_name: None,
             description: "Click element".to_string(),
             parameters: serde_json::json!({"type": "object"}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let tool_calls = vec![ToolCall {
@@ -1109,18 +1113,24 @@ mod tests {
                 description: "Get current time".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_click".to_string(),
                 display_name: None,
                 description: "Click element".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_type".to_string(),
                 display_name: None,
                 description: "Type text".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::Builtin(BuiltinTool {
                 name: "read_file".to_string(),
@@ -1128,6 +1138,8 @@ mod tests {
                 description: "Read a file".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
         ];
 
@@ -1176,6 +1188,8 @@ mod tests {
             display_name: None,
             description: "Known client tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let tool_calls = vec![
@@ -1206,6 +1220,8 @@ mod tests {
             display_name: None,
             description: "A tool".to_string(),
             parameters: serde_json::json!({"type": "object"}),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let tool_calls: Vec<ToolCall> = vec![];
@@ -1240,12 +1256,16 @@ mod tests {
                     description: "Get current time".to_string(),
                     parameters: serde_json::json!({"type": "object"}),
                     policy: ToolPolicy::Auto,
+                    category: None,
+                    deferrable: DeferrablePolicy::default(),
                 }),
                 ToolDefinition::ClientSide(ClientSideTool {
                     name: "deploy_app".to_string(),
                     display_name: None,
                     description: "Deploy application".to_string(),
                     parameters: serde_json::json!({"type": "object"}),
+                    category: None,
+                    deferrable: DeferrablePolicy::default(),
                 }),
             ],
             max_iterations: 100,
@@ -1281,12 +1301,16 @@ mod tests {
                 description: "Delete a file".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
                 policy: ToolPolicy::RequiresApproval,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_click".to_string(),
                 display_name: None,
                 description: "Click element".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
         ];
 

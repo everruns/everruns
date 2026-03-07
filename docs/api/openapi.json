@@ -4260,6 +4260,17 @@
           "parameters"
         ],
         "properties": {
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Category for tool_search namespace grouping (from parent capability)"
+          },
+          "deferrable": {
+            "$ref": "#/components/schemas/DeferrablePolicy",
+            "description": "Whether this tool's schema can be deferred via tool_search"
+          },
           "description": {
             "type": "string",
             "description": "Tool description for LLM"
@@ -4402,6 +4413,17 @@
           "parameters"
         ],
         "properties": {
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Category for tool_search namespace grouping (from parent capability)"
+          },
+          "deferrable": {
+            "$ref": "#/components/schemas/DeferrablePolicy",
+            "description": "Whether this tool's schema can be deferred via tool_search"
+          },
           "description": {
             "type": "string",
             "description": "Tool description for LLM"
@@ -5101,6 +5123,15 @@
             "type": "string"
           }
         }
+      },
+      "DeferrablePolicy": {
+        "type": "string",
+        "description": "Controls whether a tool's full schema can be deferred (tool_search).\n\nWhen tool_search is active and a model supports it, tools marked as\n`Automatic` or `Always` will have `defer_loading: true` set, meaning\nonly the name+description are sent upfront and full parameter schemas\nare loaded on-demand by the model.",
+        "enum": [
+          "never",
+          "automatic",
+          "always"
+        ]
       },
       "DeleteQuery": {
         "type": "object",
@@ -7368,6 +7399,10 @@
           "tool_call": {
             "type": "boolean",
             "description": "Whether the model supports tool/function calling"
+          },
+          "tool_search": {
+            "type": "boolean",
+            "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4+."
           }
         }
       },
