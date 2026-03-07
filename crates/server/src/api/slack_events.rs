@@ -89,6 +89,75 @@ struct SlackEvent {
     /// Subtype (e.g., "bot_message", "message_changed").
     #[serde(default)]
     subtype: Option<String>,
+    /// File attachments (images, documents, videos, etc.).
+    #[serde(default)]
+    files: Vec<SlackFile>,
+    /// Legacy attachments (link unfurls, bot attachments, etc.).
+    #[serde(default)]
+    attachments: Vec<SlackAttachment>,
+}
+
+/// Slack file attachment object (subset of fields we care about).
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct SlackFile {
+    /// File ID (e.g., "F0123456789").
+    #[serde(default)]
+    id: Option<String>,
+    /// Original filename.
+    #[serde(default)]
+    name: Option<String>,
+    /// MIME type (e.g., "image/png", "video/mp4").
+    #[serde(default)]
+    mimetype: Option<String>,
+    /// File type label from Slack (e.g., "png", "mp4", "pdf").
+    #[serde(default)]
+    filetype: Option<String>,
+    /// URL for private download (requires bot token auth).
+    #[serde(default)]
+    url_private: Option<String>,
+    /// File size in bytes.
+    #[serde(default)]
+    size: Option<u64>,
+}
+
+/// Slack legacy attachment (link unfurls, rich attachments from apps/workflows).
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct SlackAttachment {
+    /// Attachment title.
+    #[serde(default)]
+    title: Option<String>,
+    /// Title link URL.
+    #[serde(default)]
+    title_link: Option<String>,
+    /// Main text body.
+    #[serde(default)]
+    text: Option<String>,
+    /// Fallback text (plain-text summary).
+    #[serde(default)]
+    fallback: Option<String>,
+    /// Pretext (displayed above the attachment block).
+    #[serde(default)]
+    pretext: Option<String>,
+    /// Image URL (full-size image in the attachment).
+    #[serde(default)]
+    image_url: Option<String>,
+    /// Thumbnail URL.
+    #[serde(default)]
+    thumb_url: Option<String>,
+    /// Author name.
+    #[serde(default)]
+    author_name: Option<String>,
+    /// Service name (e.g., "GitHub", "Jira").
+    #[serde(default)]
+    service_name: Option<String>,
+    /// Original URL that triggered the unfurl.
+    #[serde(default)]
+    original_url: Option<String>,
+    /// Content subtype hint from Slack (e.g., "canvas", "huddle_transcript").
+    #[serde(default)]
+    app_unfurl_url: Option<String>,
 }
 
 /// Response for URL verification challenge.
@@ -228,7 +297,7 @@ async fn handle_slack_event(
                 }
 
                 let text = event.text.clone().unwrap_or_default();
-                if text.is_empty() {
+                if text.is_empty() && event.files.is_empty() && event.attachments.is_empty() {
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
@@ -385,13 +454,21 @@ async fn process_slack_message(
         }
     }
 
+    // Build content parts: text + file attachments + legacy attachments
+    let mut content: Vec<InputContentPart> = Vec::new();
+    if !text.is_empty() {
+        content.push(InputContentPart::text(text));
+    }
+    content.extend(build_file_content_parts(&event.files));
+    content.extend(build_attachment_content_parts(&event.attachments));
+
     // Create user message (triggers agent workflow)
     // Slack-specific metadata (ts for threading) stays in metadata;
     // user identity is carried by external_actor.
     let create_msg = CreateMessageRequest {
         message: InputMessage {
             role: MessageRole::User,
-            content: vec![InputContentPart::text(text)],
+            content,
         },
         controls: None,
         metadata: Some(
@@ -472,6 +549,83 @@ async fn process_slack_message(
     }
 
     Ok(())
+}
+
+/// Supported image MIME types for Slack file attachments.
+const SUPPORTED_IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+/// Convert Slack file attachments into content parts.
+///
+/// Images (png, jpeg, gif, webp) with a private URL → `InputContentPart::Image(url)`.
+/// All other files → text description noting the file name and type.
+fn build_file_content_parts(files: &[SlackFile]) -> Vec<InputContentPart> {
+    files
+        .iter()
+        .map(|file| {
+            let mime = file.mimetype.as_deref().unwrap_or("");
+            let name = file.name.as_deref().unwrap_or("unnamed file");
+
+            if SUPPORTED_IMAGE_TYPES.contains(&mime) {
+                // Image with URL → image content part
+                if let Some(url) = &file.url_private {
+                    return InputContentPart::image_url(url);
+                }
+                // Image without URL → text fallback
+                InputContentPart::text(format!(
+                    "[Attached image: {name} — no download URL available]"
+                ))
+            } else {
+                // Non-image file → text description (content not available inline)
+                let filetype = file.filetype.as_deref().unwrap_or("unknown");
+                InputContentPart::text(format!("[Attached file: {name} ({filetype})]"))
+            }
+        })
+        .collect()
+}
+
+/// Convert Slack legacy attachments (link unfurls, app attachments, etc.) into content parts.
+///
+/// Attachments with an image_url → `InputContentPart::Image(url)`.
+/// Others → text summary from title/text/fallback fields.
+fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputContentPart> {
+    attachments
+        .iter()
+        .filter_map(|att| {
+            // If the attachment has an image, include it
+            if let Some(url) = &att.image_url {
+                return Some(InputContentPart::image_url(url));
+            }
+
+            // Build a text summary from available fields
+            let mut parts = Vec::new();
+            if let Some(service) = &att.service_name {
+                parts.push(service.clone());
+            }
+            if let Some(title) = &att.title {
+                let line = if let Some(link) = &att.title_link {
+                    format!("{title} ({link})")
+                } else {
+                    title.clone()
+                };
+                parts.push(line);
+            }
+            if let Some(text) = &att.text {
+                parts.push(text.clone());
+            }
+
+            if parts.is_empty() {
+                // Use fallback as last resort
+                att.fallback
+                    .as_ref()
+                    .map(|f| InputContentPart::text(format!("[Attachment: {f}]")))
+            } else {
+                Some(InputContentPart::text(format!(
+                    "[Attachment: {}]",
+                    parts.join(" — ")
+                )))
+            }
+        })
+        .collect()
 }
 
 /// Build session tags for finding/creating sessions based on strategy.
@@ -819,6 +973,7 @@ async fn handle_slack_manifest(
          \x20     - mpim:history\n\
          \x20     - app_mentions:read\n\
          \x20     - users:read\n\
+         \x20     - files:read\n\
          settings:\n\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\
@@ -1230,6 +1385,19 @@ mod tests {
             ts: ts.map(String::from),
             bot_id: None,
             subtype: None,
+            files: vec![],
+            attachments: vec![],
+        }
+    }
+
+    fn test_slack_file(name: &str, mimetype: &str, filetype: &str, url: Option<&str>) -> SlackFile {
+        SlackFile {
+            id: Some("F0123456789".to_string()),
+            name: Some(name.to_string()),
+            mimetype: Some(mimetype.to_string()),
+            filetype: Some(filetype.to_string()),
+            url_private: url.map(String::from),
+            size: Some(1024),
         }
     }
 
@@ -1507,5 +1675,354 @@ mod tests {
     #[test]
     fn test_urlencoding_encode_newlines() {
         assert_eq!(urlencoding_encode("a\nb"), "a%0Ab");
+    }
+
+    // ==========================================
+    // File attachment content part building
+    // ==========================================
+
+    #[test]
+    fn test_build_file_content_parts_image_with_url() {
+        let files = vec![test_slack_file(
+            "photo.png",
+            "image/png",
+            "png",
+            Some("https://files.slack.com/files-pri/T0/photo.png"),
+        )];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Image(img) => {
+                assert_eq!(
+                    img.url.as_deref().unwrap(),
+                    "https://files.slack.com/files-pri/T0/photo.png"
+                );
+            }
+            other => panic!("Expected Image content part, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_file_content_parts_image_no_url() {
+        let files = vec![test_slack_file("photo.png", "image/png", "png", None)];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("photo.png"));
+                assert!(t.text.contains("no download URL"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_file_content_parts_unsupported_type() {
+        let files = vec![test_slack_file(
+            "video.mp4",
+            "video/mp4",
+            "mp4",
+            Some("https://files.slack.com/files-pri/T0/video.mp4"),
+        )];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("Attached file"));
+                assert!(t.text.contains("video.mp4"));
+                assert!(t.text.contains("mp4"));
+            }
+            other => panic!("Expected Text description, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_file_content_parts_multiple_mixed() {
+        let files = vec![
+            test_slack_file(
+                "photo.jpg",
+                "image/jpeg",
+                "jpg",
+                Some("https://files.slack.com/photo.jpg"),
+            ),
+            test_slack_file(
+                "doc.pdf",
+                "application/pdf",
+                "pdf",
+                Some("https://files.slack.com/doc.pdf"),
+            ),
+            test_slack_file(
+                "screenshot.webp",
+                "image/webp",
+                "webp",
+                Some("https://files.slack.com/screenshot.webp"),
+            ),
+        ];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(&parts[0], InputContentPart::Image(_)));
+        assert!(matches!(&parts[1], InputContentPart::Text(_)));
+        assert!(matches!(&parts[2], InputContentPart::Image(_)));
+    }
+
+    #[test]
+    fn test_build_file_content_parts_empty() {
+        let parts = build_file_content_parts(&[]);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn test_build_file_content_parts_all_supported_image_types() {
+        for (mime, ext) in [
+            ("image/png", "png"),
+            ("image/jpeg", "jpeg"),
+            ("image/gif", "gif"),
+            ("image/webp", "webp"),
+        ] {
+            let files = vec![test_slack_file(
+                &format!("test.{ext}"),
+                mime,
+                ext,
+                Some("https://example.com/file"),
+            )];
+            let parts = build_file_content_parts(&files);
+            assert!(
+                matches!(&parts[0], InputContentPart::Image(_)),
+                "{mime} should produce Image content part"
+            );
+        }
+    }
+
+    #[test]
+    fn test_slack_event_with_files_deserialization() {
+        let json = r#"{
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U0123456789",
+                "text": "Check this out",
+                "channel": "C0123456789",
+                "ts": "1234567890.123456",
+                "files": [
+                    {
+                        "id": "F0123",
+                        "name": "image.png",
+                        "mimetype": "image/png",
+                        "filetype": "png",
+                        "url_private": "https://files.slack.com/image.png",
+                        "size": 2048
+                    },
+                    {
+                        "id": "F0456",
+                        "name": "report.pdf",
+                        "mimetype": "application/pdf",
+                        "filetype": "pdf",
+                        "url_private": "https://files.slack.com/report.pdf",
+                        "size": 10240
+                    }
+                ]
+            }
+        }"#;
+        let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
+        let event = envelope.event.unwrap();
+        assert_eq!(event.files.len(), 2);
+        assert_eq!(event.files[0].name.as_deref().unwrap(), "image.png");
+        assert_eq!(event.files[0].mimetype.as_deref().unwrap(), "image/png");
+        assert_eq!(event.files[1].name.as_deref().unwrap(), "report.pdf");
+    }
+
+    #[test]
+    fn test_slack_event_without_files_deserialization() {
+        let json = r#"{
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U0123456789",
+                "text": "No files here",
+                "channel": "C0123456789",
+                "ts": "1234567890.123456"
+            }
+        }"#;
+        let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
+        let event = envelope.event.unwrap();
+        assert!(event.files.is_empty());
+    }
+
+    #[test]
+    fn test_build_file_content_parts_missing_fields() {
+        // File with no name, no mimetype, no filetype
+        let file = SlackFile {
+            id: None,
+            name: None,
+            mimetype: None,
+            filetype: None,
+            url_private: Some("https://example.com/file".to_string()),
+            size: None,
+        };
+        let parts = build_file_content_parts(&[file]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("unnamed file"));
+                assert!(t.text.contains("unknown"));
+            }
+            other => panic!("Expected Text for unknown mimetype, got {:?}", other),
+        }
+    }
+
+    // ==========================================
+    // Legacy attachment content part building
+    // ==========================================
+
+    fn test_slack_attachment() -> SlackAttachment {
+        SlackAttachment {
+            title: None,
+            title_link: None,
+            text: None,
+            fallback: None,
+            pretext: None,
+            image_url: None,
+            thumb_url: None,
+            author_name: None,
+            service_name: None,
+            original_url: None,
+            app_unfurl_url: None,
+        }
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_with_image() {
+        let mut att = test_slack_attachment();
+        att.image_url = Some("https://example.com/preview.png".to_string());
+        att.title = Some("Preview".to_string());
+
+        let parts = build_attachment_content_parts(&[att]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Image(img) => {
+                assert_eq!(
+                    img.url.as_deref().unwrap(),
+                    "https://example.com/preview.png"
+                );
+            }
+            other => panic!("Expected Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_link_unfurl() {
+        let mut att = test_slack_attachment();
+        att.service_name = Some("GitHub".to_string());
+        att.title = Some("Fix bug #123".to_string());
+        att.title_link = Some("https://github.com/org/repo/pull/123".to_string());
+        att.text = Some("Fixes a critical issue".to_string());
+
+        let parts = build_attachment_content_parts(&[att]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("GitHub"));
+                assert!(t.text.contains("Fix bug #123"));
+                assert!(t.text.contains("github.com"));
+                assert!(t.text.contains("Fixes a critical issue"));
+            }
+            other => panic!("Expected Text, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_fallback_only() {
+        let mut att = test_slack_attachment();
+        att.fallback = Some("Canvas: Project Plan".to_string());
+
+        let parts = build_attachment_content_parts(&[att]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("Canvas: Project Plan"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_empty_attachment() {
+        let att = test_slack_attachment();
+        let parts = build_attachment_content_parts(&[att]);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_empty_vec() {
+        let parts = build_attachment_content_parts(&[]);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_multiple() {
+        let mut att1 = test_slack_attachment();
+        att1.image_url = Some("https://example.com/img.png".to_string());
+
+        let mut att2 = test_slack_attachment();
+        att2.title = Some("Linked doc".to_string());
+        att2.text = Some("Some content".to_string());
+
+        let parts = build_attachment_content_parts(&[att1, att2]);
+        assert_eq!(parts.len(), 2);
+        assert!(matches!(&parts[0], InputContentPart::Image(_)));
+        assert!(matches!(&parts[1], InputContentPart::Text(_)));
+    }
+
+    #[test]
+    fn test_slack_event_with_attachments_deserialization() {
+        let json = r#"{
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U0123456789",
+                "text": "Check this link",
+                "channel": "C0123456789",
+                "ts": "1234567890.123456",
+                "attachments": [
+                    {
+                        "service_name": "GitHub",
+                        "title": "PR #42",
+                        "title_link": "https://github.com/org/repo/pull/42",
+                        "text": "Add feature X",
+                        "fallback": "GitHub: PR #42"
+                    }
+                ]
+            }
+        }"#;
+        let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
+        let event = envelope.event.unwrap();
+        assert_eq!(event.attachments.len(), 1);
+        assert_eq!(event.attachments[0].title.as_deref().unwrap(), "PR #42");
+        assert_eq!(
+            event.attachments[0].service_name.as_deref().unwrap(),
+            "GitHub"
+        );
+    }
+
+    #[test]
+    fn test_slack_event_with_files_and_attachments() {
+        let json = r#"{
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U0123456789",
+                "text": "",
+                "channel": "C0123456789",
+                "ts": "1234567890.123456",
+                "files": [{"id": "F01", "name": "photo.png", "mimetype": "image/png", "filetype": "png"}],
+                "attachments": [{"title": "Link", "text": "A link"}]
+            }
+        }"#;
+        let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
+        let event = envelope.event.unwrap();
+        assert_eq!(event.files.len(), 1);
+        assert_eq!(event.attachments.len(), 1);
+        // Both empty text + has files/attachments = should not be skipped
+        assert!(event.text.as_deref().unwrap().is_empty());
     }
 }

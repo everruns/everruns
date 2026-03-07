@@ -80,6 +80,20 @@ Apps page at `/apps` with:
 - Publish/Unpublish actions
 - Delete confirmation
 
+## Message Attachments
+
+Slack messages can include file uploads (`files[]`) and legacy attachments (`attachments[]` — link unfurls, Canvas, Workflows, etc.). Both are processed into `InputContentPart` items appended after the text content:
+
+- **Image files** (png, jpeg, gif, webp) with a `url_private` → `InputContentPart::Image(url)` (requires `files:read` scope)
+- **Non-image files** (pdf, video, text snippets, etc.) → text description: `[Attached file: name (type)]`
+- **Legacy attachments with `image_url`** → `InputContentPart::Image(url)`
+- **Legacy attachments without image** → text summary from title/text/service_name/fallback fields
+- **Empty attachments** (no usable fields) → skipped
+
+Messages with only attachments (no text) are not dropped.
+
+Future: a Slack file fetch tool could let agents pull file content on demand via `url_private` + bot token auth.
+
 ## User Identity
 
 Slack user identity is carried via the channel-agnostic `ExternalActor` struct (see `crates/core/src/message.rs`). The Slack handler:
