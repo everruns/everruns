@@ -127,7 +127,6 @@ export default function DashboardPage() {
         <RecentSessions sessions={sessions} agents={agents} models={llmModels} />
       </div>
 
-
       {/* New Session Dialog */}
       <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
         <DialogContent>
