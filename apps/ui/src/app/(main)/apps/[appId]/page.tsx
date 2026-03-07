@@ -27,6 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AgentSelect } from "@/components/agent/agent-select";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import {
   Dialog,
   DialogContent,
@@ -454,34 +456,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
                   <div>
                     <Label>Harness</Label>
-                    <Select value={editHarnessId} onValueChange={setEditHarnessId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select harness" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {harnesses?.map((h) => (
-                          <SelectItem key={h.id} value={h.id}>
-                            {h.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <HarnessSelect value={editHarnessId} onValueChange={setEditHarnessId} />
                   </div>
 
                   <div>
                     <Label>Agent</Label>
-                    <Select value={editAgentId} onValueChange={setEditAgentId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select agent" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agents?.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <AgentSelect value={editAgentId} onValueChange={setEditAgentId} />
                   </div>
 
                   <div className="flex gap-2">
