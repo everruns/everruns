@@ -85,23 +85,28 @@ MCP Server("github", "GitHub integration")
     → Functions: mcp_github__search_repos, mcp_github__create_issue, ...
 ```
 
-### Decision: Transparent Deferral Logic in LLM Driver
+### Decision: Model Gate in RuntimeAgentBuilder, Deferral in Driver
 
-The deferral decision lives in the OpenAI driver's `convert_tools()`, not in capability code. Capabilities don't need to know about tool_search — they just provide tools as today. The driver checks the model profile and restructures the tools array accordingly.
+The model compatibility check lives in `RuntimeAgentBuilder::build()` — if the model doesn't support tool_search (per `LlmModelProfile`), `tool_search` is cleared before reaching the driver. This prevents unsupported API parameters from ever reaching the LLM provider.
+
+The deferral logic (namespace grouping, defer_loading) lives in the OpenAI driver's `convert_tools()`. Capabilities don't need to know about tool_search — they just provide tools as today.
 
 ```
-Capability.tools()  →  RuntimeAgent.tools  →  LlmCallConfig.tools
-                                                      ↓
-                                            LlmDriver checks profile.tool_search
-                                                      ↓
-                                    ┌─────────────────┴──────────────────┐
-                                    │ tool_search=false                   │ tool_search=true
-                                    │ (current behavior)                  │ (new behavior)
-                                    ↓                                     ↓
-                            Vec<ResponsesTool::Function>          Vec<ResponsesTool> with:
-                            (full schemas)                        - Namespace groupings
-                                                                  - defer_loading: true
-                                                                  - { "type": "tool_search" }
+Capability.tools()  →  collect_capabilities() sets tool_search config
+                               ↓
+                      RuntimeAgentBuilder::build()
+                      checks model profile.tool_search
+                               ↓
+                    ┌──────────┴──────────┐
+                    │ unsupported model    │ supported model
+                    │ (clears tool_search) │ (keeps config)
+                    ↓                      ↓
+              RuntimeAgent.tool_search=None    RuntimeAgent.tool_search=Some(config)
+                    ↓                      ↓
+              LlmCallConfig.tools    LlmDriver restructures:
+              (full schemas)         - Namespace groupings
+                                     - defer_loading: true
+                                     - { "type": "tool_search" }
 ```
 
 ### Decision: ToolDefinition Metadata for Grouping
