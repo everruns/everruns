@@ -32,14 +32,9 @@ jest.mock("@/providers/auth-provider", () => ({
     isAuthenticated: true,
     config: { mode: "none" },
     isLoading: false,
-  }),
-}));
-
-// Mock auth hooks
-jest.mock("@/hooks/use-auth", () => ({
-  useLogout: () => ({
-    mutateAsync: jest.fn(),
-    isPending: false,
+    logout: jest.fn(),
+    logoutPending: false,
+    createOrganization: undefined,
   }),
 }));
 
