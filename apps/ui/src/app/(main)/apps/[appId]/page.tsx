@@ -568,25 +568,41 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               <>
                 <p className="text-sm text-muted-foreground">
                   Slack can&apos;t reach <code className="text-xs">localhost</code>. Use{" "}
-                  <a href="https://ngrok.com" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a>{" "}
+                  <a
+                    href="https://ngrok.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    ngrok
+                  </a>{" "}
                   to expose your local server:
                 </p>
                 <div className="bg-muted p-3 rounded-md space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">1. Start ngrok:</p>
-                  <code className="text-xs block">ngrok http {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}</code>
-                  <p className="text-xs font-medium text-muted-foreground mt-2">2. Copy your Request URL:</p>
-                  <code className="text-xs block">https://&lt;your-id&gt;.ngrok-free.app{webhookPath}</code>
+                  <code className="text-xs block">
+                    ngrok http{" "}
+                    {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
+                  </code>
+                  <p className="text-xs font-medium text-muted-foreground mt-2">
+                    2. Copy your Request URL:
+                  </p>
+                  <code className="text-xs block">
+                    https://&lt;your-id&gt;.ngrok-free.app{webhookPath}
+                  </code>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Paste that URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
-                  <strong>Request URL</strong>. Then subscribe to bot events:{" "}
+                  Paste that URL in your Slack app &rarr; <strong>Event Subscriptions</strong>{" "}
+                  &rarr; <strong>Request URL</strong>. Then subscribe to bot events:{" "}
                   <code className="text-xs">message.channels</code>,{" "}
                   <code className="text-xs">message.groups</code>,{" "}
                   <code className="text-xs">message.im</code>,{" "}
                   <code className="text-xs">app_mention</code>.
                 </p>
                 <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
-                  <code className="text-xs flex-1 truncate text-muted-foreground">{webhookPath}</code>
+                  <code className="text-xs flex-1 truncate text-muted-foreground">
+                    {webhookPath}
+                  </code>
                   <button
                     className="shrink-0 hover:text-foreground text-muted-foreground"
                     onClick={() => navigator.clipboard.writeText(webhookPath)}
@@ -598,8 +614,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong> &rarr;{" "}
-                  <strong>Request URL</strong>. Then subscribe to bot events:{" "}
+                  Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong>{" "}
+                  &rarr; <strong>Request URL</strong>. Then subscribe to bot events:{" "}
                   <code className="text-xs">message.channels</code>,{" "}
                   <code className="text-xs">message.groups</code>,{" "}
                   <code className="text-xs">message.im</code>,{" "}
@@ -781,7 +797,10 @@ function SetupSteps({
                 <>
                   <p className="text-xs text-muted-foreground">
                     Slack can&apos;t reach localhost. Run{" "}
-                    <code>ngrok http {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}</code>{" "}
+                    <code>
+                      ngrok http{" "}
+                      {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
+                    </code>{" "}
                     then use the ngrok URL with this path as your Request URL:
                   </p>
                   <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
