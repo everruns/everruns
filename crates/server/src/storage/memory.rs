@@ -1064,6 +1064,24 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Check if an input.message event with a given slack_ts already exists in a session.
+    pub async fn has_event_with_slack_ts(
+        &self,
+        session_id: SessionId,
+        slack_ts: &str,
+    ) -> Result<bool> {
+        let events = self.events.read();
+        let found = events.values().any(|e| {
+            e.session_id == session_id
+                && e.event_type == "input.message"
+                && e.data
+                    .pointer("/message/metadata/slack_ts")
+                    .and_then(|v| v.as_str())
+                    == Some(slack_ts)
+        });
+        Ok(found)
+    }
+
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         self.list_message_events_limited(session_id, None).await
     }
