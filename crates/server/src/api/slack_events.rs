@@ -818,6 +818,7 @@ async fn handle_slack_manifest(
          \x20     - im:history\n\
          \x20     - mpim:history\n\
          \x20     - app_mentions:read\n\
+         \x20     - users:read\n\
          settings:\n\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\
