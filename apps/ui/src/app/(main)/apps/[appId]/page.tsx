@@ -416,7 +416,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               )}
             </CardContent>
           </Card>
-
         </div>
 
         {/* Sidebar */}
@@ -575,8 +574,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              After saving, invite the bot to a channel (<code>/invite @{app?.name}</code>) and
-              send a message to test.
+              After saving, invite the bot to a channel (<code>/invite @{app?.name}</code>) and send
+              a message to test.
             </p>
           </CardContent>
         </Card>
@@ -652,7 +651,9 @@ function SetupSteps({
       <div className="flex gap-3">
         <StepIcon done={hasSlackConfig} />
         <div className="flex-1 space-y-1">
-          <p className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}>
+          <p
+            className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
+          >
             1. Create a Slack App
           </p>
           {currentStep === 1 && (
@@ -662,11 +663,7 @@ function SetupSteps({
                 configured). Review and click <strong>Create</strong>, then install to your
                 workspace.
               </p>
-              <Button
-                size="sm"
-                onClick={onCreateSlackApp}
-                disabled={creatingSlackApp}
-              >
+              <Button size="sm" onClick={onCreateSlackApp} disabled={creatingSlackApp}>
                 <ExternalLink className="w-3 h-3 mr-1" />
                 {creatingSlackApp ? "Opening..." : "Create Slack App"}
               </Button>
@@ -679,7 +676,9 @@ function SetupSteps({
       <div className="flex gap-3">
         <StepIcon done={hasSlackConfig} />
         <div className="flex-1 space-y-1">
-          <p className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}>
+          <p
+            className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
+          >
             2. Copy credentials back
           </p>
           {currentStep === 1 && (
@@ -689,10 +688,12 @@ function SetupSteps({
               </p>
               <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
                 <li>
-                  <strong>Signing Secret</strong> — Slack app &rarr; Basic Information &rarr; App Credentials
+                  <strong>Signing Secret</strong> — Slack app &rarr; Basic Information &rarr; App
+                  Credentials
                 </li>
                 <li>
-                  <strong>Bot Token</strong> (<code>xoxb-...</code>) — Slack app &rarr; OAuth &amp; Permissions
+                  <strong>Bot Token</strong> (<code>xoxb-...</code>) — Slack app &rarr; OAuth &amp;
+                  Permissions
                 </li>
               </ul>
               <Button size="sm" variant="outline" onClick={onConfigure}>
@@ -708,7 +709,9 @@ function SetupSteps({
       <div className="flex gap-3">
         <StepIcon done={isPublished} />
         <div className="flex-1 space-y-1">
-          <p className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}>
+          <p
+            className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}
+          >
             3. Publish the app
           </p>
           {currentStep === 3 && (
@@ -723,9 +726,7 @@ function SetupSteps({
       <div className="flex gap-3">
         <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
         <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium">
-            4. Configure Event Subscriptions
-          </p>
+          <p className="text-sm font-medium">4. Configure Event Subscriptions</p>
           {currentStep === 4 ? (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
@@ -758,9 +759,7 @@ function SetupSteps({
       <div className="flex gap-3">
         <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
         <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium">
-            5. Invite the bot and test
-          </p>
+          <p className="text-sm font-medium">5. Invite the bot and test</p>
           <p className="text-xs text-muted-foreground">
             In Slack, use <code>/invite @botname</code> in a channel, then send a message.
           </p>

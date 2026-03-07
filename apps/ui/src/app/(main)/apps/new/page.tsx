@@ -121,8 +121,8 @@ export default function NewAppPage() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              After creating the app, you&apos;ll be able to generate a Slack App manifest
-              and create the Slack bot on the detail page.
+              After creating the app, you&apos;ll be able to generate a Slack App manifest and
+              create the Slack bot on the detail page.
             </p>
 
             <div className="flex gap-4">
