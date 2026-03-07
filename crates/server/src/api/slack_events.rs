@@ -557,7 +557,7 @@ const SUPPORTED_IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif",
 /// Convert Slack file attachments into content parts.
 ///
 /// Images (png, jpeg, gif, webp) with a private URL → `InputContentPart::Image(url)`.
-/// All other files → text description noting the attachment type.
+/// All other files → text description noting the file name and type.
 fn build_file_content_parts(files: &[SlackFile]) -> Vec<InputContentPart> {
     files
         .iter()
@@ -575,11 +575,9 @@ fn build_file_content_parts(files: &[SlackFile]) -> Vec<InputContentPart> {
                     "[Attached image: {name} — no download URL available]"
                 ))
             } else {
-                // Unsupported file type → text description
+                // Non-image file → text description (content not available inline)
                 let filetype = file.filetype.as_deref().unwrap_or("unknown");
-                InputContentPart::text(format!(
-                    "[Unsupported attachment: {name} ({filetype})]"
-                ))
+                InputContentPart::text(format!("[Attached file: {name} ({filetype})]"))
             }
         })
         .collect()
@@ -1730,7 +1728,7 @@ mod tests {
         assert_eq!(parts.len(), 1);
         match &parts[0] {
             InputContentPart::Text(t) => {
-                assert!(t.text.contains("Unsupported attachment"));
+                assert!(t.text.contains("Attached file"));
                 assert!(t.text.contains("video.mp4"));
                 assert!(t.text.contains("mp4"));
             }
