@@ -126,6 +126,9 @@ moka = { version = "0.12", features = ["future"] }
 fail = "0.5"
 rstest = "0.25"
 
+# In-process caching
+moka = { version = "0.12", features = ["future", "sync"] }
+
 # Plugin system for external integrations
 inventory = "0.3"
 
