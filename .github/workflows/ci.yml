@@ -441,6 +441,7 @@ jobs:
     timeout-minutes: 10
 
     env:
+      RUSTC_WRAPPER: ""
       DEV_MODE: "true"
       AUTH_MODE: none
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
