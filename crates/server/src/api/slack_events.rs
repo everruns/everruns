@@ -452,12 +452,12 @@ fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) ->
     }
 }
 
-/// Wait for the agent turn to complete and post the final response to Slack.
+/// Wait for the agent turn to complete and stream responses to Slack.
 ///
-/// Collects `output.message.completed` events for this turn (there may be several
-/// if the agent uses tools), and only posts the *last* response text once
-/// `turn.completed` fires. Filtering by `input_message_id` ensures each Slack
-/// message gets the correct response, not a response from a different turn.
+/// Posts each `output.message.completed` text to Slack as it arrives, giving
+/// users real-time progress during multi-step turns (Reason→Act cycles).
+/// Filtering by `input_message_id` ensures we only see events from our turn.
+/// Stops polling when `turn.completed` or `turn.failed` fires.
 async fn wait_and_post_response(
     db: &StorageBackend,
     session_id: uuid::Uuid,
@@ -475,11 +475,6 @@ async fn wait_and_post_response(
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
     let mut since_id: Option<EventId> = None;
     let empty: Vec<String> = vec![];
-
-    // Track the latest response text for our turn. Each Reason→Act cycle emits
-    // an output.message.completed; we want the final one (the terminal response
-    // with no tool calls, right before turn.completed).
-    let mut last_response_text: Option<String> = None;
 
     loop {
         if tokio::time::Instant::now() > deadline {
@@ -501,33 +496,28 @@ async fn wait_and_post_response(
                 .and_then(|v| v.as_str());
             let is_our_turn = event_input_msg == Some(&input_msg_str);
 
+            // Post each assistant message to Slack as it arrives. This gives
+            // users progress visibility during multi-step agent turns (e.g.
+            // "Let me search for that..." before tool execution).
             if event_row.event_type == "output.message.completed"
                 && is_our_turn
                 && let Some(text) = extract_response_text(&event_row.data)
             {
-                last_response_text = Some(text);
+                post_to_slack(bot_token, channel, thread_ts, &text).await?;
             }
 
-            // Post the last collected response when the turn ends
+            // Stop polling once the turn ends
             if event_row.event_type == "turn.completed" && is_our_turn {
-                if let Some(ref text) = last_response_text {
-                    post_to_slack(bot_token, channel, thread_ts, text).await?;
-                }
                 return Ok(());
             }
 
             if event_row.event_type == "turn.failed" && is_our_turn {
-                tracing::warn!(session_id = %session_id, "Turn failed, not posting to Slack");
+                tracing::warn!(session_id = %session_id, "Turn failed");
                 return Ok(());
             }
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    // Timeout: post whatever we collected so far (if any)
-    if let Some(ref text) = last_response_text {
-        post_to_slack(bot_token, channel, thread_ts, text).await?;
     }
 
     Ok(())
