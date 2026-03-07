@@ -319,7 +319,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     >
                       <SelectTrigger>
                         <SelectValue>
-                          {{ per_thread: "Per Thread (default)", per_channel: "Per Channel", per_user: "Per User" }[editSessionStrategy]}
+                          {
+                            {
+                              per_thread: "Per Thread (default)",
+                              per_channel: "Per Channel",
+                              per_user: "Per User",
+                            }[editSessionStrategy]
+                          }
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
