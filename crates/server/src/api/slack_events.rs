@@ -264,7 +264,7 @@ async fn process_slack_message(
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
     let org_id = app.org_id;
-    let raw_text = event.text.clone().unwrap_or_default();
+    let text = event.text.clone().unwrap_or_default();
     let slack_user_id = event.user.clone().unwrap_or_default();
 
     // Resolve Slack user display name (gracefully falls back to user ID)
@@ -279,17 +279,28 @@ async fn process_slack_message(
         None
     };
 
-    // Build user label: "John Doe" or "U0123456789" as fallback
-    let user_label = display_name
-        .as_deref()
-        .unwrap_or(if !slack_user_id.is_empty() {
-            &slack_user_id
-        } else {
-            "unknown"
-        });
-
-    // Prefix message with user identity so the LLM knows who's speaking
-    let text = format!("[{}] {}", user_label, raw_text);
+    // Build ExternalActor for channel-agnostic user identity
+    let external_actor = if !slack_user_id.is_empty() {
+        let mut actor_metadata = std::collections::HashMap::new();
+        if let Some(ref channel) = event.channel {
+            actor_metadata.insert("channel".to_string(), channel.clone());
+        }
+        if let Some(ref team_id) = slack_config.team_id {
+            actor_metadata.insert("team_id".to_string(), team_id.clone());
+        }
+        Some(everruns_core::ExternalActor {
+            actor_id: slack_user_id.clone(),
+            actor_name: display_name.clone(),
+            source: "slack".to_string(),
+            metadata: if actor_metadata.is_empty() {
+                None
+            } else {
+                Some(actor_metadata)
+            },
+        })
+    } else {
+        None
+    };
 
     // Resolve org_public_id
     let org_row = state
@@ -342,18 +353,16 @@ async fn process_slack_message(
     };
 
     // Create user message (triggers agent workflow)
+    // Slack-specific metadata (ts for threading) stays in metadata;
+    // user identity is carried by external_actor.
     let create_msg = CreateMessageRequest {
         message: InputMessage {
             role: MessageRole::User,
             content: vec![InputContentPart::text(text)],
         },
         controls: None,
-        metadata: Some({
-            let mut meta: std::collections::HashMap<String, serde_json::Value> = [
-                (
-                    "slack_user".to_string(),
-                    serde_json::Value::String(slack_user_id.clone()),
-                ),
+        metadata: Some(
+            [
                 (
                     "slack_channel".to_string(),
                     serde_json::Value::String(event.channel.clone().unwrap_or_default()),
@@ -364,16 +373,10 @@ async fn process_slack_message(
                 ),
             ]
             .into_iter()
-            .collect();
-            if let Some(ref name) = display_name {
-                meta.insert(
-                    "slack_display_name".to_string(),
-                    serde_json::Value::String(name.clone()),
-                );
-            }
-            meta
-        }),
+            .collect(),
+        ),
         tags: None,
+        external_actor,
     };
 
     let message = state
@@ -1005,57 +1008,62 @@ mod tests {
     }
 
     #[test]
-    fn test_message_prefix_with_display_name() {
-        let display_name = Some("Alice".to_string());
-        let slack_user_id = "U123";
-        let raw_text = "Hello bot";
-
-        let user_label = display_name
-            .as_deref()
-            .unwrap_or(if !slack_user_id.is_empty() {
-                slack_user_id
-            } else {
-                "unknown"
-            });
-        let text = format!("[{}] {}", user_label, raw_text);
-
-        assert_eq!(text, "[Alice] Hello bot");
+    fn test_external_actor_display_label_with_name() {
+        let actor = everruns_core::ExternalActor {
+            actor_id: "U123".to_string(),
+            actor_name: Some("Alice".to_string()),
+            source: "slack".to_string(),
+            metadata: None,
+        };
+        assert_eq!(actor.display_label(), "Alice");
     }
 
     #[test]
-    fn test_message_prefix_fallback_to_user_id() {
-        let display_name: Option<String> = None;
-        let slack_user_id = "U0123456789";
-        let raw_text = "Hello bot";
-
-        let user_label = display_name
-            .as_deref()
-            .unwrap_or(if !slack_user_id.is_empty() {
-                slack_user_id
-            } else {
-                "unknown"
-            });
-        let text = format!("[{}] {}", user_label, raw_text);
-
-        assert_eq!(text, "[U0123456789] Hello bot");
+    fn test_external_actor_display_label_fallback_to_id() {
+        let actor = everruns_core::ExternalActor {
+            actor_id: "U0123456789".to_string(),
+            actor_name: None,
+            source: "slack".to_string(),
+            metadata: None,
+        };
+        assert_eq!(actor.display_label(), "U0123456789");
     }
 
     #[test]
-    fn test_message_prefix_no_user() {
-        let display_name: Option<String> = None;
-        let slack_user_id = "";
-        let raw_text = "Hello bot";
+    fn test_external_actor_with_metadata() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("channel".to_string(), "C123".to_string());
+        metadata.insert("team_id".to_string(), "T456".to_string());
 
-        let user_label = display_name
-            .as_deref()
-            .unwrap_or(if !slack_user_id.is_empty() {
-                slack_user_id
-            } else {
-                "unknown"
-            });
-        let text = format!("[{}] {}", user_label, raw_text);
+        let actor = everruns_core::ExternalActor {
+            actor_id: "U123".to_string(),
+            actor_name: Some("Alice".to_string()),
+            source: "slack".to_string(),
+            metadata: Some(metadata),
+        };
 
-        assert_eq!(text, "[unknown] Hello bot");
+        assert_eq!(actor.source, "slack");
+        let meta = actor.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("channel").unwrap(), "C123");
+        assert_eq!(meta.get("team_id").unwrap(), "T456");
+    }
+
+    #[test]
+    fn test_external_actor_serialization_roundtrip() {
+        let actor = everruns_core::ExternalActor {
+            actor_id: "U123".to_string(),
+            actor_name: Some("Alice".to_string()),
+            source: "slack".to_string(),
+            metadata: None,
+        };
+
+        let json = serde_json::to_value(&actor).unwrap();
+        assert_eq!(json["actor_id"], "U123");
+        assert_eq!(json["actor_name"], "Alice");
+        assert_eq!(json["source"], "slack");
+
+        let deserialized: everruns_core::ExternalActor = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized, actor);
     }
 
     // Test helpers

@@ -76,6 +76,7 @@ impl MessageService {
             thinking_signature: None,
             controls: req.controls.clone(),
             metadata: req.metadata.clone(),
+            external_actor: req.external_actor.clone(),
             created_at: now,
         };
 

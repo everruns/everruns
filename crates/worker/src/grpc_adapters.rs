@@ -347,6 +347,15 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         thinking_signature: proto_msg.thinking_signature, // Cryptographic signature for thinking
         controls,
         metadata,
+        external_actor: {
+            use everruns_internal_protocol::proto_struct_to_json;
+            proto_msg
+                .external_actor
+                .as_ref()
+                .map(|s| serde_json::from_value(proto_struct_to_json(s)))
+                .transpose()
+                .unwrap_or(None)
+        },
         created_at: proto_timestamp_or_now(proto_msg.created_at.as_ref()),
     })
 }

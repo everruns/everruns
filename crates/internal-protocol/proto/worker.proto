@@ -391,6 +391,8 @@ message Message {
     optional string thinking = 7;
     // Cryptographic signature for thinking content (required when sending thinking back)
     optional string thinking_signature = 8;
+    // External actor identity (for messages from external channels like Slack)
+    optional google.protobuf.Struct external_actor = 9;
 }
 
 message LoadMessagesRequest {

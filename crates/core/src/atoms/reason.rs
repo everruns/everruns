@@ -668,9 +668,17 @@ where
             patched_messages.clone()
         };
 
-        // Add conversation messages with resolved images
+        // Add conversation messages with resolved images.
+        // For user messages with an external_actor, prefix the first text part
+        // with the actor's display label so the LLM knows who is speaking.
         for msg in &patched_messages {
-            llm_messages.push(LlmMessage::from_message_with_images(msg, &resolved_images));
+            let mut llm_msg = LlmMessage::from_message_with_images(msg, &resolved_images);
+            if msg.role == MessageRole::User
+                && let Some(ref actor) = msg.external_actor
+            {
+                llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
+            }
+            llm_messages.push(llm_msg);
         }
 
         // 12. Build LLM call config with reasoning effort and metadata

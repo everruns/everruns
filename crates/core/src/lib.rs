@@ -93,8 +93,8 @@ pub mod turn;
 // Re-exports for convenience
 pub use error::{AgentLoopError, Result};
 pub use message::{
-    ContentPart, ContentType, Controls, ImageContentPart, ImageFileContentPart, InputContentPart,
-    Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
+    ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
+    InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
     ToolResultContentPart,
 };
 pub use message_filter::{

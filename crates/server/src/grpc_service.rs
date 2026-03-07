@@ -850,6 +850,11 @@ impl WorkerService for WorkerServiceImpl {
                 everruns_internal_protocol::json_to_proto_struct(&json)
             });
 
+            let external_actor = message.external_actor.as_ref().map(|ea| {
+                let json = serde_json::to_value(ea).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id.uuid())),
                 role: message.role.to_string(),
@@ -859,6 +864,7 @@ impl WorkerService for WorkerServiceImpl {
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
                 thinking: message.thinking.clone(),
                 thinking_signature: message.thinking_signature.clone(),
+                external_actor,
             });
         }
 
@@ -1185,6 +1191,11 @@ impl WorkerService for WorkerServiceImpl {
                 everruns_internal_protocol::json_to_proto_struct(&json)
             });
 
+            let external_actor = message.external_actor.as_ref().map(|ea| {
+                let json = serde_json::to_value(ea).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id.uuid())),
                 role: message.role.to_string(),
@@ -1194,6 +1205,7 @@ impl WorkerService for WorkerServiceImpl {
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
                 thinking: message.thinking.clone(),
                 thinking_signature: message.thinking_signature.clone(),
+                external_actor,
             });
         }
 
@@ -1256,6 +1268,7 @@ impl WorkerService for WorkerServiceImpl {
             thinking_signature: None,
             controls,
             metadata,
+            external_actor: None,
             created_at: Utc::now(),
         };
 
@@ -1299,6 +1312,11 @@ impl WorkerService for WorkerServiceImpl {
             json_to_proto_struct(&json)
         });
 
+        let external_actor = message.external_actor.as_ref().map(|ea| {
+            let json = serde_json::to_value(ea).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
+
         let proto_message = proto::Message {
             id: Some(uuid_to_proto_uuid(message.id.uuid())),
             role: message.role.to_string(),
@@ -1308,6 +1326,7 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             thinking: message.thinking.clone(),
             thinking_signature: message.thinking_signature.clone(),
+            external_actor,
         };
 
         Ok(Response::new(AddMessageResponse {
@@ -3380,6 +3399,7 @@ impl WorkerService for WorkerServiceImpl {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: now,
         };
 

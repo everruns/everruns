@@ -125,6 +125,9 @@ pub struct CreateMessageRequest {
     /// Tags for the message
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// External actor identity (for messages from external channels like Slack)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_actor: Option<everruns_core::ExternalActor>,
 }
 
 #[cfg(test)]
@@ -139,6 +142,7 @@ impl CreateMessageRequest {
             controls: None,
             metadata: None,
             tags: None,
+            external_actor: None,
         }
     }
 }

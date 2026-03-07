@@ -1036,6 +1036,7 @@ fn event_to_message(event: Event) -> Option<Message> {
                 thinking_signature: None,
                 controls: None,
                 metadata: None,
+                external_actor: None,
                 created_at: event.ts,
             })
         }
@@ -1547,6 +1548,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: now,
         };
 
