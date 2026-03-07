@@ -28,12 +28,39 @@ function SelectGroup({ ...props }: SelectPrimitive.Group.Props) {
   return <SelectPrimitive.Group data-slot="select-group" {...props} />;
 }
 
+// Children override the default display text (which may show raw IDs from
+// base-ui's Value when portal items haven't mounted). Always pass children
+// when the select value is an ID or otherwise not human-readable.
 function SelectValue({
   placeholder,
+  children,
   ...props
 }: SelectPrimitive.Value.Props & {
   placeholder?: string;
+  children?: React.ReactNode;
 }) {
+  if (children !== undefined && children !== null) {
+    return (
+      <SelectPrimitive.Value
+        render={(_, { value }) => {
+          // Show children when we have a value, placeholder otherwise
+          if (value && children) {
+            return <span data-slot="select-value">{children}</span>;
+          }
+          if (placeholder) {
+            return (
+              <span data-slot="select-value" className="text-muted-foreground">
+                {placeholder}
+              </span>
+            );
+          }
+          return <span data-slot="select-value">{children}</span>;
+        }}
+        {...props}
+      />
+    );
+  }
+
   if (!placeholder) {
     return <SelectPrimitive.Value data-slot="select-value" {...props} />;
   }

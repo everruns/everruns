@@ -3,27 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateApp } from "@/hooks/use-apps";
-import { useAgents } from "@/hooks";
-import { useHarnesses } from "@/hooks/use-harnesses";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { AgentSelect } from "@/components/agent/agent-select";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export default function NewAppPage() {
   const router = useRouter();
   const createApp = useCreateApp();
-  const { data: agents } = useAgents();
-  const { data: harnesses } = useHarnesses();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -89,34 +80,12 @@ export default function NewAppPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="harness">Harness</Label>
-                <Select value={harnessId} onValueChange={setHarnessId} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select harness" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {harnesses?.map((h) => (
-                      <SelectItem key={h.id} value={h.id}>
-                        {h.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <HarnessSelect value={harnessId} onValueChange={setHarnessId} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="agent">Agent</Label>
-                <Select value={agentId} onValueChange={setAgentId} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agents?.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AgentSelect value={agentId} onValueChange={setAgentId} />
               </div>
             </div>
 
