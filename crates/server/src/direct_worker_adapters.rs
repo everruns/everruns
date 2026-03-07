@@ -931,7 +931,7 @@ impl DirectWorkerAdapters {
     ) -> Result<Vec<ToolDefinition>> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
-        use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
 
         let capability_rows = self
             .db
@@ -987,6 +987,8 @@ impl DirectWorkerAdapters {
                     description,
                     parameters: tool.input_schema,
                     policy: ToolPolicy::Auto,
+                    category: None,
+                    deferrable: DeferrablePolicy::default(),
                 }));
             }
         }

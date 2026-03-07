@@ -12,7 +12,7 @@
 
 use crate::capability_types::{CapabilityId, CapabilityStatus};
 use crate::mcp_server::{McpToolDefinition, mcp_tool_name};
-use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy};
 use crate::tools::Tool;
 
 use super::Capability;
@@ -90,6 +90,8 @@ impl McpCapability {
                 .unwrap_or_else(|| format!("Tool from MCP server: {}", self.server_name)),
             parameters: mcp_tool.input_schema.clone(),
             policy: ToolPolicy::Auto,
+            category: self.category().map(|s| s.to_string()),
+            deferrable: DeferrablePolicy::default(),
         })
     }
 }

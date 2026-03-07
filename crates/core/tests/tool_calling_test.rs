@@ -4,7 +4,9 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
-use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResultImage};
+use everruns_core::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResultImage,
+};
 use everruns_core::{
     GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
     memory::InMemoryMessageRetriever,
@@ -41,6 +43,8 @@ async fn test_tool_registry_as_executor() {
         description: "Echo".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     // Execute via ToolExecutor trait
@@ -66,6 +70,8 @@ async fn test_get_current_time_tool() {
         description: "Get time".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
@@ -95,6 +101,8 @@ async fn test_tool_error_handling() {
         description: "A tool that fails".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     // Execute and verify error is packaged as {"error": "..."} in result field
@@ -126,6 +134,8 @@ async fn test_internal_error_is_hidden() {
         description: "A tool that fails internally".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     // Execute and verify internal error is hidden (packaged as {"error": "..."} with generic message)
@@ -155,6 +165,8 @@ async fn test_tool_not_found_error() {
         description: "Does not exist".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     // Should return error for tool not found
@@ -220,6 +232,8 @@ async fn test_custom_tool_execution() {
         description: "Counter".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     // Execute multiple times
@@ -259,6 +273,8 @@ async fn test_multiple_tools_in_registry() {
         description: "Get time".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     let time_result = registry.execute(&time_call, &time_def).await.unwrap();
@@ -278,6 +294,8 @@ async fn test_multiple_tools_in_registry() {
         description: "Echo".to_string(),
         parameters: json!({}),
         policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
     });
 
     let echo_result = registry.execute(&echo_call, &echo_def).await.unwrap();

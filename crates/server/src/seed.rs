@@ -306,6 +306,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
             "session",
             "agent_instructions",
             "skills",
+            "openai_tool_search",
         ],
     },
     SeedHarness {
@@ -322,6 +323,7 @@ const SEED_HARNESSES: &[SeedHarness] = &[
             "agent_instructions",
             "skills",
             "platform_management",
+            "openai_tool_search",
         ],
     },
 ];

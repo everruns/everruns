@@ -895,6 +895,8 @@ mod tests {
             description: "Get weather".to_string(),
             parameters: serde_json::json!({}),
             policy: crate::tool_types::ToolPolicy::Auto,
+            category: None,
+            deferrable: crate::tool_types::DeferrablePolicy::default(),
         });
 
         let result = executor.execute(&tool_call, &tool_def).await.unwrap();

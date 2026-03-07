@@ -2621,7 +2621,7 @@ mod contract_tests {
 
     #[test]
     fn act_started_with_definitions_populates_display_names() {
-        use crate::tool_types::{BuiltinTool, ToolPolicy};
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
 
         let tool_calls = vec![
             ToolCall {
@@ -2641,6 +2641,8 @@ mod contract_tests {
             description: "Gets weather".to_string(),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let data = ActStartedData::with_definitions(&tool_calls, &tool_defs);
@@ -2688,7 +2690,7 @@ mod contract_tests {
 
     #[test]
     fn tool_definition_summary_display_name() {
-        use crate::tool_types::{BuiltinTool, ToolPolicy};
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
 
         let def = crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
             name: "read_file".to_string(),
@@ -2696,6 +2698,8 @@ mod contract_tests {
             description: "Reads a file".to_string(),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         });
 
         let summary = ToolDefinitionSummary::from(&def);

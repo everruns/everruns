@@ -310,6 +310,11 @@ pub struct LlmModelProfile {
     /// Reasoning effort configuration (for reasoning models)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffortConfig>,
+    /// Whether the model supports tool_search (deferred tool loading).
+    /// When true, the driver can use namespaces and defer_loading to reduce
+    /// token usage for large tool sets. Currently supported by GPT-5.4+.
+    #[serde(default)]
+    pub tool_search: bool,
 }
 
 #[cfg(test)]

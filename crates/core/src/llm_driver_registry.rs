@@ -372,6 +372,20 @@ pub enum LlmMessageRole {
 // Configuration and Response Types
 // ============================================================================
 
+/// Configuration for tool_search (deferred tool loading).
+///
+/// When enabled, the driver groups tools into namespaces and marks them with
+/// `defer_loading: true` so the model only loads full schemas on-demand.
+/// This reduces token usage for agents with many tools.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ToolSearchConfig {
+    /// Enable tool_search for this request (requires model support)
+    pub enabled: bool,
+    /// Minimum number of tools before activating tool_search.
+    /// Below this threshold, full schemas are sent even when enabled.
+    pub threshold: usize,
+}
+
 /// Configuration for an LLM call
 #[derive(Debug, Clone)]
 pub struct LlmCallConfig {
@@ -388,6 +402,8 @@ pub struct LlmCallConfig {
     /// Previous response ID for stateful continuation (OpenAI Responses API).
     /// When set, the provider can skip re-encoding cached context.
     pub previous_response_id: Option<String>,
+    /// Tool search configuration for deferred tool loading
+    pub tool_search: Option<ToolSearchConfig>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -400,6 +416,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             reasoning_effort: None, // Set by ReasonAtom from user message controls
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
             previous_response_id: None,
+            tool_search: runtime_agent.tool_search.clone(),
         }
     }
 }
@@ -494,6 +511,12 @@ impl LlmCallConfigBuilder {
     /// Set previous response ID for stateful continuation
     pub fn previous_response_id(mut self, id: Option<String>) -> Self {
         self.config.previous_response_id = id;
+        self
+    }
+
+    /// Set tool_search configuration
+    pub fn tool_search(mut self, config: ToolSearchConfig) -> Self {
+        self.config.tool_search = Some(config);
         self
     }
 

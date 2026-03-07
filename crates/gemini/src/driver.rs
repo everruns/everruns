@@ -1066,7 +1066,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools() {
-        use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "get_weather".to_string(),
             display_name: None,
@@ -1079,6 +1079,8 @@ mod tests {
                 "required": ["city"]
             }),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools);
@@ -1091,7 +1093,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools_strips_additional_properties() {
-        use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "search".to_string(),
             display_name: None,
@@ -1105,6 +1107,8 @@ mod tests {
                 "additionalProperties": false
             }),
             policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();

@@ -598,6 +598,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            tool_search: None,
         }
     }
 

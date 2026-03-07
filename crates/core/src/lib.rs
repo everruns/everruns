@@ -159,13 +159,14 @@ pub use capabilities::{
     GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool, GrepFilesTool,
     IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
     McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
-    MultiplyTool, NoopCapability, PlatformManagementCapability, ReadFileTool, ResearchCapability,
-    ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
-    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
-    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
-    WriteFileTool, WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
-    collect_capabilities_with_configs, compute_features, get_dependencies, is_mcp_capability,
-    mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
+    MultiplyTool, NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
+    PlatformManagementCapability, ReadFileTool, ResearchCapability, ResolvedCapabilities,
+    RiskLevel, SampleDataCapability, SessionCapability, SessionSqlDatabaseCapability,
+    SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool, StatelessTodoListCapability,
+    SubtractTool, TestMathCapability, TestWeatherCapability, WriteFileTool, WriteSessionTitleTool,
+    WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
+    compute_features, get_dependencies, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id, resolve_dependencies,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,
@@ -181,7 +182,7 @@ pub use atoms::{
 
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{
-    BuiltinTool, ClientSideTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+    BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
 };
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

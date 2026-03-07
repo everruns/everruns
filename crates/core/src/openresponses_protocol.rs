@@ -215,8 +215,76 @@ impl OpenResponsesProtocolLlmDriver {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
                 parameters: tool.parameters().clone(),
+                defer_loading: None,
             })
             .collect()
+    }
+
+    /// Convert tools with tool_search support: groups tools into namespaces,
+    /// marks them as deferred, and appends a `tool_search` entry.
+    fn convert_tools_with_search(tools: &[ToolDefinition], threshold: usize) -> Vec<ResponsesTool> {
+        use crate::tool_types::DeferrablePolicy;
+        use std::collections::HashMap;
+
+        // Below threshold: fall back to standard conversion
+        if tools.len() < threshold {
+            return Self::convert_tools(tools);
+        }
+
+        let mut namespaces: HashMap<String, Vec<ResponsesTool>> = HashMap::new();
+        let mut ungrouped = vec![];
+        let mut never_defer = vec![];
+
+        for tool in tools {
+            let should_defer = match tool.deferrable() {
+                DeferrablePolicy::Never => false,
+                DeferrablePolicy::Automatic | DeferrablePolicy::Always => true,
+            };
+
+            let func = ResponsesTool::Function {
+                r#type: "function".to_string(),
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+                parameters: tool.parameters().clone(),
+                defer_loading: if should_defer { Some(true) } else { None },
+            };
+
+            if !should_defer {
+                never_defer.push(func);
+            } else {
+                match tool.category() {
+                    Some(cat) => {
+                        namespaces.entry(cat.to_string()).or_default().push(func);
+                    }
+                    None => ungrouped.push(func),
+                }
+            }
+        }
+
+        let mut result: Vec<ResponsesTool> = Vec::new();
+
+        // Non-deferred tools first (always visible to model)
+        result.extend(never_defer);
+
+        // Namespaced tools
+        for (name, tools) in namespaces {
+            result.push(ResponsesTool::Namespace {
+                r#type: "namespace".to_string(),
+                name: name.clone(),
+                description: format!("Tools for {}", name),
+                tools,
+            });
+        }
+
+        // Ungrouped deferred tools
+        result.extend(ungrouped);
+
+        // Add tool_search activator
+        result.push(ResponsesTool::ToolSearch {
+            r#type: "tool_search".to_string(),
+        });
+
+        result
     }
 
     /// Compact a conversation to reduce context size
@@ -470,6 +538,15 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
         let tools = if config.tools.is_empty() {
             None
+        } else if let Some(ref ts_config) = config.tool_search {
+            if ts_config.enabled {
+                Some(Self::convert_tools_with_search(
+                    &config.tools,
+                    ts_config.threshold,
+                ))
+            } else {
+                Some(Self::convert_tools(&config.tools))
+            }
         } else {
             Some(Self::convert_tools(&config.tools))
         };
@@ -1471,12 +1548,24 @@ struct ResponsesInputAudio {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum ResponsesTool {
+    /// Standard function tool (or deferred function with defer_loading)
     Function {
         r#type: String,
         name: String,
         description: String,
         parameters: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        defer_loading: Option<bool>,
     },
+    /// Namespace grouping for tool_search (groups related deferred tools)
+    Namespace {
+        r#type: String,
+        name: String,
+        description: String,
+        tools: Vec<ResponsesTool>,
+    },
+    /// Activates tool_search on the request
+    ToolSearch { r#type: String },
 }
 
 // ============================================================================
@@ -1630,6 +1719,7 @@ mod tests {
                 },
                 "required": ["location"]
             }),
+            defer_loading: None,
         };
 
         let json = serde_json::to_value(&tool).unwrap();
@@ -2266,6 +2356,7 @@ mod tests {
             reasoning_effort: Some("none".to_string()),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            tool_search: None,
         };
 
         // Simulate the driver's filter logic
@@ -2295,6 +2386,7 @@ mod tests {
             reasoning_effort: Some("high".to_string()),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            tool_search: None,
         };
 
         let reasoning = config
@@ -2391,5 +2483,264 @@ mod tests {
         assert_ne!(r1["id"], r2["id"], "Reasoning items should have unique IDs");
         assert_eq!(r1["encrypted_content"], "encrypted_1");
         assert_eq!(r2["encrypted_content"], "encrypted_2");
+    }
+
+    // ========================================================================
+    // tool_search / convert_tools_with_search tests
+    // ========================================================================
+
+    /// Helper: create a ToolDefinition with optional category and deferrable policy
+    fn make_tool(
+        name: &str,
+        category: Option<&str>,
+        deferrable: crate::tool_types::DeferrablePolicy,
+    ) -> ToolDefinition {
+        ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+            name: name.to_string(),
+            display_name: None,
+            description: format!("{} description", name),
+            parameters: json!({"type": "object", "properties": {}}),
+            policy: crate::tool_types::ToolPolicy::Auto,
+            category: category.map(|s| s.to_string()),
+            deferrable,
+        })
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_below_threshold_falls_back() {
+        use crate::tool_types::DeferrablePolicy;
+
+        let tools: Vec<ToolDefinition> = (0..5)
+            .map(|i| {
+                make_tool(
+                    &format!("tool_{i}"),
+                    Some("cat"),
+                    DeferrablePolicy::Automatic,
+                )
+            })
+            .collect();
+
+        // threshold=15, only 5 tools → should fall back to standard convert_tools
+        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        assert_eq!(result.len(), 5);
+        // No ToolSearch entry, no namespaces
+        let json = serde_json::to_value(&result).unwrap();
+        for item in json.as_array().unwrap() {
+            assert_eq!(item["type"], "function");
+            assert!(item.get("defer_loading").is_none() || item["defer_loading"].is_null());
+        }
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_groups_by_category() {
+        use crate::tool_types::DeferrablePolicy;
+
+        let mut tools = vec![];
+        // 10 "FileSystem" tools + 6 "Weather" tools = 16, threshold=15
+        for i in 0..10 {
+            tools.push(make_tool(
+                &format!("fs_tool_{i}"),
+                Some("FileSystem"),
+                DeferrablePolicy::Automatic,
+            ));
+        }
+        for i in 0..6 {
+            tools.push(make_tool(
+                &format!("weather_tool_{i}"),
+                Some("Weather"),
+                DeferrablePolicy::Automatic,
+            ));
+        }
+
+        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let json = serde_json::to_value(&result).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // Should have: 2 namespace entries + 1 tool_search entry = 3
+        assert_eq!(arr.len(), 3);
+
+        // Last entry should be tool_search
+        assert_eq!(arr.last().unwrap()["type"], "tool_search");
+
+        // The two namespace entries
+        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
+        assert_eq!(ns.len(), 2);
+
+        let ns_names: Vec<&str> = ns.iter().map(|v| v["name"].as_str().unwrap()).collect();
+        assert!(ns_names.contains(&"FileSystem"));
+        assert!(ns_names.contains(&"Weather"));
+
+        // Check tool counts inside namespaces
+        for n in &ns {
+            let inner_tools = n["tools"].as_array().unwrap();
+            match n["name"].as_str().unwrap() {
+                "FileSystem" => assert_eq!(inner_tools.len(), 10),
+                "Weather" => assert_eq!(inner_tools.len(), 6),
+                other => panic!("Unexpected namespace: {other}"),
+            }
+            // All inner tools should have defer_loading: true
+            for t in inner_tools {
+                assert_eq!(t["defer_loading"], true);
+            }
+        }
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_never_defer_stays_top_level() {
+        use crate::tool_types::DeferrablePolicy;
+
+        let mut tools = vec![];
+        // 2 Never-defer tools
+        tools.push(make_tool(
+            "write_todos",
+            Some("Productivity"),
+            DeferrablePolicy::Never,
+        ));
+        tools.push(make_tool(
+            "get_session_info",
+            Some("Session"),
+            DeferrablePolicy::Never,
+        ));
+        // 14 Automatic tools in "FileSystem" category
+        for i in 0..14 {
+            tools.push(make_tool(
+                &format!("fs_tool_{i}"),
+                Some("FileSystem"),
+                DeferrablePolicy::Automatic,
+            ));
+        }
+
+        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let json = serde_json::to_value(&result).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // 2 never-defer functions + 1 FileSystem namespace + 1 tool_search = 4
+        assert_eq!(arr.len(), 4);
+
+        // First two should be non-deferred functions
+        let funcs: Vec<&Value> = arr.iter().filter(|v| v["type"] == "function").collect();
+        assert_eq!(funcs.len(), 2);
+        for f in &funcs {
+            // No defer_loading on never-defer tools
+            assert!(f.get("defer_loading").is_none() || f["defer_loading"].is_null());
+        }
+
+        // Namespace
+        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
+        assert_eq!(ns.len(), 1);
+        assert_eq!(ns[0]["name"], "FileSystem");
+        assert_eq!(ns[0]["tools"].as_array().unwrap().len(), 14);
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_ungrouped_tools() {
+        use crate::tool_types::DeferrablePolicy;
+
+        let mut tools = vec![];
+        // 10 categorized tools
+        for i in 0..10 {
+            tools.push(make_tool(
+                &format!("cat_tool_{i}"),
+                Some("Cat"),
+                DeferrablePolicy::Automatic,
+            ));
+        }
+        // 6 uncategorized tools (no category → ungrouped)
+        for i in 0..6 {
+            tools.push(make_tool(
+                &format!("misc_tool_{i}"),
+                None,
+                DeferrablePolicy::Automatic,
+            ));
+        }
+
+        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let json = serde_json::to_value(&result).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // 1 namespace + 6 ungrouped functions + 1 tool_search = 8
+        assert_eq!(arr.len(), 8);
+
+        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
+        assert_eq!(ns.len(), 1);
+        assert_eq!(ns[0]["tools"].as_array().unwrap().len(), 10);
+
+        let funcs: Vec<&Value> = arr.iter().filter(|v| v["type"] == "function").collect();
+        assert_eq!(funcs.len(), 6);
+        // These ungrouped tools should still have defer_loading: true
+        for f in &funcs {
+            assert_eq!(f["defer_loading"], true);
+        }
+
+        assert_eq!(arr.last().unwrap()["type"], "tool_search");
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_always_policy() {
+        use crate::tool_types::DeferrablePolicy;
+
+        let mut tools = vec![];
+        // 14 Automatic tools
+        for i in 0..14 {
+            tools.push(make_tool(
+                &format!("tool_{i}"),
+                Some("General"),
+                DeferrablePolicy::Automatic,
+            ));
+        }
+        // 1 Always tool (should be deferred even if only at threshold)
+        tools.push(make_tool(
+            "always_tool",
+            Some("General"),
+            DeferrablePolicy::Always,
+        ));
+
+        // Exactly at threshold (15 tools, threshold=15)
+        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let json = serde_json::to_value(&result).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // 1 namespace (General) + 1 tool_search = 2
+        assert_eq!(arr.len(), 2);
+
+        let ns = &arr[0];
+        assert_eq!(ns["type"], "namespace");
+        let inner = ns["tools"].as_array().unwrap();
+        assert_eq!(inner.len(), 15);
+        // All should have defer_loading: true
+        for t in inner {
+            assert_eq!(t["defer_loading"], true);
+        }
+    }
+
+    #[test]
+    fn test_tool_search_serialization_format() {
+        // Verify the ToolSearch entry serializes correctly
+        let ts = ResponsesTool::ToolSearch {
+            r#type: "tool_search".to_string(),
+        };
+        let json = serde_json::to_value(&ts).unwrap();
+        assert_eq!(json, json!({"type": "tool_search"}));
+    }
+
+    #[test]
+    fn test_namespace_serialization_format() {
+        let ns = ResponsesTool::Namespace {
+            r#type: "namespace".to_string(),
+            name: "FileSystem".to_string(),
+            description: "Tools for FileSystem".to_string(),
+            tools: vec![ResponsesTool::Function {
+                r#type: "function".to_string(),
+                name: "read_file".to_string(),
+                description: "Read a file".to_string(),
+                parameters: json!({}),
+                defer_loading: Some(true),
+            }],
+        };
+        let json = serde_json::to_value(&ns).unwrap();
+        assert_eq!(json["type"], "namespace");
+        assert_eq!(json["name"], "FileSystem");
+        assert_eq!(json["tools"][0]["name"], "read_file");
+        assert_eq!(json["tools"][0]["defer_loading"], true);
     }
 }

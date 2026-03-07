@@ -14,7 +14,7 @@
 // mounts skill files into the VFS so this capability discovers them.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
-use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -200,6 +200,8 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                     "required": []
                 }),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
             ToolDefinition::Builtin(BuiltinTool {
                 name: "activate_skill".to_string(),
@@ -219,6 +221,8 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                     "required": ["name"]
                 }),
                 policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
             }),
         ]
     }
