@@ -126,6 +126,9 @@ rstest = "0.25"
 # Plugin system for external integrations
 inventory = "0.3"
 
+# In-process caching (async-aware)
+moka = { version = "0.12", features = ["future"] }
+
 [profile.dev]
 opt-level = 0
 # line-tables-only: file:line in backtraces, drops full DWARF type/variable info

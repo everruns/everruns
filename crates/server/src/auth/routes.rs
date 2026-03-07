@@ -932,6 +932,10 @@ pub async fn delete_api_key_route(
         })?;
 
     if deleted {
+        // Invalidate entire API key auth cache — we don't have the key_hash here,
+        // only the key_id (UUID). Deletion is rare so full invalidation is fine.
+        state.invalidate_all_api_key_cache();
+
         audit::emit(
             state.db.clone(),
             DEFAULT_ORG_ID,

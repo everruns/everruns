@@ -1,10 +1,14 @@
 // Built-in authentication backend (JWT + password + OAuth + API keys)
 // Decision: Default for OSS. All existing behavior preserved.
+// Decision: API key auth results cached in-process (moka, 5-min TTL) to avoid
+// 4 sequential DB queries per request. Invalidated on key deletion.
 
 use async_trait::async_trait;
 use axum::Router;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole};
+use moka::future::Cache;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 use super::api_key::{ValidatedApiKey, hash_api_key, is_valid_api_key_format};
@@ -17,6 +21,12 @@ use super::routes::{self, AuthConfigResponse};
 use crate::storage::StorageBackend;
 use crate::valkey::ValkeyClient;
 
+/// TTL for cached API key auth results.
+const API_KEY_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+
+/// Max entries in the API key auth cache.
+const API_KEY_CACHE_MAX_CAPACITY: u64 = 10_000;
+
 /// Built-in authentication backend (JWT + password + OAuth + API keys).
 /// This is the default for OSS deployments.
 #[derive(Clone)]
@@ -25,6 +35,15 @@ pub struct BuiltinAuthBackend {
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
+    /// In-process cache: key_hash -> AuthUser. Avoids 4 sequential DB queries per API-key request.
+    api_key_cache: Cache<String, AuthUser>,
+}
+
+fn build_api_key_cache() -> Cache<String, AuthUser> {
+    Cache::builder()
+        .max_capacity(API_KEY_CACHE_MAX_CAPACITY)
+        .time_to_live(API_KEY_CACHE_TTL)
+        .build()
 }
 
 impl BuiltinAuthBackend {
@@ -36,6 +55,7 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::new(),
+            api_key_cache: build_api_key_cache(),
         }
     }
 
@@ -47,53 +67,31 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
+            api_key_cache: build_api_key_cache(),
         }
     }
-}
 
-#[async_trait]
-impl AuthBackend for BuiltinAuthBackend {
-    async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
-        let claims = self.jwt_service.validate_access_token(token).map_err(|e| {
-            tracing::debug!("JWT validation failed: {}", e);
-            AuthError::unauthorized("Invalid or expired token")
-        })?;
-
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
-
-        // Fetch organization memberships for the user
-        let organizations = fetch_user_organizations(&self.db, user_id).await?;
-
-        // If user has no organizations, fall back to default organization
-        if organizations.is_empty() {
-            tracing::warn!(
-                user_id = %user_id,
-                "User has no organizations, falling back to default org"
-            );
-        }
-        let organizations = organizations_or_default(organizations);
-
-        Ok(AuthUser {
-            id: user_id,
-            email: claims.email,
-            name: claims.name,
-            roles: claims.roles,
-            auth_method: AuthMethod::Jwt,
-            organizations,
-        })
+    /// Invalidate a cached API key entry by its hash.
+    pub async fn invalidate_api_key_cache(&self, key_hash: &str) {
+        self.api_key_cache.invalidate(key_hash).await;
     }
 
-    async fn validate_api_key(&self, key: &str) -> Result<AuthUser, AuthError> {
-        if !is_valid_api_key_format(key) {
-            return Err(AuthError::unauthorized("Invalid API key format"));
-        }
+    /// Invalidate all cached API key entries (e.g. after user/org updates).
+    pub fn invalidate_all_api_key_cache(&self) {
+        self.api_key_cache.invalidate_all();
+    }
 
-        let key_hash = hash_api_key(key);
+    /// Entry count in the cache (for testing/metrics).
+    #[cfg(test)]
+    pub fn api_key_cache_entry_count(&self) -> u64 {
+        self.api_key_cache.entry_count()
+    }
 
+    /// Validate API key against DB (4 sequential queries). Called on cache miss.
+    async fn validate_api_key_from_db(&self, key_hash: &str) -> Result<AuthUser, AuthError> {
         let api_key_row = self
             .db
-            .get_api_key_by_hash(&key_hash)
+            .get_api_key_by_hash(key_hash)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to fetch API key: {}", e);
@@ -171,6 +169,61 @@ impl AuthBackend for BuiltinAuthBackend {
             }],
         })
     }
+}
+
+#[async_trait]
+impl AuthBackend for BuiltinAuthBackend {
+    async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
+        let claims = self.jwt_service.validate_access_token(token).map_err(|e| {
+            tracing::debug!("JWT validation failed: {}", e);
+            AuthError::unauthorized("Invalid or expired token")
+        })?;
+
+        let user_id = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
+
+        // Fetch organization memberships for the user
+        let organizations = fetch_user_organizations(&self.db, user_id).await?;
+
+        // If user has no organizations, fall back to default organization
+        if organizations.is_empty() {
+            tracing::warn!(
+                user_id = %user_id,
+                "User has no organizations, falling back to default org"
+            );
+        }
+        let organizations = organizations_or_default(organizations);
+
+        Ok(AuthUser {
+            id: user_id,
+            email: claims.email,
+            name: claims.name,
+            roles: claims.roles,
+            auth_method: AuthMethod::Jwt,
+            organizations,
+        })
+    }
+
+    async fn validate_api_key(&self, key: &str) -> Result<AuthUser, AuthError> {
+        if !is_valid_api_key_format(key) {
+            return Err(AuthError::unauthorized("Invalid API key format"));
+        }
+
+        let key_hash = hash_api_key(key);
+
+        // Check cache first — avoids 4 sequential DB queries on hit
+        if let Some(cached) = self.api_key_cache.get(&key_hash).await {
+            tracing::trace!("API key auth cache hit");
+            return Ok(cached);
+        }
+
+        let auth_user = self.validate_api_key_from_db(&key_hash).await?;
+
+        // Populate cache
+        self.api_key_cache.insert(key_hash, auth_user.clone()).await;
+
+        Ok(auth_user)
+    }
 
     fn auth_routes(&self) -> Option<Router> {
         Some(routes::routes(self.clone()))
@@ -227,5 +280,129 @@ pub(super) fn organizations_or_default(organizations: Vec<OrgMembership>) -> Vec
         }]
     } else {
         organizations
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a cache with custom TTL for testing.
+    fn build_test_cache(ttl: Duration) -> Cache<String, AuthUser> {
+        Cache::builder().max_capacity(100).time_to_live(ttl).build()
+    }
+
+    fn test_auth_user() -> AuthUser {
+        AuthUser {
+            id: Uuid::nil(),
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::ApiKey,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_test".to_string(),
+                name: "Test Org".to_string(),
+                role: OrgRole::Member,
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_returns_cached_user() {
+        let cache = build_api_key_cache();
+        let user = test_auth_user();
+        let key_hash = "abc123hash".to_string();
+
+        // Insert into cache
+        cache.insert(key_hash.clone(), user.clone()).await;
+
+        // Should hit
+        let cached = cache.get(&key_hash).await;
+        assert!(cached.is_some());
+        let cached = cached.unwrap();
+        assert_eq!(cached.id, user.id);
+        assert_eq!(cached.email, user.email);
+        assert_eq!(cached.organizations.len(), 1);
+        assert_eq!(cached.organizations[0].org_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss_returns_none() {
+        let cache = build_api_key_cache();
+        let result = cache.get(&"nonexistent".to_string()).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidate_single_key() {
+        let cache = build_api_key_cache();
+        let user = test_auth_user();
+        let key_hash = "abc123hash".to_string();
+
+        cache.insert(key_hash.clone(), user).await;
+        assert!(cache.get(&key_hash).await.is_some());
+
+        // Invalidate
+        cache.invalidate(&key_hash).await;
+        assert!(cache.get(&key_hash).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidate_all() {
+        let cache = build_api_key_cache();
+        let user = test_auth_user();
+
+        cache.insert("key1".to_string(), user.clone()).await;
+        cache.insert("key2".to_string(), user).await;
+        assert!(cache.get(&"key1".to_string()).await.is_some());
+        assert!(cache.get(&"key2".to_string()).await.is_some());
+
+        // Invalidate all
+        cache.invalidate_all();
+        // run_pending_tasks needed for invalidate_all to take effect
+        cache.run_pending_tasks().await;
+        assert!(cache.get(&"key1".to_string()).await.is_none());
+        assert!(cache.get(&"key2".to_string()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_ttl_expiry() {
+        // Use a very short TTL
+        let cache = build_test_cache(Duration::from_millis(50));
+        let user = test_auth_user();
+        let key_hash = "ttl_test".to_string();
+
+        cache.insert(key_hash.clone(), user).await;
+        assert!(cache.get(&key_hash).await.is_some());
+
+        // Wait for TTL to expire
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(cache.get(&key_hash).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_different_keys_independent() {
+        let cache = build_api_key_cache();
+        let user1 = test_auth_user();
+        let mut user2 = test_auth_user();
+        user2.email = "other@example.com".to_string();
+
+        cache.insert("key_a".to_string(), user1).await;
+        cache.insert("key_b".to_string(), user2).await;
+
+        // Invalidate only key_a
+        cache.invalidate(&"key_a".to_string()).await;
+
+        assert!(cache.get(&"key_a".to_string()).await.is_none());
+        let remaining = cache.get(&"key_b".to_string()).await;
+        assert!(remaining.is_some());
+        assert_eq!(remaining.unwrap().email, "other@example.com");
+    }
+
+    #[test]
+    fn test_cache_constants() {
+        assert_eq!(API_KEY_CACHE_TTL, Duration::from_secs(300));
+        assert_eq!(API_KEY_CACHE_MAX_CAPACITY, 10_000);
     }
 }
