@@ -126,7 +126,9 @@ function MemberCard({
               {updateRole.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <SelectValue />
+                <SelectValue>
+                  {ROLE_LABELS[(pendingRole ?? member.role) as OrgRole]}
+                </SelectValue>
               )}
             </SelectTrigger>
             <SelectContent>

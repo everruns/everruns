@@ -308,7 +308,9 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
             onValueChange={(v) => setTargetType(v as "workflow" | "activity")}
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue>
+                {targetType === "workflow" ? "Workflow" : "Activity"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="workflow">Workflow</SelectItem>
