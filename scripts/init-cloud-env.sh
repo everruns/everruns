@@ -42,7 +42,7 @@ install_just() {
     info "Installing just (pre-built binary)..."
 
     # Use official installer script - downloads pre-built binary
-    curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to "$INSTALL_DIR"
+    curl --proto '=https' --tlsv1.2 -sSf --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 https://just.systems/install.sh | bash -s -- --to "$INSTALL_DIR"
 
     if command -v just &> /dev/null; then
         info "just installed: $(just --version)"
@@ -68,14 +68,8 @@ install_gh() {
         *)       error "Unsupported architecture: $ARCH" ;;
     esac
 
-    # Get latest version from GitHub API
-    GH_VERSION=$(curl -sS https://api.github.com/repos/cli/cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
-
-    if [[ -z "$GH_VERSION" ]]; then
-        # Fallback version if API fails
-        GH_VERSION="2.63.2"
-        warn "Could not fetch latest gh version, using fallback: $GH_VERSION"
-    fi
+    # Pinned version — skip GitHub API call to avoid rate limits and hangs
+    GH_VERSION="2.63.2"
 
     GH_TARBALL="gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
     GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${GH_TARBALL}"
@@ -85,7 +79,7 @@ install_gh() {
     trap "rm -rf $TEMP_DIR" EXIT
 
     info "Downloading gh v${GH_VERSION}..."
-    curl -sSL "$GH_URL" -o "$TEMP_DIR/$GH_TARBALL"
+    curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$GH_URL" -o "$TEMP_DIR/$GH_TARBALL"
 
     tar -xzf "$TEMP_DIR/$GH_TARBALL" -C "$TEMP_DIR"
 
@@ -116,13 +110,8 @@ install_doppler() {
         *)       error "Unsupported architecture: $ARCH" ;;
     esac
 
-    # Get latest version from GitHub API
-    DOP_VERSION=$(curl -sS https://api.github.com/repos/DopplerHQ/cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-
-    if [[ -z "$DOP_VERSION" ]]; then
-        DOP_VERSION="3.75.2"
-        warn "Could not fetch latest doppler version, using fallback: $DOP_VERSION"
-    fi
+    # Pinned version — skip GitHub API call to avoid rate limits and hangs
+    DOP_VERSION="3.75.2"
 
     DOP_TARBALL="doppler_${DOP_VERSION}_linux_${DOP_ARCH}.tar.gz"
     DOP_URL="https://github.com/DopplerHQ/cli/releases/download/${DOP_VERSION}/${DOP_TARBALL}"
@@ -132,7 +121,7 @@ install_doppler() {
     trap "rm -rf $TEMP_DIR" EXIT
 
     info "Downloading doppler v${DOP_VERSION}..."
-    curl -sSL "$DOP_URL" -o "$TEMP_DIR/$DOP_TARBALL"
+    curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$DOP_URL" -o "$TEMP_DIR/$DOP_TARBALL"
 
     tar -xzf "$TEMP_DIR/$DOP_TARBALL" -C "$TEMP_DIR"
 
@@ -172,7 +161,7 @@ install_caddy() {
     trap "rm -rf $TEMP_DIR" EXIT
 
     info "Downloading caddy v${CADDY_VERSION}..."
-    curl -fsSL "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
+    curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
 
     tar -xzf "$TEMP_DIR/$CADDY_TARBALL" -C "$TEMP_DIR" caddy
 
@@ -297,10 +286,21 @@ main() {
 
     START_TIME=$(date +%s)
 
-    install_just
-    install_gh
-    install_doppler
-    install_caddy
+    # Install all tools in parallel for faster setup
+    install_just & PID_JUST=$!
+    install_gh & PID_GH=$!
+    install_doppler & PID_DOPPLER=$!
+    install_caddy & PID_CADDY=$!
+
+    INSTALL_FAILED=0
+    wait $PID_JUST    || INSTALL_FAILED=1
+    wait $PID_GH      || INSTALL_FAILED=1
+    wait $PID_DOPPLER || INSTALL_FAILED=1
+    wait $PID_CADDY   || INSTALL_FAILED=1
+
+    if [[ "$INSTALL_FAILED" -eq 1 ]]; then
+        error "One or more tool installs failed"
+    fi
     configure_gh_repo
     configure_doppler
     configure_gh_auth
