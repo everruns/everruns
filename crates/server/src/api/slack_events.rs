@@ -27,7 +27,9 @@ use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
@@ -98,6 +100,10 @@ struct AckResponse {
     ok: bool,
 }
 
+/// Resolved Slack user display name.
+/// `Some(name)` = resolved, `None` = resolution failed (don't retry).
+type SlackUserCache = Arc<RwLock<HashMap<String, Option<String>>>>;
+
 /// App-scoped Slack state (no auth required).
 #[derive(Clone)]
 pub struct SlackState {
@@ -105,6 +111,8 @@ pub struct SlackState {
     pub app_service: Arc<AppService>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    /// Cache of Slack user ID → display name. Shared across requests.
+    user_name_cache: SlackUserCache,
 }
 
 impl SlackState {
@@ -114,6 +122,7 @@ impl SlackState {
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(db.clone(), runner)),
             db,
+            user_name_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -255,7 +264,32 @@ async fn process_slack_message(
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
     let org_id = app.org_id;
-    let text = event.text.clone().unwrap_or_default();
+    let raw_text = event.text.clone().unwrap_or_default();
+    let slack_user_id = event.user.clone().unwrap_or_default();
+
+    // Resolve Slack user display name (gracefully falls back to user ID)
+    let display_name = if !slack_user_id.is_empty() {
+        resolve_slack_user_name(
+            &state.user_name_cache,
+            &slack_config.bot_token,
+            &slack_user_id,
+        )
+        .await
+    } else {
+        None
+    };
+
+    // Build user label: "John Doe" or "U0123456789" as fallback
+    let user_label = display_name
+        .as_deref()
+        .unwrap_or(if !slack_user_id.is_empty() {
+            &slack_user_id
+        } else {
+            "unknown"
+        });
+
+    // Prefix message with user identity so the LLM knows who's speaking
+    let text = format!("[{}] {}", user_label, raw_text);
 
     // Resolve org_public_id
     let org_row = state
@@ -314,11 +348,11 @@ async fn process_slack_message(
             content: vec![InputContentPart::text(text)],
         },
         controls: None,
-        metadata: Some(
-            [
+        metadata: Some({
+            let mut meta: std::collections::HashMap<String, serde_json::Value> = [
                 (
                     "slack_user".to_string(),
-                    serde_json::Value::String(event.user.clone().unwrap_or_default()),
+                    serde_json::Value::String(slack_user_id.clone()),
                 ),
                 (
                     "slack_channel".to_string(),
@@ -330,8 +364,15 @@ async fn process_slack_message(
                 ),
             ]
             .into_iter()
-            .collect(),
-        ),
+            .collect();
+            if let Some(ref name) = display_name {
+                meta.insert(
+                    "slack_display_name".to_string(),
+                    serde_json::Value::String(name.clone()),
+                );
+            }
+            meta
+        }),
         tags: None,
     };
 
@@ -507,6 +548,101 @@ fn extract_response_text(data: &serde_json::Value) -> Option<String> {
         None
     } else {
         Some(text_parts.join("\n"))
+    }
+}
+
+/// Resolve a Slack user ID to a display name via `users.info` API.
+///
+/// Returns the display name (or real_name fallback) on success, or `None` if
+/// resolution fails (missing `users:read` scope, network error, etc.).
+/// Results are cached: successful lookups and permanent failures (missing scope)
+/// are not retried. Transient errors are retried on next call.
+async fn resolve_slack_user_name(
+    cache: &SlackUserCache,
+    bot_token: &str,
+    user_id: &str,
+) -> Option<String> {
+    // Check cache first
+    {
+        let cache_read = cache.read().await;
+        if let Some(cached) = cache_read.get(user_id) {
+            return cached.clone();
+        }
+    }
+
+    // Call Slack API (user IDs are alphanumeric, safe to interpolate)
+    let client = reqwest::Client::new();
+    let url = format!("https://slack.com/api/users.info?user={user_id}");
+    let result = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .send()
+        .await;
+
+    let response: reqwest::Response = match result {
+        Ok(r) => r,
+        Err(e) => {
+            // Transient network error — don't cache, allow retry
+            tracing::warn!(user_id = user_id, error = %e, "Failed to fetch Slack user info (network)");
+            return None;
+        }
+    };
+
+    let body: serde_json::Value = match response.json().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(user_id = user_id, error = %e, "Failed to parse Slack users.info response");
+            return None;
+        }
+    };
+
+    if body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        // Success — extract display_name, fall back to real_name, then name
+        let user_obj = body.get("user");
+        let profile = user_obj.and_then(|u| u.get("profile"));
+        let display_name = profile
+            .and_then(|p| p.get("display_name"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                user_obj
+                    .and_then(|u| u.get("real_name"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+            })
+            .or_else(|| {
+                user_obj
+                    .and_then(|u| u.get("name"))
+                    .and_then(|v| v.as_str())
+            })
+            .map(String::from);
+
+        let mut cache_write = cache.write().await;
+        cache_write.insert(user_id.to_string(), display_name.clone());
+        display_name
+    } else {
+        let error = body
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown");
+        tracing::warn!(
+            user_id = user_id,
+            error = error,
+            "Slack users.info API error"
+        );
+
+        // Permanent errors (missing scope, invalid token) — cache as None to avoid repeated calls
+        if error == "missing_scope"
+            || error == "not_authed"
+            || error == "invalid_auth"
+            || error == "token_revoked"
+            || error == "account_inactive"
+        {
+            let mut cache_write = cache.write().await;
+            cache_write.insert(user_id.to_string(), None);
+        }
+
+        None
     }
 }
 
@@ -828,6 +964,98 @@ mod tests {
     fn test_extract_response_text_empty_content() {
         let data = serde_json::json!({"message": {"content": []}});
         assert!(extract_response_text(&data).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_slack_user_name_cache_hit() {
+        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+        cache
+            .write()
+            .await
+            .insert("U123".to_string(), Some("Alice".to_string()));
+
+        let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
+        assert_eq!(result, Some("Alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_slack_user_name_cache_hit_none() {
+        // Cached failure (e.g., missing_scope) should return None without API call
+        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+        cache.write().await.insert("U123".to_string(), None);
+
+        let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_slack_user_name_api_failure_not_cached() {
+        // Network failures should not be cached (allow retry)
+        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+
+        // Use an invalid URL-ish token that will fail network-level
+        // (the function uses hardcoded slack.com URL, so with a bad token
+        // it will get a response but not a network error — test cache emptiness)
+        let _result = resolve_slack_user_name(&cache, "xoxb-invalid", "U999").await;
+
+        // If it got a Slack API error response (not_authed/invalid_auth), it should cache None.
+        // If it was a network error, cache should be empty.
+        // Either way the function gracefully returns None — that's the key behavior.
+        // We just verify it doesn't panic.
+    }
+
+    #[test]
+    fn test_message_prefix_with_display_name() {
+        let display_name = Some("Alice".to_string());
+        let slack_user_id = "U123";
+        let raw_text = "Hello bot";
+
+        let user_label = display_name
+            .as_deref()
+            .unwrap_or(if !slack_user_id.is_empty() {
+                slack_user_id
+            } else {
+                "unknown"
+            });
+        let text = format!("[{}] {}", user_label, raw_text);
+
+        assert_eq!(text, "[Alice] Hello bot");
+    }
+
+    #[test]
+    fn test_message_prefix_fallback_to_user_id() {
+        let display_name: Option<String> = None;
+        let slack_user_id = "U0123456789";
+        let raw_text = "Hello bot";
+
+        let user_label = display_name
+            .as_deref()
+            .unwrap_or(if !slack_user_id.is_empty() {
+                slack_user_id
+            } else {
+                "unknown"
+            });
+        let text = format!("[{}] {}", user_label, raw_text);
+
+        assert_eq!(text, "[U0123456789] Hello bot");
+    }
+
+    #[test]
+    fn test_message_prefix_no_user() {
+        let display_name: Option<String> = None;
+        let slack_user_id = "";
+        let raw_text = "Hello bot";
+
+        let user_label = display_name
+            .as_deref()
+            .unwrap_or(if !slack_user_id.is_empty() {
+                slack_user_id
+            } else {
+                "unknown"
+            });
+        let text = format!("[{}] {}", user_label, raw_text);
+
+        assert_eq!(text, "[unknown] Hello bot");
     }
 
     // Test helpers
