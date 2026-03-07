@@ -83,6 +83,56 @@ SSE connections are stateless (resume via `since_id`). No session affinity requi
 
 `SKIP LOCKED` handles task claiming. Advisory locks handle migrations. No external coordination needed. **PostgreSQL covers this completely.**
 
+## In-Process Caching Opportunities (No Redis Required)
+
+Before reaching for Redis, several hot-path inefficiencies can be fixed with in-process caching. These are **independent of the Redis decision** and should be done regardless.
+
+### Critical: Turn-Local Deduplication
+
+`get_agent_capabilities()` is called **4 times per turn** across `get_agent()`, `build_tool_registry()`, `build_mcp_tool_definitions()`, and `agent_store::get_agent()` — all within a single `load_turn_context()` call chain (`direct_worker_adapters.rs`). Fix: load once, pass the result through.
+
+### High: API Key Auth — 4 Sequential DB Queries Per Request
+
+Every API-key-authenticated request runs 4 sequential queries in `auth/builtin.rs`: `get_api_key_by_hash()` → `get_user()` → `get_organization()` → `get_organization_member()`. These rarely change. Fix: in-process cache keyed on `key_hash` → `AuthUser` with 5-min TTL (`moka` crate).
+
+### High: LLM Model/Provider Resolution
+
+`llm_resolver.rs` queries provider + model config per LLM call. Providers/models change rarely. Fix: in-process cache `(org_id, model_id) → ResolvedModel` with 1-hour TTL, invalidated on provider/model update.
+
+### Medium: Encryption Key Lookups
+
+`storage/encryption.rs` decrypts the org encryption key per request in the auth flow. Fix: cache decrypted DEKs in memory keyed on `org_id`, invalidate on key rotation (rare).
+
+### Medium: Active Skills List
+
+`services/skill.rs` queries skills per capability listing. Fix: `(org_id → Vec<Skill>)` with 5-min TTL.
+
+### Already Optimized
+
+- **Feature flags** — loaded once at startup, served from memory
+- **MCP tool cache** — 1-hour TTL with freshness checks
+- **Capability registry** — in-memory built-in registry
+
+### Recommended Crate
+
+`moka` — async-compatible, TTL + max-size eviction, battle-tested. No Redis needed for any of the above.
+
+### Impact on Redis Decision
+
+If these in-process caches are implemented, the "cross-instance cache" Redis use case drops to **very low priority**. Each instance caches independently; config data tolerates seconds of staleness across instances. Redis for caching only becomes relevant if cache-miss thundering-herd on instance restart is a problem (unlikely with warm-up).
+
+## Deployment Topology: Workers Don't Need Valkey
+
+Workers are stateless gRPC clients. All rate limiting and caching happens in the control-plane:
+
+```
+Workers ──gRPC──► Control-Plane ──► PostgreSQL
+                       │
+                       └──► Valkey (rate limits only, when needed)
+```
+
+For per-worker LLM rate limiting (TPM/RPM), the control-plane mediates: workers request a rate-limit token via gRPC before calling the LLM provider. Adds ~1ms round-trip (negligible vs 500ms+ LLM latency). Keeps Valkey access centralized; workers need zero infrastructure beyond gRPC.
+
 ## Recommendation
 
 ### Don't Add Redis Yet
