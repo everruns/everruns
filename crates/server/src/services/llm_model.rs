@@ -1,5 +1,9 @@
 // LLM Model service for business logic
+//
+// On create/update/delete, the LLM resolver cache is invalidated so that
+// subsequent model resolutions pick up the new model config.
 
+use crate::services::LlmResolverService;
 use crate::storage::{
     StorageBackend,
     models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
@@ -16,11 +20,29 @@ use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
 
 pub struct LlmModelService {
     db: Arc<StorageBackend>,
+    llm_resolver: Option<Arc<LlmResolverService>>,
 }
 
 impl LlmModelService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            db,
+            llm_resolver: None,
+        }
+    }
+
+    pub fn with_resolver(db: Arc<StorageBackend>, resolver: Arc<LlmResolverService>) -> Self {
+        Self {
+            db,
+            llm_resolver: Some(resolver),
+        }
+    }
+
+    /// Invalidate resolver cache after model mutation.
+    async fn invalidate_resolver_cache(&self, org_id: i64) {
+        if let Some(ref resolver) = self.llm_resolver {
+            resolver.invalidate_cache(org_id).await;
+        }
     }
 
     pub async fn create(
@@ -46,6 +68,7 @@ impl LlmModelService {
         };
 
         let row = self.db.create_llm_model(org_id, input).await?;
+        self.invalidate_resolver_cache(org_id).await;
         Ok(Self::row_to_model(&row))
     }
 
@@ -160,11 +183,18 @@ impl LlmModelService {
         };
 
         let row = self.db.update_llm_model(org_id, id, input).await?;
+        if row.is_some() {
+            self.invalidate_resolver_cache(org_id).await;
+        }
         Ok(row.as_ref().map(Self::row_to_model))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_llm_model(org_id, id).await
+        let deleted = self.db.delete_llm_model(org_id, id).await?;
+        if deleted {
+            self.invalidate_resolver_cache(org_id).await;
+        }
+        Ok(deleted)
     }
 
     /// Get the default model

@@ -399,13 +399,22 @@ impl ServerAppBuilder {
             auth: auth_state.clone(),
         };
         let driver_registry = Arc::new(create_driver_registry());
+        let llm_resolver = Arc::new(services::LlmResolverService::new(
+            db.clone(),
+            encryption.clone(),
+        ));
         let llm_providers_state = api::llm_providers::AppState::new(
             db.clone(),
             encryption.clone(),
             driver_registry.clone(),
             auth_state.clone(),
+            Some(llm_resolver.clone()),
         );
-        let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone());
+        let llm_models_state = api::llm_models::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            Some(llm_resolver.clone()),
+        );
         let mcp_servers_state =
             api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let capability_service = Arc::new(services::CapabilityService::new(
@@ -797,10 +806,7 @@ impl ServerAppBuilder {
             if let Some(shared_store) = shared_durable_store {
                 tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
-                let llm_resolver = Arc::new(services::LlmResolverService::new(
-                    db.clone(),
-                    encryption.clone(),
-                ));
+                // Reuse the shared llm_resolver from Phase 5
                 let mcp_server_service = Arc::new(services::McpServerService::new(
                     db.clone(),
                     encryption.clone(),

@@ -17,7 +17,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::services::LlmModelService;
+use crate::services::{LlmModelService, LlmResolverService};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -26,9 +26,18 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        auth: AuthState,
+        llm_resolver: Option<Arc<LlmResolverService>>,
+    ) -> Self {
+        let service = if let Some(resolver) = llm_resolver {
+            LlmModelService::with_resolver(db, resolver)
+        } else {
+            LlmModelService::new(db)
+        };
         Self {
-            service: Arc::new(LlmModelService::new(db)),
+            service: Arc::new(service),
             auth,
         }
     }
