@@ -44,8 +44,11 @@ jobs:
           shared-key: "brave-search-integration"
 
       - name: Fetch Brave Search API key from Doppler
-        if: env.DOPPLER_TOKEN != ''
         run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "::error::DOPPLER_TOKEN secret is not set"
+            exit 1
+          fi
           if ! command -v doppler &>/dev/null; then
             curl -sLf --retry 3 https://cli.doppler.com/install.sh | sudo sh >/dev/null 2>&1
           fi
