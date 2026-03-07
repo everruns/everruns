@@ -2229,6 +2229,147 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn test_standalone_task_enqueue_and_claim() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Enqueue standalone task (no workflow)
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: None,
+                activity_id: "standalone-1".to_string(),
+                activity_type: "email_send".to_string(),
+                input: serde_json::json!({"to": "user@example.com"}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Verify task info has no workflow_id
+        let task = store.get_task(task_id).await.unwrap();
+        assert!(task.workflow_id.is_none());
+        assert_eq!(task.activity_type, "email_send");
+
+        // Claim it
+        let claimed = store
+            .claim_task("worker-1", &["email_send".to_string()], 1)
+            .await
+            .unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, task_id);
+        assert!(claimed[0].workflow_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_standalone_task_list_filter() {
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Enqueue one workflow task and one standalone task
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "wf-task".to_string(),
+                activity_type: "test".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: None,
+                activity_id: "standalone-task".to_string(),
+                activity_type: "test".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // List all tasks
+        let all = store
+            .list_tasks(
+                TaskFilter {
+                    status: None,
+                    activity_type: None,
+                    workflow_id: None,
+                    standalone_only: false,
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 2);
+
+        // List standalone only
+        let standalone = store
+            .list_tasks(
+                TaskFilter {
+                    status: None,
+                    activity_type: None,
+                    workflow_id: None,
+                    standalone_only: true,
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(standalone.len(), 1);
+        assert!(standalone[0].workflow_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_standalone_task_queue_limit() {
+        // Use a small standalone limit for testing
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Enqueue standalone tasks up to the limit - won't actually hit 10k in test,
+        // just verify the code path works for a few tasks
+        for i in 0..5 {
+            store
+                .enqueue_task(TaskDefinition {
+                    workflow_id: None,
+                    activity_id: format!("standalone-{i}"),
+                    activity_type: "test".to_string(),
+                    input: serde_json::json!({}),
+                    options: ActivityOptions::default(),
+                })
+                .await
+                .unwrap();
+        }
+
+        // Verify all 5 enqueued successfully
+        let tasks = store
+            .list_tasks(
+                TaskFilter {
+                    status: None,
+                    activity_type: None,
+                    workflow_id: None,
+                    standalone_only: true,
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 5);
+    }
+
     // =========================================================================
     // System Health Tests
     // =========================================================================

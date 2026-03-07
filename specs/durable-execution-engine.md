@@ -109,6 +109,19 @@ Latency improvement:
 - Polling (100ms): P50=~100ms, P99=~110ms
 - Push notifications: P50=~4ms, P99=~10ms (~96% improvement)
 
+### Generic Queue (Standalone Tasks)
+
+The task queue supports standalone tasks that run independently of any workflow. `TaskDefinition.workflow_id` is `Option<Uuid>` — when `None`, the task is a standalone queue entry.
+
+- **Enqueue**: `POST /v1/durable/tasks` with `activity_type`, `input`, and optional retry/priority config
+- **Processing**: Workers claim and execute standalone tasks identically to workflow tasks
+- **Event recording**: Standalone tasks skip workflow event recording (ActivityStarted/Completed/Failed are no-ops)
+- **Limits**: Global cap of 10,000 pending standalone tasks (vs 100 per-workflow)
+- **DLQ**: Failed standalone tasks go to dead letter queue with `workflow_id = NULL`
+- **Dashboard**: UI shows "standalone" badge for tasks not linked to a workflow
+
+See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/server/src/api/durable.rs` for the enqueue endpoint.
+
 ### Reliability
 
 1. **RetryPolicy** - Exponential backoff with jitter

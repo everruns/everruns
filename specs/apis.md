@@ -479,6 +479,7 @@ Administrative endpoints for monitoring and managing the durable execution engin
 | GET | `/v1/durable/workflows/{id}` | Get workflow details |
 | GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
 | GET | `/v1/durable/tasks` | List task queue |
+| POST | `/v1/durable/tasks` | Enqueue standalone task (generic queue) |
 | GET | `/v1/durable/metrics/timeseries` | Get metrics time series (ring buffer) |
 | GET | `/v1/durable/dlq` | List dead letter queue |
 | GET | `/v1/durable/circuit-breakers` | List circuit breakers |
