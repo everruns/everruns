@@ -1,3 +1,16 @@
+/**
+ * Composable sidebar with extension points.
+ *
+ * Design: The sidebar accepts an optional SidebarConfig to override navigation
+ * sections, org actions, and inject extra sections. When no config is passed,
+ * behavior is identical to the original hardcoded sidebar. This enables SaaS
+ * forks to customize the sidebar in ~15 lines instead of duplicating 300+.
+ *
+ * Extension points:
+ * - navigation: replace the default navigation sections entirely
+ * - orgActions.createOrg: override "Create Organisation" click handler
+ * - extraSections: append additional sections (billing, usage, etc.)
+ */
 "use client";
 
 import { useState } from "react";
@@ -58,25 +71,53 @@ import {
   Rocket,
 } from "lucide-react";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
+import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
 
-type NavItem = {
+// --- Public types ---
+
+export type NavigationItem = {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  flag?: keyof import("@/lib/api/types").FeatureFlags;
+  /** Only show when this feature flag is enabled */
+  flag?: keyof FeatureFlags;
+  /** Use exact pathname match instead of prefix match */
   exact?: boolean;
+  /** Show experimental badge */
   experimental?: boolean;
 };
 
-const topNavigation: NavItem[] = [
+export type NavigationSection = {
+  /** Section label shown above items. Omit for unlabeled sections. */
+  label?: string;
+  items: NavigationItem[];
+  /** Only show in development mode */
+  devOnly?: boolean;
+};
+
+export interface SidebarConfig {
+  /** Replace default navigation sections entirely */
+  navigation?: NavigationSection[];
+  /** Override organization action handlers */
+  orgActions?: {
+    /** Override "Create Organisation" behavior. Return value unused. */
+    createOrg?: () => void;
+  };
+  /** Append additional sections after the default ones */
+  extraSections?: NavigationSection[];
+}
+
+// --- Default navigation (exported for reuse by SaaS) ---
+
+export const defaultTopNavigation: NavigationItem[] = [
   { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];
 
-const buildingBlocksNavigation = [
+export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
@@ -84,16 +125,30 @@ const buildingBlocksNavigation = [
   { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
 ];
 
-const bottomNavigation = [{ name: "Settings", href: "/settings", icon: Settings }];
+export const defaultBottomNavigation: NavigationItem[] = [
+  { name: "Settings", href: "/settings", icon: Settings },
+];
 
-const durableNavigation = [
+export const defaultDurableNavigation: NavigationItem[] = [
   { name: "Overview", href: "/durable", icon: Cog, exact: true },
   { name: "Workers", href: "/durable/workers", icon: Server },
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
   { name: "Schedules", href: "/durable/schedules", icon: Calendar },
 ];
 
-const devNavigation = [{ name: "Dev Tools", href: "/dev", icon: FlaskConical }];
+export const defaultDevNavigation: NavigationItem[] = [
+  { name: "Dev Tools", href: "/dev", icon: FlaskConical },
+];
+
+export const defaultNavigationSections: NavigationSection[] = [
+  { items: defaultTopNavigation },
+  { label: "Building Blocks", items: defaultBuildingBlocksNavigation },
+  { items: defaultBottomNavigation },
+  { label: "Durable Execution", items: defaultDurableNavigation },
+  { label: "Dev", items: defaultDevNavigation, devOnly: true },
+];
+
+// --- Internal helpers ---
 
 function getInitials(name: string): string {
   if (!name.trim()) return "";
@@ -104,6 +159,64 @@ function getInitials(name: string): string {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+function NavLink({
+  item,
+  pathname,
+  featureFlags,
+}: {
+  item: NavigationItem;
+  pathname: string;
+  featureFlags: FeatureFlags;
+}) {
+  if (item.flag && !featureFlags[item.flag]) return null;
+
+  const isActive = item.exact
+    ? pathname === item.href
+    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
+        isActive
+          ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
+      )}
+    >
+      <item.icon className="h-5 w-5" />
+      {item.name}
+      {item.experimental && <ExperimentalBadge />}
+    </Link>
+  );
+}
+
+function NavSection({
+  section,
+  pathname,
+  featureFlags,
+  isFirst,
+}: {
+  section: NavigationSection;
+  pathname: string;
+  featureFlags: FeatureFlags;
+  isFirst: boolean;
+}) {
+  if (section.devOnly && !isDev) return null;
+
+  return (
+    <>
+      {!isFirst && <div className="my-3 border-t" />}
+      {section.label && (
+        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">{section.label}</p>
+      )}
+      {section.items.map((item) => (
+        <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
+      ))}
+    </>
+  );
 }
 
 function CreateOrganizationDialog({
@@ -167,7 +280,9 @@ function CreateOrganizationDialog({
   );
 }
 
-export function Sidebar() {
+// --- Main component ---
+
+export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, requiresAuth } = useAuth();
@@ -176,10 +291,19 @@ export function Sidebar() {
   const logoutMutation = useLogout();
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
+  const sections = config?.navigation ?? defaultNavigationSections;
+  const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
+
+  const handleCreateOrg = config?.orgActions?.createOrg ?? (() => setCreateOrgOpen(true));
+  const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg;
+
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     router.push("/login");
   };
+
+  // Track visible section index for separator logic
+  let visibleIndex = 0;
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-card">
@@ -220,7 +344,7 @@ export function Sidebar() {
                   ))}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setCreateOrgOpen(true)}>
+                <DropdownMenuItem onClick={handleCreateOrg}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Organisation
                 </DropdownMenuItem>
@@ -232,121 +356,20 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 py-4">
-        {topNavigation
-          .filter((item) => !item.flag || featureFlags[item.flag])
-          .map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
-                )}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.name}
-                {item.experimental && <ExperimentalBadge />}
-              </Link>
-            );
-          })}
-
-        {/* Building Blocks section */}
-        <div className="my-3 border-t" />
-        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Building Blocks</p>
-        {buildingBlocksNavigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        {allSections.map((section, i) => {
+          if (section.devOnly && !isDev) return null;
+          const isFirst = visibleIndex === 0;
+          visibleIndex++;
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-              {item.experimental && <ExperimentalBadge />}
-            </Link>
+            <NavSection
+              key={section.label ?? `section-${i}`}
+              section={section}
+              pathname={pathname}
+              featureFlags={featureFlags}
+              isFirst={isFirst}
+            />
           );
         })}
-
-        {/* Settings */}
-        <div className="my-3 border-t" />
-        {bottomNavigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
-          );
-        })}
-
-        {/* Durable Execution section */}
-        <div className="my-3 border-t" />
-        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Durable Execution</p>
-        {durableNavigation.map((item) => {
-          const isActive = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
-          );
-        })}
-
-        {/* Dev-only navigation */}
-        {isDev && (
-          <>
-            <div className="my-3 border-t" />
-            <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Dev</p>
-            {devNavigation.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </>
-        )}
       </nav>
 
       {/* User menu / Footer */}
@@ -400,8 +423,10 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Create Organisation Dialog */}
-      <CreateOrganizationDialog open={createOrgOpen} onOpenChange={setCreateOrgOpen} />
+      {/* Create Organisation Dialog (only when using default handler) */}
+      {useDefaultCreateOrgDialog && (
+        <CreateOrganizationDialog open={createOrgOpen} onOpenChange={setCreateOrgOpen} />
+      )}
     </div>
   );
 }

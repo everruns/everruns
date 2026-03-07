@@ -1,5 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
+import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
+import { Settings, Zap } from "lucide-react";
 
 // Mock next/navigation
 const mockPathname = jest.fn();
@@ -185,5 +187,129 @@ describe("Sidebar", () => {
 
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-accent");
+  });
+});
+
+describe("Sidebar with config", () => {
+  beforeEach(() => {
+    mockPathname.mockReturnValue("/dashboard");
+    mockPush.mockClear();
+  });
+
+  it("replaces navigation when config.navigation is provided", () => {
+    const customNav: NavigationSection[] = [
+      {
+        label: "Custom",
+        items: [{ name: "Custom Page", href: "/custom", icon: Settings }],
+      },
+    ];
+
+    render(<Sidebar config={{ navigation: customNav }} />);
+
+    expect(screen.getByText("Custom")).toBeInTheDocument();
+    expect(screen.getByText("Custom Page")).toBeInTheDocument();
+    // Default items should not appear
+    expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+  });
+
+  it("appends extraSections after default navigation", () => {
+    const extra: NavigationSection[] = [
+      {
+        label: "Billing",
+        items: [{ name: "Usage", href: "/billing/usage", icon: Zap }],
+      },
+    ];
+
+    render(<Sidebar config={{ extraSections: extra }} />);
+
+    // Default items still present
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Building Blocks")).toBeInTheDocument();
+    // Extra section appended
+    expect(screen.getByText("Billing")).toBeInTheDocument();
+    expect(screen.getByText("Usage")).toBeInTheDocument();
+  });
+
+  it("appends extraSections after custom navigation when both provided", () => {
+    const customNav: NavigationSection[] = [
+      { items: [{ name: "Home", href: "/home", icon: Settings }] },
+    ];
+    const extra: NavigationSection[] = [
+      { label: "Extra", items: [{ name: "Extra Item", href: "/extra", icon: Zap }] },
+    ];
+
+    render(<Sidebar config={{ navigation: customNav, extraSections: extra }} />);
+
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    expect(screen.getByText("Extra")).toBeInTheDocument();
+    expect(screen.getByText("Extra Item")).toBeInTheDocument();
+    // Default items replaced
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+  });
+
+  it("does not render CreateOrganizationDialog when custom createOrg is provided", () => {
+    const createOrgMock = jest.fn();
+    const config: Partial<SidebarConfig> = {
+      orgActions: { createOrg: createOrgMock },
+    };
+
+    render(<Sidebar config={config} />);
+
+    // Dialog title should not be in the DOM when custom handler overrides default
+    expect(screen.queryByText("Create a new organisation")).not.toBeInTheDocument();
+    // The org selector trigger should still render
+    expect(screen.getByText("Test Org")).toBeInTheDocument();
+  });
+
+  it("renders sections without labels (unlabeled sections)", () => {
+    const customNav: NavigationSection[] = [
+      { items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }] },
+    ];
+
+    render(<Sidebar config={{ navigation: customNav }} />);
+
+    expect(screen.getByText("Unlabeled Item")).toBeInTheDocument();
+  });
+
+  it("highlights active item with exact match when exact is true", () => {
+    mockPathname.mockReturnValue("/custom");
+    const customNav: NavigationSection[] = [
+      {
+        items: [
+          { name: "Exact Match", href: "/custom", icon: Settings, exact: true },
+          { name: "Child Page", href: "/custom/child", icon: Zap },
+        ],
+      },
+    ];
+
+    render(<Sidebar config={{ navigation: customNav }} />);
+
+    const exactLink = screen.getByRole("link", { name: /exact match/i });
+    expect(exactLink).toHaveClass("border-accent");
+  });
+
+  it("does not highlight exact-match item on child route", () => {
+    mockPathname.mockReturnValue("/custom/child");
+    const customNav: NavigationSection[] = [
+      {
+        items: [{ name: "Exact Only", href: "/custom", icon: Settings, exact: true }],
+      },
+    ];
+
+    render(<Sidebar config={{ navigation: customNav }} />);
+
+    const link = screen.getByRole("link", { name: /exact only/i });
+    expect(link).not.toHaveClass("border-accent");
+  });
+
+  it("renders empty config same as no config", () => {
+    const { container: withConfig } = render(<Sidebar config={{}} />);
+    const { container: withoutConfig } = render(<Sidebar />);
+
+    // Both should have the same nav items
+    const withConfigLinks = withConfig.querySelectorAll("a");
+    const withoutConfigLinks = withoutConfig.querySelectorAll("a");
+    expect(withConfigLinks.length).toBe(withoutConfigLinks.length);
   });
 });
