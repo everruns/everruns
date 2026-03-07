@@ -129,18 +129,18 @@ BRAVE_SEARCH_API_KEY=<key> cargo test -p everruns-integrations-brave-search --fe
 
 Tests: `smoke_basic_search`, `smoke_freshness_filter`, `smoke_pagination` in `tests/smoke_real_api.rs`.
 
-Tests use a `require_api_key!` macro that gracefully skips (returns early with a message) when `BRAVE_SEARCH_API_KEY` is unset or empty. This prevents CI failures when the secret is not yet configured while still compiling the test code.
+Tests use a `require_api_key!` macro that panics when `BRAVE_SEARCH_API_KEY` is unset or empty, preventing silent failures in CI.
 
 ### CI
 
 Dedicated workflow `.github/workflows/brave-search-integration.yml`:
 
 - **Path-filtered**: only triggers when `integrations/brave-search/**` changes.
-- Reads `BRAVE_SEARCH_API_KEY` from GitHub Actions secrets.
+- Fetches `BRAVE_SEARCH_API_KEY` from Doppler via `DOPPLER_TOKEN` GitHub Actions secret.
+- Fails if `DOPPLER_TOKEN` is not set (required, not optional).
 - Passes `--features integration` to compile and run the real-API tests.
-- If the secret is missing, tests compile and pass (skipped), ensuring CI stays green.
 
-Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, use a skip macro for missing keys, add a path-filtered workflow, store the key in GitHub secrets.
+Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, use a panic macro for missing keys, add a path-filtered workflow, fetch the key from Doppler.
 
 ## Crate Structure
 
@@ -152,8 +152,9 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 
 | File | Purpose |
 |------|---------|
-| `src/lib.rs` | Plugin registration, constants, `BraveSearchCapability` impl |
+| `src/lib.rs` | Plugin registration (capability + connection provider), constants, `BraveSearchCapability` impl |
 | `src/client.rs` | `BraveSearchClient` HTTP client, API response types |
+| `src/connection.rs` | `BraveSearchConnectionProvider` — form schema, validation |
 | `src/tools.rs` | `BraveWebSearchTool` implementation, API key resolution |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 | `tests/smoke_real_api.rs` | Real-API smoke tests (behind `integration` feature) |
