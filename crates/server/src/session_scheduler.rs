@@ -134,6 +134,7 @@ async fn poll_and_trigger(
             thinking_signature: None,
             controls: None,
             metadata: Some(metadata),
+            external_actor: None,
             created_at: now,
         };
 

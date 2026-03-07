@@ -54,6 +54,38 @@ impl From<&str> for MessageRole {
 }
 
 // ============================================
+// External Actor (channel-agnostic user identity)
+// ============================================
+
+/// External actor identity for messages originating from external channels
+/// (Slack, Discord, Teams, etc.).
+///
+/// Channel adapters populate this to identify the sender without coupling
+/// core logic to any specific channel. The ReasonAtom uses this to prefix
+/// user messages so the LLM knows who is speaking.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ExternalActor {
+    /// Opaque actor identifier from the source channel (e.g. Slack user ID "U0123456789")
+    pub actor_id: String,
+    /// Resolved display name (e.g. "Alice"). Falls back to actor_id if absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_name: Option<String>,
+    /// Source channel identifier (e.g. "slack", "discord")
+    pub source: String,
+    /// Channel-specific metadata (e.g. team_id, channel_id)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+}
+
+impl ExternalActor {
+    /// Human-readable label: display name if available, otherwise actor_id.
+    pub fn display_label(&self) -> &str {
+        self.actor_name.as_deref().unwrap_or(&self.actor_id)
+    }
+}
+
+// ============================================
 // Controls (runtime options for message processing)
 // ============================================
 
@@ -114,6 +146,10 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+
+    /// External actor identity (for messages from external channels like Slack)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_actor: Option<ExternalActor>,
 
     /// Timestamp when the message was created
     pub created_at: DateTime<Utc>,
@@ -488,6 +524,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }
@@ -502,6 +539,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }
@@ -536,6 +574,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }
@@ -550,6 +589,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }
@@ -573,6 +613,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }
@@ -607,6 +648,7 @@ impl Message {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         }
     }

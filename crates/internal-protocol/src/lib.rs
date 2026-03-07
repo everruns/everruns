@@ -456,6 +456,13 @@ pub fn proto_message_to_schema(
         .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()?;
 
+    // Convert prost Struct to ExternalActor
+    let external_actor: Option<everruns_core::ExternalActor> = value
+        .external_actor
+        .as_ref()
+        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
+        .transpose()?;
+
     let role = parse_message_role(&value.role);
 
     Ok(everruns_core::Message {
@@ -466,6 +473,7 @@ pub fn proto_message_to_schema(
         thinking_signature: value.thinking_signature,
         controls,
         metadata,
+        external_actor,
         created_at,
     })
 }
@@ -488,6 +496,12 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         json_to_proto_struct(&json)
     });
 
+    // Convert external_actor to Struct
+    let external_actor = value.external_actor.as_ref().map(|ea| {
+        let json = serde_json::to_value(ea).unwrap_or_default();
+        json_to_proto_struct(&json)
+    });
+
     proto::Message {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         role: value.role.to_string(),
@@ -497,6 +511,7 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         thinking: value.thinking.clone(),
         thinking_signature: value.thinking_signature.clone(),
+        external_actor,
     }
 }
 
@@ -1134,6 +1149,7 @@ mod tests {
             thinking_signature: Some("test_signature_abc123".to_string()),
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         };
 
@@ -1170,6 +1186,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: Utc::now(),
         };
 
@@ -1184,5 +1201,78 @@ mod tests {
 
         // Verify thinking field remains None
         assert_eq!(schema_message.thinking, None);
+    }
+
+    #[test]
+    fn test_external_actor_proto_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, ExternalActor, Message, MessageRole};
+        use uuid::Uuid;
+
+        let actor = ExternalActor {
+            actor_id: "U0123456789".to_string(),
+            actor_name: Some("Alice".to_string()),
+            source: "slack".to_string(),
+            metadata: Some(
+                [("channel".to_string(), "C999".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
+        };
+
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::User,
+            content: vec![ContentPart::text("Hello")],
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            external_actor: Some(actor.clone()),
+            created_at: Utc::now(),
+        };
+
+        let proto_message = schema_message_to_proto(&message);
+        assert!(proto_message.external_actor.is_some());
+
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+        let roundtripped = schema_message.external_actor.unwrap();
+        assert_eq!(roundtripped.actor_id, "U0123456789");
+        assert_eq!(roundtripped.actor_name, Some("Alice".to_string()));
+        assert_eq!(roundtripped.source, "slack");
+        assert_eq!(
+            roundtripped
+                .metadata
+                .as_ref()
+                .unwrap()
+                .get("channel")
+                .unwrap(),
+            "C999"
+        );
+    }
+
+    #[test]
+    fn test_external_actor_none_proto_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use uuid::Uuid;
+
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::User,
+            content: vec![ContentPart::text("Hello")],
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            external_actor: None,
+            created_at: Utc::now(),
+        };
+
+        let proto_message = schema_message_to_proto(&message);
+        assert!(proto_message.external_actor.is_none());
+
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+        assert!(schema_message.external_actor.is_none());
     }
 }

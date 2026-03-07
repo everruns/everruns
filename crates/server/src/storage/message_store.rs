@@ -61,6 +61,7 @@ impl DbMessageRetriever {
             thinking_signature: None,
             controls: input.controls,
             metadata: input.metadata,
+            external_actor: None,
             created_at: Utc::now(),
         };
 

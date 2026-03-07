@@ -63,10 +63,26 @@ Apps page at `/apps` with:
 - Webhook URL display (for copying into Slack app config)
 - Delete confirmation
 
+## User Identity
+
+Slack user identity is carried via the channel-agnostic `ExternalActor` struct (see `crates/core/src/message.rs`). The Slack handler:
+
+1. Resolves Slack user ID → display name via `users.info` API (requires `users:read` scope)
+2. Populates `ExternalActor { actor_id, actor_name, source: "slack", metadata }` on the message
+3. The `ReasonAtom` generically prefixes user messages with `[display_label]` so the LLM knows who is speaking
+
+Display name resolution uses an in-memory cache with:
+- Successful lookups cached permanently (per instance lifetime)
+- Permanent API errors (`missing_scope`, `invalid_auth`, etc.) cached as `None` to avoid repeated calls
+- Transient network errors not cached (allow retry)
+
+This is channel-agnostic — any future channel adapter (Discord, Teams) populates the same `ExternalActor` struct and gets the same LLM prefix behavior.
+
 ## Files
 
 - `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` types
-- `crates/server/src/api/slack_events.rs` - Webhook endpoint, signing verification, session routing
+- `crates/core/src/message.rs` - `ExternalActor` struct
+- `crates/server/src/api/slack_events.rs` - Webhook endpoint, signing verification, session routing, user name resolution
 - `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
 - `apps/ui/src/app/(main)/apps/page.tsx` - Apps UI page
 - `apps/ui/src/lib/api/apps.ts` - App API functions

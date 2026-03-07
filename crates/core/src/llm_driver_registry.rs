@@ -281,6 +281,33 @@ impl LlmMessage {
     pub fn content_as_text(&self) -> String {
         self.content.to_text()
     }
+
+    /// Prepend a prefix to the first text content.
+    ///
+    /// Used by ReasonAtom to inject external actor identity (e.g. "[Alice] ")
+    /// into user messages from external channels.
+    pub fn prepend_text_prefix(&mut self, prefix: &str) {
+        match &mut self.content {
+            LlmMessageContent::Text(text) => {
+                *text = format!("{}{}", prefix, text);
+            }
+            LlmMessageContent::Parts(parts) => {
+                for part in parts.iter_mut() {
+                    if let LlmContentPart::Text { text } = part {
+                        *text = format!("{}{}", prefix, text);
+                        return;
+                    }
+                }
+                // No text part found — prepend one
+                parts.insert(
+                    0,
+                    LlmContentPart::Text {
+                        text: prefix.to_string(),
+                    },
+                );
+            }
+        }
+    }
 }
 
 /// Message content - either a simple string or array of content parts
@@ -1085,6 +1112,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1103,6 +1131,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1134,6 +1163,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1155,6 +1185,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1187,6 +1218,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1228,6 +1260,7 @@ mod tests {
             thinking_signature: None,
             controls: None,
             metadata: None,
+            external_actor: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -1249,6 +1282,61 @@ mod tests {
                     panic!("Expected text placeholder for missing image");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_prepend_text_prefix_simple_text() {
+        let mut msg = LlmMessage::text(LlmMessageRole::User, "Hello bot");
+        msg.prepend_text_prefix("[Alice] ");
+        assert_eq!(msg.content_as_text(), "[Alice] Hello bot");
+    }
+
+    #[test]
+    fn test_prepend_text_prefix_parts() {
+        let mut msg = LlmMessage::parts(
+            LlmMessageRole::User,
+            vec![
+                LlmContentPart::Text {
+                    text: "Hello".to_string(),
+                },
+                LlmContentPart::Image {
+                    url: "data:image/png;base64,abc".to_string(),
+                },
+            ],
+        );
+        msg.prepend_text_prefix("[Bob] ");
+        match &msg.content {
+            LlmMessageContent::Parts(parts) => {
+                if let LlmContentPart::Text { text } = &parts[0] {
+                    assert_eq!(text, "[Bob] Hello");
+                } else {
+                    panic!("Expected text part");
+                }
+            }
+            _ => panic!("Expected parts content"),
+        }
+    }
+
+    #[test]
+    fn test_prepend_text_prefix_parts_no_text() {
+        let mut msg = LlmMessage::parts(
+            LlmMessageRole::User,
+            vec![LlmContentPart::Image {
+                url: "data:image/png;base64,abc".to_string(),
+            }],
+        );
+        msg.prepend_text_prefix("[Eve] ");
+        match &msg.content {
+            LlmMessageContent::Parts(parts) => {
+                assert_eq!(parts.len(), 2);
+                if let LlmContentPart::Text { text } = &parts[0] {
+                    assert_eq!(text, "[Eve] ");
+                } else {
+                    panic!("Expected prepended text part");
+                }
+            }
+            _ => panic!("Expected parts content"),
         }
     }
 }
