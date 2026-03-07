@@ -754,4 +754,20 @@ mod tests {
             "tool_search should be kept for gpt-5.4 (supported)"
         );
     }
+
+    #[test]
+    fn test_build_clears_tool_search_for_non_openai_model() {
+        let agent = RuntimeAgentBuilder::new()
+            .model("claude-sonnet-4-5-20250514")
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            })
+            .build();
+
+        assert!(
+            agent.tool_search.is_none(),
+            "tool_search should be cleared for non-OpenAI models"
+        );
+    }
 }
