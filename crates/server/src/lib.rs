@@ -56,6 +56,9 @@ pub mod session_scheduler;
 pub mod server;
 pub use server::ServerConfig;
 
+// Valkey (Redis-compatible) client for distributed rate limiting
+pub mod valkey;
+
 // App builder for composable server configurations
 pub mod app_builder;
 pub use app_builder::{ServerAppBuilder, ServerContext};

@@ -16,6 +16,19 @@ services:
       timeout: 5s
       retries: 5
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: everruns-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   jaeger:
     image: jaegertracing/jaeger:2.4.0
     container_name: everruns-jaeger
@@ -29,3 +42,4 @@ services:
 
 volumes:
   postgres_data:
+  valkey_data:

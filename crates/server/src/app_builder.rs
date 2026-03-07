@@ -299,13 +299,18 @@ impl ServerAppBuilder {
         };
 
         // =====================================================================
-        // Phase 3: Authentication
+        // Phase 3: Valkey + Authentication
         // =====================================================================
+        let valkey_client = crate::valkey::from_env()
+            .await
+            .context("Failed to initialize Valkey client")?;
+
         let auth_config = auth::AuthConfig::from_env();
         tracing::info!(
             mode = ?auth_config.mode,
             password_auth = auth_config.password_auth_enabled(),
             oauth = auth_config.oauth_enabled(),
+            distributed_rate_limiting = valkey_client.is_some(),
             "Authentication configured"
         );
 
@@ -313,7 +318,15 @@ impl ServerAppBuilder {
             Some(factory) => factory(db.clone()),
             None => {
                 let cfg = auth_config.clone();
-                Arc::new(auth::BuiltinAuthBackend::new(cfg, db.clone()))
+                if let Some(valkey) = valkey_client {
+                    Arc::new(auth::BuiltinAuthBackend::with_valkey(
+                        cfg,
+                        db.clone(),
+                        valkey,
+                    ))
+                } else {
+                    Arc::new(auth::BuiltinAuthBackend::new(cfg, db.clone()))
+                }
             }
         };
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());

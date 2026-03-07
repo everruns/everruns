@@ -133,36 +133,26 @@ Workers ──gRPC──► Control-Plane ──► PostgreSQL
 
 For per-worker LLM rate limiting (TPM/RPM), the control-plane mediates: workers request a rate-limit token via gRPC before calling the LLM provider. Adds ~1ms round-trip (negligible vs 500ms+ LLM latency). Keeps Valkey access centralized; workers need zero infrastructure beyond gRPC.
 
-## Recommendation
+## Current State: Valkey Added for Distributed Rate Limiting
 
-### Don't Add Redis Yet
+Valkey has been added as the first Redis-compatible dependency, specifically for distributed rate limiting across 10+ control-plane instances.
 
-**Rationale:**
-1. **Operational simplicity** — One fewer dependency to deploy, monitor, back up, secure. This was the explicit design philosophy (dismissed Temporal for the same reason).
-2. **Per-instance rate limiting is adequate** — Auth-only rate limits with small instance counts. The blast radius of N× overshoot on login attempts is minimal.
-3. **In-process caching suffices** — `moka` or `mini-moka` crate gives TTL-based LRU per instance. Config data tolerates seconds of staleness.
-4. **NOTIFY works** — Current event volumes don't stress the 8KB limit or listener reliability.
+### What Was Done
 
-### Add Redis When (Trigger Conditions)
+- **Crate**: `fred` v10 with `enable-rustls-ring` and `i-scripts` features (Lua scripting for atomic rate limit operations)
+- **Module**: `crates/server/src/valkey.rs` — `ValkeyClient` wrapper with sliding-window rate limiting via Lua script
+- **Dual backend**: `AuthRateLimiter` supports both in-memory (governor) and Valkey backends. When `VALKEY_URL` is set, uses Valkey; otherwise falls back to per-instance in-memory limiting
+- **Fail-open**: On Valkey errors, requests are allowed (availability > strictness)
+- **Infrastructure**: Added to `local/docker-compose.yml`, `examples/docker-compose-full.yaml`, `.env.example`, `scripts/lib/services.sh`, and no-docker-setup scripts
+
+### Remaining Trigger Conditions
 
 | Trigger | Signal | Action |
 |---------|--------|--------|
-| Per-org API rate limits ship | Product decision to enforce tenant quotas | Add Redis for distributed token bucket |
-| Per-org LLM budgets ship | Need cross-worker TPM/RPM coordination | Add Redis for sliding-window counters |
-| `GetTurnContext` becomes hot | P99 > 50ms or PG CPU > 60% from config reads | Add Redis read-through cache |
-| 10+ control-plane instances | Per-instance rate limiting error exceeds 10× | Add Redis for coordinated limits |
-| Event throughput > 1000/s sustained | PgListener reconnect gaps cause visible latency | Evaluate Redis Streams |
-
-### If/When We Add It
-
-**Prefer Valkey over Redis.** Valkey is the community fork (Linux Foundation) after Redis relicensed (SSPL). API-compatible, actively maintained, no licensing concerns.
-
-**Start with a single use case** (likely distributed rate limiting), not a wholesale migration. Keep PostgreSQL as source of truth. Redis is a cache/coordinator, never the primary store.
-
-**Crate options:**
-- `fred` — Full-featured async Redis client, cluster support, Lua scripting
-- `redis-rs` — Widely used, lighter weight
-- `deadpool-redis` — Connection pooling
+| Per-org API rate limits ship | Product decision to enforce tenant quotas | Extend Valkey rate limiting to API endpoints |
+| Per-org LLM budgets ship | Need cross-worker TPM/RPM coordination | Add Valkey sliding-window counters for LLM |
+| `GetTurnContext` becomes hot | P99 > 50ms or PG CPU > 60% from config reads | Add Valkey read-through cache |
+| Event throughput > 1000/s sustained | PgListener reconnect gaps cause visible latency | Evaluate Valkey Streams |
 
 ## What NOT to Use Redis For
 

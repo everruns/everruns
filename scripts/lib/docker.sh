@@ -13,6 +13,7 @@ case "$cmd" in
     "${DOCKER_COMPOSE[@]}" up -d
     echo "✅ Services started!"
     echo "   - Postgres: localhost:5432"
+    echo "   - Valkey:   localhost:6379"
     echo "   - Jaeger UI: http://localhost:16686"
     echo "   - OTLP gRPC: localhost:4317"
     ;;

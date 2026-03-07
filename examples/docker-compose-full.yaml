@@ -2,6 +2,7 @@
 #
 # This configuration deploys the complete Everruns platform:
 # - PostgreSQL database
+# - Valkey (distributed rate limiting)
 # - Server (control plane): HTTP API + gRPC server
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
@@ -50,6 +51,21 @@ services:
       retries: 10
 
   # ==========================================================================
+  # Valkey (distributed rate limiting)
+  # ==========================================================================
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: everruns-valkey
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ==========================================================================
   # Server (Control Plane) - HTTP API + gRPC server
   # Note: Migrations are auto-applied on startup
   # ==========================================================================
@@ -58,6 +74,7 @@ services:
     container_name: everruns-server
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
+      VALKEY_URL: redis://valkey:6379
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
@@ -69,6 +86,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       postgres:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -204,3 +223,4 @@ configs:
 
 volumes:
   postgres_data:
+  valkey_data:

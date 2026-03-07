@@ -386,11 +386,12 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 ### Infrastructure
 
-1. **Local Development**: Docker Compose in `local/` for Postgres, Jaeger
+1. **Local Development**: Docker Compose in `local/` for Postgres, Valkey, Jaeger
 2. **Dev Mode**: In-memory storage mode for quick local development without PostgreSQL
 3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 4. **License Compliance**: cargo-deny for dependency license checking
 5. **Secrets Management**: [Doppler](https://www.doppler.com/) for development secrets (API keys, tokens). Project: `everruns-dev`, config: `dev`. Use `doppler run -- <command>` to inject secrets into processes.
+6. **Valkey**: Redis-compatible key-value store (Linux Foundation fork) for distributed rate limiting across control-plane instances. Optional — when `VALKEY_URL` is not set, rate limiting falls back to in-memory governor (per-instance). See `crates/server/src/valkey.rs`.
 
 ### Development Mode (DEV_MODE)
 
@@ -630,6 +631,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 | Worker registration | Database-backed, any server can serve any worker |
 | PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
 | PgListener (event_available) | Same; SSE clients on any instance see all events |
+| Rate limiting (Valkey) | Shared sliding-window counters when `VALKEY_URL` set |
 
 ### Configuration (`EXPECTED_INSTANCES`)
 

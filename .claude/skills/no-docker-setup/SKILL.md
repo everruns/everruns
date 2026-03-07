@@ -1,11 +1,11 @@
 ---
 name: no-docker-setup
-description: Set up full production-like backend (PostgreSQL + Caddy + API + Worker) without Docker. Use for testing durable workflows, database persistence, SSE through proxy, or when DEV_MODE is insufficient.
+description: Set up full production-like backend (PostgreSQL + Valkey + Caddy + API + Worker) without Docker. Use for testing durable workflows, database persistence, SSE through proxy, or when DEV_MODE is insufficient.
 ---
 
 # No-Docker Setup
 
-**Full production-like backend** without Docker: PostgreSQL + Caddy + API + Worker.
+**Full production-like backend** without Docker: PostgreSQL + Valkey + Caddy + API + Worker.
 
 ## When to Use
 
@@ -18,10 +18,11 @@ description: Set up full production-like backend (PostgreSQL + Caddy + API + Wor
 ## What It Does
 
 1. Sets up fresh PostgreSQL cluster at `/tmp/pgdata`
-2. Installs and starts Caddy reverse proxy on `:9300`
+2. Installs and starts Valkey for distributed rate limiting (falls back to redis-server if available)
+3. Installs and starts Caddy reverse proxy on `:9300`
    - Routes `/api/*` to `:9000` (strips prefix)
    - Disables response buffering for SSE streaming
-3. Runs `just start-all --no-watch --no-docker --no-ui`
+4. Runs `just start-all --no-watch --no-docker --no-ui`
    - API server auto-applies migrations on startup
    - Starts API server (port 9000)
    - Starts Worker (port 9001)
@@ -51,6 +52,8 @@ Caddy is auto-installed if not present.
 Client (:9300) → Caddy (proxy) → API (:9000) → Worker (:9001)
                                      ↓
                                PostgreSQL (:5432)
+                                     ↓
+                               Valkey (:6379, optional)
 ```
 
 ### SSE Through Proxy

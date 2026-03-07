@@ -163,7 +163,7 @@ async fn rate_limit_login(
     next: Next,
 ) -> Response {
     let ip = extract_client_ip(&req);
-    if let Err(e) = state.rate_limiter.check_login(ip) {
+    if let Err(e) = state.rate_limiter.check_login(ip).await {
         return e.into();
     }
     next.run(req).await
@@ -176,7 +176,7 @@ async fn rate_limit_register(
     next: Next,
 ) -> Response {
     let ip = extract_client_ip(&req);
-    if let Err(e) = state.rate_limiter.check_register(ip) {
+    if let Err(e) = state.rate_limiter.check_register(ip).await {
         return e.into();
     }
     next.run(req).await
@@ -189,7 +189,7 @@ async fn rate_limit_refresh(
     next: Next,
 ) -> Response {
     let ip = extract_client_ip(&req);
-    if let Err(e) = state.rate_limiter.check_refresh(ip) {
+    if let Err(e) = state.rate_limiter.check_refresh(ip).await {
         return e.into();
     }
     next.run(req).await
