@@ -1,5 +1,9 @@
 // Skill service for business logic
 // Handles skill CRUD, SKILL.md parsing, and ZIP archive extraction
+//
+// Design: In-process moka cache keyed on org_id for skill listings.
+// Skills change infrequently but are fetched on every agent run (capability listing).
+// Cache uses 5-min TTL; invalidated on create/update/delete.
 
 use crate::api::skills::{CreateSkillRequest, UpdateSkillRequest};
 use crate::storage::{
@@ -11,9 +15,11 @@ use everruns_core::{
     Skill, SkillContent, SkillFileEntry, SkillId, SkillSourceType, SkillStatus,
     SkillValidationResult, parse_skill_md, validate_skill_md,
 };
+use moka::future::Cache;
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 /// Max ZIP archive size (10 MB)
@@ -25,13 +31,27 @@ const MAX_FILE_COUNT: usize = 100;
 /// Max total decompressed size (10 MB)
 const MAX_DECOMPRESSED_SIZE: usize = 10 * 1024 * 1024;
 
+/// Cache TTL for skill listings per org
+const SKILL_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+
 pub struct SkillService {
     db: Arc<StorageBackend>,
+    /// Cache: org_id -> Vec<Skill>
+    list_cache: Cache<i64, Arc<Vec<Skill>>>,
 }
 
 impl SkillService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        let list_cache = Cache::builder()
+            .time_to_live(SKILL_CACHE_TTL)
+            .max_capacity(1_000)
+            .build();
+        Self { db, list_cache }
+    }
+
+    /// Invalidate the cached skill list for an org
+    async fn invalidate_cache(&self, org_id: i64) {
+        self.list_cache.invalidate(&org_id).await;
     }
 
     /// Create a skill from SKILL.md content
@@ -71,6 +91,7 @@ impl SkillService {
         };
 
         let row = self.db.create_skill(org_id, input).await?;
+        self.invalidate_cache(org_id).await;
         Ok(Self::row_to_skill(&row))
     }
 
@@ -150,6 +171,7 @@ impl SkillService {
             self.db.create_skill_file(input).await?;
         }
 
+        self.invalidate_cache(org_id).await;
         Ok(Self::row_to_skill(&row))
     }
 
@@ -159,8 +181,16 @@ impl SkillService {
     }
 
     pub async fn list(&self, org_id: i64) -> Result<Vec<Skill>> {
+        if let Some(cached) = self.list_cache.get(&org_id).await {
+            return Ok((*cached).clone());
+        }
+
         let rows = self.db.list_skills(org_id).await?;
-        Ok(rows.iter().map(Self::row_to_skill).collect())
+        let skills: Vec<Skill> = rows.iter().map(Self::row_to_skill).collect();
+        self.list_cache
+            .insert(org_id, Arc::new(skills.clone()))
+            .await;
+        Ok(skills)
     }
 
     /// Get full skill content (SKILL.md + files)
@@ -255,11 +285,14 @@ impl SkillService {
         }
 
         let row = self.db.update_skill(org_id, id, input).await?;
+        self.invalidate_cache(org_id).await;
         Ok(row.as_ref().map(Self::row_to_skill))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_skill(org_id, id).await
+        let result = self.db.delete_skill(org_id, id).await?;
+        self.invalidate_cache(org_id).await;
+        Ok(result)
     }
 
     pub fn validate(&self, skill_md: &str) -> SkillValidationResult {
@@ -513,5 +546,209 @@ mod tests {
         let result = extract_zip_archive(&data);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too large"));
+    }
+
+    // ========================================================================
+    // Cache tests
+    // ========================================================================
+
+    use crate::api::skills::CreateSkillRequest;
+    use crate::storage::StorageBackend;
+    use crate::storage::memory::InMemoryDatabase;
+
+    fn test_skill_md(name: &str) -> String {
+        format!("---\nname: {name}\ndescription: A test skill.\n---\n\nInstructions for {name}.")
+    }
+
+    fn make_service() -> SkillService {
+        let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
+        SkillService::new(db)
+    }
+
+    /// Helper to check if org_id is cached (avoids type inference issues in assert!)
+    async fn is_cached(svc: &SkillService, org_id: i64) -> bool {
+        let val: Option<Arc<Vec<Skill>>> = svc.list_cache.get(&org_id).await;
+        val.is_some()
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss_populates_cache() {
+        let svc = make_service();
+        let org_id = 1;
+
+        // Create a skill directly
+        let req = CreateSkillRequest {
+            skill_md: test_skill_md("cache-test"),
+        };
+        svc.create(org_id, req).await.unwrap();
+
+        // Cache should have been invalidated by create, so list should query DB
+        assert!(!is_cached(&svc, org_id).await);
+
+        // First list call populates cache
+        let skills = svc.list(org_id).await.unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "cache-test");
+
+        // Cache should now be populated
+        assert!(is_cached(&svc, org_id).await);
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_returns_cached_skills() {
+        let svc = make_service();
+        let org_id = 1;
+
+        // Create a skill
+        let req = CreateSkillRequest {
+            skill_md: test_skill_md("cached-skill"),
+        };
+        svc.create(org_id, req).await.unwrap();
+
+        // First list populates cache
+        let first = svc.list(org_id).await.unwrap();
+        assert_eq!(first.len(), 1);
+
+        // Insert a skill directly into DB to prove cache is being used
+        // (if cache weren't used, we'd see 2 skills)
+        let input = crate::storage::models::CreateSkillRow {
+            public_id: SkillId::new().to_string(),
+            name: "sneaky-skill".to_string(),
+            description: "Should not appear in cached list".to_string(),
+            license: None,
+            compatibility: None,
+            metadata: serde_json::json!({}),
+            allowed_tools: None,
+            instructions: "Hidden".to_string(),
+            source_type: "markdown".to_string(),
+            archive_data: None,
+            version: "1.0.0".to_string(),
+        };
+        svc.db.create_skill(org_id, input).await.unwrap();
+
+        // Second list should return cached result (1 skill, not 2)
+        let second = svc.list(org_id).await.unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].name, "cached-skill");
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidation_on_create() {
+        let svc = make_service();
+        let org_id = 1;
+
+        // Create first skill and populate cache
+        let req = CreateSkillRequest {
+            skill_md: test_skill_md("skill-one"),
+        };
+        svc.create(org_id, req).await.unwrap();
+        let skills = svc.list(org_id).await.unwrap();
+        assert_eq!(skills.len(), 1);
+        assert!(is_cached(&svc, org_id).await);
+
+        // Create second skill - should invalidate cache
+        let req2 = CreateSkillRequest {
+            skill_md: test_skill_md("skill-two"),
+        };
+        svc.create(org_id, req2).await.unwrap();
+        assert!(!is_cached(&svc, org_id).await);
+
+        // Next list should show both skills
+        let skills = svc.list(org_id).await.unwrap();
+        assert_eq!(skills.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidation_on_update() {
+        let svc = make_service();
+        let org_id = 1;
+
+        let req = CreateSkillRequest {
+            skill_md: test_skill_md("update-me"),
+        };
+        let skill = svc.create(org_id, req).await.unwrap();
+
+        // Populate cache
+        svc.list(org_id).await.unwrap();
+        assert!(is_cached(&svc, org_id).await);
+
+        // Update skill - should invalidate cache
+        let update_req = crate::api::skills::UpdateSkillRequest {
+            skill_md: Some(test_skill_md("updated-name")),
+            status: None,
+        };
+        svc.update(org_id, skill.id.uuid(), update_req)
+            .await
+            .unwrap();
+        assert!(!is_cached(&svc, org_id).await);
+
+        // Next list should reflect the update
+        let skills = svc.list(org_id).await.unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "updated-name");
+    }
+
+    #[tokio::test]
+    async fn test_cache_invalidation_on_delete() {
+        let svc = make_service();
+        let org_id = 1;
+
+        let req = CreateSkillRequest {
+            skill_md: test_skill_md("delete-me"),
+        };
+        let skill = svc.create(org_id, req).await.unwrap();
+
+        // Populate cache
+        svc.list(org_id).await.unwrap();
+        assert!(is_cached(&svc, org_id).await);
+
+        // Delete skill - should invalidate cache
+        let deleted = svc.delete(org_id, skill.id.uuid()).await.unwrap();
+        assert!(deleted);
+        assert!(!is_cached(&svc, org_id).await);
+
+        // Next list should be empty
+        let skills = svc.list(org_id).await.unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cache_independent_per_org() {
+        let svc = make_service();
+        let org_a = 1;
+        let org_b = 2;
+
+        // Create skill in org A
+        let req_a = CreateSkillRequest {
+            skill_md: test_skill_md("org-a-skill"),
+        };
+        svc.create(org_a, req_a).await.unwrap();
+
+        // Create skill in org B
+        let req_b = CreateSkillRequest {
+            skill_md: test_skill_md("org-b-skill"),
+        };
+        svc.create(org_b, req_b).await.unwrap();
+
+        // Populate both caches
+        let skills_a = svc.list(org_a).await.unwrap();
+        let skills_b = svc.list(org_b).await.unwrap();
+        assert_eq!(skills_a.len(), 1);
+        assert_eq!(skills_b.len(), 1);
+        assert_eq!(skills_a[0].name, "org-a-skill");
+        assert_eq!(skills_b[0].name, "org-b-skill");
+
+        // Invalidating org A should not affect org B
+        let req_a2 = CreateSkillRequest {
+            skill_md: test_skill_md("org-a-skill-2"),
+        };
+        svc.create(org_a, req_a2).await.unwrap();
+        assert!(!is_cached(&svc, org_a).await);
+        assert!(is_cached(&svc, org_b).await);
+
+        // Org B still returns cached result
+        let skills_b_cached = svc.list(org_b).await.unwrap();
+        assert_eq!(skills_b_cached.len(), 1);
+        assert_eq!(skills_b_cached[0].name, "org-b-skill");
     }
 }
