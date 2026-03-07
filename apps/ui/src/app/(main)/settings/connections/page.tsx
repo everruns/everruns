@@ -23,7 +23,16 @@ import {
   useCreateApiKeyConnection,
 } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, Search, AlertCircle } from "lucide-react";
+import {
+  ExternalLink,
+  Github,
+  LinkIcon,
+  Trash2,
+  Check,
+  Cloud,
+  Search,
+  AlertCircle,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
