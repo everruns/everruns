@@ -10,6 +10,8 @@ fi
 
 echo "SCCACHE_BUCKET=$(doppler secrets get SCCACHE_BUCKET --plain)"
 echo "SCCACHE_REGION=$(doppler secrets get SCCACHE_REGION --plain)"
-echo "SCCACHE_S3_KEY_PREFIX=$(doppler secrets get SCCACHE_S3_KEY_PREFIX --plain)"
+# SCCACHE_S3_KEY_PREFIX is optional; default to "sccache" if not set in Doppler
+KEY_PREFIX=$(doppler secrets get SCCACHE_S3_KEY_PREFIX --plain 2>/dev/null || echo "sccache")
+echo "SCCACHE_S3_KEY_PREFIX=${KEY_PREFIX}"
 echo "AWS_ACCESS_KEY_ID=$(doppler secrets get SCCACHE_AWS_ACCESS_KEY_ID --plain)"
 echo "AWS_SECRET_ACCESS_KEY=$(doppler secrets get SCCACHE_AWS_SECRET_ACCESS_KEY --plain)"

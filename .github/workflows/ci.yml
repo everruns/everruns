@@ -88,6 +88,8 @@ jobs:
 
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
+        env:
+          RUSTC_WRAPPER: ""
 
   clippy:
     name: Clippy Lints
