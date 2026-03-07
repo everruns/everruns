@@ -23,7 +23,7 @@ import {
   useCreateApiKeyConnection,
 } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
-import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, AlertCircle } from "lucide-react";
+import { ExternalLink, Github, LinkIcon, Trash2, Check, Cloud, Search, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
@@ -33,6 +33,7 @@ import { getCapabilityIcon } from "@/lib/capability-icons";
 const iconMap: Record<string, LucideIcon> = {
   github: Github,
   cloud: Cloud,
+  search: Search,
   daytona: getCapabilityIcon("daytona"),
 };
 

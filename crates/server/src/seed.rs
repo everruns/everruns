@@ -54,6 +54,7 @@ mod seed_ids {
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
+    pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -845,6 +846,49 @@ All tool results include UI links so you can point users to the web interface."#
             "current_time",
         ],
         dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::WEB_RESEARCHER_AGENT,
+        name: "Web Researcher",
+        description: "An agent that searches the web using Brave Search to find current information, news, and documentation. Always cites sources with links.",
+        system_prompt: r#"You are a Web Researcher Agent. You search the web using Brave Search to find
+current, accurate information for any topic.
+
+## How You Work
+
+1. **Search the web** using `brave_web_search` to find relevant results
+2. **Synthesize** findings into clear, well-organized responses
+3. **Always cite sources** — include the URL for every piece of information
+
+## Guidelines
+
+- Use multiple searches to cross-reference information when needed
+- Use the `freshness` parameter for time-sensitive queries (e.g., "pd" for past day, "pw" for past week)
+- Always include source URLs so the user can verify information
+- Format citations as markdown links: [Title](url)
+- If search results are insufficient, say so honestly rather than speculating
+- For broad topics, break them into specific sub-queries for better results
+
+## Response Format
+
+Structure your responses with:
+- A concise summary at the top
+- Detailed findings organized by subtopic
+- A **Sources** section at the bottom listing all referenced URLs
+
+## Example Sources Section
+
+**Sources:**
+- [Article Title](https://example.com/article)
+- [Another Source](https://example.com/source)
+
+## Prerequisites
+
+Brave Search API key must be configured in Settings > Connections.
+Get a free key at https://brave.com/search/api/"#,
+        tags: &["research", "search", "web", "demo", "seed"],
+        capabilities: &["brave_search", "stateless_todo_list", "current_time"],
+        dev_only: true,
     },
 ];
 
