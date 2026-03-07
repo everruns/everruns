@@ -28,15 +28,15 @@ export function ExperimentalBadge() {
 }
 
 /**
- * Handwritten-style "Experimental" stamp for page headers.
- * Uses Caveat font loaded from Google Fonts via CSS.
+ * Page-level experimental badge — small Caveat-font label
+ * with a subtle hand-drawn circle. Sits inline next to page titles.
  */
 export function ExperimentalPageBadge() {
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="experimental-page-badge">Experimental</span>
+          <span className="experimental-page-badge">experimental</span>
         </TooltipTrigger>
         <TooltipContent>
           <p>This feature is experimental. Expect changes and rough edges.</p>

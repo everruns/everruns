@@ -118,21 +118,22 @@
 /* Experimental page badge — hand-drawn stamp with Caveat font */
 .experimental-page-badge {
   font-family: "Caveat", cursive;
-  font-size: 1.5rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: #d97706;
   position: relative;
   display: inline-block;
-  padding: 0.15rem 1rem;
+  padding: 0 0.5rem;
   cursor: default;
   user-select: none;
-  transform: rotate(-2deg);
+  transform: rotate(-1.5deg);
+  vertical-align: middle;
 }
 .experimental-page-badge::before {
   content: "";
   position: absolute;
-  inset: -4px -8px;
-  border: 2px solid #d97706;
+  inset: -2px -5px;
+  border: 1.5px solid #d97706;
   border-radius: 50% 40% 45% 42% / 50% 45% 40% 48%;
-  opacity: 0.5;
+  opacity: 0.45;
 }
