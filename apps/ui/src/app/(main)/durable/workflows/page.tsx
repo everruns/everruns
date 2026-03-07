@@ -236,11 +236,15 @@ function TaskRow({ task }: { task: DurableTask }) {
         </TooltipProvider>
       </TableCell>
       <TableCell>
-        <Link href={`/durable/workflows/${task.workflow_id}`}>
-          <Button variant="ghost" size="sm">
-            <ExternalLink className="h-3 w-3" />
-          </Button>
-        </Link>
+        {task.workflow_id ? (
+          <Link href={`/durable/workflows/${task.workflow_id}`}>
+            <Button variant="ghost" size="sm">
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </Link>
+        ) : (
+          <Badge variant="outline">standalone</Badge>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -289,11 +293,15 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
             <RotateCcw className="h-3 w-3 mr-1" />
             Requeue
           </Button>
-          <Link href={`/durable/workflows/${entry.workflow_id}`}>
-            <Button variant="ghost" size="sm">
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          </Link>
+          {entry.workflow_id ? (
+            <Link href={`/durable/workflows/${entry.workflow_id}`}>
+              <Button variant="ghost" size="sm">
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </Link>
+          ) : (
+            <Badge variant="outline">standalone</Badge>
+          )}
         </div>
       </TableCell>
     </TableRow>

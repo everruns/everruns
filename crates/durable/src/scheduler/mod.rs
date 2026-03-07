@@ -340,12 +340,9 @@ impl DurableScheduler {
         _execution_id: Uuid,
         _scheduled_at: DateTime<Utc>,
     ) -> Result<Uuid, SchedulerError> {
-        // For standalone activities, we create a synthetic workflow ID
-        // This allows tracking via the normal task queue
-        let workflow_id = Uuid::now_v7();
-
+        // Standalone activity: no parent workflow (generic queue semantics)
         let task = TaskDefinition {
-            workflow_id,
+            workflow_id: None,
             activity_id: format!("scheduled-{}", Uuid::now_v7()),
             activity_type: schedule.target_name.clone(),
             input: schedule.target_input.clone(),

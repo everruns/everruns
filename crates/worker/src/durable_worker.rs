@@ -556,21 +556,21 @@ impl DurableWorker {
     async fn execute_task(&self, task: &ClaimedTask) -> Result<()> {
         info!(
             task_id = %task.id,
-            workflow_id = %task.workflow_id,
+            workflow_id = ?task.workflow_id,
             activity_type = %task.activity_type,
             attempt = task.attempt,
             "Executing task"
         );
 
-        // Check if workflow is cancelled before executing
-        {
+        // Check if workflow is cancelled before executing (only for workflow-bound tasks)
+        if let Some(wf_id) = task.workflow_id {
             let mut store = self.store.lock().await;
-            if let Ok((status, _, _)) = store.get_workflow_status(task.workflow_id).await
+            if let Ok((status, _, _)) = store.get_workflow_status(wf_id).await
                 && status == WorkflowStatus::Cancelled
             {
                 info!(
                     task_id = %task.id,
-                    workflow_id = %task.workflow_id,
+                    workflow_id = %wf_id,
                     "Workflow cancelled, skipping task execution"
                 );
 
@@ -588,7 +588,7 @@ impl DurableWorker {
                         } else {
                             (
                                 0,
-                                SessionId::from_uuid(task.workflow_id),
+                                SessionId::from_uuid(task.workflow_id.unwrap_or_else(Uuid::nil)),
                                 MessageId::from_uuid(Uuid::nil()),
                             )
                         }
@@ -605,14 +605,14 @@ impl DurableWorker {
                         } else {
                             (
                                 0,
-                                SessionId::from_uuid(task.workflow_id),
+                                SessionId::from_uuid(task.workflow_id.unwrap_or_else(Uuid::nil)),
                                 MessageId::from_uuid(Uuid::nil()),
                             )
                         }
                     }
                     _ => (
                         0,
-                        SessionId::from_uuid(task.workflow_id),
+                        SessionId::from_uuid(task.workflow_id.unwrap_or_else(Uuid::nil)),
                         MessageId::from_uuid(Uuid::nil()),
                     ),
                 };
@@ -752,10 +752,11 @@ impl DurableWorker {
                         );
 
                         // Only schedule next activity if we successfully completed the task
-                        // This prevents duplicate scheduling when task was reclaimed
-                        if let Some(turn_input) = turn_input_opt {
+                        // and it has a parent workflow. Standalone tasks have no next activity.
+                        if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id)
+                        {
                             self.schedule_next_activity(
-                                task.workflow_id,
+                                wf_id,
                                 &task.activity_type,
                                 &turn_input,
                                 &output,

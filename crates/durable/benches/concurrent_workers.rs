@@ -66,7 +66,7 @@ impl TestScenario {
             let task_id = self
                 .store
                 .enqueue_task(TaskDefinition {
-                    workflow_id: self.workflow_id,
+                    workflow_id: Some(self.workflow_id),
                     activity_id: format!("task-{}", i),
                     activity_type: "benchmark_activity".to_string(),
                     input: serde_json::json!({ "task_num": i }),

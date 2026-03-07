@@ -371,24 +371,26 @@ where
 {
     info!(
         task_id = %task.id,
-        workflow_id = %task.workflow_id,
+        workflow_id = ?task.workflow_id,
         activity_type = %task.activity_type,
         attempt = task.attempt,
         "Executing task"
     );
 
-    // Check if workflow is cancelled
-    let workflow_status = store.get_workflow_status(task.workflow_id).await;
-    if let Ok(status) = workflow_status
-        && status == WorkflowStatus::Cancelled
-    {
-        info!(
-            task_id = %task.id,
-            workflow_id = %task.workflow_id,
-            "Workflow cancelled, skipping task"
-        );
-        let _ = store.fail_task(task.id, "Workflow cancelled").await;
-        return Ok(());
+    // Check if workflow is cancelled (only for workflow-bound tasks)
+    if let Some(wf_id) = task.workflow_id {
+        let workflow_status = store.get_workflow_status(wf_id).await;
+        if let Ok(status) = workflow_status
+            && status == WorkflowStatus::Cancelled
+        {
+            info!(
+                task_id = %task.id,
+                workflow_id = %wf_id,
+                "Workflow cancelled, skipping task"
+            );
+            let _ = store.fail_task(task.id, "Workflow cancelled").await;
+            return Ok(());
+        }
     }
 
     // Record ActivityStarted event
@@ -472,11 +474,11 @@ where
                         "Task completed successfully"
                     );
 
-                    // Schedule next activity if needed
-                    if let Some(turn_input) = turn_input_opt {
+                    // Schedule next activity if needed (only for workflow-bound tasks)
+                    if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
                         schedule_next_activity(
                             store,
-                            task.workflow_id,
+                            wf_id,
                             &task.activity_type,
                             &turn_input,
                             &output,
@@ -841,7 +843,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             // Schedule reason activity
             let activity_id = format!("reason_{}", Uuid::now_v7());
             let task = TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: activity_id.clone(),
                 activity_type: "reason".to_string(),
                 input: input_json.clone(),
@@ -912,7 +914,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                     let activity_id = format!("act_{}", Uuid::now_v7());
 
                     let task = TaskDefinition {
-                        workflow_id,
+                        workflow_id: Some(workflow_id),
                         activity_id: activity_id.clone(),
                         activity_type: "act".to_string(),
                         input: act_input_json.clone(),
@@ -975,7 +977,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             // Schedule another reason activity
             let activity_id = format!("reason_{}", Uuid::now_v7());
             let task = TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: activity_id.clone(),
                 activity_type: "reason".to_string(),
                 input: input_json.clone(),

@@ -13,6 +13,10 @@ use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 /// Prevents a single workflow from flooding the queue.
 pub const DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW: u32 = 100;
 
+/// Default max pending standalone tasks (generic queue).
+/// Prevents unbounded queue growth when no workflow limits apply.
+pub const DEFAULT_MAX_PENDING_STANDALONE_TASKS: u32 = 10_000;
+
 /// Workers with no heartbeat within this many seconds are considered stale.
 /// Used by get_system_health, list_workers, and reclaim_stale_tasks (stale worker cleanup).
 pub const WORKER_HEARTBEAT_TIMEOUT_SECS: i64 = 60;
@@ -65,6 +69,10 @@ pub enum StoreError {
         current: u32,
         limit: u32,
     },
+
+    /// Standalone task queue limit exceeded (global cap)
+    #[error("standalone task queue limit exceeded: {current}/{limit} pending tasks")]
+    StandaloneTaskQueueLimitExceeded { current: u32, limit: u32 },
 
     /// Invalid cron expression
     #[error("invalid cron expression: {0}")]
@@ -138,10 +146,12 @@ pub enum TaskStatus {
     Cancelled,
 }
 
-/// Definition of a task to be enqueued
+/// Definition of a task to be enqueued.
+/// When `workflow_id` is `None`, this is a standalone (generic queue) task
+/// that runs independently of any workflow.
 #[derive(Debug, Clone)]
 pub struct TaskDefinition {
-    pub workflow_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub input: serde_json::Value,
@@ -152,7 +162,7 @@ pub struct TaskDefinition {
 #[derive(Debug, Clone)]
 pub struct ClaimedTask {
     pub id: Uuid,
-    pub workflow_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub input: serde_json::Value,
@@ -213,13 +223,15 @@ pub struct TaskFilter {
     pub status: Option<TaskStatus>,
     pub activity_type: Option<String>,
     pub workflow_id: Option<Uuid>,
+    /// When true, only return standalone tasks (workflow_id IS NULL)
+    pub standalone_only: bool,
 }
 
 /// Task information for listing
 #[derive(Debug, Clone)]
 pub struct TaskInfo {
     pub id: Uuid,
-    pub workflow_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub status: TaskStatus,
@@ -364,7 +376,7 @@ impl Default for Pagination {
 pub struct DlqEntry {
     pub id: Uuid,
     pub original_task_id: Uuid,
-    pub workflow_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub input: serde_json::Value,

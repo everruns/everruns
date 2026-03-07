@@ -1209,7 +1209,7 @@ export interface WorkflowEvent {
 /** Task in the queue */
 export interface DurableTask {
   id: string;
-  workflow_id: string;
+  workflow_id?: string;
   activity_id: string;
   activity_type: string;
   status: TaskStatus;
@@ -1248,7 +1248,7 @@ export interface TaskQueueStats {
 export interface DlqEntry {
   id: string;
   original_task_id: string;
-  workflow_id: string;
+  workflow_id?: string;
   activity_id: string;
   activity_type: string;
   input: Record<string, unknown>;

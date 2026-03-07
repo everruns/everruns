@@ -274,25 +274,39 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     }
 
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
-        let limit = self.max_pending_tasks_per_workflow;
-
         let task_id = Uuid::now_v7();
         let mut tasks = self.tasks.write();
 
-        // Check per-workflow pending task count
-        let pending_count = tasks
-            .values()
-            .filter(|t| {
-                t.definition.workflow_id == task.workflow_id && t.status == TaskStatus::Pending
-            })
-            .count() as u32;
+        // Check pending task limits
+        if let Some(wf_id) = task.workflow_id {
+            let limit = self.max_pending_tasks_per_workflow;
+            let pending_count = tasks
+                .values()
+                .filter(|t| {
+                    t.definition.workflow_id == Some(wf_id) && t.status == TaskStatus::Pending
+                })
+                .count() as u32;
 
-        if pending_count >= limit {
-            return Err(StoreError::TaskQueueLimitExceeded {
-                workflow_id: task.workflow_id,
-                current: pending_count,
-                limit,
-            });
+            if pending_count >= limit {
+                return Err(StoreError::TaskQueueLimitExceeded {
+                    workflow_id: wf_id,
+                    current: pending_count,
+                    limit,
+                });
+            }
+        } else {
+            let limit = DEFAULT_MAX_PENDING_STANDALONE_TASKS;
+            let pending_count = tasks
+                .values()
+                .filter(|t| t.definition.workflow_id.is_none() && t.status == TaskStatus::Pending)
+                .count() as u32;
+
+            if pending_count >= limit {
+                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
+                    current: pending_count,
+                    limit,
+                });
+            }
         }
 
         tasks.insert(
@@ -577,7 +591,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .values()
             .filter(|e| {
                 if let Some(wid) = filter.workflow_id
-                    && e.workflow_id != wid
+                    && e.workflow_id != Some(wid)
                 {
                     return false;
                 }
@@ -970,8 +984,12 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 }
                 // Apply workflow_id filter
                 if let Some(ref wf_id) = filter.workflow_id
-                    && &t.definition.workflow_id != wf_id
+                    && t.definition.workflow_id.as_ref() != Some(wf_id)
                 {
+                    return false;
+                }
+                // Apply standalone_only filter
+                if filter.standalone_only && t.definition.workflow_id.is_some() {
                     return false;
                 }
                 true
@@ -1543,7 +1561,7 @@ mod tests {
         // Enqueue task
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "step-1".to_string(),
                 activity_type: "test_activity".to_string(),
                 input: serde_json::json!({}),
@@ -1586,7 +1604,7 @@ mod tests {
         let options = ActivityOptions::default();
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "step-1".to_string(),
                 activity_type: "test_activity".to_string(),
                 input: serde_json::json!({}),
@@ -1653,7 +1671,7 @@ mod tests {
 
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "step-1".to_string(),
                 activity_type: "test_activity".to_string(),
                 input: serde_json::json!({}),
@@ -1701,7 +1719,7 @@ mod tests {
 
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "step-1".to_string(),
                 activity_type: "test_activity".to_string(),
                 input: serde_json::json!({}),
@@ -1751,7 +1769,7 @@ mod tests {
 
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "act-1".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({"step": 1}),
@@ -1822,7 +1840,7 @@ mod tests {
         // Enqueue an "act" task (triggered by user message)
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "act-0".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({"message": "hello"}),
@@ -2125,7 +2143,7 @@ mod tests {
         for i in 0..3 {
             store
                 .enqueue_task(TaskDefinition {
-                    workflow_id,
+                    workflow_id: Some(workflow_id),
                     activity_id: format!("act_{i}"),
                     activity_type: "test_activity".to_string(),
                     input: serde_json::json!({}),
@@ -2138,7 +2156,7 @@ mod tests {
         // Fourth should fail
         let result = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "act_overflow".to_string(),
                 activity_type: "test_activity".to_string(),
                 input: serde_json::json!({}),
@@ -2172,7 +2190,7 @@ mod tests {
         for i in 0..2 {
             store
                 .enqueue_task(TaskDefinition {
-                    workflow_id: workflow_a,
+                    workflow_id: Some(workflow_a),
                     activity_id: format!("a_{i}"),
                     activity_type: "test".to_string(),
                     input: serde_json::json!({}),
@@ -2185,7 +2203,7 @@ mod tests {
         // Workflow B should still work
         store
             .enqueue_task(TaskDefinition {
-                workflow_id: workflow_b,
+                workflow_id: Some(workflow_b),
                 activity_id: "b_0".to_string(),
                 activity_type: "test".to_string(),
                 input: serde_json::json!({}),
@@ -2197,7 +2215,7 @@ mod tests {
         // Workflow A should fail
         let result = store
             .enqueue_task(TaskDefinition {
-                workflow_id: workflow_a,
+                workflow_id: Some(workflow_a),
                 activity_id: "a_overflow".to_string(),
                 activity_type: "test".to_string(),
                 input: serde_json::json!({}),
@@ -2470,7 +2488,7 @@ mod tests {
         // Enqueue two tasks
         store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "a1".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({}),
@@ -2481,7 +2499,7 @@ mod tests {
 
         let _task2 = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "a2".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({}),
@@ -2533,7 +2551,7 @@ mod tests {
         // Create a task, claim, and move to DLQ
         let task_id = store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: "a1".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({}),

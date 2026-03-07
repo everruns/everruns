@@ -343,7 +343,7 @@ async fn test_task_enqueue_and_claim() {
 
     // Enqueue a task
     let task = TaskDefinition {
-        workflow_id,
+        workflow_id: Some(workflow_id),
         activity_id: "step-1".to_string(),
         activity_type: "send_email".to_string(),
         input: json!({"to": "test@example.com"}),
@@ -390,7 +390,7 @@ async fn test_task_claim_by_activity_type() {
     // Enqueue tasks of different types
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "email".to_string(),
             activity_type: "send_email".to_string(),
             input: json!({}),
@@ -401,7 +401,7 @@ async fn test_task_claim_by_activity_type() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "sms".to_string(),
             activity_type: "send_sms".to_string(),
             input: json!({}),
@@ -447,7 +447,7 @@ async fn test_task_complete() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step".to_string(),
             activity_type: "process".to_string(),
             input: json!({}),
@@ -501,7 +501,7 @@ async fn test_task_failure_with_retry() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "flaky".to_string(),
             activity_type: "flaky_task".to_string(),
             input: json!({}),
@@ -563,7 +563,7 @@ async fn test_task_exhausts_retries_to_dlq() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "doomed".to_string(),
             activity_type: "doomed_task".to_string(),
             input: json!({"data": "important"}),
@@ -610,7 +610,7 @@ async fn test_heartbeat() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "long_running".to_string(),
             activity_type: "long_task".to_string(),
             input: json!({}),
@@ -659,7 +659,7 @@ async fn test_reclaim_stale_tasks() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "stale".to_string(),
             activity_type: "stale_task".to_string(),
             input: json!({}),
@@ -867,7 +867,7 @@ async fn test_draining_worker_cannot_claim_tasks() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step".to_string(),
             activity_type: "draining_test_task".to_string(),
             input: json!({}),
@@ -892,7 +892,7 @@ async fn test_draining_worker_cannot_claim_tasks() {
     // Enqueue another task
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step-2".to_string(),
             activity_type: "draining_test_task".to_string(),
             input: json!({}),
@@ -1014,7 +1014,7 @@ async fn test_worker_stats_avg_duration_type() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "stats_task".to_string(),
             activity_type: "test_activity".to_string(),
             input: json!({}),
@@ -1083,7 +1083,7 @@ async fn test_dlq_operations() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "dlq_task".to_string(),
             activity_type: "dlq_activity".to_string(),
             input: json!({"important": "data"}),
@@ -1166,7 +1166,7 @@ async fn test_concurrent_task_claiming() {
     for i in 0..10 {
         store
             .enqueue_task(TaskDefinition {
-                workflow_id,
+                workflow_id: Some(workflow_id),
                 activity_id: format!("task-{}", i),
                 activity_type: "concurrent_task".to_string(),
                 input: json!({"num": i}),
@@ -1238,7 +1238,7 @@ async fn test_task_completion_rejected_when_reclaimed() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step".to_string(),
             activity_type: "process".to_string(),
             input: json!({}),
@@ -1318,7 +1318,7 @@ async fn test_task_completion_rejected_wrong_worker() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step".to_string(),
             activity_type: "process".to_string(),
             input: json!({}),
@@ -1368,7 +1368,7 @@ async fn test_task_completion_rejected_already_completed() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "step".to_string(),
             activity_type: "process".to_string(),
             input: json!({}),
@@ -1430,7 +1430,7 @@ async fn test_duplicate_scheduling_prevention() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "reason_1".to_string(),
             activity_type: "reason".to_string(),
             input: json!({"test": true}),
@@ -1540,7 +1540,7 @@ async fn test_stale_reclaim_respects_max_attempts() {
 
     let task_id = store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "panic_task".to_string(),
             activity_type: "panic_activity".to_string(),
             input: json!({}),
@@ -1660,7 +1660,7 @@ async fn test_stale_reclaim_allows_remaining_attempts() {
 
     store
         .enqueue_task(TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: "retry_task".to_string(),
             activity_type: "retry_activity".to_string(),
             input: json!({}),

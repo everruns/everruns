@@ -1881,7 +1881,7 @@ impl WorkerService for WorkerServiceImpl {
         let options = ActivityOptions::default();
 
         let task = TaskDefinition {
-            workflow_id,
+            workflow_id: Some(workflow_id),
             activity_id: task_def.activity_id.clone(),
             activity_type: task_def.activity_type.clone(),
             input: input.clone(),
@@ -1949,7 +1949,7 @@ impl WorkerService for WorkerServiceImpl {
             .into_iter()
             .map(|t| proto::DurableClaimedTask {
                 id: Some(uuid_to_proto_uuid(t.id)),
-                workflow_id: Some(uuid_to_proto_uuid(t.workflow_id)),
+                workflow_id: t.workflow_id.map(uuid_to_proto_uuid),
                 activity_id: t.activity_id,
                 activity_type: t.activity_type,
                 input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),

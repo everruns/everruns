@@ -189,7 +189,7 @@ pub fn routes(state: AppState) -> Router {
             post(send_signal),
         )
         // Tasks
-        .route("/v1/durable/tasks", get(list_tasks))
+        .route("/v1/durable/tasks", get(list_tasks).post(enqueue_task))
         // DLQ
         .route("/v1/durable/dlq", get(list_dlq))
         .route("/v1/durable/dlq/{dlq_id}/retry", post(retry_dlq))
@@ -432,7 +432,8 @@ pub struct WorkflowEventsListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskResponse {
     pub id: Uuid,
-    pub workflow_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub status: String,
@@ -488,7 +489,8 @@ pub struct TasksListResponse {
 pub struct DlqEntryResponse {
     pub id: Uuid,
     pub original_task_id: Uuid,
-    pub workflow_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub input: serde_json::Value,
@@ -661,6 +663,8 @@ pub struct ListTasksQuery {
     pub status: Option<String>,
     pub activity_type: Option<String>,
     pub workflow_id: Option<Uuid>,
+    /// When true, only return standalone tasks (not linked to any workflow)
+    pub standalone_only: Option<bool>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
 }
@@ -1135,6 +1139,7 @@ pub async fn list_tasks(
         status,
         activity_type: query.activity_type,
         workflow_id: query.workflow_id,
+        standalone_only: query.standalone_only.unwrap_or(false),
     };
 
     let pagination = Pagination {
@@ -1156,6 +1161,82 @@ pub async fn list_tasks(
     let data: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
 
     Ok(Json(TasksListResponse { data, total }))
+}
+
+/// Request body for enqueuing a standalone task (generic queue)
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct EnqueueTaskRequest {
+    /// Activity type (determines which worker handles this task)
+    pub activity_type: String,
+    /// Task input payload
+    pub input: serde_json::Value,
+    /// Retry policy options
+    #[serde(default)]
+    pub options: Option<EnqueueTaskOptions>,
+}
+
+/// Options for enqueuing a standalone task
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct EnqueueTaskOptions {
+    /// Maximum retry attempts (default: 3)
+    pub max_attempts: Option<u32>,
+    /// Priority (higher = claimed first, default: 0)
+    pub priority: Option<i32>,
+}
+
+/// Response for enqueued task
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EnqueueTaskResponse {
+    pub task_id: Uuid,
+}
+
+/// POST /v1/durable/tasks - Enqueue a standalone task (generic queue)
+#[utoipa::path(
+    post,
+    path = "/v1/durable/tasks",
+    request_body = EnqueueTaskRequest,
+    responses(
+        (status = 201, description = "Task enqueued", body = EnqueueTaskResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn enqueue_task(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<EnqueueTaskRequest>,
+) -> Result<(StatusCode, Json<EnqueueTaskResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+
+    let mut options = everruns_durable::ActivityOptions::default();
+    if let Some(opts) = &body.options {
+        if let Some(max) = opts.max_attempts {
+            options.retry_policy.max_attempts = max;
+        }
+        if let Some(pri) = opts.priority {
+            options.priority = pri;
+        }
+    }
+
+    let task = everruns_durable::TaskDefinition {
+        workflow_id: None,
+        activity_id: Uuid::now_v7().to_string(),
+        activity_type: body.activity_type,
+        input: body.input,
+        options,
+    };
+
+    let task_id = store.enqueue_task(task).await.map_err(|e| {
+        tracing::error!("Failed to enqueue standalone task: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to enqueue task: {e}"),
+            }),
+        )
+    })?;
+
+    Ok((StatusCode::CREATED, Json(EnqueueTaskResponse { task_id })))
 }
 
 /// GET /v1/durable/dlq - List dead letter queue entries
@@ -3282,7 +3363,7 @@ mod tests {
         // Create and enqueue tasks
         store
             .enqueue_task(TaskDefinition {
-                workflow_id: wf_running,
+                workflow_id: Some(wf_running),
                 activity_id: "a1".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({}),
@@ -3293,7 +3374,7 @@ mod tests {
 
         store
             .enqueue_task(TaskDefinition {
-                workflow_id: wf_running,
+                workflow_id: Some(wf_running),
                 activity_id: "a2".to_string(),
                 activity_type: "act".to_string(),
                 input: serde_json::json!({}),

@@ -298,12 +298,7 @@ impl GrpcDurableStore {
                         .map(parse_proto_uuid)
                         .transpose()?
                         .unwrap_or_else(Uuid::nil);
-                let workflow_id = t
-                    .workflow_id
-                    .as_ref()
-                    .map(parse_proto_uuid)
-                    .transpose()?
-                    .unwrap_or_else(Uuid::nil);
+                let workflow_id = t.workflow_id.as_ref().map(parse_proto_uuid).transpose()?;
                 let input = t
                     .input
                     .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
@@ -573,7 +568,7 @@ pub enum TaskNotificationEvent {
 #[derive(Debug, Clone)]
 pub struct ClaimedTask {
     pub id: Uuid,
-    pub workflow_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
     pub input: serde_json::Value,
