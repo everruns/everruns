@@ -43,8 +43,11 @@ export default function GlobalChatPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-end px-4 pt-2 pb-0">
-        <ExperimentalPageBadge />
+      <div className="flex items-center justify-between px-6 pt-4 pb-0">
+        <h1 className="text-2xl font-bold flex items-center gap-3">
+          Chat
+          <ExperimentalPageBadge />
+        </h1>
       </div>
       <SessionProvider sessionId={sessionId}>
         <ChatPanel />
