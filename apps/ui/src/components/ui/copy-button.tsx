@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Hash, Check } from "lucide-react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ export function CopyButton({ value, className }: CopyButtonProps) {
       {copied ? (
         <Check className="h-3 w-3 text-green-500" />
       ) : (
-        <Copy className="h-3 w-3 text-muted-foreground" />
+        <Hash className="h-3 w-3 text-muted-foreground" />
       )}
     </Button>
   );

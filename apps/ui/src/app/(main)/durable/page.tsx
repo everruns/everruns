@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 
 function getHealthStatusColor(status: string) {
   switch (status) {
@@ -338,8 +339,9 @@ export default function DurableDashboardPage() {
                             }`}
                           />
                           <span className="text-sm font-medium truncate max-w-[150px]">
-                            {worker.id.slice(0, 12)}
+                            {worker.hostname || worker.id.slice(0, 12)}
                           </span>
+                          <CopyButton value={worker.id} />
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
@@ -391,9 +393,7 @@ export default function DurableDashboardPage() {
                         <WorkflowStatusIcon status={workflow.status} />
                         <div>
                           <p className="text-sm font-medium">{workflow.workflow_type}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {workflow.id.slice(0, 8)}...
-                          </p>
+                          <CopyButton value={workflow.id} />
                         </div>
                       </div>
                       <Badge variant={getWorkflowStatusVariant(workflow.status)}>

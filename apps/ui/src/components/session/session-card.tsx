@@ -86,9 +86,9 @@ function SessionInfoIcon({ session }: { session: Session }) {
       </TooltipTrigger>
       <TooltipContent className="max-w-sm">
         <div className="space-y-1 text-xs">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <span className="text-muted-foreground">ID:</span>
-            <span className="font-mono text-[10px] break-all">{session.id}</span>
+            <CopyButton value={session.id} />
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground">Status:</span>
