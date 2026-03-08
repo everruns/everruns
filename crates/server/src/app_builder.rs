@@ -22,7 +22,6 @@ use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::CapabilityRegistry;
-use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::{BraintrustListener, EventListener, OtelEventListener};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
@@ -842,10 +841,6 @@ impl ServerAppBuilder {
                     sqldb_store.clone(),
                 )
                 .with_storage_store(session_storage_store)
-                .with_schedule_store(Arc::new(crate::storage::DbSessionScheduleStore::new(
-                    db.clone(),
-                    DEFAULT_ORG_ID,
-                )))
                 .with_runner(runner.clone());
 
                 // Wire lazy connection resolver (requires encryption for token decryption)

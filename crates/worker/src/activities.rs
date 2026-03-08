@@ -172,7 +172,7 @@ pub async fn reason_activity(
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
 
     // Create image resolver for multimodal image support
-    let image_resolver = Arc::new(GrpcImageResolver::new(grpc_client.clone()));
+    let image_resolver = Arc::new(GrpcImageResolver::new(grpc_client.clone(), org_id));
 
     // Create file store for AGENTS.md reading (agent_instructions capability)
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));

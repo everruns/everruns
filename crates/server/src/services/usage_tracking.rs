@@ -8,7 +8,7 @@
 // (see specs/architecture.md for rationale on no-trigger policy).
 
 use async_trait::async_trait;
-use everruns_core::{DEFAULT_ORG_ID, Event, EventData, EventListener, LLM_GENERATION};
+use everruns_core::{Event, EventData, EventListener, LLM_GENERATION};
 use std::sync::Arc;
 use tracing::{error, instrument};
 
@@ -53,8 +53,8 @@ impl EventListener for UsageTrackingListener {
         let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
         let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
 
-        // Get session to determine org_id
-        let session = match self.db.get_session(DEFAULT_ORG_ID, event.session_id).await {
+        // Get session to determine org_id (unscoped lookup - internal system use)
+        let session = match self.db.get_session_unscoped(event.session_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
                 error!("Session not found for usage tracking: {}", event.session_id);
@@ -66,22 +66,8 @@ impl EventListener for UsageTrackingListener {
             }
         };
 
-        // Get org_id from agent (sessions don't have direct org_id)
-        let org_id = if let Some(agent_id) = session.agent_id {
-            match self.db.get_agent(DEFAULT_ORG_ID, agent_id).await {
-                Ok(Some(agent)) => agent.org_id,
-                Ok(None) => {
-                    error!("Agent not found for usage tracking: {}", agent_id);
-                    DEFAULT_ORG_ID
-                }
-                Err(e) => {
-                    error!("Failed to get agent for usage tracking: {}", e);
-                    DEFAULT_ORG_ID
-                }
-            }
-        } else {
-            DEFAULT_ORG_ID
-        };
+        // org_id comes directly from the session row
+        let org_id = session.org_id;
 
         // Insert into llm_generations with org_id
         if let Err(e) = self

@@ -287,6 +287,11 @@ impl StorageBackend {
         dispatch!(self, get_session, org_id, id)
     }
 
+    /// Get session without org scoping. For internal system use only (e.g. usage tracking).
+    pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
+        dispatch!(self, get_session_unscoped, id)
+    }
+
     /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(

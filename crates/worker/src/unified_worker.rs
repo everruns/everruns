@@ -429,7 +429,9 @@ where
 
             // Create DurableTurnInput from ActInput context
             let turn_input = DurableTurnInput {
-                org_id: everruns_core::DEFAULT_ORG_ID,
+                org_id: act_input
+                    .org_id
+                    .expect("ActInput.org_id must be set for durable turns"),
                 session_id: act_input.context.session_id,
                 harness_id: act_input.harness_id,
                 agent_id: act_input.agent_id,
@@ -627,7 +629,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let capability_registry = adapters.capability_registry();
     let driver_registry = adapters.driver_registry();
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
-    let image_resolver = Arc::new(AdapterImageResolver::new(adapters.clone()));
+    let image_resolver = Arc::new(AdapterImageResolver::new(adapters.clone(), input.org_id));
 
     let atom = ReasonAtom::new(
         harness_store,
@@ -770,14 +772,20 @@ async fn execute_act_activity<A: WorkerAdapters>(
         "Executing act activity"
     );
 
+    // Extract org_id early — must be set by callers for proper tenant isolation.
+    let org_id = input
+        .org_id
+        .expect("ActInput.org_id must be set for act activities");
+
     // Build tool registry with defaults and capability tools.
     // When agent_id is present, use agent capabilities.
     // When agent_id is absent, fall back to harness capabilities so that
     // harness-provided tools (e.g. bash) are still registered.
     let tool_registry = if let Some(agent_id) = input.agent_id {
-        adapters.build_tool_registry(agent_id.uuid()).await?
+        adapters
+            .build_tool_registry(org_id, agent_id.uuid())
+            .await?
     } else {
-        let org_id = input.org_id.unwrap_or(1);
         adapters
             .build_tool_registry_for_harness(org_id, input.harness_id.uuid())
             .await?
@@ -785,7 +793,6 @@ async fn execute_act_activity<A: WorkerAdapters>(
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
-    let org_id = input.org_id.unwrap_or(1);
     let session_store = Arc::new(AdapterSessionStore::new(adapters.clone(), org_id));
     let session_mutator = Arc::new(AdapterSessionMutator::new(adapters.clone(), org_id));
     let agent_store = Arc::new(AdapterAgentStore::new(adapters.clone(), org_id));
@@ -798,7 +805,7 @@ async fn execute_act_activity<A: WorkerAdapters>(
         .with_sqldb_store(adapters.sqldb_store())
         .with_storage_store(adapters.storage_store())
         .with_connection_resolver(adapters.connection_resolver())
-        .with_schedule_store(adapters.schedule_store())
+        .with_schedule_store(adapters.schedule_store(org_id))
         .with_platform_store(adapters.platform_store(org_id));
 
     let result = atom.execute(input.clone()).await?;

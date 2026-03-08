@@ -841,6 +841,8 @@ message CheckCircuitBreakerResponse {
 // Request to resolve an image by ID
 message ResolveImageRequest {
     Uuid image_id = 1;
+    // Organization ID for scoped image access
+    int64 org_id = 2;
 }
 
 // Response with resolved image data
@@ -859,6 +861,8 @@ message ResolveImageResponse {
 // Batch request to resolve multiple images
 message ResolveImagesRequest {
     repeated Uuid image_ids = 1;
+    // Organization ID for scoped image access
+    int64 org_id = 2;
 }
 
 // Batch response with resolved images
@@ -1081,6 +1085,7 @@ message CreateSessionScheduleRequest {
     optional string cron_expression = 3;
     optional Timestamp scheduled_at = 4;
     string timezone = 5;
+    int64 org_id = 6;
 }
 
 message CreateSessionScheduleResponse {
@@ -1090,6 +1095,7 @@ message CreateSessionScheduleResponse {
 message CancelSessionScheduleRequest {
     Uuid session_id = 1;
     Uuid schedule_id = 2;
+    int64 org_id = 3;
 }
 
 message CancelSessionScheduleResponse {
@@ -1098,6 +1104,7 @@ message CancelSessionScheduleResponse {
 
 message ListSessionSchedulesRequest {
     Uuid session_id = 1;
+    int64 org_id = 2;
 }
 
 message ListSessionSchedulesResponse {
@@ -1106,6 +1113,7 @@ message ListSessionSchedulesResponse {
 
 message CountActiveSessionSchedulesRequest {
     Uuid session_id = 1;
+    int64 org_id = 2;
 }
 
 message CountActiveSessionSchedulesResponse {
