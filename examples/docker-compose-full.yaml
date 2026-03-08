@@ -27,7 +27,6 @@
 #
 # Ports:
 #   - 9300: Web UI (Caddy)
-#   - 16686: Jaeger UI (optional)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
 
@@ -166,8 +165,6 @@ services:
   # ==========================================================================
   jaeger:
     image: jaegertracing/jaeger:2.4.0
-    ports:
-      - "${EXAMPLE_JAEGER_UI_PORT:-16686}:16686" # Jaeger UI
     # OTLP ports exposed only to internal network
     expose:
       - "4317" # OTLP gRPC

@@ -34,8 +34,6 @@ services:
       - "${OTEL_GRPC_PORT:-4317}:4317"
       # OTLP HTTP receiver
       - "${OTEL_HTTP_PORT:-4318}:4318"
-      # Jaeger UI
-      - "${JAEGER_UI_PORT:-16686}:16686"
 
 volumes:
   postgres_data:
