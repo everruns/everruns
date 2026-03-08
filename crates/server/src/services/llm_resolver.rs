@@ -56,6 +56,40 @@ where
     env_lookup(env_var).filter(|s| !s.is_empty())
 }
 
+/// Resolve API key for a provider.
+///
+/// Shared logic used by both LlmResolverService and ModelSyncService.
+///
+/// Resolution order:
+/// 1. Decrypt from database if encryption is available and key is set
+/// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY, DEFAULT_ANTHROPIC_API_KEY, etc.)
+///
+/// If provider has an encrypted key but encryption service is not available,
+/// logs a warning and falls back to environment variable.
+pub fn resolve_provider_api_key(
+    db: &StorageBackend,
+    encryption: Option<&EncryptionService>,
+    provider: &LlmProviderRow,
+) -> Result<Option<String>> {
+    if provider.api_key_encrypted.is_some() {
+        if let Some(encryption) = encryption {
+            let provider_with_key = db.get_provider_with_api_key(provider, encryption)?;
+            if provider_with_key.api_key.is_some() {
+                return Ok(provider_with_key.api_key);
+            }
+        } else {
+            tracing::warn!(
+                provider_id = %provider.id,
+                provider_type = %provider.provider_type,
+                "Provider has encrypted API key but encryption service is not configured. \
+                 Falling back to environment variable."
+            );
+        }
+    }
+
+    Ok(get_default_api_key_from_env(&provider.provider_type))
+}
+
 /// Resolved model with provider credentials (decrypted API key)
 ///
 /// This is the service-layer representation of a model with its provider details.
@@ -195,35 +229,9 @@ impl LlmResolverService {
         }))
     }
 
-    /// Resolve API key for a provider
-    ///
-    /// Resolution order:
-    /// 1. Decrypt from database if encryption is available and key is set
-    /// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY or DEFAULT_ANTHROPIC_API_KEY)
-    ///
-    /// If provider has an encrypted key but encryption service is not available,
-    /// logs a warning and falls back to environment variable.
+    /// Resolve API key for a provider (delegates to shared helper).
     fn resolve_api_key(&self, provider: &LlmProviderRow) -> Result<Option<String>> {
-        // If provider has an encrypted API key, try to decrypt it
-        if provider.api_key_encrypted.is_some() {
-            if let Some(ref encryption) = self.encryption {
-                let provider_with_key = self.db.get_provider_with_api_key(provider, encryption)?;
-                if provider_with_key.api_key.is_some() {
-                    return Ok(provider_with_key.api_key);
-                }
-            } else {
-                // Provider has encrypted key but no encryption service
-                tracing::warn!(
-                    provider_id = %provider.id,
-                    provider_type = %provider.provider_type,
-                    "Provider has encrypted API key but encryption service is not configured. \
-                     Falling back to environment variable."
-                );
-            }
-        }
-
-        // Fall back to environment variable
-        Ok(get_default_api_key_from_env(&provider.provider_type))
+        resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider)
     }
 
     /// Check if encryption service is available
@@ -580,5 +588,86 @@ mod tests {
         // But entry is re-cached
         resolver.cache.run_pending_tasks().await;
         assert_eq!(resolver.cache_entry_count(), 1);
+    }
+
+    // --- resolve_provider_api_key shared function tests ---
+
+    use crate::storage::EncryptionService;
+
+    fn test_encryption() -> Arc<EncryptionService> {
+        Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn resolve_provider_api_key_decrypts_from_db() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+
+        let encrypted = encryption.encrypt_string("sk-from-db").unwrap();
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(encrypted),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = resolve_provider_api_key(&db, Some(&*encryption), &provider).unwrap();
+        assert_eq!(result, Some("sk-from-db".to_string()));
+    }
+
+    #[tokio::test]
+    async fn resolve_provider_api_key_falls_back_without_encryption() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(vec![1, 2, 3]),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // No encryption service, no env var -> None
+        let result = resolve_provider_api_key(&db, None, &provider).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_provider_api_key_no_key_falls_to_env() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "Anthropic".to_string(),
+                    provider_type: "anthropic".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // No encrypted key, no env var -> None
+        let result = resolve_provider_api_key(&db, None, &provider).unwrap();
+        assert!(result.is_none());
     }
 }
