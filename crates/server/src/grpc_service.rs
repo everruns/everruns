@@ -2508,55 +2508,24 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
         let req = request.into_inner();
 
-        // List active MCP servers and find one matching the prefix
-        let servers = self
+        let resolved = self
             .mcp_server_service
-            .list_active_with_tools(req.org_id)
+            .resolve_by_prefix(req.org_id, &req.server_prefix)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to list MCP servers: {}", e);
-                Status::internal("Failed to list MCP servers")
+                tracing::error!("Failed to resolve MCP server: {}", e);
+                Status::internal("Failed to resolve MCP server")
             })?;
 
-        // Find server matching the prefix (sanitized server name)
-        let server_prefix_lower = req.server_prefix.to_lowercase();
-        let matching_server = servers.into_iter().find(|s| {
-            let sanitized_name = s
-                .server
-                .name
-                .to_lowercase()
-                .chars()
-                .map(|c| if c.is_alphanumeric() { c } else { '_' })
-                .collect::<String>();
-            sanitized_name == server_prefix_lower
+        let server_info = resolved.map(|r| McpServerInfo {
+            id: Some(proto::Uuid {
+                value: r.id.to_string(),
+            }),
+            name: r.name,
+            url: r.url,
+            api_key: r.api_key,
+            headers: r.headers,
         });
-
-        let server_info = if let Some(server_with_tools) = matching_server {
-            // Decrypt API key if set
-            let api_key = if server_with_tools.server.api_key_set {
-                self.mcp_server_service
-                    .decrypt_api_key(req.org_id, server_with_tools.server.id.uuid())
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to decrypt MCP server API key: {}", e);
-                        Status::internal("Failed to decrypt MCP server API key")
-                    })?
-            } else {
-                None
-            };
-
-            Some(McpServerInfo {
-                id: Some(proto::Uuid {
-                    value: server_with_tools.server.id.to_string(),
-                }),
-                name: server_with_tools.server.name,
-                url: server_with_tools.server.url,
-                api_key,
-                headers: server_with_tools.server.headers,
-            })
-        } else {
-            None
-        };
 
         Ok(Response::new(GetMcpServerByPrefixResponse {
             server: server_info,

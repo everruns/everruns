@@ -458,64 +458,15 @@ impl SessionFileService {
         Ok(row.map(Self::row_to_session_file))
     }
 
-    /// Search files using grep-like pattern matching
-    /// Max regex pattern length to prevent resource-intensive compilation (TM-DOS-008)
-    const MAX_GREP_PATTERN_LEN: usize = 1000;
-
+    /// Search files using grep-like pattern matching (delegates to shared helper).
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        // TM-DOS-008: Limit pattern length to prevent expensive regex compilation.
-        // Note: Rust's `regex` crate already prevents catastrophic backtracking
-        // (uses Thompson NFA), but compilation cost is O(n) in pattern length.
-        anyhow::ensure!(
-            req.pattern.len() <= Self::MAX_GREP_PATTERN_LEN,
-            "Regex pattern too long (max {} characters)",
-            Self::MAX_GREP_PATTERN_LEN
-        );
-
-        let regex = Regex::new(&req.pattern)?;
-
-        // Get matching files from database
-        let files = self
-            .db
-            .grep_session_files(session_id, &req.pattern, req.path_pattern.as_deref())
-            .await?;
-
-        let mut results = Vec::new();
-
-        // For each matching file, find the actual line matches
-        for file_info in files {
-            // Read full file content
-            let file = self
-                .db
-                .get_session_file(session_id, &file_info.path)
-                .await?;
-            if let Some(f) = file
-                && let Some(content) = f.content
-            {
-                // Try to decode as text
-                if let Ok(text) = String::from_utf8(content) {
-                    let matches: Vec<GrepMatch> = text
-                        .lines()
-                        .enumerate()
-                        .filter(|(_, line)| regex.is_match(line))
-                        .map(|(i, line)| GrepMatch {
-                            path: file_info.path.clone(),
-                            line_number: i + 1,
-                            line: line.to_string(),
-                        })
-                        .collect();
-
-                    if !matches.is_empty() {
-                        results.push(GrepResult {
-                            path: file_info.path.clone(),
-                            matches,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(results)
+        grep_session_files(
+            &self.db,
+            session_id,
+            &req.pattern,
+            req.path_pattern.as_deref(),
+        )
+        .await
     }
 
     fn row_to_session_file(row: SessionFileRow) -> SessionFile {
@@ -752,6 +703,69 @@ impl SessionFileService {
     }
 }
 
+/// Max regex pattern length to prevent resource-intensive compilation (TM-DOS-008).
+const MAX_GREP_PATTERN_LEN: usize = 1000;
+
+/// Search session files using grep-like regex pattern matching.
+///
+/// Shared logic used by both `SessionFileService::grep` and
+/// `DirectWorkerAdapters::grep_files`. Enforces TM-DOS-008 pattern length
+/// limit to prevent expensive regex compilation.
+pub async fn grep_session_files(
+    db: &StorageBackend,
+    session_id: Uuid,
+    pattern: &str,
+    path_pattern: Option<&str>,
+) -> Result<Vec<GrepResult>> {
+    // TM-DOS-008: Limit pattern length to prevent expensive regex compilation.
+    // Note: Rust's `regex` crate already prevents catastrophic backtracking
+    // (uses Thompson NFA), but compilation cost is O(n) in pattern length.
+    anyhow::ensure!(
+        pattern.len() <= MAX_GREP_PATTERN_LEN,
+        "Regex pattern too long (max {} characters)",
+        MAX_GREP_PATTERN_LEN
+    );
+
+    let regex = Regex::new(pattern)?;
+
+    // Get matching files from database
+    let files = db
+        .grep_session_files(session_id, pattern, path_pattern)
+        .await?;
+
+    let mut results = Vec::new();
+
+    // For each matching file, find the actual line matches
+    for file_info in files {
+        // Read full file content
+        let file = db.get_session_file(session_id, &file_info.path).await?;
+        if let Some(f) = file
+            && let Some(content) = f.content
+            && let Ok(text) = String::from_utf8(content)
+        {
+            let matches: Vec<GrepMatch> = text
+                .lines()
+                .enumerate()
+                .filter(|(_, line)| regex.is_match(line))
+                .map(|(i, line)| GrepMatch {
+                    path: file_info.path.clone(),
+                    line_number: i + 1,
+                    line: line.to_string(),
+                })
+                .collect();
+
+            if !matches.is_empty() {
+                results.push(GrepResult {
+                    path: file_info.path.clone(),
+                    matches,
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 /// Result of applying capability mounts to a session.
 #[derive(Debug, Clone, Default)]
 pub struct MountApplicationResult {
@@ -788,4 +802,87 @@ pub struct MountError {
 struct MountStats {
     files_created: usize,
     directories_created: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::CreateSessionFileRow;
+
+    /// Seed a text file into the in-memory store.
+    async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
+        db.create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_id),
+            path: path.to_string(),
+            content: Some(content.as_bytes().to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_returns_matching_lines() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        seed_file(&db, sid, "/src/main.rs", "fn main() {\n    hello();\n}\n").await;
+
+        let results = grep_session_files(&db, sid, "hello", None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].matches.len(), 1);
+        assert_eq!(results[0].matches[0].line_number, 2);
+        assert!(results[0].matches[0].line.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_returns_empty_for_no_match() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        seed_file(
+            &db,
+            sid,
+            "/src/lib.rs",
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
+        )
+        .await;
+
+        let results = grep_session_files(&db, sid, "nonexistent_pattern", None)
+            .await
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_supports_regex() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        seed_file(&db, sid, "/data.txt", "line 100\nline abc\nline 200\n").await;
+
+        let results = grep_session_files(&db, sid, r"\d{3}", None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].matches.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_rejects_invalid_regex() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+
+        let result = grep_session_files(&db, sid, "[invalid", None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_rejects_overlong_pattern() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+
+        let long_pattern = "a".repeat(MAX_GREP_PATTERN_LEN + 1);
+        let result = grep_session_files(&db, sid, &long_pattern, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("too long"), "Expected 'too long' in: {err}");
+    }
 }

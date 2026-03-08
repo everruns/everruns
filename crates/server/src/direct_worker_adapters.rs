@@ -590,47 +590,19 @@ impl WorkerAdapters for DirectWorkerAdapters {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let regex = regex::Regex::new(pattern)
-            .map_err(|e| store_error(format!("Invalid regex pattern: {}", e)))?;
+        let results = crate::services::session_file::grep_session_files(
+            &self.db,
+            session_id,
+            pattern,
+            path_pattern,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to grep files: {}", e);
+            store_error(format!("Failed to grep files: {}", e))
+        })?;
 
-        let rows = self
-            .db
-            .grep_session_files(session_id, pattern, path_pattern)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to grep files: {}", e);
-                store_error("Failed to grep files")
-            })?;
-
-        let mut results = Vec::new();
-
-        for file_info in rows {
-            let file = self
-                .db
-                .get_session_file(session_id, &file_info.path)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to read file for grep: {}", e);
-                    store_error("Failed to read file for grep")
-                })?;
-
-            if let Some(f) = file
-                && let Some(content) = f.content
-                && let Ok(text) = String::from_utf8(content)
-            {
-                for (i, line) in text.lines().enumerate() {
-                    if regex.is_match(line) {
-                        results.push(GrepMatch {
-                            path: file_info.path.clone(),
-                            line_number: i + 1,
-                            line: line.to_string(),
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(results)
+        Ok(results.into_iter().flat_map(|r| r.matches).collect())
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
@@ -671,45 +643,22 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
-        // Search for MCP server by name prefix (using sanitized name matching)
-        let server_prefix_lower = server_prefix.to_lowercase();
-        let servers = self.mcp_server_service.list(org_id).await.map_err(|e| {
-            tracing::error!("Failed to list MCP servers: {}", e);
-            store_error("Failed to get MCP server")
-        })?;
-
-        let server = servers
-            .into_iter()
-            .find(|s| {
-                let sanitized_name = s
-                    .name
-                    .to_lowercase()
-                    .chars()
-                    .map(|c| if c.is_alphanumeric() { c } else { '_' })
-                    .collect::<String>();
-                sanitized_name == server_prefix_lower
-            })
+        let resolved = self
+            .mcp_server_service
+            .resolve_by_prefix(org_id, server_prefix)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve MCP server: {}", e);
+                store_error(format!("Failed to get MCP server: {}", e))
+            })?
             .ok_or_else(|| store_error(format!("MCP server not found: {}", server_prefix)))?;
 
-        // Decrypt API key if set
-        let api_key = if server.api_key_set {
-            self.mcp_server_service
-                .decrypt_api_key(org_id, server.id.uuid())
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to decrypt MCP server API key: {}", e);
-                    store_error("Failed to decrypt MCP server API key")
-                })?
-        } else {
-            None
-        };
-
         Ok(McpServerInfo {
-            id: server.id.uuid(),
-            name: server.name,
-            url: server.url,
-            api_key,
-            headers: server.headers,
+            id: resolved.id,
+            name: resolved.name,
+            url: resolved.url,
+            api_key: resolved.api_key,
+            headers: resolved.headers,
         })
     }
 

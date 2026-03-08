@@ -250,6 +250,48 @@ impl McpServerService {
         }
     }
 
+    /// Resolve an MCP server by sanitized name prefix, decrypting credentials.
+    ///
+    /// Used by both gRPC service and direct worker adapters to look up an MCP
+    /// server by its sanitized name (lowercase, non-alphanumeric chars -> '_').
+    pub async fn resolve_by_prefix(
+        &self,
+        org_id: i64,
+        server_prefix: &str,
+    ) -> Result<Option<McpServerResolved>> {
+        let servers = self.list(org_id).await?;
+        let server_prefix_lower = server_prefix.to_lowercase();
+
+        let server = servers.into_iter().find(|s| {
+            let sanitized = s
+                .name
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                .collect::<String>();
+            sanitized == server_prefix_lower
+        });
+
+        let server = match server {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let api_key = if server.api_key_set {
+            self.decrypt_api_key(org_id, server.id.uuid()).await?
+        } else {
+            None
+        };
+
+        Ok(Some(McpServerResolved {
+            id: server.id.uuid(),
+            name: server.name,
+            url: server.url,
+            api_key,
+            headers: server.headers,
+        }))
+    }
+
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
@@ -288,6 +330,19 @@ pub struct McpServerWithTools {
     pub server: McpServer,
     pub cached_tools: Vec<McpToolDefinition>,
     pub tools_cached_at: Option<DateTime<Utc>>,
+}
+
+/// Resolved MCP server with decrypted credentials, ready for tool execution.
+///
+/// Produced by `McpServerService::resolve_by_prefix` and consumed by both
+/// the gRPC service and direct worker adapters.
+#[derive(Debug, Clone)]
+pub struct McpServerResolved {
+    pub id: Uuid,
+    pub name: String,
+    pub url: String,
+    pub api_key: Option<String>,
+    pub headers: HashMap<String, String>,
 }
 
 /// Fetch tools from an MCP server using JSON-RPC over HTTP
@@ -440,6 +495,99 @@ mod tests {
         let svc = McpServerService::new(db, Some(test_encryption()));
 
         let result = svc.decrypt_api_key(1, Uuid::new_v4()).await;
+        assert!(result.is_err());
+    }
+
+    // --- resolve_by_prefix tests ---
+
+    #[tokio::test]
+    async fn resolve_by_prefix_finds_matching_server() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+
+        db.create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "My Cool Server".into(),
+                description: None,
+                url: "https://example.com/mcp".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let resolved = svc.resolve_by_prefix(1, "my_cool_server").await.unwrap();
+        assert!(resolved.is_some());
+        let r = resolved.unwrap();
+        assert_eq!(r.name, "My Cool Server");
+        assert_eq!(r.url, "https://example.com/mcp");
+        assert!(r.api_key.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_by_prefix_returns_none_for_no_match() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db, Some(test_encryption()));
+
+        let resolved = svc.resolve_by_prefix(1, "nonexistent").await.unwrap();
+        assert!(resolved.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_by_prefix_decrypts_api_key() {
+        let encryption = test_encryption();
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
+
+        let encrypted = encryption.encrypt_string("sk-mcp-secret").unwrap();
+        db.create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "Auth Server".into(),
+                description: None,
+                url: "https://example.com/mcp".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: Some(encrypted),
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let resolved = svc.resolve_by_prefix(1, "auth_server").await.unwrap();
+        assert!(resolved.is_some());
+        assert_eq!(resolved.unwrap().api_key.as_deref(), Some("sk-mcp-secret"));
+    }
+
+    #[tokio::test]
+    async fn resolve_by_prefix_errors_when_encryption_missing_for_key() {
+        let encryption = test_encryption();
+        let db = Arc::new(StorageBackend::in_memory());
+
+        let encrypted = encryption.encrypt_string("sk-secret").unwrap();
+        db.create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "No Enc".into(),
+                description: None,
+                url: "https://example.com".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: Some(encrypted),
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Service without encryption
+        let svc = McpServerService::new(db, None);
+        let result = svc.resolve_by_prefix(1, "no_enc").await;
         assert!(result.is_err());
     }
 }

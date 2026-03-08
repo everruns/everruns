@@ -7,7 +7,7 @@
 // (decrypt from DB first, then env fallback). Enumerates providers across
 // all orgs for background sync, not just DEFAULT_ORG_ID.
 
-use crate::services::llm_resolver::get_default_api_key_from_env;
+use crate::services::llm_resolver::resolve_provider_api_key;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{CreateLlmModelRow, LlmProviderRow, UpdateLlmModel},
@@ -266,31 +266,9 @@ impl ModelSyncService {
         })
     }
 
-    /// Resolve API key for a provider.
-    ///
-    /// Resolution order (same as LlmResolverService):
-    /// 1. Decrypt from database if encryption is available and key is set
-    /// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY, etc.)
+    /// Resolve API key for a provider (delegates to shared helper).
     fn resolve_api_key(&self, provider_row: &LlmProviderRow) -> Result<Option<String>> {
-        if provider_row.api_key_encrypted.is_some() {
-            if let Some(ref encryption) = self.encryption {
-                let provider_with_key = self
-                    .db
-                    .get_provider_with_api_key(provider_row, encryption)?;
-                if provider_with_key.api_key.is_some() {
-                    return Ok(provider_with_key.api_key);
-                }
-            } else {
-                tracing::warn!(
-                    provider_id = %provider_row.id,
-                    provider_type = %provider_row.provider_type,
-                    "Provider has encrypted API key but encryption service is not configured. \
-                     Falling back to environment variable."
-                );
-            }
-        }
-
-        Ok(get_default_api_key_from_env(&provider_row.provider_type))
+        resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider_row)
     }
 }
 
