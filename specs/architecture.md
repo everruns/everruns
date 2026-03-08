@@ -56,7 +56,6 @@ graph TB
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
-   - `integrations/codesandbox/` → `everruns-integrations-codesandbox` - CodeSandbox cloud sandbox integration (auto-registered via `inventory` plugin system)
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -80,7 +79,6 @@ everruns/
 │   ├── openai/           # OpenAI provider
 │   └── anthropic/        # Anthropic provider
 ├── integrations/
-│   ├── codesandbox/      # CodeSandbox cloud sandbox (inventory plugin)
 │   ├── docker/           # Docker container (inventory plugin)
 │   └── daytona/          # Daytona cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
@@ -113,7 +111,7 @@ graph TD
 
 ### Integration Plugin Force-Linking
 
-Integration crates (`codesandbox`, `docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
+Integration crates (`docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
 
 **Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate** (see those files for the current list).
 

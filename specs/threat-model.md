@@ -25,7 +25,6 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
 | TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
-| TM-CSB | CodeSandbox | Sandbox token compromise, resource exhaustion |
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
 
@@ -547,7 +546,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (docker, daytona, codesandbox) require Admin role to assign via API | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (docker, daytona) require Admin role to assign via API | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -586,7 +585,7 @@ Combined prompt sent to LLM as system message
 The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
 
 **TM-AGENT-005 — Capability Escalation (MITIGATED):**
-Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`docker_container`, `daytona`, `codesandbox`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
+Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`docker_container`, `daytona`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
 
 **TM-AGENT-006 — Iteration Limit:**
 ```rust
@@ -765,17 +764,7 @@ Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, starte
 Session A cannot access sb_xyz (different session_id in storage query)
 ```
 
-## 17. CodeSandbox Capability (TM-CSB)
-
-CodeSandbox sandboxes are Firecracker microVMs managed via REST API. Multiple sandboxes per session, each identified by `sandbox_id`. Pitcher tokens stored encrypted in session KV store.
-
-| ID | Threat | Severity | Mitigation | Status |
-|----|--------|----------|------------|--------|
-| TM-CSB-001 | Pitcher token compromise | Medium | Stored encrypted via AES-256-GCM in session secrets; decrypted only at runtime | MITIGATED |
-| TM-CSB-002 | Unbounded sandbox creation | Medium | No per-session sandbox count limit; could exhaust API quota | **OPEN** |
-| TM-CSB-003 | Cross-session sandbox access | Critical | Sandbox state stored in session-scoped secrets (`csb_sandbox:{id}`); isolation enforced by storage store | MITIGATED |
-
-## 18. Client-Side Tools (TM-CLIENT)
+## 17. Client-Side Tools (TM-CLIENT)
 
 Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
 
@@ -785,7 +774,7 @@ Client-side tools pause server execution and wait for client to submit results v
 | TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
 | TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
 
-## 19. Brave Search (TM-LLM)
+## 18. Brave Search (TM-LLM)
 
 Search results from Brave Search are returned as tool results. Adversarial content in search results could influence LLM behavior.
 
@@ -820,7 +809,6 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |
-| TM-CSB-002 | Unbounded sandbox creation | Medium | Add per-session sandbox count limit |
 
 ### Accepted Risks
 
@@ -899,7 +887,6 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
 - `specs/daytona.md` — Daytona cloud sandbox integration
-- `specs/codesandbox.md` — CodeSandbox cloud sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
 - `specs/apps.md` — Apps system (agent deployment to channels)
 - `specs/slack-integration.md` — Slack bot integration

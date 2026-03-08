@@ -15,7 +15,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 everruns-core = { path = "../core" }
-everruns-integrations-codesandbox = { path = "../../integrations/codesandbox" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }

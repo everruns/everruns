@@ -228,7 +228,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 | `medium` | Logged but allowed for org members. | Any org member |
 | `high` | Can access external compute or resources. | Requires Admin role |
 
-High-risk built-in capabilities: `docker_container`, `daytona`, `codesandbox`.
+High-risk built-in capabilities: `docker_container`, `daytona`.
 
 See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 
@@ -724,26 +724,6 @@ This capability is experimental and only available in development environments d
 - Security implications of host networking
 - Resource management considerations
 - API stability concerns
-
-#### CodeSandbox
-
-- **ID**: `codesandbox` (Dev only)
-- **Purpose**: Cloud-based sandbox VMs via CodeSandbox API for isolated code execution
-- **Dependencies**: `session_storage` (API key stored as session secret `CSB_API_KEY`)
-- **Tools**: `csb_create_sandbox`, `csb_exec`, `csb_exec_status`, `csb_read_file`, `csb_write_file`, `csb_download_workspace`, `csb_list_sandboxes`, `csb_manage_sandbox`
-- **Architecture**: Two-tier API — Management API for lifecycle, Pint API for in-sandbox operations
-
-##### Design Decision: Multiple Sandboxes Per Session
-
-Unlike DockerContainer (single container per session), CodeSandbox supports multiple sandboxes. This enables workflows like running frontend and backend in separate sandboxes, A/B testing configurations, or parallel execution.
-
-##### Design Decision: Encrypted State Storage
-
-Pitcher URL and token are persisted in session secrets (encrypted at rest) rather than plain-text KV store. The `pitcher_token` grants full access to the sandbox VM, so encryption is appropriate. This also avoids ~200ms+ latency per tool call from re-deriving connection info.
-
-##### Design Decision: Dev-Only Availability
-
-This capability is experimental and only available in development environments. The CodeSandbox API is external and requires an API key, and the integration is still being validated.
 
 ### Message Filters
 

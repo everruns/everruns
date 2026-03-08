@@ -44,11 +44,11 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```ignore
-/// // In integrations/codesandbox/src/lib.rs:
+/// // In integrations/docker/src/lib.rs:
 /// inventory::submit! {
 ///     everruns_core::capabilities::IntegrationPlugin {
 ///         experimental_only: true,
-///         factory: || Box::new(CodeSandboxCapability),
+///         factory: || Box::new(DockerCapability),
 ///     }
 /// }
 /// ```
@@ -460,7 +460,7 @@ impl CapabilityRegistry {
     /// Create a registry with built-in capabilities for a specific deployment grade
     ///
     /// Experimental capabilities are included via integration plugins in dev environments.
-    /// Non-experimental integration plugins (like CodeSandbox) are included in all environments.
+    /// Non-experimental integration plugins are included in all environments.
     pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
         let mut registry = Self::new();
 
@@ -1121,7 +1121,7 @@ mod tests {
     // CapabilityRegistry tests
     // =========================================================================
 
-    // Note: Integration plugins (codesandbox, etc.) are registered via inventory::submit!
+    // Note: Integration plugins (docker, daytona, etc.) are registered via inventory::submit!
     // in external crates. They only appear in the registry when the integration crate is
     // linked into the final binary. Core tests verify only built-in capabilities.
     // Integration crates have their own tests for plugin registration.
@@ -1154,7 +1154,7 @@ mod tests {
         assert!(registry.has("platform_management"));
         assert!(registry.has("system_commands"));
         // 22 core built-in capabilities
-        // (integration plugins like docker_container, codesandbox add more when linked)
+        // (integration plugins like docker_container, daytona add more when linked)
         assert!(registry.len() >= 22);
     }
 

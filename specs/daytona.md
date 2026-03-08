@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based sandboxes as an agent execution environment. Agents can create, manage, and interact with multiple isolated environments per session via the Daytona REST API. Like CodeSandbox, this supports multiple sandboxes per session, each identified by a `sandbox_id`.
+The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based sandboxes as an agent execution environment. Agents can create, manage, and interact with multiple isolated environments per session via the Daytona REST API. This supports multiple sandboxes per session, each identified by a `sandbox_id`.
 
 **Status**: Available (All environments)
 
@@ -218,13 +218,13 @@ See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for f
 
 ## Design Decisions
 
-### Shape parity with CodeSandbox
+### Integration pattern
 
-The Daytona integration mirrors the CodeSandbox integration shape: same tool naming pattern (prefix-based), same state management via session secrets, same capability registration via inventory plugin.
+The Daytona integration uses prefix-based tool naming, state management via session secrets, and capability registration via inventory plugin.
 
 ### Synchronous exec only
 
-Daytona's `POST /process/execute` is inherently synchronous. No async polling needed (unlike CodeSandbox's exec_create + poll pattern). The `timeout` parameter handles long-running commands.
+Daytona's `POST /process/execute` is inherently synchronous. No async polling needed. The `timeout` parameter handles long-running commands.
 
 ### Simpler state model
 
