@@ -606,7 +606,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let _rows = self
+        let regex = regex::Regex::new(pattern)
+            .map_err(|e| store_error(format!("Invalid regex pattern: {}", e)))?;
+
+        let rows = self
             .db
             .grep_session_files(session_id, pattern, path_pattern)
             .await
@@ -615,8 +618,35 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to grep files")
             })?;
 
-        // TODO: Implement actual grep - for now return empty
-        Ok(vec![])
+        let mut results = Vec::new();
+
+        for file_info in rows {
+            let file = self
+                .db
+                .get_session_file(session_id, &file_info.path)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to read file for grep: {}", e);
+                    store_error("Failed to read file for grep")
+                })?;
+
+            if let Some(f) = file
+                && let Some(content) = f.content
+                && let Ok(text) = String::from_utf8(content)
+            {
+                for (i, line) in text.lines().enumerate() {
+                    if regex.is_match(line) {
+                        results.push(GrepMatch {
+                            path: file_info.path.clone(),
+                            line_number: i + 1,
+                            line: line.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
@@ -1853,6 +1883,133 @@ mod tests {
             .unwrap();
         // None of these are MCP capabilities, so no tool definitions produced
         assert!(tools.is_empty());
+    }
+
+    // =========================================================================
+    // grep_files parity tests (EVE-58)
+    // =========================================================================
+
+    /// Seed a file into the in-memory store for grep tests.
+    async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
+        use crate::storage::models::CreateSessionFileRow;
+        let create = CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_id),
+            path: path.to_string(),
+            content: Some(content.as_bytes().to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        };
+        db.create_session_file(create).await.expect("seed file");
+    }
+
+    #[tokio::test]
+    async fn grep_files_returns_matching_lines() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/src/main.rs",
+            "fn main() {\n    println!(\"hello world\");\n}\n",
+        )
+        .await;
+
+        let results = adapters
+            .grep_files(session_id, "hello", None)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "/src/main.rs");
+        assert_eq!(results[0].line_number, 2);
+        assert!(results[0].line.contains("hello world"));
+    }
+
+    #[tokio::test]
+    async fn grep_files_returns_empty_for_no_match() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/src/lib.rs",
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+        )
+        .await;
+
+        let results = adapters
+            .grep_files(session_id, "nonexistent_pattern", None)
+            .await
+            .unwrap();
+
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn grep_files_matches_multiple_lines_and_files() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/a.txt",
+            "TODO fix this\nall good\nTODO refactor\n",
+        )
+        .await;
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/b.txt",
+            "all good\nTODO cleanup\n",
+        )
+        .await;
+
+        let results = adapters.grep_files(session_id, "TODO", None).await.unwrap();
+
+        assert_eq!(results.len(), 3);
+        // Verify line numbers
+        let a_matches: Vec<_> = results.iter().filter(|m| m.path == "/a.txt").collect();
+        assert_eq!(a_matches.len(), 2);
+        assert_eq!(a_matches[0].line_number, 1);
+        assert_eq!(a_matches[1].line_number, 3);
+
+        let b_matches: Vec<_> = results.iter().filter(|m| m.path == "/b.txt").collect();
+        assert_eq!(b_matches.len(), 1);
+        assert_eq!(b_matches[0].line_number, 2);
+    }
+
+    #[tokio::test]
+    async fn grep_files_supports_regex_patterns() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/nums.rs",
+            "let x = 42;\nlet y = 100;\nlet z = 7;\n",
+        )
+        .await;
+
+        let results = adapters
+            .grep_files(session_id, r"\d{3}", None)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].line.contains("100"));
+    }
+
+    #[tokio::test]
+    async fn grep_files_invalid_regex_returns_error() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+
+        let result = adapters.grep_files(session_id, "[invalid", None).await;
+        assert!(result.is_err());
     }
 
     // ---- helpers ----
