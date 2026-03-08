@@ -201,7 +201,7 @@ Use the [`/ship`](.claude/commands/ship.md) command to execute the full shipping
 9. Rebase on main: `git fetch origin main && git rebase origin/main`
 10. Smoke test impacted functionality in both dev mode (`just start-dev`) and full mode (`just start-all`)
 11. Performance impact: no unindexed queries, no full table scans, no N+1 queries, no unbounded result sets; add pagination/limits where needed
-12. UI screenshots for UI changes
+12. UI screenshots for UI changes (validation/PR comments only; do not commit screenshot artifacts)
 13. Test coverage: extensive positive and negative tests; reproduce issue + verify fix, cover touched code paths
 14. Update relevant specs in `specs/`
 15. Update docs in `apps/docs/` if applicable
