@@ -40,8 +40,10 @@ use everruns_worker::{RunnerBackend, create_driver_registry, create_runner_with_
 
 /// Get test database URL from environment or use default
 pub fn get_database_url() -> String {
-    std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns_test".to_string())
+    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
+        format!("postgres://everruns:everruns@localhost:{port}/everruns_test")
+    })
 }
 
 /// Create a PostgreSQL pool for tests

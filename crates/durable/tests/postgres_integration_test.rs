@@ -4,7 +4,7 @@
 //!
 //! Requirements:
 //! - `postgres-tests` feature enabled
-//! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:5432/everruns_test
+//! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:{DB_PORT:-9332}/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 #![cfg(feature = "postgres-tests")]
@@ -26,8 +26,10 @@ use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, 
 
 /// Get test database URL from environment or use default
 fn get_database_url() -> String {
-    std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/everruns_test".to_string())
+    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
+        format!("postgres://postgres:postgres@localhost:{port}/everruns_test")
+    })
 }
 
 async fn reset_durable_tables(pool: &PgPool) {

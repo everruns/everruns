@@ -2,7 +2,7 @@
 # Caddy reverse proxy setup for no-docker environment
 # Provides unified :9300 entry point matching docker-compose-full.yaml
 #
-# Routes /api/* -> :9000 (API), /* -> :9100 (UI)
+# Routes /api/* -> API_PORT, /* -> UI_PORT
 # SSE: h2c backend transport, no response buffering, no read timeout
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -41,23 +41,23 @@ install_caddy() {
 # Matches local/Caddyfile but with localhost backends
 generate_caddyfile() {
     local caddyfile="/tmp/Caddyfile"
-    cat > "$caddyfile" <<'CADDYEOF'
+    cat > "$caddyfile" <<CADDYEOF
 # No-docker reverse proxy (matches local/Caddyfile)
-# API on :9000, UI on :9100, unified on :9300
-:9300 {
+# API on :${API_PORT}, UI on :${UI_PORT}, unified on :${PROXY_PORT}
+:${PROXY_PORT} {
 	handle_path /api/* {
-		reverse_proxy localhost:9000 {
+		reverse_proxy localhost:${API_PORT} {
 			flush_interval -1
 		}
 	}
 	handle /api-doc/* {
-		reverse_proxy localhost:9000
+		reverse_proxy localhost:${API_PORT}
 	}
 	handle /health {
-		reverse_proxy localhost:9000
+		reverse_proxy localhost:${API_PORT}
 	}
 	handle {
-		reverse_proxy localhost:9100
+		reverse_proxy localhost:${UI_PORT}
 	}
 }
 CADDYEOF
@@ -72,13 +72,13 @@ start_caddy() {
     local caddyfile
     caddyfile=$(generate_caddyfile)
 
-    log_info "Starting Caddy reverse proxy on :9300..."
+    log_info "Starting Caddy reverse proxy on :${PROXY_PORT}..."
     caddy start --config "$caddyfile" --pidfile "$CADDY_PIDFILE" > "$CADDY_LOG" 2>&1
 
     # Wait for startup
     for i in {1..10}; do
-        if curl -s http://localhost:9300/health > /dev/null 2>&1; then
-            check_pass "Caddy - started on localhost:9300"
+        if curl -s http://localhost:${PROXY_PORT}/health > /dev/null 2>&1; then
+            check_pass "Caddy - started on localhost:${PROXY_PORT}"
             return 0
         fi
         sleep 1
@@ -86,7 +86,7 @@ start_caddy() {
 
     # May not have a backend yet - check if Caddy is running
     if [ -f "$CADDY_PIDFILE" ] && kill -0 "$(cat "$CADDY_PIDFILE")" 2>/dev/null; then
-        check_pass "Caddy - started on localhost:9300 (backend not ready yet)"
+        check_pass "Caddy - started on localhost:${PROXY_PORT} (backend not ready yet)"
         return 0
     fi
 
@@ -104,9 +104,9 @@ stop_caddy() {
         fi
         rm -f "$CADDY_PIDFILE"
     fi
-    # Kill any caddy on port 9300
+    # Kill any caddy on proxy port
     local port_pid
-    port_pid=$(lsof -ti :9300 2>/dev/null || true)
+    port_pid=$(lsof -ti :"${PROXY_PORT}" 2>/dev/null || true)
     if [ -n "$port_pid" ]; then
         kill -9 $port_pid 2>/dev/null || true
         sleep 1
