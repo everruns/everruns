@@ -24,6 +24,7 @@ Update all dependencies to latest versions (including major).
 3. Run `npm install` to regenerate `package-lock.json`
 4. Run `npm run lint` and `npm run build` — must pass
 5. Run `npm test` — must pass
+6. Treat smoke-test screenshots as review artifacts only; do not commit generated screenshot files to the repo
 
 **Docs (apps/docs):**
 1. Run `npm outdated` in `apps/docs/`

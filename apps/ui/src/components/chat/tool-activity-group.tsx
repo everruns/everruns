@@ -21,7 +21,7 @@ import {
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { isBashTool } from "./bash-tool-call-card";
+import { BashToolResultDetails, isBashTool, parseBashOutput } from "./bash-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 
@@ -183,6 +183,25 @@ function getResultPreview(result: ToolCompletedData | undefined): string | null 
   const fullText = getFullText(result?.result);
   if (!fullText) return null;
 
+  const bashOutput = parseBashOutput(fullText);
+  if (bashOutput) {
+    const previewSource = bashOutput.stdout || bashOutput.stderr;
+    const previewLine = previewSource
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+
+    if (previewLine) {
+      return previewLine.length > 120 ? `${previewLine.slice(0, 120)}...` : previewLine;
+    }
+
+    if (bashOutput.exit_code !== 0) {
+      return `exit code ${bashOutput.exit_code}`;
+    }
+
+    return null;
+  }
+
   const previewLine = fullText
     .split("\n")
     .map((line) => line.trim())
@@ -217,10 +236,16 @@ function ToolActivityRow({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
-  const hasOutput = fullText.length > 0;
-  const hasError = !!toolResult?.error;
+  const bashOutput = isBashTool(toolCall.name) ? parseBashOutput(fullText) : null;
+  const hasOutput = bashOutput
+    ? !!bashOutput.stdout || !!bashOutput.stderr || bashOutput.exit_code !== 0
+    : fullText.length > 0;
+  const hasToolError = !!toolResult?.error;
+  const hasError = hasToolError || (bashOutput ? !bashOutput.success : false);
   const isComplete = !!toolResult;
   const isRunning = !isComplete && !hasError;
+  const exitCodeLabel =
+    bashOutput && bashOutput.exit_code !== 0 ? `exit ${bashOutput.exit_code}` : null;
 
   return (
     <div
@@ -249,7 +274,14 @@ function ToolActivityRow({
             {isBashTool(toolCall.name) && mode === "server" && (
               <Terminal className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/55" />
             )}
-            <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
+            <div className="min-w-0 inline-flex items-baseline gap-2">
+              <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
+              {exitCodeLabel && (
+                <span className="flex-shrink-0 text-[10px] leading-none uppercase tracking-[0.16em] text-red-500/75">
+                  {exitCodeLabel}
+                </span>
+              )}
+            </div>
             {isRunning && (
               <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
                 {mode === "client" ? "waiting" : "running"}
@@ -257,7 +289,7 @@ function ToolActivityRow({
             )}
           </div>
 
-          {hasError && (
+          {hasToolError && (
             <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>
           )}
 
@@ -290,9 +322,15 @@ function ToolActivityRow({
           >
             <div className="min-h-0 overflow-hidden">
               {hasOutput && (
-                <pre className="overflow-x-auto border border-border/60 bg-background px-3 py-3 font-mono text-[11px] leading-relaxed text-muted-foreground/85">
-                  {fullText}
-                </pre>
+                <div className="font-mono text-[11px] leading-relaxed text-muted-foreground/85">
+                  <BashToolResultDetails
+                    fullText={fullText}
+                    containerClassName="border border-border/60 bg-background px-3 py-3 text-[11px] leading-relaxed text-muted-foreground/85 max-h-80"
+                    stdoutClassName="text-[11px] leading-relaxed text-muted-foreground/85"
+                    stderrClassName="border-red-400/25 pt-3 text-[11px] leading-relaxed text-red-700/85 dark:text-red-300/85"
+                    showExitCode={false}
+                  />
+                </div>
               )}
             </div>
           </div>
