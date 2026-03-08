@@ -3,7 +3,7 @@
 # Tests the everruns CLI against a running server
 #
 # Prerequisites:
-# - Server running at localhost:9000 (with worker)
+# - Server running at localhost:9301 (with worker)
 # - CLI binary built: cargo build -p everruns-cli
 # - EVERRUNS_API_KEY set (any value works with AUTH_MODE=none)
 #
@@ -18,7 +18,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Configuration
-API_URL="${EVERRUNS_API_URL:-http://localhost:9000}"
+API_URL="${EVERRUNS_API_URL:-http://localhost:9301}"
 CLI="./target/debug/everruns"
 SKIP_CHAT="${1:-}"
 

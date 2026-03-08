@@ -15,9 +15,9 @@ case "$cmd" in
     "${DOCKER_COMPOSE[@]}" up -d
     echo "✅ Services started!"
     echo "   - Postgres: localhost:${DB_PORT}"
-    echo "   - Valkey:   localhost:6379"
-    echo "   - Jaeger UI: http://localhost:16686"
-    echo "   - OTLP gRPC: localhost:4317"
+    echo "   - Valkey:   localhost:${VALKEY_PORT}"
+    echo "   - Jaeger UI: http://localhost:${JAEGER_UI_PORT}"
+    echo "   - OTLP gRPC: localhost:${OTEL_GRPC_PORT}"
     ;;
 
   stop)

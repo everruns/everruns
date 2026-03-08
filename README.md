@@ -44,6 +44,9 @@ docker compose up -d
 Access the platform:
 - **Web UI**: http://localhost:9300
 - **API**: http://localhost:9300/api/...
+- **Jaeger UI**: http://localhost:16686
+
+The published example compose file defaults to `9300` for the app entry point and `16686` for Jaeger. If you need to avoid host-port conflicts, override them with `EXAMPLE_PROXY_PORT` and `EXAMPLE_JAEGER_UI_PORT` before `docker compose up`.
 
 For detailed setup instructions, see the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/).
 

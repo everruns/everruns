@@ -6,6 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 cmd="${1:-}"
 shift || true
 
+apply_port_prefix_defaults
+
 case "$cmd" in
   init)
     echo "🔧 Installing all development dependencies..."
@@ -111,7 +113,7 @@ case "$cmd" in
 
   upload-agents)
     echo "📤 Uploading example agents..."
-    API_URL="${API_URL:-http://localhost:9000}"
+    API_URL="${API_URL:-http://localhost:${API_PORT}}"
     EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
 
     # Check API is healthy

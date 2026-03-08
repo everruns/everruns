@@ -20,7 +20,7 @@ Usage:
     python examples/hackernews-reader/run.py "Show me the top 3 Ask HN posts"
 
     # With a custom server URL:
-    EVERRUNS_API_URL=http://localhost:9000 python examples/hackernews-reader/run.py
+    EVERRUNS_API_URL=http://localhost:9301 python examples/hackernews-reader/run.py
 """
 
 import asyncio
@@ -39,7 +39,7 @@ DEFAULT_PROMPT = (
 
 # Dev mode needs no real key; use EVERRUNS_API_KEY env var in production
 DEFAULT_API_KEY = "dev"
-DEFAULT_BASE_URL = "http://localhost:9000"
+DEFAULT_BASE_URL = "http://localhost:9301"
 
 
 async def main():

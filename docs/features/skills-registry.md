@@ -14,7 +14,7 @@ For an introduction to skills and the workspace-based workflow, see [Agent Skill
 Create a skill from a SKILL.md file:
 
 ```bash
-curl -X POST http://localhost:9000/v1/skills \
+curl -X POST http://localhost:9300/api/v1/skills \
   -H "Content-Type: application/json" \
   -d '{
     "skill_md": "---\nname: hello-world\ndescription: A simple greeting skill.\n---\n\n# Hello World\n\nGreet the user warmly."
@@ -26,7 +26,7 @@ curl -X POST http://localhost:9000/v1/skills \
 For skills with bundled scripts, references, or assets:
 
 ```bash
-curl -X POST http://localhost:9000/v1/skills/upload \
+curl -X POST http://localhost:9300/api/v1/skills/upload \
   -F "file=@csv-analyzer.zip"
 ```
 
@@ -50,7 +50,7 @@ Registry skills integrate into the capability system as virtual capabilities, ap
 ### Assigning to Agents
 
 ```bash
-curl -X POST http://localhost:9000/v1/agents \
+curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Analyst Agent",
@@ -81,7 +81,7 @@ Skills automatically depend on `session_file_system` for reading bundled files.
 Use the validation endpoint to check a SKILL.md before creating:
 
 ```bash
-curl -X POST http://localhost:9000/v1/skills/validate \
+curl -X POST http://localhost:9300/api/v1/skills/validate \
   -H "Content-Type: application/json" \
   -d '{"skill_md": "---\nname: my-skill\ndescription: Does things.\n---\n\n# Instructions"}'
 ```

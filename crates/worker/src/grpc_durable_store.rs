@@ -662,7 +662,64 @@ fn proto_state_to_circuit_state(state: proto::CircuitBreakerState) -> CircuitSta
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{LazyLock, Mutex, MutexGuard};
     use tonic::service::Interceptor;
+
+    static TLS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct TlsEnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        ca_cert: Option<String>,
+        cert: Option<String>,
+        key: Option<String>,
+        domain: Option<String>,
+    }
+
+    impl TlsEnvGuard {
+        fn new() -> Self {
+            let lock = TLS_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            Self {
+                _lock: lock,
+                ca_cert: std::env::var("WORKER_GRPC_TLS_CA_CERT").ok(),
+                cert: std::env::var("WORKER_GRPC_TLS_CERT").ok(),
+                key: std::env::var("WORKER_GRPC_TLS_KEY").ok(),
+                domain: std::env::var("WORKER_GRPC_TLS_DOMAIN").ok(),
+            }
+        }
+
+        fn set_var(&self, key: &str, value: &str) {
+            unsafe {
+                std::env::set_var(key, value);
+            }
+        }
+
+        fn remove_var(&self, key: &str) {
+            unsafe {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
+    impl Drop for TlsEnvGuard {
+        fn drop(&mut self) {
+            restore_env_var("WORKER_GRPC_TLS_CA_CERT", self.ca_cert.as_deref());
+            restore_env_var("WORKER_GRPC_TLS_CERT", self.cert.as_deref());
+            restore_env_var("WORKER_GRPC_TLS_KEY", self.key.as_deref());
+            restore_env_var("WORKER_GRPC_TLS_DOMAIN", self.domain.as_deref());
+        }
+    }
+
+    fn restore_env_var(key: &str, value: Option<&str>) {
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
 
     #[test]
     fn test_workflow_status_is_terminal() {
@@ -675,6 +732,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect_fails_after_timeout_on_unavailable_server() {
+        let env = TlsEnvGuard::new();
+        env.remove_var("WORKER_GRPC_TLS_CA_CERT");
+        env.remove_var("WORKER_GRPC_TLS_CERT");
+        env.remove_var("WORKER_GRPC_TLS_KEY");
+        env.remove_var("WORKER_GRPC_TLS_DOMAIN");
+
         // Verify connection fails with clear error after retry timeout
         // when control-plane is unavailable
         let timeout = Duration::from_secs(5);
@@ -736,12 +799,11 @@ mod tests {
 
     #[test]
     fn test_grpc_client_tls_returns_none_when_no_env_vars() {
-        // SAFETY: single-threaded test; no other thread reads these vars concurrently
-        unsafe {
-            std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
-            std::env::remove_var("WORKER_GRPC_TLS_CERT");
-            std::env::remove_var("WORKER_GRPC_TLS_KEY");
-        }
+        let env = TlsEnvGuard::new();
+        env.remove_var("WORKER_GRPC_TLS_CA_CERT");
+        env.remove_var("WORKER_GRPC_TLS_CERT");
+        env.remove_var("WORKER_GRPC_TLS_KEY");
+        env.remove_var("WORKER_GRPC_TLS_DOMAIN");
 
         let config = grpc_client_tls_from_env();
         assert!(
@@ -752,64 +814,58 @@ mod tests {
 
     #[test]
     fn test_grpc_client_tls_returns_none_when_ca_cert_empty() {
-        unsafe {
-            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", "");
-        }
+        let env = TlsEnvGuard::new();
+        env.set_var("WORKER_GRPC_TLS_CA_CERT", "");
         let config = grpc_client_tls_from_env();
         assert!(config.is_none());
-        unsafe { std::env::remove_var("WORKER_GRPC_TLS_CA_CERT") };
     }
 
     #[test]
     fn test_grpc_client_tls_returns_config_with_valid_ca() {
+        let env = TlsEnvGuard::new();
         let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let ca_path = format!("{}/tests/fixtures/test-ca.pem", manifest);
 
-        unsafe {
-            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
-            std::env::remove_var("WORKER_GRPC_TLS_CERT");
-            std::env::remove_var("WORKER_GRPC_TLS_KEY");
-        }
+        env.set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
+        env.remove_var("WORKER_GRPC_TLS_CERT");
+        env.remove_var("WORKER_GRPC_TLS_KEY");
+        env.remove_var("WORKER_GRPC_TLS_DOMAIN");
 
         let config = grpc_client_tls_from_env();
         assert!(
             config.is_some(),
             "Should return Some when CA cert is configured"
         );
-
-        unsafe { std::env::remove_var("WORKER_GRPC_TLS_CA_CERT") };
     }
 
     #[test]
     fn test_grpc_client_tls_with_client_cert() {
+        let env = TlsEnvGuard::new();
         let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let ca_path = format!("{}/tests/fixtures/test-ca.pem", manifest);
         let cert_path = format!("{}/tests/fixtures/test-client-cert.pem", manifest);
         let key_path = format!("{}/tests/fixtures/test-client-key.pem", manifest);
 
-        unsafe {
-            std::env::set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
-            std::env::set_var("WORKER_GRPC_TLS_CERT", &cert_path);
-            std::env::set_var("WORKER_GRPC_TLS_KEY", &key_path);
-        }
+        env.set_var("WORKER_GRPC_TLS_CA_CERT", &ca_path);
+        env.set_var("WORKER_GRPC_TLS_CERT", &cert_path);
+        env.set_var("WORKER_GRPC_TLS_KEY", &key_path);
+        env.remove_var("WORKER_GRPC_TLS_DOMAIN");
 
         let config = grpc_client_tls_from_env();
         assert!(
             config.is_some(),
             "Should return Some when CA+cert+key are configured"
         );
-
-        unsafe {
-            std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
-            std::env::remove_var("WORKER_GRPC_TLS_CERT");
-            std::env::remove_var("WORKER_GRPC_TLS_KEY");
-        }
     }
 
     #[test]
     #[should_panic(expected = "Failed to read WORKER_GRPC_TLS_CA_CERT")]
     fn test_grpc_client_tls_panics_on_missing_ca_file() {
-        unsafe { std::env::set_var("WORKER_GRPC_TLS_CA_CERT", "/nonexistent/ca.pem") };
+        let env = TlsEnvGuard::new();
+        env.set_var("WORKER_GRPC_TLS_CA_CERT", "/nonexistent/ca.pem");
+        env.remove_var("WORKER_GRPC_TLS_CERT");
+        env.remove_var("WORKER_GRPC_TLS_KEY");
+        env.remove_var("WORKER_GRPC_TLS_DOMAIN");
         let _config = grpc_client_tls_from_env();
     }
 }

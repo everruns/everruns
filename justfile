@@ -61,7 +61,7 @@ test-integration: start-docker
     set -e
     # Wait for postgres
     for i in {1..30}; do
-        if pg_isready -h localhost -p 5432 -U everruns 2>/dev/null; then break; fi
+        if pg_isready -h localhost -p "${DB_PORT:-9332}" -U everruns 2>/dev/null; then break; fi
         sleep 1
     done
     # Run migrations

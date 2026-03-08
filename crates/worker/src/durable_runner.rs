@@ -718,9 +718,9 @@ mod tests {
         assert!(runner.is_running(session_id).await);
     }
 
-    /// Test that start_run skips if workflow is already running
+    /// Test that start_run waits for the prior workflow to finish before reusing it.
     #[tokio::test]
-    async fn test_start_run_skips_if_running() {
+    async fn test_start_run_waits_for_running_workflow_to_finish() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let runner = DurableRunner::new_in_memory();
@@ -745,7 +745,18 @@ mod tests {
 
         assert!(runner.is_running(session_id).await);
 
-        // Second message while still running - should skip (not error)
+        let store = runner.store.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            let mut store = store.lock().await;
+            store
+                .update_workflow_status(session_id.uuid(), WorkflowStatus::Completed, None, None)
+                .await
+                .expect("Should complete existing workflow");
+        });
+
+        // Second message while still running - should wait, then reuse the workflow.
+        let start = std::time::Instant::now();
         runner
             .start_run(
                 DEFAULT_ORG_ID,
@@ -755,10 +766,16 @@ mod tests {
                 message_id2,
             )
             .await
-            .expect("Second start_run should skip gracefully");
+            .expect("Second start_run should wait and then succeed");
 
-        // Still running (not double-started)
-        assert!(runner.is_running(session_id).await);
+        assert!(
+            start.elapsed() >= std::time::Duration::from_millis(200),
+            "Second start_run should wait for the running workflow to finish"
+        );
+        assert!(
+            runner.is_running(session_id).await,
+            "Workflow should be running again after reuse"
+        );
     }
 
     /// Test that start_run resets a completed workflow for a second message

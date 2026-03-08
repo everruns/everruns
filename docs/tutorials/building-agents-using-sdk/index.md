@@ -577,7 +577,7 @@ graph TB
     end
 
     subgraph Control["Control Plane (Server)"]
-        REST["REST API<br/>:9000"]
+        REST["REST API<br/>:9301"]
         GRPC["gRPC Server<br/>:9001"]
         Services[Service Layer]
         DB[(PostgreSQL)]
@@ -616,7 +616,7 @@ graph TB
 ```
 
 **Control Plane** (Server) owns all state. It exposes two interfaces:
-- **REST API** (port 9000) — Internal API server
+- **REST API** (local direct port 9301) — Internal API server behind the local Caddy proxy
 - **gRPC** (port 9001) — Workers connect here (internal)
 
 A **Caddy reverse proxy** (port 9300) unifies the API and UI behind a single port. The SDK connects to `http://localhost:9300/api`.

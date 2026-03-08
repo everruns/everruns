@@ -20,8 +20,68 @@ done
 
 apply_port_prefix_defaults
 API_ADDR_DEFAULT="0.0.0.0:${API_PORT}"
+WORKER_GRPC_ADDR_DEFAULT="0.0.0.0:${WORKER_GRPC_PORT}"
+WORKER_GRPC_ADDRESS_DEFAULT="127.0.0.1:${WORKER_GRPC_PORT}"
 PROXY_URL_DEFAULT="http://localhost:${PROXY_PORT}"
+VALKEY_URL_DEFAULT="redis://localhost:${VALKEY_PORT}"
 DB_URL_DEFAULT="postgres://everruns:everruns@localhost:${DB_PORT}/everruns"
+
+ensure_run_state_dir() {
+  mkdir -p "$RUN_STATE_DIR"
+}
+
+clear_run_state_dir() {
+  rm -rf "$RUN_STATE_DIR"
+}
+
+record_pid() {
+  local name="$1"
+  local pid="$2"
+
+  ensure_run_state_dir
+  printf '%s\n' "$pid" > "$RUN_STATE_DIR/${name}.pid"
+}
+
+check_valkey_ready() {
+  local port="${1:?port required}"
+
+  if command -v valkey-cli &> /dev/null; then
+    valkey-cli -p "$port" ping 2>/dev/null | grep -q PONG
+    return $?
+  fi
+
+  if command -v redis-cli &> /dev/null; then
+    redis-cli -p "$port" ping 2>/dev/null | grep -q PONG
+    return $?
+  fi
+
+  if command -v nc &> /dev/null; then
+    nc -z localhost "$port" >/dev/null 2>&1
+    return $?
+  fi
+
+  if (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+signal_recorded_pids() {
+  local signal="$1"
+
+  [ -d "$RUN_STATE_DIR" ] || return 0
+
+  local pid_file pid
+  for pid_file in "$RUN_STATE_DIR"/*.pid; do
+    [ -e "$pid_file" ] || continue
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    [ -n "$pid" ] || continue
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "-$signal" "$pid" 2>/dev/null || true
+    fi
+  done
+}
 
 # require_command is defined in common.sh (sourced above)
 
@@ -46,6 +106,7 @@ case "$cmd" in
   server)
     echo "🌐 Starting server..."
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
@@ -54,6 +115,7 @@ case "$cmd" in
 
   worker)
     echo "⚙️  Starting worker..."
+    export WORKER_GRPC_ADDRESS=${WORKER_GRPC_ADDRESS:-$WORKER_GRPC_ADDRESS_DEFAULT}
     cargo run -p everruns-worker
     ;;
 
@@ -61,6 +123,7 @@ case "$cmd" in
     echo "👀 Starting server with auto-reload..."
     require_command cargo-watch "Run: just init"
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
@@ -70,6 +133,7 @@ case "$cmd" in
   watch-worker)
     echo "👀 Starting worker with auto-reload..."
     require_command cargo-watch "Run: just init"
+    export WORKER_GRPC_ADDRESS=${WORKER_GRPC_ADDRESS:-$WORKER_GRPC_ADDRESS_DEFAULT}
     cargo watch -w crates -x 'run -p everruns-worker'
     ;;
 
@@ -86,6 +150,7 @@ case "$cmd" in
     # Track child PIDs for cleanup
     CHILD_PIDS=()
     CLEANUP_DONE=false
+    clear_run_state_dir
 
     cleanup() {
       # Prevent multiple cleanup runs
@@ -108,12 +173,7 @@ case "$cmd" in
         fi
       done
 
-      # Kill by name (catches any child processes we didn't track directly)
-      pkill -TERM -f "caddy run" 2>/dev/null || true
-      pkill -TERM -f "cargo-watch" 2>/dev/null || true
-      pkill -TERM -f "everruns-server" 2>/dev/null || true
-      pkill -TERM -f "next dev" 2>/dev/null || true
-      pkill -TERM -f "next-router-worker" 2>/dev/null || true
+      signal_recorded_pids TERM
 
       # Give processes time to terminate gracefully
       sleep 1
@@ -124,11 +184,8 @@ case "$cmd" in
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
-      pkill -KILL -f "caddy run" 2>/dev/null || true
-      pkill -KILL -f "cargo-watch" 2>/dev/null || true
-      pkill -KILL -f "everruns-server" 2>/dev/null || true
-      pkill -KILL -f "next dev" 2>/dev/null || true
-      pkill -KILL -f "next-router-worker" 2>/dev/null || true
+      signal_recorded_pids KILL
+      clear_run_state_dir
 
       # Restore terminal state
       stty sane 2>/dev/null || true
@@ -141,8 +198,9 @@ case "$cmd" in
     # Enable dev mode
     export DEV_MODE=true
     export DEPLOYMENT_GRADE=dev
-    export API_PORT UI_PORT PROXY_PORT
+    export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
@@ -194,6 +252,7 @@ case "$cmd" in
     fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
+    record_pid api "$API_PID"
     sleep 3
 
     # Wait for server
@@ -218,6 +277,7 @@ case "$cmd" in
     run_ui_dev &
     UI_PID=$!
     CHILD_PIDS+=("$UI_PID")
+    record_pid ui "$UI_PID"
     cd "$PROJECT_ROOT"
     sleep 5
     echo "   ✅ UI is starting (PID: $UI_PID)"
@@ -227,6 +287,7 @@ case "$cmd" in
     caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
     CADDY_PID=$!
     CHILD_PIDS+=("$CADDY_PID")
+    record_pid caddy "$CADDY_PID"
     sleep 1
     echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
 
@@ -268,6 +329,7 @@ case "$cmd" in
     CHILD_PIDS=()
     JAEGER_STARTED=false
     CLEANUP_DONE=false
+    clear_run_state_dir
 
     cleanup() {
       # Prevent multiple cleanup runs
@@ -290,13 +352,7 @@ case "$cmd" in
         fi
       done
 
-      # Kill by name (catches any child processes we didn't track directly)
-      pkill -TERM -f "caddy run" 2>/dev/null || true
-      pkill -TERM -f "cargo-watch" 2>/dev/null || true
-      pkill -TERM -f "everruns-server" 2>/dev/null || true
-      pkill -TERM -f "everruns-worker" 2>/dev/null || true
-      pkill -TERM -f "next dev" 2>/dev/null || true
-      pkill -TERM -f "next-router-worker" 2>/dev/null || true
+      signal_recorded_pids TERM
 
       # Give processes time to terminate gracefully
       sleep 1
@@ -307,12 +363,8 @@ case "$cmd" in
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
-      pkill -KILL -f "caddy run" 2>/dev/null || true
-      pkill -KILL -f "cargo-watch" 2>/dev/null || true
-      pkill -KILL -f "everruns-server" 2>/dev/null || true
-      pkill -KILL -f "everruns-worker" 2>/dev/null || true
-      pkill -KILL -f "next dev" 2>/dev/null || true
-      pkill -KILL -f "next-router-worker" 2>/dev/null || true
+      signal_recorded_pids KILL
+      clear_run_state_dir
 
       # Restore terminal state
       stty sane 2>/dev/null || true
@@ -336,24 +388,10 @@ case "$cmd" in
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif check_postgres_ready localhost "$DB_PORT" postgres; then
-      echo "   ✅ Local PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
-      if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q jaeger; then
-          echo "   ℹ️  Starting Jaeger for tracing..."
-          ensure_docker_daemon || true
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
-          cd "$PROJECT_ROOT"
-        else
-          JAEGER_STARTED=true
-        fi
-      fi
-    elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
+    elif docker_compose_service_running postgres && check_postgres_ready localhost "$DB_PORT" everruns; then
       echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-      if ! docker ps 2>/dev/null | grep -q jaeger; then
+      if ! docker_compose_service_running jaeger; then
         echo "   ℹ️  Starting Jaeger for tracing..."
         if resolve_docker_compose 2>/dev/null; then
           cd "$PROJECT_ROOT/local"
@@ -362,6 +400,20 @@ case "$cmd" in
         fi
       else
         JAEGER_STARTED=true
+      fi
+    elif check_postgres_ready localhost "$DB_PORT" postgres; then
+      echo "   ✅ Local PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker_compose_service_running jaeger; then
+          echo "   ℹ️  Starting Jaeger for tracing..."
+          ensure_docker_daemon || true
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        else
+          JAEGER_STARTED=true
+        fi
       fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
@@ -391,24 +443,25 @@ case "$cmd" in
 
     # Start Valkey for distributed rate limiting
     if [ "$NO_DOCKER" = true ]; then
-      if command -v valkey-cli &> /dev/null && valkey-cli ping 2>/dev/null | grep -q PONG; then
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+      if check_valkey_ready "$VALKEY_PORT"; then
+        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
         echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
-      elif command -v redis-cli &> /dev/null && redis-cli ping 2>/dev/null | grep -q PONG; then
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
-        echo "   ✅ Local Redis-compatible server ready (distributed rate limiting enabled)"
       else
         echo "   ℹ️  Valkey not available — using per-instance rate limiting"
       fi
     elif [ -z "${VALKEY_URL:-}" ]; then
       if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q valkey; then
+        if ! docker_compose_service_running valkey; then
           echo "   ℹ️  Starting Valkey for distributed rate limiting..."
           cd "$PROJECT_ROOT/local"
           "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
           cd "$PROJECT_ROOT"
         fi
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        until check_valkey_ready "$VALKEY_PORT"; do
+          echo "   Waiting for Valkey to be ready..."
+          sleep 1
+        done
+        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
         echo "   ✅ Valkey started (distributed rate limiting enabled)"
       fi
     fi
@@ -437,8 +490,10 @@ case "$cmd" in
     fi
 
     # Start API
-    export API_PORT UI_PORT PROXY_PORT
+    export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDRESS=${WORKER_GRPC_ADDRESS:-$WORKER_GRPC_ADDRESS_DEFAULT}
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
@@ -455,6 +510,7 @@ case "$cmd" in
     fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
+    record_pid api "$API_PID"
     sleep 3
 
     # Wait for API
@@ -516,6 +572,7 @@ case "$cmd" in
     start_worker_with_restart &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
+    record_pid worker "$WORKER_PID"
     sleep 2
     echo "   ✅ Worker is starting (PID: $WORKER_PID)"
 
@@ -530,6 +587,7 @@ case "$cmd" in
       run_ui_dev &
       UI_PID=$!
       CHILD_PIDS+=("$UI_PID")
+      record_pid ui "$UI_PID"
       cd "$PROJECT_ROOT"
       sleep 5
       echo "   ✅ UI is starting (PID: $UI_PID)"
@@ -539,6 +597,7 @@ case "$cmd" in
       caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
       CADDY_PID=$!
       CHILD_PIDS+=("$CADDY_PID")
+      record_pid caddy "$CADDY_PID"
       sleep 1
       echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
     else
@@ -565,7 +624,7 @@ case "$cmd" in
       echo "   ⚙️ Worker:      running"
     fi
     if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:16686"
+      echo "   🔍 Jaeger UI:   http://localhost:${JAEGER_UI_PORT}"
     elif [ "$NO_DOCKER" = false ]; then
       echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
@@ -611,10 +670,7 @@ case "$cmd" in
         fi
       done
 
-      pkill -TERM -f "caddy run" 2>/dev/null || true
-      pkill -TERM -f "everruns-server" 2>/dev/null || true
-      pkill -TERM -f "everruns-worker" 2>/dev/null || true
-      pkill -TERM -f "next-server" 2>/dev/null || true
+      signal_recorded_pids TERM
 
       sleep 1
 
@@ -623,10 +679,8 @@ case "$cmd" in
           kill -KILL "$pid" 2>/dev/null || true
         fi
       done
-      pkill -KILL -f "caddy run" 2>/dev/null || true
-      pkill -KILL -f "everruns-server" 2>/dev/null || true
-      pkill -KILL -f "everruns-worker" 2>/dev/null || true
-      pkill -KILL -f "next-server" 2>/dev/null || true
+      signal_recorded_pids KILL
+      clear_run_state_dir
 
       stty sane 2>/dev/null || true
       echo "✅ Services stopped (Docker still running if started)"
@@ -648,11 +702,11 @@ case "$cmd" in
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif check_postgres_ready localhost "$DB_PORT" postgres; then
-      echo "   ✅ Local PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
+    elif docker_compose_service_running postgres && check_postgres_ready localhost "$DB_PORT" everruns; then
+      echo "   ✅ Docker PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q jaeger; then
+        if ! docker_compose_service_running jaeger; then
           echo "   ℹ️  Starting Jaeger for tracing..."
           ensure_docker_daemon || true
           cd "$PROJECT_ROOT/local"
@@ -662,18 +716,19 @@ case "$cmd" in
           JAEGER_STARTED=true
         fi
       fi
-    elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
-      echo "   ✅ Docker PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-      if ! docker ps 2>/dev/null | grep -q jaeger; then
-        echo "   ℹ️  Starting Jaeger for tracing..."
-        if resolve_docker_compose 2>/dev/null; then
+    elif check_postgres_ready localhost "$DB_PORT" postgres; then
+      echo "   ✅ Local PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker_compose_service_running jaeger; then
+          echo "   ℹ️  Starting Jaeger for tracing..."
+          ensure_docker_daemon || true
           cd "$PROJECT_ROOT/local"
           "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
           cd "$PROJECT_ROOT"
+        else
+          JAEGER_STARTED=true
         fi
-      else
-        JAEGER_STARTED=true
       fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
@@ -703,24 +758,25 @@ case "$cmd" in
 
     # Start Valkey for distributed rate limiting
     if [ "$NO_DOCKER" = true ]; then
-      if command -v valkey-cli &> /dev/null && valkey-cli ping 2>/dev/null | grep -q PONG; then
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+      if check_valkey_ready "$VALKEY_PORT"; then
+        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
         echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
-      elif command -v redis-cli &> /dev/null && redis-cli ping 2>/dev/null | grep -q PONG; then
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
-        echo "   ✅ Local Redis-compatible server ready (distributed rate limiting enabled)"
       else
         echo "   ℹ️  Valkey not available — using per-instance rate limiting"
       fi
     elif [ -z "${VALKEY_URL:-}" ]; then
       if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q valkey; then
+        if ! docker_compose_service_running valkey; then
           echo "   ℹ️  Starting Valkey for distributed rate limiting..."
           cd "$PROJECT_ROOT/local"
           "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
           cd "$PROJECT_ROOT"
         fi
-        export VALKEY_URL=${VALKEY_URL:-redis://localhost:6379}
+        until check_valkey_ready "$VALKEY_PORT"; do
+          echo "   Waiting for Valkey to be ready..."
+          sleep 1
+        done
+        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
         echo "   ✅ Valkey started (distributed rate limiting enabled)"
       fi
     fi
@@ -764,8 +820,10 @@ case "$cmd" in
     fi
 
     # Start server
-    export API_PORT UI_PORT PROXY_PORT
+    export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
+    export WORKER_GRPC_ADDRESS=${WORKER_GRPC_ADDRESS:-$WORKER_GRPC_ADDRESS_DEFAULT}
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
@@ -778,6 +836,7 @@ case "$cmd" in
     "$PROJECT_ROOT/target/release/everruns-server" &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
+    record_pid api "$API_PID"
     sleep 3
 
     # Wait for server
@@ -795,6 +854,7 @@ case "$cmd" in
     "$PROJECT_ROOT/target/release/everruns-worker" &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
+    record_pid worker "$WORKER_PID"
     sleep 2
     echo "   ✅ Worker is running (PID: $WORKER_PID)"
 
@@ -805,6 +865,7 @@ case "$cmd" in
       run_ui_start &
       UI_PID=$!
       CHILD_PIDS+=("$UI_PID")
+      record_pid ui "$UI_PID"
       cd "$PROJECT_ROOT"
       sleep 3
       echo "   ✅ UI is running (PID: $UI_PID)"
@@ -814,6 +875,7 @@ case "$cmd" in
       caddy run --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile &
       CADDY_PID=$!
       CHILD_PIDS+=("$CADDY_PID")
+      record_pid caddy "$CADDY_PID"
       sleep 1
       echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
     fi
@@ -830,7 +892,7 @@ case "$cmd" in
     fi
     echo "   ⚙️ Worker:      running (release)"
     if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:16686"
+      echo "   🔍 Jaeger UI:   http://localhost:${JAEGER_UI_PORT}"
     fi
     echo ""
     echo "💡 Press Ctrl+C to stop services"
@@ -842,10 +904,10 @@ case "$cmd" in
   stop-all)
     echo "🛑 Stopping all Everruns services..."
 
-    pkill -f "caddy run" 2>/dev/null || true
-    pkill -f "everruns-server" 2>/dev/null || true
-    pkill -f "everruns-worker" 2>/dev/null || true
-    pkill -f "next dev" 2>/dev/null || true
+    signal_recorded_pids TERM
+    sleep 1
+    signal_recorded_pids KILL
+    clear_run_state_dir
 
     if resolve_docker_compose 2>/dev/null; then
       cd "$PROJECT_ROOT/local"

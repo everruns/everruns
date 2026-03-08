@@ -6,6 +6,7 @@ set -euo pipefail
 # Get project root (two levels up from lib/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+RUN_STATE_DIR="${TMPDIR:-/tmp}/everruns-run-$(printf '%s' "$PROJECT_ROOT" | cksum | awk '{print $1}')"
 
 cd "$PROJECT_ROOT"
 
@@ -62,22 +63,47 @@ ensure_docker_daemon() {
   return 1
 }
 
+docker_compose_service_running() {
+  local service="$1"
+
+  if ! command -v docker &> /dev/null; then
+    return 1
+  fi
+
+  docker ps \
+    --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" \
+    --filter "label=com.docker.compose.service=${service}" \
+    -q 2>/dev/null | grep -q .
+}
+
 apply_port_prefix_defaults() {
   if [ -n "${PORT_PREFIX:-}" ]; then
     : "${PROXY_PORT:=${PORT_PREFIX}00}"
     : "${API_PORT:=${PORT_PREFIX}01}"
+    : "${WORKER_GRPC_PORT:=${PORT_PREFIX}02}"
+    : "${CADDY_ADMIN_PORT:=${PORT_PREFIX}03}"
     : "${UI_PORT:=${PORT_PREFIX}05}"
+    : "${OTEL_GRPC_PORT:=${PORT_PREFIX}17}"
+    : "${OTEL_HTTP_PORT:=${PORT_PREFIX}18}"
+    : "${VALKEY_PORT:=${PORT_PREFIX}79}"
+    : "${JAEGER_UI_PORT:=${PORT_PREFIX}86}"
     : "${DB_PORT:=${PORT_PREFIX}32}"
     : "${COMPOSE_PROJECT_NAME:=everruns-${PORT_PREFIX}}"
   else
-    : "${API_PORT:=9000}"
-    : "${UI_PORT:=9100}"
     : "${PROXY_PORT:=9300}"
-    : "${DB_PORT:=5432}"
+    : "${API_PORT:=9301}"
+    : "${WORKER_GRPC_PORT:=9001}"
+    : "${CADDY_ADMIN_PORT:=2019}"
+    : "${UI_PORT:=9305}"
+    : "${OTEL_GRPC_PORT:=4317}"
+    : "${OTEL_HTTP_PORT:=4318}"
+    : "${VALKEY_PORT:=6379}"
+    : "${JAEGER_UI_PORT:=16686}"
+    : "${DB_PORT:=9332}"
     : "${COMPOSE_PROJECT_NAME:=everruns}"
   fi
 
-  export PORT_PREFIX API_PORT UI_PORT PROXY_PORT DB_PORT COMPOSE_PROJECT_NAME
+  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT JAEGER_UI_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
 }
 
 # Check if npm dependencies need to be installed/updated

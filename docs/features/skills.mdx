@@ -87,7 +87,7 @@ Skills can be simple (just a `SKILL.md`) or include bundled scripts, references,
 Add the built-in `skills` capability to your agent to enable filesystem-based skill discovery:
 
 ```bash
-curl -X POST http://localhost:9000/v1/agents \
+curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Agent",

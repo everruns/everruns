@@ -75,7 +75,11 @@ case "$cmd" in
 
     echo "1️⃣  Checking PostgreSQL connection..."
 
-    if check_postgres_ready "$DB_HOST" "$DB_PORT" "${DB_USER:-postgres}"; then
+    if docker_compose_service_running postgres && check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; then
+      echo "   ✅ Docker PostgreSQL is ready"
+      DB_USER="everruns"
+      DB_PASS="everruns"
+    elif check_postgres_ready "$DB_HOST" "$DB_PORT" "${DB_USER:-postgres}"; then
       echo "   ✅ Local PostgreSQL is ready"
       DB_USER="${DB_USER:-postgres}"
       DB_PASS="${DB_PASS:-postgres}"
