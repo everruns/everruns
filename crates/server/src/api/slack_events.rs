@@ -957,7 +957,8 @@ async fn handle_slack_manifest(
     let manifest_yaml = format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
-         \x20 description: \"AI agent powered by Everruns\"\n\
+         \x20 description: \"{name} (Powered by Everruns)\"\n\
+         \x20 long_description: \"AI agent powered by Everruns — https://everruns.com\"\n\
          \x20 background_color: \"#1a1a2e\"\n\
          features:\n\
          \x20 bot_user:\n\
