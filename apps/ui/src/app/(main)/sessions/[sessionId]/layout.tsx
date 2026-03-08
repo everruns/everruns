@@ -3,7 +3,6 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -158,6 +157,13 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   const activeTab = getActiveTab();
 
   const basePath = `/sessions/${sessionId}`;
+  const getTabClassName = (isActive: boolean) =>
+    cn(
+      "inline-flex h-9 items-center gap-2 border px-3 text-sm transition-colors",
+      isActive
+        ? "border-primary bg-card text-foreground"
+        : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
+    );
 
   // Compute active feature set from session capabilities
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
@@ -176,8 +182,8 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   if (!session) {
     return (
       <div className="container mx-auto p-6">
-        <div className="text-red-500">Session not found</div>
-        <Link href="/sessions" className="text-blue-500 hover:underline">
+        <div className="text-destructive">Session not found</div>
+        <Link href="/sessions" className="text-sm text-muted-foreground hover:text-foreground">
           Back to sessions
         </Link>
       </div>
@@ -187,12 +193,12 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b p-4">
+      <div className="border-b bg-background/90 p-4">
         <Link
           href="/sessions"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="icon-sharp mr-2 h-4 w-4" />
           Back to Sessions
         </Link>
 
@@ -209,7 +215,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                   href={`/agents/${agentId}`}
                   className="inline-flex items-center gap-1 hover:text-foreground"
                 >
-                  <Bot className="w-3 h-3" />
+                  <Bot className="icon-sharp h-3 w-3" />
                   {agent.name}
                 </Link>
               )}
@@ -227,7 +233,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
                 <Tooltip>
                   <TooltipTrigger>
                     <Badge variant="outline" className="gap-1 cursor-help">
-                      <Zap className="w-3 h-3" />
+                      <Zap className="icon-sharp h-3 w-3" />
                       {formatTokens(liveUsage.input_tokens)} /{" "}
                       {formatTokens(liveUsage.output_tokens)}
                     </Badge>
@@ -257,7 +263,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             )}
             {llmModel && (
               <Badge variant="outline" className="gap-1">
-                <Sparkles className="w-3 h-3" />
+                <Sparkles className="icon-sharp h-3 w-3" />
                 {llmModel.display_name}
               </Badge>
             )}
@@ -271,59 +277,35 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
         <div className="flex gap-1 mt-4">
           <Link
             href={`${basePath}/chat`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "chat" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
+            className={getTabClassName(activeTab === "chat")}
           >
-            <MessageSquare className="h-4 w-4" />
+            <MessageSquare className="icon-sharp h-4 w-4" />
             Chat
           </Link>
           {hasFeature("file_system") && (
             <Link
               href={`${basePath}/files`}
-              className={cn(
-                buttonVariants({
-                  variant: activeTab === "files" ? "default" : "ghost",
-                  size: "sm",
-                }),
-                "gap-2",
-              )}
+              className={getTabClassName(activeTab === "files")}
             >
-              <Folder className="h-4 w-4" />
+              <Folder className="icon-sharp h-4 w-4" />
               Workspace
             </Link>
           )}
           {(hasFeature("secrets") || hasFeature("key_value")) && (
             <Link
               href={`${basePath}/storage`}
-              className={cn(
-                buttonVariants({
-                  variant: activeTab === "storage" ? "default" : "ghost",
-                  size: "sm",
-                }),
-                "gap-2",
-              )}
+              className={getTabClassName(activeTab === "storage")}
             >
-              <Database className="h-4 w-4" />
+              <Database className="icon-sharp h-4 w-4" />
               Storage
             </Link>
           )}
           {hasFeature("schedules") && (
             <Link
               href={`${basePath}/schedules`}
-              className={cn(
-                buttonVariants({
-                  variant: activeTab === "schedules" ? "default" : "ghost",
-                  size: "sm",
-                }),
-                "gap-2",
-              )}
+              className={getTabClassName(activeTab === "schedules")}
             >
-              <CalendarClock className="h-4 w-4" />
+              <CalendarClock className="icon-sharp h-4 w-4" />
               Schedules
               {(session.active_schedule_count ?? 0) > 0 && (
                 <Badge variant="secondary" className="h-5 min-w-5 px-1 text-xs">
@@ -334,28 +316,16 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
           )}
           <Link
             href={`${basePath}/events`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "events" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
+            className={getTabClassName(activeTab === "events")}
           >
-            <Activity className="h-4 w-4" />
+            <Activity className="icon-sharp h-4 w-4" />
             Events
           </Link>
           <Link
             href={`${basePath}/trajectory`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "trajectory" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2",
-            )}
+            className={getTabClassName(activeTab === "trajectory")}
           >
-            <GitBranch className="h-4 w-4" />
+            <GitBranch className="icon-sharp h-4 w-4" />
             Trajectory
           </Link>
         </div>

@@ -1,7 +1,17 @@
 "use client";
 
-import { Circle, CircleDot } from "lucide-react";
+/**
+ * Decisions:
+ * - Render todos as a persistent progress card so long-running tool work has a clear anchor near the composer.
+ * - Prefer low-key motion: progress bar width changes and active-row pulse instead of a heavy animated widget.
+ * - Match the Slate system: sharp corners, muted surfaces, and gold accents only for active state and progress.
+ */
+
+import { useState } from "react";
+import { CheckSquare2, ChevronDown, ChevronRight, Info, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ContentPart } from "@/lib/api/types";
 
 // Todo item structure from write_todos tool
 interface TodoItem {
@@ -32,20 +42,60 @@ interface TodoListRendererProps {
   error?: string;
 }
 
+function extractResultObject(result: unknown): WriteTodosResult | null {
+  if (!result) return null;
+
+  if (typeof result === "object" && !Array.isArray(result)) {
+    const candidate = result as WriteTodosResult;
+    return Array.isArray(candidate.todos) ? candidate : null;
+  }
+
+  if (Array.isArray(result)) {
+    const textParts = result
+      .filter(
+        (part): part is Extract<ContentPart, { type: "text" }> =>
+          typeof part === "object" && part !== null && "type" in part && part.type === "text",
+      )
+      .map((part) => part.text);
+
+    const text = textParts.join("\n").trim();
+    if (!text) return null;
+
+    try {
+      const parsed = JSON.parse(text) as WriteTodosResult;
+      return Array.isArray(parsed.todos) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function getStatusIcon(status: string, isActive: boolean = false) {
   switch (status) {
     case "completed":
-      return <span className="text-green-600 text-xs shrink-0">✓</span>;
+      return <CheckSquare2 className="h-4 w-4 shrink-0 text-accent" />;
     case "in_progress":
-      return (
-        <CircleDot
-          className={cn("h-3.5 w-3.5 text-blue-600 shrink-0", isActive && "animate-pulse")}
-        />
-      );
+      return <Loader2 className={cn("h-4 w-4 shrink-0 text-accent", isActive && "animate-spin")} />;
     case "pending":
     default:
-      return <Circle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />;
+      return <Square className="h-4 w-4 shrink-0 text-muted-foreground/35" />;
   }
+}
+
+function InfoHint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className="rounded p-0.5 text-muted-foreground/55 transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="Execution plan info"
+      >
+        <Info className="h-3 w-3" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-56 text-xs leading-5">{text}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean }) {
@@ -56,11 +106,17 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
   const displayText = isInProgress ? todo.activeForm : todo.content;
 
   return (
-    <div className="flex items-start gap-1.5 py-0.5">
+    <div
+      className={cn(
+        "flex items-start gap-2 border px-3 py-2.5 transition-all duration-300",
+        isInProgress && "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)]",
+        !isInProgress && "border-transparent",
+      )}
+    >
       {getStatusIcon(todo.status, isActive)}
       <span
         className={cn(
-          "text-xs",
+          "text-sm",
           isCompleted && "text-muted-foreground/60 line-through",
           isInProgress && "text-foreground",
           !isCompleted && !isInProgress && "text-muted-foreground/80",
@@ -78,7 +134,7 @@ function TodoListFromItems({ todos, isActive }: { todos: TodoItem[]; isActive?: 
   }
 
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       {todos.map((todo, index) => (
         <TodoItemRow
           key={`${todo.content}-${index}`}
@@ -96,17 +152,16 @@ export function TodoListRenderer({
   isExecuting,
   error,
 }: TodoListRendererProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
   // Parse todos from arguments (tool_call) or result (tool_result)
   let todos: TodoItem[] = [];
   let parsedResult: WriteTodosResult | null = null;
 
   // Try to get todos from result first (it has the validated data)
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    const resultObj = result as WriteTodosResult;
-    if (resultObj.todos && Array.isArray(resultObj.todos)) {
-      todos = resultObj.todos;
-      parsedResult = resultObj;
-    }
+  parsedResult = extractResultObject(result);
+  if (parsedResult?.todos) {
+    todos = parsedResult.todos;
   }
 
   // Fall back to arguments if no result yet (executing state)
@@ -124,11 +179,74 @@ export function TodoListRenderer({
 
   // Handle warning from result
   const warning = parsedResult?.warning;
+  const completedCount = todos.filter((todo) => todo.status === "completed").length;
+  const totalCount = todos.length;
+  const progressPercent = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+  const activeTodo = todos.find((todo) => todo.status === "in_progress");
 
   return (
-    <div className="space-y-0.5">
-      <TodoListFromItems todos={todos} isActive={isExecuting} />
-      {warning && <div className="text-xs text-amber-600 mt-0.5">{warning}</div>}
+    <div
+      className={cn(
+        "overflow-hidden border bg-card/95",
+        isExecuting ? "border-border border-l-2 border-l-accent" : "border-border",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-foreground">
+              {completedCount} of {totalCount} todos completed
+            </div>
+            <InfoHint text="The execution plan persists while tools run so users can see current intent and remaining work." />
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground/70">
+            {activeTodo ? activeTodo.activeForm : "Plan captured from write_todos"}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isExecuting && (
+            <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" aria-hidden />
+          )}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={isExpanded ? "Collapse execution plan" : "Expand execution plan"}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-y border-border/60 px-4 py-3">
+        <div className="h-1.5 overflow-hidden bg-muted/80">
+          <div
+            className={cn(
+              "h-full bg-accent transition-[width] duration-500 ease-out",
+              isExecuting && "animate-tool-progress-active",
+            )}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-out",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-1 px-3 py-2">
+            <TodoListFromItems todos={todos} isActive={isExecuting} />
+            {warning && <div className="mt-0.5 text-xs text-amber-600">{warning}</div>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

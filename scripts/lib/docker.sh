@@ -5,6 +5,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 cmd="${1:-}"
 
+apply_port_prefix_defaults
+
 case "$cmd" in
   start)
     echo "🚀 Starting Everrun development environment..."
@@ -12,7 +14,7 @@ case "$cmd" in
     cd "$PROJECT_ROOT/local"
     "${DOCKER_COMPOSE[@]}" up -d
     echo "✅ Services started!"
-    echo "   - Postgres: localhost:5432"
+    echo "   - Postgres: localhost:${DB_PORT}"
     echo "   - Valkey:   localhost:6379"
     echo "   - Jaeger UI: http://localhost:16686"
     echo "   - OTLP gRPC: localhost:4317"

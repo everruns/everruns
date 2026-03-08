@@ -1,902 +1,206 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Bot,
-  ArrowLeft,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  Loader2,
-  Circle,
-  CheckCircle2,
-  CircleDot,
-  ListTodo,
-  Info,
-  ImageIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, Bot, Brain, CalendarClock, ImagePlus, Send, StopCircle } from "lucide-react";
+import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
+import type { Event, ToolCompletedData } from "@/lib/api/types";
+import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 
 const isDev = process.env.NODE_ENV === "development";
 
-// Tool call type
-interface ToolCallData {
-  name: string;
-  args: string;
-  status: "completed" | "executing";
-  result?: string | string[];
-  todos?: Array<{ content: string; status: string }>;
-}
-
-// Message metadata for info tooltip
-interface MessageMeta {
-  id?: string;
-  model?: string;
-  tokens?: { input: number; output: number };
-  time?: string;
-}
-
-// Conversation item types
-type UserItem = { role: "user"; content: string; images?: string[]; meta?: MessageMeta };
-type AgentItem = { role: "agent"; content: string; meta?: MessageMeta };
-type ToolItem = { role: "tool"; calls: ToolCallData[] };
-type ThinkingItem = { role: "thinking"; model?: string };
-type ConversationItem = UserItem | AgentItem | ToolItem | ThinkingItem;
-
-// Info icon component
-function MessageInfo({
-  meta,
-  variant = "default",
-}: {
-  meta?: MessageMeta;
-  variant?: "default" | "light";
-}) {
-  if (!meta) return null;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        className={cn(
-          "p-0.5 rounded opacity-40 hover:opacity-70 transition-opacity",
-          variant === "light" ? "text-white" : "text-muted-foreground",
-        )}
-      >
-        <Info className="h-3 w-3" />
-      </TooltipTrigger>
-      <TooltipContent className="text-xs space-y-0.5">
-        {meta.id && <div>ID: {meta.id}</div>}
-        {meta.model && <div>Model: {meta.model}</div>}
-        {meta.time && <div>Time: {meta.time}</div>}
-        {meta.tokens && (
-          <div>
-            Tokens: {meta.tokens.input} in / {meta.tokens.output} out
-          </div>
-        )}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// Image placeholder component
-function ImagePlaceholder({ count = 1 }: { count?: number }) {
-  return (
-    <div className="flex gap-1 mt-1.5">
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          className="w-16 h-12 bg-muted/50 rounded border border-border/50 flex items-center justify-center"
-        >
-          <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Sample conversation data
-const sampleConversation: ConversationItem[] = [
-  {
-    role: "user",
-    content: "Can you list the files in my project and run the tests?",
-    meta: { id: "msg_01", time: "2:34 PM" },
-  },
-  {
-    role: "agent",
-    content: "I'll check the project structure and run the test suite for you.",
-    meta: {
-      id: "msg_02",
-      model: "claude-3-5-sonnet",
-      tokens: { input: 156, output: 42 },
-      time: "2:34 PM",
+const userEvent: Event = {
+  id: "evt-chat-style-user",
+  type: "input.message",
+  ts: "2026-03-07T21:40:00Z",
+  session_id: "session-chat-style",
+  context: {},
+  data: {
+    message: {
+      id: "msg-chat-style-user",
+      session_id: "session-chat-style",
+      sequence: 1,
+      role: "user",
+      content: [{ type: "text", text: "Inspect this repo and summarize the rewrite plan." }],
+      tool_call_id: null,
+      created_at: "2026-03-07T21:40:00Z",
+      metadata: { source: "schedule" },
     },
   },
-  {
-    role: "tool",
-    calls: [
-      {
-        name: "list_files",
-        args: "path: /home/user/project",
-        status: "completed" as const,
-        result: ["src/", "src/main.rs", "Cargo.toml"],
-      },
-      {
-        name: "bash",
-        args: 'command: "cargo test"',
-        status: "completed" as const,
-        result:
-          "running 24 tests\ntest storage::tests::test_create ... ok\ntest api::tests::test_health ... ok\n\ntest result: ok. 24 passed",
-      },
-    ],
-  },
-  {
-    role: "agent",
-    content: "Your project has 3 files and all 24 tests passed successfully.",
-    meta: {
-      id: "msg_03",
-      model: "claude-3-5-sonnet",
-      tokens: { input: 892, output: 28 },
-      time: "2:35 PM",
+};
+
+const agentEvent: Event = {
+  id: "evt-chat-style-agent",
+  type: "output.message.completed",
+  ts: "2026-03-07T21:40:05Z",
+  session_id: "session-chat-style",
+  context: {},
+  data: {
+    message: {
+      id: "msg-chat-style-agent",
+      session_id: "session-chat-style",
+      sequence: 2,
+      role: "agent",
+      content: [
+        {
+          type: "text",
+          text: "I'm checking the structure first, then I'll outline the smallest safe rewrite path.",
+        },
+      ],
+      tool_call_id: null,
+      created_at: "2026-03-07T21:40:05Z",
+      metadata: { model: "kimi-k2.5", reasoning_effort: "medium" },
     },
+    metadata: { model: "kimi-k2.5" },
+    usage: { input_tokens: 954, output_tokens: 126 },
   },
-  {
-    role: "user",
-    content: "Great! Now create a todo list for the remaining tasks.",
-    meta: { id: "msg_04", time: "2:36 PM" },
-  },
-  {
-    role: "agent",
-    content: "I'll create a task list to track the remaining work.",
-    meta: {
-      id: "msg_05",
-      model: "claude-3-5-sonnet",
-      tokens: { input: 1024, output: 35 },
-      time: "2:36 PM",
-    },
-  },
-  {
-    role: "tool",
-    calls: [
-      {
-        name: "write_todos",
-        args: "",
-        status: "completed" as const,
-        todos: [
-          { content: "Review code changes", status: "completed" },
-          { content: "Run tests", status: "in_progress" },
-          { content: "Update documentation", status: "pending" },
-          { content: "Create pull request", status: "pending" },
-        ],
-      },
-    ],
-  },
-  {
-    role: "agent",
-    content:
-      "I've created a task list. The code review is done and I'm currently running the tests.",
-    meta: {
-      id: "msg_06",
-      model: "claude-3-5-sonnet",
-      tokens: { input: 1256, output: 48 },
-      time: "2:36 PM",
-    },
-  },
+};
+
+const toolCalls: ToolCallContent[] = [
+  { id: "style-list", name: "list_files", arguments: { path: "." } },
+  { id: "style-read", name: "read_file", arguments: { path: "/workspace/README.md" } },
+  { id: "style-search", name: "grep_files", arguments: { pattern: "**/package.json" } },
 ];
 
-// Conversation with images
-const imageConversation: ConversationItem[] = [
-  {
-    role: "user",
-    content: "Here's a screenshot of the error I'm seeing:",
-    images: ["error.png", "console.png"],
-    meta: { id: "msg_img", time: "3:15 PM" },
-  },
-  {
-    role: "agent",
-    content: "I can see the issue - the error shows a null pointer exception. Let me fix that.",
-    meta: {
-      id: "msg_resp",
-      model: "claude-3-5-sonnet",
-      tokens: { input: 2048, output: 156 },
-      time: "3:15 PM",
+const toolResults = new Map<string, ToolCompletedData>([
+  [
+    "style-list",
+    {
+      tool_call_id: "style-list",
+      tool_name: "list_files",
+      success: true,
+      status: "success",
+      result: [{ type: "text", text: "README.md\napps/\ncrates/\njustfile" }],
     },
-  },
-];
+  ],
+]);
 
-// Tool call with executing state
-const executingConversation: ConversationItem[] = [
-  { role: "user", content: "Read the main configuration file" },
-  { role: "agent", content: "Let me read that file for you." },
-  {
-    role: "tool",
-    calls: [
-      {
-        name: "read_file",
-        args: "path: /home/user/project/config.json",
-        status: "executing",
-      },
-    ],
-  },
-];
-
-// Thinking state
-const thinkingConversation: ConversationItem[] = [
-  { role: "user", content: "What's the best approach to refactor this function?" },
-  { role: "thinking", model: "claude-3-5-sonnet" },
-];
-
-// ============================================
-// Current Style (Option A)
-// ============================================
-
-function CurrentUserMessage({
-  content,
-  images,
-  meta,
-}: {
-  content: string;
-  images?: string[];
-  meta?: MessageMeta;
-}) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <p className="text-sm whitespace-pre-wrap">{content}</p>
-            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
-          </div>
-          <MessageInfo meta={meta} variant="light" />
-        </div>
-      </div>
-    </div>
-  );
+function Note({ children }: { children: React.ReactNode }) {
+  return <div className="border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{children}</div>;
 }
-
-function CurrentAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
-  return (
-    <div className="flex justify-start">
-      <div className="w-full bg-muted/60 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-          <p className="flex-1 text-sm whitespace-pre-wrap">{content}</p>
-          <MessageInfo meta={meta} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CurrentToolCall({ call }: { call: ToolCallData }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (call.name === "write_todos" && "todos" in call) {
-    return (
-      <div className="pl-6 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2 mb-1">
-          <ListTodo className="h-4 w-4" />
-          <span className="font-medium">Tasks</span>
-        </div>
-        <div className="space-y-0.5 ml-6">
-          {call.todos?.map((todo, i) => (
-            <div key={i} className="flex items-center gap-2">
-              {todo.status === "completed" && (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-              )}
-              {todo.status === "in_progress" && <CircleDot className="h-3.5 w-3.5 text-blue-600" />}
-              {todo.status === "pending" && (
-                <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-              <span
-                className={cn(
-                  "text-sm",
-                  todo.status === "completed" && "text-muted-foreground line-through",
-                  todo.status === "in_progress" && "font-medium",
-                )}
-              >
-                {todo.content}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pl-6 text-sm text-muted-foreground space-y-0.5">
-      <div>
-        <span className="font-medium">{call.name}:</span>
-        {call.args && <span className="ml-1">{call.args}</span>}
-      </div>
-      {call.status === "executing" ? (
-        <div>&gt; ... executing ...</div>
-      ) : call.result ? (
-        <div>
-          <div className="whitespace-pre-wrap">
-            &gt; {String(call.result).substring(0, 100)}
-            {String(call.result).length > 100 ? "..." : ""}
-          </div>
-          {String(call.result).length > 100 && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              {expanded ? "show less" : "> see more..."}
-            </button>
-          )}
-          {expanded && <pre className="text-xs bg-muted/50 p-2 rounded mt-1">{call.result}</pre>}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function CurrentThinking({ model }: { model?: string }) {
-  return (
-    <div className="flex justify-start">
-      <div className="w-full bg-muted/60 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm text-muted-foreground">Thinking</span>
-            {model && <span className="text-xs text-muted-foreground/60">with {model}</span>}
-            <span className="flex gap-0.5 ml-1">
-              <span
-                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <span
-                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Option B: Flat Agent, Boxed User
-// ============================================
-
-function FlatUserMessage({
-  content,
-  images,
-  meta,
-}: {
-  content: string;
-  images?: string[];
-  meta?: MessageMeta;
-}) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl px-4 py-2.5">
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <p className="text-sm">{content}</p>
-            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
-          </div>
-          <MessageInfo meta={meta} variant="light" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FlatAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
-  return (
-    <div className="flex justify-start">
-      <div className="w-full flex items-start gap-2">
-        <p className="flex-1 text-sm whitespace-pre-wrap">{content}</p>
-        <MessageInfo meta={meta} />
-      </div>
-    </div>
-  );
-}
-
-function FlatToolCall({ call }: { call: ToolCallData }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (call.name === "write_todos" && "todos" in call) {
-    return (
-      <div className="text-sm border-l-2 border-muted-foreground/20 pl-3 py-1">
-        <div className="space-y-0.5">
-          {call.todos?.map((todo, i) => (
-            <div key={i} className="flex items-center gap-2">
-              {todo.status === "completed" && <Check className="h-3.5 w-3.5 text-green-600" />}
-              {todo.status === "in_progress" && (
-                <Loader2 className="h-3.5 w-3.5 text-blue-600 animate-spin" />
-              )}
-              {todo.status === "pending" && (
-                <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
-              )}
-              <span
-                className={cn(
-                  todo.status === "completed" && "text-muted-foreground",
-                  todo.status === "in_progress" && "text-foreground",
-                  todo.status === "pending" && "text-muted-foreground",
-                )}
-              >
-                {todo.content}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const statusIcon =
-    call.status === "executing" ? (
-      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-    ) : (
-      <Check className="h-3.5 w-3.5 text-green-600" />
-    );
-
-  return (
-    <div className="text-sm text-muted-foreground">
-      <div className="flex items-center gap-1.5">
-        {statusIcon}
-        <span className="font-mono text-xs">{call.name}</span>
-        {call.args && (
-          <span className="text-muted-foreground/60 text-xs truncate max-w-[300px]">
-            {call.args}
-          </span>
-        )}
-      </div>
-      {expanded && call.result && (
-        <pre className="text-xs bg-muted/30 p-2 rounded mt-1 ml-5">{call.result}</pre>
-      )}
-      {call.result && String(call.result).length > 50 && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="ml-5 text-xs text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-0.5"
-        >
-          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {expanded ? "hide" : "output"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function FlatThinking({ model }: { model?: string }) {
-  return (
-    <div className="flex justify-start">
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Thinking</span>
-        {model && <span className="text-xs opacity-60">with {model}</span>}
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Option C: Minimal - subtle everything
-// ============================================
-
-function MinimalUserMessage({
-  content,
-  images,
-  meta,
-}: {
-  content: string;
-  images?: string[];
-  meta?: MessageMeta;
-}) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <p className="text-sm">{content}</p>
-            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
-          </div>
-          <MessageInfo meta={meta} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MinimalAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
-  return (
-    <div className="flex justify-start pl-1">
-      <div className="flex items-start gap-2 w-full">
-        <p className="flex-1 text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
-        <MessageInfo meta={meta} />
-      </div>
-    </div>
-  );
-}
-
-function MinimalToolCall({ call }: { call: ToolCallData }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (call.name === "write_todos" && "todos" in call) {
-    return (
-      <div className="text-xs text-muted-foreground/80 pl-1 space-y-0.5">
-        {call.todos?.map((todo, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            {todo.status === "completed" && <span className="text-green-600">✓</span>}
-            {todo.status === "in_progress" && <span className="text-blue-600">○</span>}
-            {todo.status === "pending" && <span className="text-muted-foreground/40">○</span>}
-            <span className={cn(todo.status === "completed" && "line-through opacity-60")}>
-              {todo.content}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const status = call.status === "executing" ? "..." : "✓";
-
-  return (
-    <div className="text-xs text-muted-foreground/70 pl-1">
-      <span className="inline-flex items-center gap-1">
-        <span className={call.status === "executing" ? "text-muted-foreground" : "text-green-600"}>
-          {status}
-        </span>
-        <span className="font-mono">{call.name}</span>
-        {call.args && <span className="opacity-60">{call.args}</span>}
-        {call.result && String(call.result).length > 30 && (
-          <button onClick={() => setExpanded(!expanded)} className="opacity-50 hover:opacity-100">
-            [{expanded ? "−" : "+"}]
-          </button>
-        )}
-      </span>
-      {expanded && call.result && (
-        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">
-          {call.result}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function MinimalThinking({ model }: { model?: string }) {
-  return (
-    <div className="flex justify-start pl-1">
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-muted-foreground/60">thinking</span>
-        {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
-        <span className="flex gap-0.5 ml-0.5">
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "0ms" }}
-          />
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "150ms" }}
-          />
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "300ms" }}
-          />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Option D: Minimal + Icon
-// ============================================
-
-function MinimalIconUserMessage({
-  content,
-  images,
-  meta,
-}: {
-  content: string;
-  images?: string[];
-  meta?: MessageMeta;
-}) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <p className="text-sm">{content}</p>
-            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
-          </div>
-          <MessageInfo meta={meta} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MinimalIconAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
-  return (
-    <div className="flex justify-start gap-2">
-      <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-      <div className="flex items-start gap-2 flex-1">
-        <p className="flex-1 text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
-        <MessageInfo meta={meta} />
-      </div>
-    </div>
-  );
-}
-
-function MinimalIconToolCall({ call }: { call: ToolCallData }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (call.name === "write_todos" && "todos" in call) {
-    return (
-      <div className="text-xs text-muted-foreground/80 ml-6 space-y-0.5">
-        {call.todos?.map((todo, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            {todo.status === "completed" && <span className="text-green-600">✓</span>}
-            {todo.status === "in_progress" && <span className="text-blue-600">○</span>}
-            {todo.status === "pending" && <span className="text-muted-foreground/40">○</span>}
-            <span className={cn(todo.status === "completed" && "line-through opacity-60")}>
-              {todo.content}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const statusIcon =
-    call.status === "executing" ? (
-      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
-    ) : (
-      <Check className="h-3 w-3 text-green-600/80" />
-    );
-
-  return (
-    <div className="text-xs text-muted-foreground/70 ml-6">
-      <div className="flex items-center gap-1">
-        {statusIcon}
-        <span className="font-mono">{call.name}</span>
-        {call.args && <span className="opacity-60">{call.args}</span>}
-      </div>
-      {expanded && call.result && (
-        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight ml-4">
-          {call.result}
-        </pre>
-      )}
-      {call.result && String(call.result).length > 30 && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="ml-4 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/80 flex items-center gap-0.5"
-        >
-          {expanded ? (
-            <ChevronDown className="h-2.5 w-2.5" />
-          ) : (
-            <ChevronRight className="h-2.5 w-2.5" />
-          )}
-          {expanded ? "hide" : "output"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function MinimalIconThinking({ model }: { model?: string }) {
-  return (
-    <div className="flex justify-start gap-2">
-      <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-muted-foreground/60">thinking</span>
-        {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
-        <span className="flex gap-0.5 ml-0.5">
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "0ms" }}
-          />
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "150ms" }}
-          />
-          <span
-            className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce"
-            style={{ animationDelay: "300ms" }}
-          />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Render helpers
-// ============================================
-
-type StyleOption = "current" | "flat" | "minimal" | "minimal-icon";
-
-function renderConversation(conversation: ConversationItem[], style: StyleOption) {
-  const components = {
-    current: {
-      User: CurrentUserMessage,
-      Agent: CurrentAgentMessage,
-      Tool: CurrentToolCall,
-      Thinking: CurrentThinking,
-    },
-    flat: {
-      User: FlatUserMessage,
-      Agent: FlatAgentMessage,
-      Tool: FlatToolCall,
-      Thinking: FlatThinking,
-    },
-    minimal: {
-      User: MinimalUserMessage,
-      Agent: MinimalAgentMessage,
-      Tool: MinimalToolCall,
-      Thinking: MinimalThinking,
-    },
-    "minimal-icon": {
-      User: MinimalIconUserMessage,
-      Agent: MinimalIconAgentMessage,
-      Tool: MinimalIconToolCall,
-      Thinking: MinimalIconThinking,
-    },
-  };
-
-  const { User, Agent, Tool, Thinking } = components[style];
-
-  return conversation.map((item, i) => {
-    switch (item.role) {
-      case "user":
-        return <User key={i} content={item.content} images={item.images} meta={item.meta} />;
-      case "agent":
-        return <Agent key={i} content={item.content} meta={item.meta} />;
-      case "tool":
-        return (
-          <div key={i} className="space-y-1">
-            {item.calls.map((call, j) => (
-              <Tool key={j} call={call} />
-            ))}
-          </div>
-        );
-      case "thinking":
-        return <Thinking key={i} model={item.model} />;
-    }
-  });
-}
-
-// ============================================
-// Main Page
-// ============================================
 
 export default function ChatStylesPage() {
-  const [selectedStyle, setSelectedStyle] = useState<StyleOption>("flat");
-
   if (!isDev) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="mt-2 text-muted-foreground">Page not found</p>
         </div>
       </div>
     );
   }
 
-  const styles: { id: StyleOption; name: string; description: string }[] = [
-    {
-      id: "current",
-      name: "Current",
-      description: "Existing design with backgrounds for both user and agent",
-    },
-    {
-      id: "flat",
-      name: "Flat Agent",
-      description: "User bubble, agent on flat background, compact tools",
-    },
-    {
-      id: "minimal",
-      name: "Minimal",
-      description: "Subtle borders, completely flat, inline tools",
-    },
-    {
-      id: "minimal-icon",
-      name: "Minimal + Icon",
-      description: "Minimal style with robot icon for agent messages",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-8 px-4 max-w-5xl">
-        <div className="mb-6">
-          <Link
-            href="/dev"
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Developer Tools
-          </Link>
-          <h1 className="text-2xl font-bold">Chat UI Styles</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Compare different chat styling approaches
+    <div className="min-h-screen bg-background bg-brand-dots px-4 py-8">
+      <div className="mx-auto max-w-6xl">
+        <Link
+          href="/dev"
+          className="mb-6 inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Developer Tools
+        </Link>
+
+        <div className="mb-8 max-w-2xl space-y-2">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Chat Style</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            Canonical chat surface
+          </h1>
+          <p className="text-sm leading-6 text-muted-foreground">
+            The application now uses this single style: sharp surfaces, left and right border accents,
+            muted chrome, and info affordances on message rows.
           </p>
-          <Badge variant="outline" className="mt-2">
-            Development Mode
-          </Badge>
         </div>
 
-        {/* Style selector */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {styles.map((style) => (
-            <button
-              key={style.id}
-              onClick={() => setSelectedStyle(style.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm transition-colors",
-                selectedStyle === style.id
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted hover:bg-muted/80",
-              )}
-            >
-              {style.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Description */}
-        <p className="text-sm text-muted-foreground mb-4">
-          {styles.find((s) => s.id === selectedStyle)?.description}
-        </p>
-
-        {/* Chat preview */}
-        <ScrollArea className="h-[calc(100vh-20rem)]">
-          <div className="border rounded-lg bg-background">
-            {/* Main conversation */}
-            <div className="p-4 space-y-4">
-              <div className="text-xs text-muted-foreground text-center mb-6">
-                Full Conversation
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-hidden border border-border bg-card">
+            <div className="border-b border-border px-5 py-4">
+              <div className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+                Live transcript pattern
               </div>
-              {renderConversation(sampleConversation, selectedStyle)}
+              <div className="mt-1 text-sm font-medium text-foreground">Default chat composition</div>
             </div>
 
-            {/* Executing state */}
-            <div className="border-t p-4 space-y-4">
-              <div className="text-xs text-muted-foreground text-center mb-4">Executing State</div>
-              {renderConversation(executingConversation, selectedStyle)}
+            <div className="space-y-6 bg-background/80 px-4 py-5 sm:px-6">
+              <div className="flex justify-end">
+                <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                      <CalendarClock className="h-3 w-3" />
+                      Scheduled
+                    </div>
+                    <MessageInfoIcon event={userEvent} />
+                  </div>
+                  Inspect this repo and summarize the rewrite plan.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 pr-2">
+                <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
+                  <Bot className="h-3.5 w-3.5" />
+                </div>
+                <div className="flex flex-1 items-start gap-2">
+                  <div className="flex-1 border-l-2 border-l-primary bg-card px-4 py-3 text-sm leading-7 text-foreground">
+                    I&apos;m checking the structure first, then I&apos;ll outline the smallest safe
+                    rewrite path.
+                  </div>
+                  <MessageInfoIcon event={agentEvent} />
+                </div>
+              </div>
+
+              <div className="ml-9">
+                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResults} />
+              </div>
             </div>
 
-            {/* Thinking state */}
-            <div className="border-t p-4 space-y-4">
-              <div className="text-xs text-muted-foreground text-center mb-4">Thinking State</div>
-              {renderConversation(thinkingConversation, selectedStyle)}
-            </div>
-
-            {/* Images */}
-            <div className="border-t p-4 space-y-4">
-              <div className="text-xs text-muted-foreground text-center mb-4">With Images</div>
-              {renderConversation(imageConversation, selectedStyle)}
+            <div className="border-t border-border bg-muted/30 p-4">
+              <div className="border border-border bg-background px-4 py-4 text-sm text-foreground">
+                Type a message or <span className="font-mono">/</span> for commands...
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center border border-border bg-background"
+                    aria-label="Attach images"
+                  >
+                    <ImagePlus className="icon-sharp h-4 w-4" />
+                  </button>
+                  <div className="flex h-10 items-center gap-2 border border-border bg-background px-3 text-sm">
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Model</span>
+                    <span className="text-foreground">Kimi K2.5</span>
+                  </div>
+                  <div className="flex h-10 items-center gap-2 border border-border bg-background px-3 text-sm">
+                    <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Reasoning</span>
+                    <span className="text-foreground">Default</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center border border-destructive/30 bg-destructive/[0.08] text-destructive"
+                    aria-label="Cancel current turn"
+                  >
+                    <StopCircle className="icon-sharp h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center bg-primary text-primary-foreground"
+                    aria-label="Send message"
+                  >
+                    <Send className="icon-sharp h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </ScrollArea>
 
-        {/* Side by side comparison */}
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold mb-4">Side-by-Side Comparison</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {styles.map((style) => (
-              <div key={style.id} className="border rounded-lg overflow-hidden">
-                <div className="bg-muted/30 px-3 py-2 border-b">
-                  <span className="font-medium text-sm">{style.name}</span>
-                </div>
-                <div className="p-3 space-y-3 text-sm">
-                  {renderConversation(sampleConversation.slice(0, 4), style.id)}
-                </div>
-              </div>
-            ))}
+          <div className="space-y-4">
+            <Note>User messages anchor on a right gold border, not a rounded bubble.</Note>
+            <Note>Agent messages stay flatter: icon rail, left primary border, metadata icon on the side.</Note>
+            <Note>Tool execution and todos inherit the same surface rules, so chat reads as one system.</Note>
           </div>
         </div>
       </div>

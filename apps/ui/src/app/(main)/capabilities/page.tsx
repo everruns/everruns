@@ -38,11 +38,11 @@ function CapabilityCard({ capability }: { capability: Capability }) {
 
   return (
     <Link href={`/capabilities/${capability.id}`}>
-      <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+      <Card className="h-full cursor-pointer bg-background transition-colors hover:bg-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-muted rounded-lg">
-              <IconComponent className="w-5 h-5" />
+            <div className="border bg-muted p-2">
+              <IconComponent className="icon-sharp h-5 w-5" />
             </div>
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg">{capability.name}</CardTitle>
@@ -84,21 +84,21 @@ function CapabilitySummary({ capabilities }: { capabilities: Capability[] }) {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <CheckCircle2 className="icon-sharp h-4 w-4 text-primary" />
               <span>Available</span>
             </div>
             <span className="font-medium">{available}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
-              <Clock className="h-4 w-4 text-yellow-500" />
+              <Clock className="icon-sharp h-4 w-4 text-accent-foreground" />
               <span>Coming Soon</span>
             </div>
             <span className="font-medium">{comingSoon}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
-              <AlertCircle className="h-4 w-4 text-muted-foreground" />
+              <AlertCircle className="icon-sharp h-4 w-4 text-muted-foreground" />
               <span>Deprecated</span>
             </div>
             <span className="font-medium">{deprecated}</span>

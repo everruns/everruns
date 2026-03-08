@@ -21,7 +21,6 @@ import type {
   CommandDescriptor,
 } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
-import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import {
@@ -31,6 +30,7 @@ import {
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useLlmModels, useImageAttachments, useSessionCommands } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -88,6 +88,18 @@ export function ChatPanel() {
   const commands = commandsData?.commands ?? [];
   const [showCommands, setShowCommands] = useState(false);
 
+  const clientRequestedToolCallIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      if (event.type !== "tool.call_requested") continue;
+      const data = event.data as ToolCallRequestedData;
+      for (const toolCall of data.tool_calls ?? []) {
+        ids.add(toolCall.id);
+      }
+    }
+    return ids;
+  }, [chatEvents]);
+
   const handleCommandSelect = useCallback(
     (cmd: CommandDescriptor) => {
       setShowCommands(false);
@@ -142,6 +154,10 @@ export function ChatPanel() {
   const defaultEffortName = reasoningEffortConfig?.default
     ? getReasoningEffortName(reasoningEffortConfig.default)
     : "Medium";
+  const modelTriggerLabel = selectedModel?.display_name ?? "Default";
+  const defaultModelOptionLabel = llmModel?.display_name
+    ? `Default (${llmModel.display_name})`
+    : "Default";
 
   useEffect(() => {
     if (!supportsReasoning) {
@@ -268,141 +284,142 @@ export function ChatPanel() {
 
   return (
     <>
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6">
         {eventsLoading ? (
           <div className="space-y-4">
+            <Skeleton className="ml-auto h-20 w-3/4" />
             <Skeleton className="h-20 w-3/4" />
-            <Skeleton className="h-20 w-3/4 ml-auto" />
-            <Skeleton className="h-20 w-3/4" />
+            <Skeleton className="h-20 w-2/3" />
           </div>
         ) : chatEvents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-            <Bot className="w-12 h-12 mb-4 opacity-50" />
-            <p className="text-lg font-medium">No messages yet</p>
-            <p className="text-sm">Send a message to start the conversation</p>
+          <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
+            <div className="border border-border bg-card px-10 py-10">
+              <Bot className="mx-auto mb-4 h-10 w-10 opacity-50" />
+              <p className="text-lg font-medium text-foreground">No messages yet</p>
+              <p className="mt-1 text-sm">Send a message to start the conversation</p>
+            </div>
           </div>
         ) : (
-          chatEvents.map((event) => {
-            // Skip tool.completed - rendered inline with agent messages
-            if (event.type === "tool.completed") {
-              return null;
-            }
+          <div className="space-y-6">
+            {chatEvents.map((event) => {
+              if (event.type === "tool.completed") {
+                return null;
+              }
 
-            // Render tool.call_requested as client-side tool call cards
-            if (event.type === "tool.call_requested") {
-              const reqData = event.data as ToolCallRequestedData;
-              if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
+              if (event.type === "tool.call_requested") {
+                const reqData = event.data as ToolCallRequestedData;
+                if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
+                return (
+                  <div key={event.id} className="ml-9 space-y-1">
+                    <ToolActivityGroup
+                      toolCalls={reqData.tool_calls}
+                      toolResultsMap={toolResultsMap}
+                      mode="client"
+                    />
+                  </div>
+                );
+              }
+
+              const isUser = event.type === "input.message";
+              const data = event.data as InputMessageData | OutputMessageCompletedData;
+              const textContent = getMessageText(data);
+              const toolCalls = isUser
+                ? []
+                : getToolCalls(data as OutputMessageCompletedData).filter(
+                    (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
+                  );
+              const images = data.message?.content ? getMessageImages(data.message.content) : [];
+              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+              const isToolOnlyMessage =
+                !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
+
+              if (isToolOnlyMessage) {
+                return (
+                  <div key={event.id} className="ml-9 space-y-1">
+                    <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                  </div>
+                );
+              }
+
               return (
-                <div key={event.id} className="ml-6 space-y-1">
-                  {reqData.tool_calls.map((tc) => {
-                    const toolResult = toolResultsMap.get(tc.id);
-                    return (
-                      <ToolCallCardFromEvent
-                        key={tc.id}
-                        toolCall={tc}
-                        toolResult={toolResult}
-                        isClientSide
-                      />
-                    );
-                  })}
+                <div key={event.id} className="space-y-2">
+                  {(textContent || images.length > 0) && (
+                    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                      {isUser ? (
+                        <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
+                          {isScheduleTriggered && (
+                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                              <CalendarClock className="h-3 w-3" />
+                              <span>Scheduled</span>
+                            </div>
+                          )}
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 space-y-2">
+                              {textContent && <p className="whitespace-pre-wrap">{textContent}</p>}
+                              {images.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {images.map((img) => (
+                                    <MessageImage
+                                      key={img.image_id}
+                                      imageId={img.image_id}
+                                      filename={img.filename}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <MessageInfoIcon event={event} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex w-full items-start gap-3 pr-2">
+                          <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
+                            <Bot className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex flex-1 items-start gap-2">
+                            <div className="flex-1 space-y-2 border-l-2 border-l-primary bg-card px-4 py-3">
+                              {textContent && (
+                                <StreamdownMessage variant="inline" className="text-foreground">
+                                  {textContent}
+                                </StreamdownMessage>
+                              )}
+                              {images.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {images.map((img) => (
+                                    <MessageImage
+                                      key={img.image_id}
+                                      imageId={img.image_id}
+                                      filename={img.filename}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <MessageInfoIcon event={event} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {toolCalls.length > 0 && (
+                    <div className="ml-9 space-y-1">
+                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                    </div>
+                  )}
                 </div>
               );
-            }
-
-            const isUser = event.type === "input.message";
-            const data = event.data as InputMessageData | OutputMessageCompletedData;
-            const textContent = getMessageText(data);
-            const toolCalls = isUser ? [] : getToolCalls(data as OutputMessageCompletedData);
-            const images = data.message?.content ? getMessageImages(data.message.content) : [];
-            const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
-
-            return (
-              <div key={event.id} className="space-y-2">
-                {/* Render text content and images */}
-                {(textContent || images.length > 0) && (
-                  <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                    {isUser ? (
-                      /* User message - subtle border, rounded */
-                      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-                        {isScheduleTriggered && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                            <CalendarClock className="w-3 h-3" />
-                            <span>Scheduled</span>
-                          </div>
-                        )}
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 space-y-2">
-                            {textContent && (
-                              <p className="text-sm whitespace-pre-wrap">{textContent}</p>
-                            )}
-                            {images.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {images.map((img) => (
-                                  <MessageImage
-                                    key={img.image_id}
-                                    imageId={img.image_id}
-                                    filename={img.filename}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <MessageInfoIcon event={event} />
-                        </div>
-                      </div>
-                    ) : (
-                      /* Agent message - flat with robot icon, pr-3 matches user bubble padding */
-                      <div className="w-full flex items-start gap-2 pr-3">
-                        <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-                        <div className="flex-1 flex items-start gap-2">
-                          <div className="flex-1 space-y-2">
-                            {textContent && (
-                              <StreamdownMessage variant="inline" className="text-foreground/90">
-                                {textContent}
-                              </StreamdownMessage>
-                            )}
-                            {images.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {images.map((img) => (
-                                  <MessageImage
-                                    key={img.image_id}
-                                    imageId={img.image_id}
-                                    filename={img.filename}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <MessageInfoIcon event={event} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Render tool calls from agent message */}
-                {toolCalls.length > 0 && (
-                  <div className="ml-6 space-y-1">
-                    {toolCalls.map((tc) => {
-                      const toolResult = toolResultsMap.get(tc.id);
-                      return (
-                        <ToolCallCardFromEvent key={tc.id} toolCall={tc} toolResult={toolResult} />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })
+            })}
+          </div>
         )}
 
-        {/* Streaming content - thinking indicator or streaming text */}
         {(isThinking || streamingText) && (
-          <div className="flex justify-start">
-            <div className="w-full flex items-start gap-2">
-              <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-              <div className="flex-1">
+          <div className="mt-6 flex justify-start">
+            <div className="flex w-full items-start gap-3 pr-2">
+              <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
+                <Bot className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1 border-l-2 border-l-primary bg-card px-4 py-3">
                 {isThinking && !streamingText ? (
                   <ThinkingIndicator />
                 ) : streamingText ? (
@@ -416,17 +433,8 @@ export function ChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
-      <div className="border-t p-4">
-        {/* Image attachments preview */}
-        {hasImages && (
-          <div className="mb-2">
-            <ImageAttachments images={pendingImages} onRemove={removeImage} />
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          {/* Hidden file input */}
+      <div className="border-t border-border bg-muted/30 p-4 sm:p-5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -436,22 +444,11 @@ export function ChatPanel() {
             onChange={handleFileChange}
           />
 
-          {/* Image attachment button */}
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-[60px] w-[60px] flex-shrink-0"
-            onClick={() => fileInputRef.current?.click()}
-            title="Attach images (PNG, JPEG, GIF, WebP)"
-          >
-            <ImagePlus className="h-5 w-5" />
-          </Button>
+          {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
 
-          {/* Textarea with drag-drop wrapper */}
           <div
-            className={`flex-1 relative rounded-md transition-colors ${
-              isDraggingOver ? "bg-primary/10 ring-2 ring-primary/50 ring-offset-2" : ""
+            className={`relative border border-border bg-background transition-colors ${
+              isDraggingOver ? "bg-[hsl(var(--accent)/0.08)] ring-1 ring-accent" : ""
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -465,7 +462,6 @@ export function ChatPanel() {
             onDragLeave={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              // Only set to false if leaving the container (not entering a child)
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                 setIsDraggingOver(false);
               }
@@ -515,105 +511,119 @@ export function ChatPanel() {
                 }
               }}
               placeholder="Type a message or / for commands... (Enter to send)"
-              className="w-full min-h-[60px] max-h-[200px] resize-none"
+              className="min-h-[120px] max-h-[260px] w-full resize-none border-0 bg-transparent px-4 py-4 text-sm shadow-none focus-visible:ring-0"
             />
           </div>
 
-          {/* Show cancel button when turn is active and no input typed */}
-          {isActive && !inputValue.trim() && !hasImages ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="destructive"
-              className="h-[60px] w-[60px]"
-              disabled={cancelCurrentTurn.isPending}
-              onClick={() => cancelCurrentTurn.mutate()}
-              title="Cancel current turn"
-            >
-              {cancelCurrentTurn.isPending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <StopCircle className="h-5 w-5" />
-              )}
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              size="icon"
-              className="h-[60px] w-[60px]"
-              disabled={!canSubmit}
-              title={isUploading ? "Uploading images..." : undefined}
-            >
-              {sendMessage.isPending || sendMessageWithImages.isPending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : isUploading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </Button>
-          )}
-        </form>
-        <div className="flex flex-wrap items-center gap-4 mt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Model:</span>
-            <Select
-              value={selectedModelId}
-              onValueChange={(value) => {
-                hasUserSelectedModel.current = true;
-                setSelectedModelId(value);
-              }}
-            >
-              <SelectTrigger size="sm" className="w-[220px]">
-                <SelectValue>
-                  {selectedModelId
-                    ? (selectedModel?.display_name ?? "Select model")
-                    : llmModel?.display_name
-                      ? `Session default (${llmModel.display_name})`
-                      : "Session default"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">
-                  {llmModel?.display_name
-                    ? `Session default (${llmModel.display_name})`
-                    : "Session default"}
-                </SelectItem>
-                {llmModels.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {supportsReasoning && reasoningEffortConfig && (
-            <div className="flex items-center gap-2">
-              <Brain className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Reasoning:</span>
-              <Select
-                value={reasoningEffort}
-                onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                className="h-10 w-10 border-border bg-background"
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach images (PNG, JPEG, GIF, WebP)"
               >
-                <SelectTrigger size="sm" className="w-[180px]">
-                  <SelectValue>
-                    {reasoningEffort
-                      ? getReasoningEffortName(reasoningEffort)
-                      : `Default (${defaultEffortName})`}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
-                  {reasoningEffortConfig.values.map((effort) => (
-                    <SelectItem key={effort.value} value={effort.value}>
-                      {effort.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <ImagePlus className="icon-sharp h-4 w-4" />
+              </Button>
+
+              <div className="flex h-10 items-center gap-2 border border-border bg-background px-3">
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                  Model
+                </span>
+                <Select
+                  value={selectedModelId}
+                  onValueChange={(value) => {
+                    hasUserSelectedModel.current = true;
+                    setSelectedModelId(value);
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 w-[156px] min-w-0 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
+                  >
+                    <SelectValue>{modelTriggerLabel}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
+                    {llmModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {supportsReasoning && reasoningEffortConfig && (
+                <div className="flex h-10 items-center gap-2 border border-border bg-background px-3">
+                  <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                    Reasoning
+                  </span>
+                  <Select
+                    value={reasoningEffort}
+                    onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-7 w-[116px] min-w-0 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
+                    >
+                      <SelectValue>
+                        {reasoningEffort ? getReasoningEffortName(reasoningEffort) : "Default"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
+                      {reasoningEffortConfig.values.map((effort) => (
+                        <SelectItem key={effort.value} value={effort.value}>
+                          {effort.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="flex items-center gap-2">
+              {isActive && !inputValue.trim() && !hasImages && (
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="destructive"
+                  className="h-10 w-10 border border-destructive/30 bg-destructive/[0.08] text-destructive shadow-none hover:bg-destructive/[0.14]"
+                  disabled={cancelCurrentTurn.isPending}
+                  onClick={() => cancelCurrentTurn.mutate()}
+                  title="Cancel current turn"
+                >
+                  {cancelCurrentTurn.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <StopCircle className="icon-sharp h-4 w-4" />
+                  )}
+                </Button>
+              )}
+
+              <Button
+                type="submit"
+                size="icon-lg"
+                className="h-10 w-10"
+                disabled={!canSubmit}
+                title={isUploading ? "Uploading images..." : undefined}
+              >
+                {sendMessage.isPending || sendMessageWithImages.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="icon-sharp h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </form>
       </div>
     </>
   );

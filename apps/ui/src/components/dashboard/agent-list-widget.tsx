@@ -27,7 +27,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
         <CardTitle>Active Agents</CardTitle>
         <Link href="/agents/new">
           <Button variant="accent" size="sm">
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="icon-sharp mr-1 h-4 w-4" />
             New Agent
           </Button>
         </Link>
@@ -35,7 +35,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
       <CardContent>
         {activeAgents.length === 0 ? (
           <div className="text-center py-8">
-            <Boxes className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+            <Boxes className="icon-sharp mx-auto mb-2 h-12 w-12 text-muted-foreground" />
             <p className="text-muted-foreground">No agents yet.</p>
             <Link href="/agents/new">
               <Button variant="link">Create your first agent</Button>
@@ -51,10 +51,10 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                 <Link
                   key={agent.id}
                   href={`/agents/${agent.id}`}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
+                  className="flex items-center justify-between border bg-card p-3 transition-colors hover:bg-muted/50"
                 >
                   <div className="flex items-center gap-3">
-                    <Boxes className="h-5 w-5 text-muted-foreground" />
+                    <Boxes className="icon-sharp h-5 w-5 text-muted-foreground" />
                     <div>
                       <div className="flex items-center gap-1">
                         <p className="font-medium">{agent.name}</p>
@@ -72,8 +72,8 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
 
                                 return (
                                   <Tooltip key={capConfig.ref}>
-                                    <TooltipTrigger className="p-0.5 rounded bg-muted cursor-default">
-                                      <IconComponent className="w-3 h-3 text-muted-foreground" />
+                                    <TooltipTrigger className="cursor-default border bg-muted p-0.5">
+                                      <IconComponent className="icon-sharp h-3 w-3 text-muted-foreground" />
                                     </TooltipTrigger>
                                     <TooltipContent>
                                       <p>{cap.name}</p>
@@ -92,7 +92,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                       </div>
                     </div>
                   </div>
-                  <Badge variant="outline" className="bg-green-100 text-green-800">
+                  <Badge variant="outline" className="border-border bg-muted text-foreground">
                     Active
                   </Badge>
                 </Link>

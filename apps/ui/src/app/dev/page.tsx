@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   FlaskConical,
   MessageSquare,
@@ -29,6 +27,12 @@ const devPages = [
     title: "Chat Components",
     description: "Chat-specific: messages, tool calls, todo lists, image attachments",
     href: "/dev/chat-components",
+    icon: MessageSquare,
+  },
+  {
+    title: "Tool Activity",
+    description: "Grouped tool execution with animations, summaries, and todo progress cards",
+    href: "/dev/tool-activity",
     icon: MessageSquare,
   },
   {
@@ -78,35 +82,34 @@ export default function DevPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <div className="container mx-auto py-8 px-4">
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <FlaskConical className="h-8 w-8" />
-            <h1 className="text-3xl font-bold">Developer Tools</h1>
+    <div className="min-h-screen bg-background bg-brand-dots px-4 py-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-8 max-w-2xl space-y-2">
+          <div className="flex items-center gap-3">
+            <FlaskConical className="h-7 w-7 text-primary" />
+            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+              Developer Tools
+            </p>
           </div>
-          <p className="text-muted-foreground">
-            Development-only pages for testing and previewing UI components
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">UI reference pages</h1>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Development-only previews for the application’s canonical component styles and behaviors.
           </p>
-          <Badge variant="outline" className="mt-2">
-            Development Mode
-          </Badge>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {devPages.map((page) => (
             <Link key={page.href} href={page.href}>
-              <Card className="h-full hover:border-primary transition-colors cursor-pointer">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <page.icon className="h-5 w-5 text-muted-foreground" />
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <CardTitle className="text-lg">{page.title}</CardTitle>
-                  <CardDescription>{page.description}</CardDescription>
-                </CardHeader>
-                <CardContent />
-              </Card>
+              <div className="flex h-full cursor-pointer flex-col justify-between border border-border bg-card px-5 py-5 transition-colors hover:border-primary">
+                <div className="flex items-center justify-between">
+                  <page.icon className="h-5 w-5 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="mt-8">
+                  <h2 className="text-lg font-medium text-foreground">{page.title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{page.description}</p>
+                </div>
+              </div>
             </Link>
           ))}
         </div>

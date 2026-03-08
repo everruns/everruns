@@ -1,13 +1,12 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: everruns-postgres
     environment:
       POSTGRES_USER: everruns
       POSTGRES_PASSWORD: everruns
       POSTGRES_DB: everruns
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +17,6 @@ services:
 
   valkey:
     image: valkey/valkey:8-alpine
-    container_name: everruns-valkey
     ports:
       - "6379:6379"
     volumes:
@@ -31,7 +29,6 @@ services:
 
   jaeger:
     image: jaegertracing/jaeger:2.4.0
-    container_name: everruns-jaeger
     ports:
       # OTLP gRPC receiver
       - "4317:4317"

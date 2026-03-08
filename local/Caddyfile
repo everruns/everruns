@@ -1,30 +1,34 @@
 # Local development reverse proxy
-# Unifies API (9000) and UI (9100) behind a single port (9300)
+# Unifies API and UI behind a single port.
+# Recommended:
+#   PORT_PREFIX=271  -> proxy 27100, api 27101, ui 27105
+# Override individual ports with:
+#   API_PORT=9000 UI_PORT=9100 PROXY_PORT=9300
 #
 # Routes:
-#   /api/*     -> API server at :9000 (strips /api prefix)
-#   /api-doc/* -> API server at :9000
-#   /health    -> API server at :9000
-#   /*         -> UI dev server at :9100
+#   /api/*     -> API server at :API_PORT (strips /api prefix)
+#   /api-doc/* -> API server at :API_PORT
+#   /health    -> API server at :API_PORT
+#   /*         -> UI dev server at :UI_PORT
 #
 # SSE/Proxy Notes:
 #   - flush_interval -1: disables response buffering (required for SSE)
 #   - Server handles its own 5-min connection cycling with disconnecting events
 #   - SDK reconnects transparently on disconnecting events (no retry budget cost)
-:9300 {
+:{$PROXY_PORT:9300} {
 	handle_path /api/* {
-		reverse_proxy localhost:9000 {
+		reverse_proxy localhost:{$API_PORT:9000} {
 			# Disable response buffering for SSE streaming
 			flush_interval -1
 		}
 	}
 	handle /api-doc/* {
-		reverse_proxy localhost:9000
+		reverse_proxy localhost:{$API_PORT:9000}
 	}
 	handle /health {
-		reverse_proxy localhost:9000
+		reverse_proxy localhost:{$API_PORT:9000}
 	}
 	handle {
-		reverse_proxy localhost:9100
+		reverse_proxy localhost:{$UI_PORT:9100}
 	}
 }
