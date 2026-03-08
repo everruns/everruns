@@ -1,4 +1,15 @@
--- Generic Queue: make workflow_id nullable so tasks can be enqueued standalone
+-- Everruns v0.8.4
+-- Squashed migration for changes between v0.8.3 and v0.8.4
+-- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
+--
+-- Includes:
+-- - Generic queue: standalone tasks without parent workflow
+-- - Index for unscoped app lookup by public_id (Slack webhook routing)
+
+-- ============================================
+-- Generic Queue (standalone tasks)
+-- ============================================
+-- Make workflow_id nullable so tasks can be enqueued standalone
 -- (without a parent workflow). Enables fire-and-forget queue semantics on top
 -- of existing durable infrastructure (SKIP LOCKED, retry, DLQ, monitoring).
 
@@ -24,3 +35,14 @@ ALTER TABLE durable_dead_letter_queue
 CREATE INDEX idx_durable_task_queue_standalone
     ON durable_task_queue(created_at DESC)
     WHERE workflow_id IS NULL;
+
+-- ============================================
+-- Apps: standalone public_id index
+-- ============================================
+-- The Slack webhook handler looks up apps by public_id without org scoping
+-- (POST /v1/apps/{app_id}/slack/events). The existing composite index
+-- idx_apps_org_public_id(org_id, public_id) cannot serve WHERE public_id = $1
+-- efficiently because public_id is the second column. This standalone unique
+-- index enables index-only lookups and enforces global uniqueness of public_ids.
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_apps_public_id ON apps(public_id);
