@@ -11,6 +11,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.4] - 2026-03-08
+
+### Highlights
+
+- **Brave Search** — New connection provider and seed agent for Brave Search web search ([#716](https://github.com/everruns/everruns/pull/716))
+- **Slack Bot** — Event-driven delivery dispatcher, file/legacy attachment support, per-app manifest generation ([#696](https://github.com/everruns/everruns/pull/696), [#717](https://github.com/everruns/everruns/pull/717), [#689](https://github.com/everruns/everruns/pull/689))
+- **Performance Caching** — In-memory caches for encryption keys, model resolution, auth validation, skills, and agent capabilities ([#700](https://github.com/everruns/everruns/pull/700), [#701](https://github.com/everruns/everruns/pull/701), [#702](https://github.com/everruns/everruns/pull/702), [#705](https://github.com/everruns/everruns/pull/705), [#706](https://github.com/everruns/everruns/pull/706))
+- **Valkey Rate Limiting** — Distributed rate limiting via Valkey replaces in-process limiters ([#690](https://github.com/everruns/everruns/pull/690))
+- **Tool Search** — OpenAI GPT 5.4 tool_search capability for deferred tool loading ([#687](https://github.com/everruns/everruns/pull/687))
+
+### What's Changed
+
+- feat(brave-search): add connection provider, seed agent, and Doppler CI ([#716](https://github.com/everruns/everruns/pull/716)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): support file and legacy attachments in messages ([#717](https://github.com/everruns/everruns/pull/717)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify chat and shell slate styling ([#718](https://github.com/everruns/everruns/pull/718)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): show ngrok instructions when Slack webhook URL is localhost ([#714](https://github.com/everruns/everruns/pull/714)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): show display names instead of raw IDs in all select dropdowns ([#713](https://github.com/everruns/everruns/pull/713)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add title and experimental badge to Chat page ([#711](https://github.com/everruns/everruns/pull/711)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): pluggable logout and createOrganization via AuthContext ([#709](https://github.com/everruns/everruns/pull/709)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add sidebar navigation registry with extension points ([#707](https://github.com/everruns/everruns/pull/707)) by [@chaliy](https://github.com/chaliy)
+- feat(build): add optional sccache integration with S3 backend ([#704](https://github.com/everruns/everruns/pull/704)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): event-driven delivery dispatcher replaces 120s polling ([#696](https://github.com/everruns/everruns/pull/696)) by [@chaliy](https://github.com/chaliy)
+- feat(ci): add sccache S3 backend for shared Rust compilation cache ([#693](https://github.com/everruns/everruns/pull/693)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): add generic queue semantics for standalone tasks ([#691](https://github.com/everruns/everruns/pull/691)) by [@chaliy](https://github.com/chaliy)
+- feat(server): add Valkey for distributed rate limiting ([#690](https://github.com/everruns/everruns/pull/690)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): per-app manifest generation and setup guide ([#689](https://github.com/everruns/everruns/pull/689)) by [@chaliy](https://github.com/chaliy)
+- feat(core): implement OpenAI tool_search capability for deferred tool loading ([#687](https://github.com/everruns/everruns/pull/687)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add ExternalActor for channel-agnostic user identity ([#688](https://github.com/everruns/everruns/pull/688)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add experimental badge for Chat and Apps ([#684](https://github.com/everruns/everruns/pull/684)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add apps feature flag ([#685](https://github.com/everruns/everruns/pull/685)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): redesign app creation flow with non-modal Slack config ([#683](https://github.com/everruns/everruns/pull/683)) by [@chaliy](https://github.com/chaliy)
+- fix(dev): restore stop-all cleanup and caddy validation ([#728](https://github.com/everruns/everruns/pull/728)) by [@chaliy](https://github.com/chaliy)
+- fix(multitenancy): remove DEFAULT_ORG_ID fallbacks from worker runtime paths ([#727](https://github.com/everruns/everruns/pull/727)) by [@chaliy](https://github.com/chaliy)
+- fix(dev-parity): implement grep_files in DirectWorkerAdapters by [@chaliy](https://github.com/chaliy)
+- fix(dev): isolate worktree port layout ([#726](https://github.com/everruns/everruns/pull/726)) by [@chaliy](https://github.com/chaliy)
+- fix(model-sync): use decrypted provider keys and sync across all orgs by [@chaliy](https://github.com/chaliy)
+- fix(mcp): pass decrypted API keys to MCP tool execution by [@chaliy](https://github.com/chaliy)
+- fix(auth): validate GitHub App installation callback state by [@chaliy](https://github.com/chaliy)
+- fix(ui): simplify bash tool result details ([#725](https://github.com/everruns/everruns/pull/725)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): move Event Subscriptions card inside grid layout ([#715](https://github.com/everruns/everruns/pull/715)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): add missing users:read scope to bot manifest ([#712](https://github.com/everruns/everruns/pull/712)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): stop experimental badge overlapping chat content ([#699](https://github.com/everruns/everruns/pull/699)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): prevent init-cloud-env hangs on downloads ([#698](https://github.com/everruns/everruns/pull/698)) by [@chaliy](https://github.com/chaliy)
+- fix(core): move tool_search guard to RuntimeAgentBuilder ([#703](https://github.com/everruns/everruns/pull/703)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): correct answer mapping, dedup events, and stream progress ([#686](https://github.com/everruns/everruns/pull/686)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): correct Slack OAuth scope from app_mentions:events to app_mentions:read ([#682](https://github.com/everruns/everruns/pull/682)) by [@chaliy](https://github.com/chaliy)
+- fix: deduplicate moka workspace dep + add sequential merge spec ([#708](https://github.com/everruns/everruns/pull/708)) by [@chaliy](https://github.com/chaliy)
+- perf(ci): build all Rust Docker images in single builder stage ([#710](https://github.com/everruns/everruns/pull/710)) by [@chaliy](https://github.com/chaliy)
+- perf(encryption): cache decrypted encryption keys in memory ([#706](https://github.com/everruns/everruns/pull/706)) by [@chaliy](https://github.com/chaliy)
+- perf(server): deduplicate get_agent_capabilities() calls ([#705](https://github.com/everruns/everruns/pull/705)) by [@chaliy](https://github.com/chaliy)
+- perf(skills): cache active skills list per org with 5-min TTL ([#702](https://github.com/everruns/everruns/pull/702)) by [@chaliy](https://github.com/chaliy)
+- perf(llm): cache model/provider resolution with 1-hour TTL ([#701](https://github.com/everruns/everruns/pull/701)) by [@chaliy](https://github.com/chaliy)
+- perf(auth): cache API key auth validation with 5-min TTL ([#700](https://github.com/everruns/everruns/pull/700)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): centralize runtime credential and grep resolution paths ([#731](https://github.com/everruns/everruns/pull/731)) by [@chaliy](https://github.com/chaliy)
+- refactor: remove CodeSandbox integration ([#719](https://github.com/everruns/everruns/pull/719), [#720](https://github.com/everruns/everruns/pull/720)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): standardize page headers to inline pattern ([#694](https://github.com/everruns/everruns/pull/694)) by [@chaliy](https://github.com/chaliy)
+- test(runtime): add adapter contract coverage and security-focused negative tests ([#730](https://github.com/everruns/everruns/pull/730)) by [@chaliy](https://github.com/chaliy)
+- chore(server): squash v0.8.4 migration into 005_v0.8.4.sql ([#733](https://github.com/everruns/everruns/pull/733)) by [@chaliy](https://github.com/chaliy)
+- chore(dev): remove Jaeger UI from local dev and example ([#729](https://github.com/everruns/everruns/pull/729)) by [@chaliy](https://github.com/chaliy)
+- chore: reorganize Linear tickets to OSS project ([#695](https://github.com/everruns/everruns/pull/695)) by [@chaliy](https://github.com/chaliy)
+- refactor(multitenancy): thread org_id through worker and image-resolution interfaces ([#732](https://github.com/everruns/everruns/pull/732)) by [@chaliy](https://github.com/chaliy)
+- ci: optimize pipeline — pre-build test binary, 8-core runner, combine test invocations ([#697](https://github.com/everruns/everruns/pull/697)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.3] - 2026-03-06
 
 ### Highlights
