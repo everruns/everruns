@@ -115,7 +115,6 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/duckduckgo.md` - DuckDuckGo instant answer search integration
 - `specs/harness-types.md` - Built-in harness types (Base, Generic)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
-- `specs/codesandbox.md` - CodeSandbox cloud sandbox integration
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)

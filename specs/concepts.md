@@ -217,5 +217,5 @@ A linked external service account (GitHub, GitLab, etc.) associated with a user.
 - User-scoped (not org-scoped) — represents the user's identity on the external service
 - Tokens encrypted at rest via AES-256-GCM envelope encryption
 - Auto-injected into sessions as secrets (e.g., `GITHUB_TOKEN`) when sessions are created
-- Capabilities like `codesandbox` use injected tokens transparently (e.g., `csb_git_clone` for private repos)
+- Capabilities like `daytona` use injected tokens transparently for private repo access
 - See [user-connections.md](user-connections.md) for full specification

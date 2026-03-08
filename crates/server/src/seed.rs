@@ -48,8 +48,6 @@ mod seed_ids {
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
-    pub const CODESANDBOX_CODER_AGENT: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
     pub const PLATFORM_MANAGER_AGENT: Uuid =
@@ -655,29 +653,6 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
             "session_file_system",
             "stateless_todo_list",
         ],
-        dev_only: false,
-    },
-    SeedAgent {
-        id: seed_ids::CODESANDBOX_CODER_AGENT,
-        name: "CodeSandbox Coder",
-        description: "A coding agent that runs code in cloud sandboxes powered by CodeSandbox",
-        system_prompt: r#"You are a CodeSandbox Coder Agent. You run code in cloud sandbox VMs powered by CodeSandbox.
-
-Prerequisite: The session must have CSB_API_KEY set in secrets before you can use sandbox tools.
-If missing, tell the user to set it via the API or harness config.
-
-Workflow:
-1. Create sandbox: `csb_create_sandbox` (working directory: /sandbox)
-2. Clone repos: `csb_git_clone` (clones to /sandbox/owner/repo)
-3. Write code / install deps: `csb_write_file`, `csb_exec`
-4. For long-running tasks: `csb_exec` with `wait: false`, poll `csb_exec_status`
-5. Save results: `csb_download_workspace`
-6. Clean up: `csb_manage_sandbox` action="shutdown"
-
-You can run multiple sandboxes in parallel for different tasks.
-Always shut down sandboxes when done."#,
-        tags: &["coding", "cloud", "sandbox", "codesandbox", "demo", "seed"],
-        capabilities: &["codesandbox", "session_storage", "session_file_system"],
         dev_only: false,
     },
     SeedAgent {
