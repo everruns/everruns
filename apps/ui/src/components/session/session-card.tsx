@@ -80,7 +80,10 @@ function SessionInfoIcon({ session }: { session: Session }) {
           "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
         )}
         aria-label="Session info"
-        onClick={(e) => e.preventDefault()} // Prevent link navigation when clicking info
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
       >
         <Info className="w-3 h-3" />
       </TooltipTrigger>
@@ -206,6 +209,7 @@ export function SessionCard({ session, agentName, model, summary, onTogglePin }:
               aria-label={isPinned ? "Unpin session" : "Pin session"}
               onClick={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 onTogglePin(session.id, !isPinned);
               }}
             >
