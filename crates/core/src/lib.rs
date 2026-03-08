@@ -222,7 +222,7 @@ pub use mcp_server::{
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, Organization, generate_org_public_id,
-    validate_org_public_id,
+    org_public_id_from_internal, validate_org_public_id,
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};

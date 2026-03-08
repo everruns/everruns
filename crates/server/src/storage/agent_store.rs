@@ -2,10 +2,14 @@
 //
 // This module implements the core AgentStore trait for retrieving
 // agent configurations from the database.
+//
+// Decision: org_id is baked into the struct at construction time,
+// matching the Grpc/Adapter store pattern. Callers must provide
+// the correct org_id when creating the store.
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, AgentLoopError, DEFAULT_ORG_ID, Result,
+    AgentCapabilityConfig, AgentId, AgentLoopError, Result,
     agent::{Agent, AgentStatus},
     traits::AgentStore,
 };
@@ -23,21 +27,21 @@ use super::repositories::Database;
 #[derive(Clone)]
 pub struct DbAgentStore {
     db: Database,
+    org_id: i64,
 }
 
 impl DbAgentStore {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: Database, org_id: i64) -> Self {
+        Self { db, org_id }
     }
 }
 
 #[async_trait]
 impl AgentStore for DbAgentStore {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
-        // TODO: Get org_id from context after Phase 3
         let agent_row = self
             .db
-            .get_agent(DEFAULT_ORG_ID, agent_id)
+            .get_agent(self.org_id, agent_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -83,7 +87,7 @@ impl AgentStore for DbAgentStore {
 // Factory functions
 // ============================================================================
 
-/// Create a database-backed agent store
-pub fn create_db_agent_store(db: Database) -> DbAgentStore {
-    DbAgentStore::new(db)
+/// Create a database-backed agent store scoped to the given org
+pub fn create_db_agent_store(db: Database, org_id: i64) -> DbAgentStore {
+    DbAgentStore::new(db, org_id)
 }

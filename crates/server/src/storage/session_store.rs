@@ -2,11 +2,13 @@
 //
 // This module implements the core SessionStore trait for retrieving
 // session configurations from the database.
+//
+// Decision: org_id and org_public_id are baked into the struct at
+// construction time, matching the Grpc/Adapter store pattern.
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, HarnessId, Result, SessionId,
-    TokenUsage,
+    AgentLoopError, HarnessId, Result, SessionId, TokenUsage,
     session::{Session, SessionStatus},
     traits::SessionStore,
 };
@@ -24,21 +26,26 @@ use super::repositories::Database;
 #[derive(Clone)]
 pub struct DbSessionStore {
     db: Database,
+    org_id: i64,
+    org_public_id: String,
 }
 
 impl DbSessionStore {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: Database, org_id: i64, org_public_id: String) -> Self {
+        Self {
+            db,
+            org_id,
+            org_public_id,
+        }
     }
 }
 
 #[async_trait]
 impl SessionStore for DbSessionStore {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
-        // TODO: Get org_id from context after Phase 3
         let session_row = self
             .db
-            .get_session(DEFAULT_ORG_ID, session_id)
+            .get_session(self.org_id, session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -69,12 +76,12 @@ impl SessionStore for DbSessionStore {
 
                 Ok(Some(Session {
                     id: row.id,
-                    organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                    organization_id: self.org_public_id.clone(),
                     harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                     agent_id: row.agent_id,
                     title: row.title,
-                    preview: None, // Preview populated separately when listing sessions
-                    output_preview: None, // Output preview populated separately when listing sessions
+                    preview: None,
+                    output_preview: None,
                     tags: row.tags,
                     model_id: row.model_id,
                     capabilities,
@@ -99,7 +106,7 @@ impl SessionStore for DbSessionStore {
 // Factory functions
 // ============================================================================
 
-/// Create a database-backed session store
-pub fn create_db_session_store(db: Database) -> DbSessionStore {
-    DbSessionStore::new(db)
+/// Create a database-backed session store scoped to the given org
+pub fn create_db_session_store(db: Database, org_id: i64, org_public_id: String) -> DbSessionStore {
+    DbSessionStore::new(db, org_id, org_public_id)
 }

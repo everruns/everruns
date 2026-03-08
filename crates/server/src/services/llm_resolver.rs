@@ -15,7 +15,6 @@
 
 use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
 use anyhow::Result;
-use everruns_core::DEFAULT_ORG_ID;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -130,8 +129,11 @@ impl LlmResolverService {
 
     /// Resolve a model by ID with decrypted provider credentials.
     /// Results are cached per (org_id, model_id) with 1-hour TTL.
-    pub async fn resolve_model(&self, model_id: Uuid) -> Result<Option<ResolvedModel>> {
-        let org_id = DEFAULT_ORG_ID;
+    pub async fn resolve_model(
+        &self,
+        org_id: i64,
+        model_id: Uuid,
+    ) -> Result<Option<ResolvedModel>> {
         let key = (org_id, model_id);
 
         if let Some(cached) = self.cache.get(&key).await {
@@ -145,8 +147,7 @@ impl LlmResolverService {
 
     /// Resolve the default model with decrypted provider credentials.
     /// Cached under sentinel key (org_id, nil UUID).
-    pub async fn resolve_default_model(&self) -> Result<Option<ResolvedModel>> {
-        let org_id = DEFAULT_ORG_ID;
+    pub async fn resolve_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
         let key = (org_id, DEFAULT_MODEL_SENTINEL);
 
         if let Some(cached) = self.cache.get(&key).await {
@@ -248,6 +249,7 @@ impl LlmResolverService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::DEFAULT_ORG_ID;
 
     fn mock_env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |name| {
@@ -394,7 +396,10 @@ mod tests {
         assert_eq!(resolver.cache_entry_count(), 0);
 
         // First call: cache miss -> populates cache
-        let result = resolver.resolve_model(model_id).await.unwrap();
+        let result = resolver
+            .resolve_model(DEFAULT_ORG_ID, model_id)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let resolved = result.unwrap();
         assert_eq!(resolved.model_id, "gpt-4o");
@@ -405,7 +410,10 @@ mod tests {
         assert_eq!(resolver.cache_entry_count(), 1);
 
         // Second call: cache hit (same result)
-        let result2 = resolver.resolve_model(model_id).await.unwrap();
+        let result2 = resolver
+            .resolve_model(DEFAULT_ORG_ID, model_id)
+            .await
+            .unwrap();
         assert!(result2.is_some());
         assert_eq!(result2.unwrap().model_id, "gpt-4o");
 
@@ -421,14 +429,20 @@ mod tests {
         let missing_id = Uuid::new_v4();
 
         // First call: miss, returns None, caches it
-        let result = resolver.resolve_model(missing_id).await.unwrap();
+        let result = resolver
+            .resolve_model(DEFAULT_ORG_ID, missing_id)
+            .await
+            .unwrap();
         assert!(result.is_none());
 
         resolver.cache.run_pending_tasks().await;
         assert_eq!(resolver.cache_entry_count(), 1);
 
         // Second call: cache hit (still None)
-        let result2 = resolver.resolve_model(missing_id).await.unwrap();
+        let result2 = resolver
+            .resolve_model(DEFAULT_ORG_ID, missing_id)
+            .await
+            .unwrap();
         assert!(result2.is_none());
     }
 
@@ -437,7 +451,10 @@ mod tests {
         let (resolver, model_id) = setup_resolver_with_model().await;
 
         // Populate cache
-        resolver.resolve_model(model_id).await.unwrap();
+        resolver
+            .resolve_model(DEFAULT_ORG_ID, model_id)
+            .await
+            .unwrap();
         resolver.cache.run_pending_tasks().await;
         assert_eq!(resolver.cache_entry_count(), 1);
 
@@ -502,8 +519,14 @@ mod tests {
             .unwrap();
 
         // Resolve both models
-        let ra = resolver.resolve_model(model_a.id.uuid()).await.unwrap();
-        let rb = resolver.resolve_model(model_b.id.uuid()).await.unwrap();
+        let ra = resolver
+            .resolve_model(DEFAULT_ORG_ID, model_a.id.uuid())
+            .await
+            .unwrap();
+        let rb = resolver
+            .resolve_model(DEFAULT_ORG_ID, model_b.id.uuid())
+            .await
+            .unwrap();
 
         assert_eq!(ra.unwrap().model_id, "claude-3-opus");
         assert_eq!(rb.unwrap().model_id, "claude-3-sonnet");
@@ -549,7 +572,10 @@ mod tests {
         .unwrap();
 
         // First call: populates cache
-        let result = resolver.resolve_default_model().await.unwrap();
+        let result = resolver
+            .resolve_default_model(DEFAULT_ORG_ID)
+            .await
+            .unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap().model_id, "gpt-4o");
 
@@ -557,7 +583,10 @@ mod tests {
         assert_eq!(resolver.cache_entry_count(), 1);
 
         // Second call: cache hit
-        let result2 = resolver.resolve_default_model().await.unwrap();
+        let result2 = resolver
+            .resolve_default_model(DEFAULT_ORG_ID)
+            .await
+            .unwrap();
         assert!(result2.is_some());
         assert_eq!(result2.unwrap().model_id, "gpt-4o");
     }
@@ -570,7 +599,10 @@ mod tests {
 
         // Resolve a missing model -> cached as None
         let missing_id = Uuid::new_v4();
-        let result = resolver.resolve_model(missing_id).await.unwrap();
+        let result = resolver
+            .resolve_model(DEFAULT_ORG_ID, missing_id)
+            .await
+            .unwrap();
         assert!(result.is_none());
 
         resolver.cache.run_pending_tasks().await;
@@ -582,7 +614,10 @@ mod tests {
         assert_eq!(resolver.cache_entry_count(), 0);
 
         // Next resolve goes to DB again (still None since model doesn't exist)
-        let result2 = resolver.resolve_model(missing_id).await.unwrap();
+        let result2 = resolver
+            .resolve_model(DEFAULT_ORG_ID, missing_id)
+            .await
+            .unwrap();
         assert!(result2.is_none());
 
         // But entry is re-cached
@@ -669,5 +704,82 @@ mod tests {
         // No encrypted key, no env var -> None
         let result = resolve_provider_api_key(&db, None, &provider).unwrap();
         assert!(result.is_none());
+    }
+
+    // =========================================================================
+    // Cross-org isolation regression tests (EVE-59)
+    // =========================================================================
+
+    /// Regression: resolve_model must scope lookups to the given org_id.
+    /// A model created in org 1 must not be visible when resolved with org 999.
+    #[tokio::test]
+    async fn resolve_model_scoped_to_org() {
+        let (resolver, model_id) = setup_resolver_with_model().await;
+
+        // Model belongs to DEFAULT_ORG_ID — should resolve
+        let result = resolver
+            .resolve_model(DEFAULT_ORG_ID, model_id)
+            .await
+            .unwrap();
+        assert!(result.is_some(), "model should resolve in its own org");
+
+        // Same model UUID with a different org — should NOT resolve
+        let result = resolver.resolve_model(999, model_id).await.unwrap();
+        assert!(result.is_none(), "model must not resolve in another org");
+    }
+
+    /// Regression: resolve_default_model must scope to the given org_id.
+    #[tokio::test]
+    async fn resolve_default_model_scoped_to_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let resolver = LlmResolverService::new(db.clone(), None);
+        let org_id = DEFAULT_ORG_ID;
+
+        let provider_row = db
+            .create_llm_provider(
+                org_id,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.create_llm_model(
+            org_id,
+            CreateLlmModelRow {
+                provider_id: provider_row.id,
+                model_id: "gpt-4o".to_string(),
+                display_name: "GPT-4o".to_string(),
+                capabilities: vec![],
+                is_default: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Default model belongs to DEFAULT_ORG_ID — should resolve
+        let result = resolver
+            .resolve_default_model(DEFAULT_ORG_ID)
+            .await
+            .unwrap();
+        assert!(
+            result.is_some(),
+            "default model should resolve in its own org"
+        );
+
+        // Different org — should NOT resolve
+        let result = resolver.resolve_default_model(999).await.unwrap();
+        assert!(
+            result.is_none(),
+            "default model must not resolve in another org"
+        );
     }
 }

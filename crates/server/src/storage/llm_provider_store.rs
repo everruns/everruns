@@ -2,10 +2,13 @@
 //
 // This module implements the core LlmProviderStore trait for retrieving
 // LLM provider and model configurations from the database.
+//
+// Decision: org_id is baked into the struct at construction time,
+// matching the Grpc/Adapter store pattern.
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_ID, ModelId, Result,
+    AgentLoopError, ModelId, Result,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
 };
@@ -26,11 +29,16 @@ use super::{encryption::EncryptionService, repositories::Database};
 pub struct DbLlmProviderStore {
     db: Database,
     encryption: EncryptionService,
+    org_id: i64,
 }
 
 impl DbLlmProviderStore {
-    pub fn new(db: Database, encryption: EncryptionService) -> Self {
-        Self { db, encryption }
+    pub fn new(db: Database, encryption: EncryptionService, org_id: i64) -> Self {
+        Self {
+            db,
+            encryption,
+            org_id,
+        }
     }
 }
 
@@ -43,7 +51,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the model
         let model_row = self
             .db
-            .get_llm_model(DEFAULT_ORG_ID, model_id.uuid())
+            .get_llm_model(self.org_id, model_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -55,7 +63,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
+            .get_llm_provider(self.org_id, model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -83,10 +91,9 @@ impl LlmProviderStore for DbLlmProviderStore {
 
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         // Look up the default model (is_default = true)
-        // TODO: Get org_id from context after Phase 3
         let model_row = self
             .db
-            .get_default_llm_model(DEFAULT_ORG_ID)
+            .get_default_llm_model(self.org_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -98,7 +105,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(DEFAULT_ORG_ID, model_row.provider_id.uuid())
+            .get_llm_provider(self.org_id, model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -144,12 +151,13 @@ fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
 // Factory functions
 // ============================================================================
 
-/// Create a database-backed LLM provider store
+/// Create a database-backed LLM provider store scoped to the given org
 pub fn create_db_llm_provider_store(
     db: Database,
     encryption: EncryptionService,
+    org_id: i64,
 ) -> DbLlmProviderStore {
-    DbLlmProviderStore::new(db, encryption)
+    DbLlmProviderStore::new(db, encryption, org_id)
 }
 
 #[cfg(test)]

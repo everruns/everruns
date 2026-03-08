@@ -112,6 +112,18 @@ pub struct OrgMembership {
     pub role: OrgRole,
 }
 
+/// Derive a deterministic public_id from an internal org_id.
+///
+/// For `DEFAULT_ORG_ID` this returns `DEFAULT_ORG_PUBLIC_ID`.
+/// For other IDs it produces `org_<032x>` so callers can avoid
+/// an async DB lookup when only the public_id format is needed.
+pub fn org_public_id_from_internal(org_id: i64) -> String {
+    if org_id == DEFAULT_ORG_ID {
+        return DEFAULT_ORG_PUBLIC_ID.to_string();
+    }
+    format!("org_{:032x}", org_id)
+}
+
 /// Generate a new organization public ID
 /// Format: org_<32-hex-chars> (UUIDv4 lowercase hex, no dashes)
 pub fn generate_org_public_id() -> String {
