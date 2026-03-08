@@ -83,6 +83,81 @@ signal_recorded_pids() {
   done
 }
 
+append_unique_pid() {
+  local pid_list="$1"
+  local pid="$2"
+
+  case " $pid_list " in
+    *" $pid "*) printf '%s' "$pid_list" ;;
+    *)
+      if [ -n "$pid_list" ]; then
+        printf '%s %s' "$pid_list" "$pid"
+      else
+        printf '%s' "$pid"
+      fi
+      ;;
+  esac
+}
+
+managed_service_command() {
+  local command_line="$1"
+
+  case "$command_line" in
+    *"scripts/lib/services.sh start-dev"*|*"scripts/lib/services.sh start-all"*|*"scripts/lib/services.sh start-production"*|\
+    *"just start-dev"*|*"just start-all"*|*"just start-production"*|\
+    *"cargo-watch"*|*"caddy run"*|*"next dev"*|*"next start"*|\
+    *"everruns-server"*|*"everruns-worker"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+listening_pids_on_port() {
+  local port="$1"
+
+  if command -v lsof &> /dev/null; then
+    lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sort -u
+  fi
+}
+
+signal_port_bound_services() {
+  local signal="$1"
+  local signal_name="SIG${signal}"
+  local pid_list=""
+  local port listener_pid current_pid command_line parent_pid
+
+  # Fall back to port-scoped discovery so stop-all still works when pid files
+  # are missing, while keeping cleanup isolated to this worktree's ports.
+  for port in "$API_PORT" "$WORKER_GRPC_PORT" "$UI_PORT" "$PROXY_PORT" "$CADDY_ADMIN_PORT"; do
+    while IFS= read -r listener_pid; do
+      [ -n "$listener_pid" ] || continue
+      current_pid="$listener_pid"
+
+      while [ -n "$current_pid" ] && [ "$current_pid" != "0" ] && [ "$current_pid" != "1" ]; do
+        command_line="$(ps -o command= -p "$current_pid" 2>/dev/null || true)"
+        [ -n "$command_line" ] || break
+        managed_service_command "$command_line" || break
+
+        pid_list="$(append_unique_pid "$pid_list" "$current_pid")"
+
+        parent_pid="$(ps -o ppid= -p "$current_pid" 2>/dev/null | tr -d ' ' || true)"
+        [ -n "$parent_pid" ] || break
+        [ "$parent_pid" != "$current_pid" ] || break
+        current_pid="$parent_pid"
+      done
+    done < <(listening_pids_on_port "$port")
+  done
+
+  for current_pid in $pid_list; do
+    if kill -0 "$current_pid" 2>/dev/null; then
+      kill "-$signal_name" "$current_pid" 2>/dev/null || true
+    fi
+  done
+}
+
 # require_command is defined in common.sh (sourced above)
 
 ui_dev_args=()
@@ -174,6 +249,7 @@ case "$cmd" in
       done
 
       signal_recorded_pids TERM
+      signal_port_bound_services TERM
 
       # Give processes time to terminate gracefully
       sleep 1
@@ -185,6 +261,7 @@ case "$cmd" in
         fi
       done
       signal_recorded_pids KILL
+      signal_port_bound_services KILL
       clear_run_state_dir
 
       # Restore terminal state
@@ -353,6 +430,7 @@ case "$cmd" in
       done
 
       signal_recorded_pids TERM
+      signal_port_bound_services TERM
 
       # Give processes time to terminate gracefully
       sleep 1
@@ -364,6 +442,7 @@ case "$cmd" in
         fi
       done
       signal_recorded_pids KILL
+      signal_port_bound_services KILL
       clear_run_state_dir
 
       # Restore terminal state
@@ -671,6 +750,7 @@ case "$cmd" in
       done
 
       signal_recorded_pids TERM
+      signal_port_bound_services TERM
 
       sleep 1
 
@@ -680,6 +760,7 @@ case "$cmd" in
         fi
       done
       signal_recorded_pids KILL
+      signal_port_bound_services KILL
       clear_run_state_dir
 
       stty sane 2>/dev/null || true
@@ -905,8 +986,10 @@ case "$cmd" in
     echo "🛑 Stopping all Everruns services..."
 
     signal_recorded_pids TERM
+    signal_port_bound_services TERM
     sleep 1
     signal_recorded_pids KILL
+    signal_port_bound_services KILL
     clear_run_state_dir
 
     if resolve_docker_compose 2>/dev/null; then

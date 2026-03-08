@@ -1,6 +1,8 @@
 # Local development reverse proxy
 # Unifies API and UI behind a single port.
-admin :{$CADDY_ADMIN_PORT:2019}
+{
+	admin :{$CADDY_ADMIN_PORT:2019}
+}
 
 # Recommended:
 #   PORT_PREFIX=271  -> proxy 27100, api 27101, ui 27105

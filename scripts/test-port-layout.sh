@@ -73,8 +73,43 @@ check_example_ports() {
   rg -q '\$\{JAEGER_UI_PORT:-16686\}:16686' "$local_compose_file"
 }
 
+check_caddyfile() {
+  if ! command -v caddy >/dev/null 2>&1; then
+    echo "SKIP: caddy not installed, skipping Caddyfile validation"
+    return 0
+  fi
+
+  caddy validate --config "$PROJECT_ROOT/local/Caddyfile" --adapter caddyfile >/dev/null
+
+  local example_caddyfile
+  example_caddyfile="$(mktemp)"
+  python3 - <<'PY' "$PROJECT_ROOT/examples/docker-compose-full.yaml" "$example_caddyfile"
+from pathlib import Path
+import re
+import sys
+
+compose_file = Path(sys.argv[1])
+output_file = Path(sys.argv[2])
+text = compose_file.read_text()
+match = re.search(r"caddyfile:\n\s+content: \|\n(?P<body>(?:\s{6}.*\n)+)", text)
+if not match:
+    raise SystemExit("FAIL: example compose Caddyfile not found")
+
+body = []
+for line in match.group("body").splitlines():
+    if not line.startswith("      "):
+        raise SystemExit("FAIL: example compose Caddyfile indentation changed unexpectedly")
+    body.append(line[6:])
+
+output_file.write_text("\n".join(body) + "\n")
+PY
+  caddy validate --config "$example_caddyfile" --adapter caddyfile >/dev/null
+  rm -f "$example_caddyfile"
+}
+
 check_default_ports
 check_prefixed_ports
 check_example_ports
+check_caddyfile
 
 echo "port layout checks passed"
