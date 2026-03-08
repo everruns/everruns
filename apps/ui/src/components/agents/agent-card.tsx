@@ -32,7 +32,7 @@ export function AgentCard({
   const agentCapabilities = agent.capabilities ?? [];
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-2">
           <CardTitle className="text-lg">
@@ -64,8 +64,8 @@ export function AgentCard({
 
                 return (
                   <Tooltip key={capConfig.ref}>
-                    <TooltipTrigger className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs cursor-default">
-                      <IconComponent className="w-3 h-3" />
+                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
+                      <IconComponent className="icon-sharp h-3 w-3" />
                       {!compact && <span>{cap.name}</span>}
                     </TooltipTrigger>
                     <TooltipContent>
@@ -98,7 +98,7 @@ export function AgentCard({
           {showEditButton && (
             <Link href={`/agents/${agent.id}/edit`}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Pencil className="w-4 h-4" />
+                <Pencil className="icon-sharp h-4 w-4" />
               </Button>
             </Link>
           )}

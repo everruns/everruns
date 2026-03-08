@@ -18,12 +18,37 @@ for arg in "$@"; do
   esac
 done
 
+apply_port_prefix_defaults
+API_ADDR_DEFAULT="0.0.0.0:${API_PORT}"
+PROXY_URL_DEFAULT="http://localhost:${PROXY_PORT}"
+DB_URL_DEFAULT="postgres://everruns:everruns@localhost:${DB_PORT}/everruns"
+
 # require_command is defined in common.sh (sourced above)
+
+ui_dev_args=()
+if [ -L "${PROJECT_ROOT:-$(pwd)}/apps/ui/node_modules" ]; then
+  ui_dev_args+=(--webpack)
+fi
+if [ -n "${UI_DEV_ARGS:-}" ]; then
+  read -r -a ui_dev_args_extra <<< "$UI_DEV_ARGS"
+  ui_dev_args+=("${ui_dev_args_extra[@]}")
+fi
+
+run_ui_dev() {
+  PORT="$UI_PORT" ./node_modules/.bin/next dev --port "$UI_PORT" "${ui_dev_args[@]}"
+}
+
+run_ui_start() {
+  PORT="$UI_PORT" ./node_modules/.bin/next start --port "$UI_PORT"
+}
 
 case "$cmd" in
   server)
     echo "🌐 Starting server..."
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
+    export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
+    export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
+    export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     cargo run -p everruns-server
     ;;
 
@@ -35,7 +60,10 @@ case "$cmd" in
   watch-server)
     echo "👀 Starting server with auto-reload..."
     require_command cargo-watch "Run: just init"
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
+    export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
+    export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
+    export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     cargo watch -w crates -x 'run -p everruns-server'
     ;;
 
@@ -113,9 +141,13 @@ case "$cmd" in
     # Enable dev mode
     export DEV_MODE=true
     export DEPLOYMENT_GRADE=dev
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
-    export AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:9300/api}
-    export FRONTEND_URL=${FRONTEND_URL:-http://localhost:9300}
+    export API_PORT UI_PORT PROXY_PORT
+    export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
+    export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
+    export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
+    export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
+    export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export RUST_LOG=${RUST_LOG:-info}
 
     # Set encryption key if not provided (standard dev key from .env.example)
@@ -167,7 +199,7 @@ case "$cmd" in
     # Wait for server
     echo "2️⃣  Waiting for server to be ready..."
     for i in {1..30}; do
-      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+      if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
         echo "   ✅ Server is ready"
         break
       fi
@@ -183,7 +215,7 @@ case "$cmd" in
     # Start UI
     echo "5️⃣  Starting UI server..."
     cd "$PROJECT_ROOT/apps/ui"
-    npm run dev &
+    run_ui_dev &
     UI_PID=$!
     CHILD_PIDS+=("$UI_PID")
     cd "$PROJECT_ROOT"
@@ -196,14 +228,14 @@ case "$cmd" in
     CADDY_PID=$!
     CHILD_PIDS+=("$CADDY_PID")
     sleep 1
-    echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
+    echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
-    echo "   🌐 App:           http://localhost:9300"
-    echo "   🔌 API:           http://localhost:9300/api/..."
+    echo "   🌐 App:           http://localhost:${PROXY_PORT}"
+    echo "   🔌 API:           http://localhost:${PROXY_PORT}/api/..."
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
     echo ""
     echo "⚠️  DEV MODE notes:"
@@ -294,19 +326,19 @@ case "$cmd" in
     echo "1️⃣  Checking PostgreSQL..."
     if [ "$NO_DOCKER" = true ]; then
       # No Docker mode - require local PostgreSQL
-      if check_postgres_ready localhost 5432 everruns; then
+      if check_postgres_ready localhost "$DB_PORT" everruns; then
         echo "   ✅ Local PostgreSQL is ready"
-        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else
-        echo "   ❌ PostgreSQL not running or not responding on localhost:5432"
+        echo "   ❌ PostgreSQL not running or not responding on localhost:${DB_PORT}"
         echo "   Start PostgreSQL or remove --no-docker flag"
         exit 1
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif check_postgres_ready localhost 5432 postgres; then
+    elif check_postgres_ready localhost "$DB_PORT" postgres; then
       echo "   ✅ Local PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
       if resolve_docker_compose 2>/dev/null; then
         if ! docker ps 2>/dev/null | grep -q jaeger; then
           echo "   ℹ️  Starting Jaeger for tracing..."
@@ -320,7 +352,7 @@ case "$cmd" in
       fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       if ! docker ps 2>/dev/null | grep -q jaeger; then
         echo "   ℹ️  Starting Jaeger for tracing..."
         if resolve_docker_compose 2>/dev/null; then
@@ -339,11 +371,11 @@ case "$cmd" in
         "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
         cd "$PROJECT_ROOT"
         sleep 3
-        until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+        until check_postgres_ready localhost "$DB_PORT" everruns; do
           echo "   Waiting for Postgres to be ready..."
           sleep 1
         done
-        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
         echo "   ✅ Docker PostgreSQL and Jaeger started"
         JAEGER_STARTED=true
       else
@@ -405,9 +437,13 @@ case "$cmd" in
     fi
 
     # Start API
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
-    export AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:9300/api}
-    export FRONTEND_URL=${FRONTEND_URL:-http://localhost:9300}
+    export API_PORT UI_PORT PROXY_PORT
+    export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
+    export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
+    export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
+    export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
+    export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then
@@ -424,7 +460,7 @@ case "$cmd" in
     # Wait for API
     echo "4️⃣  Waiting for API to be ready..."
     for i in {1..30}; do
-      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+      if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
         echo "   ✅ API is ready"
         break
       fi
@@ -491,7 +527,7 @@ case "$cmd" in
       # Start UI
       echo "8️⃣  Starting UI server..."
       cd "$PROJECT_ROOT/apps/ui"
-      npm run dev &
+      run_ui_dev &
       UI_PID=$!
       CHILD_PIDS+=("$UI_PID")
       cd "$PROJECT_ROOT"
@@ -504,7 +540,7 @@ case "$cmd" in
       CADDY_PID=$!
       CHILD_PIDS+=("$CADDY_PID")
       sleep 1
-      echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
+      echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
     else
       echo "7️⃣  Skipping UI (--no-ui)"
     fi
@@ -518,10 +554,10 @@ case "$cmd" in
     fi
     echo ""
     if [ "$NO_UI" = false ]; then
-      echo "   🌐 App:         http://localhost:9300"
-      echo "   🔌 API:         http://localhost:9300/api/..."
+      echo "   🌐 App:         http://localhost:${PROXY_PORT}"
+      echo "   🔌 API:         http://localhost:${PROXY_PORT}/api/..."
     else
-      echo "   🌐 API:         http://localhost:9000"
+      echo "   🌐 API:         http://localhost:${API_PORT}"
     fi
     if [ "$NO_WATCH" = false ]; then
       echo "   ⚙️ Worker:      running (auto-reload)"
@@ -602,19 +638,19 @@ case "$cmd" in
     # Check PostgreSQL (same as start-all)
     echo "1️⃣  Checking PostgreSQL..."
     if [ "$NO_DOCKER" = true ]; then
-      if check_postgres_ready localhost 5432 everruns; then
+      if check_postgres_ready localhost "$DB_PORT" everruns; then
         echo "   ✅ Local PostgreSQL is ready"
-        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else
-        echo "   ❌ PostgreSQL not running or not responding on localhost:5432"
+        echo "   ❌ PostgreSQL not running or not responding on localhost:${DB_PORT}"
         echo "   Start PostgreSQL or remove --no-docker flag"
         exit 1
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif check_postgres_ready localhost 5432 postgres; then
+    elif check_postgres_ready localhost "$DB_PORT" postgres; then
       echo "   ✅ Local PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
       if resolve_docker_compose 2>/dev/null; then
         if ! docker ps 2>/dev/null | grep -q jaeger; then
           echo "   ℹ️  Starting Jaeger for tracing..."
@@ -628,7 +664,7 @@ case "$cmd" in
       fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       if ! docker ps 2>/dev/null | grep -q jaeger; then
         echo "   ℹ️  Starting Jaeger for tracing..."
         if resolve_docker_compose 2>/dev/null; then
@@ -647,11 +683,11 @@ case "$cmd" in
         "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
         cd "$PROJECT_ROOT"
         sleep 3
-        until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+        until check_postgres_ready localhost "$DB_PORT" everruns; do
           echo "   Waiting for Postgres to be ready..."
           sleep 1
         done
-        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
         echo "   ✅ Docker PostgreSQL and Jaeger started"
         JAEGER_STARTED=true
       else
@@ -728,9 +764,13 @@ case "$cmd" in
     fi
 
     # Start server
-    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9300}
-    export AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:9300/api}
-    export FRONTEND_URL=${FRONTEND_URL:-http://localhost:9300}
+    export API_PORT UI_PORT PROXY_PORT
+    export ADDR=${ADDR:-$API_ADDR_DEFAULT}
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
+    export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
+    export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
+    export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
+    export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
 
@@ -743,7 +783,7 @@ case "$cmd" in
     # Wait for server
     echo "6️⃣  Waiting for server to be ready..."
     for i in {1..30}; do
-      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+      if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
         echo "   ✅ Server is ready"
         break
       fi
@@ -762,7 +802,7 @@ case "$cmd" in
       # Start UI production server
       echo "8️⃣  Starting UI server (production)..."
       cd "$PROJECT_ROOT/apps/ui"
-      PORT=9100 npm run start &
+      run_ui_start &
       UI_PID=$!
       CHILD_PIDS+=("$UI_PID")
       cd "$PROJECT_ROOT"
@@ -775,7 +815,7 @@ case "$cmd" in
       CADDY_PID=$!
       CHILD_PIDS+=("$CADDY_PID")
       sleep 1
-      echo "   ✅ Reverse proxy is running on :9300 (PID: $CADDY_PID)"
+      echo "   ✅ Reverse proxy is running on :${PROXY_PORT} (PID: $CADDY_PID)"
     fi
 
     echo ""
@@ -783,10 +823,10 @@ case "$cmd" in
     echo "✅ PRODUCTION MODE started (release builds, no watchers)!"
     echo ""
     if [ "$NO_UI" = false ]; then
-      echo "   🌐 App:         http://localhost:9300"
-      echo "   🔌 API:         http://localhost:9300/api/..."
+      echo "   🌐 App:         http://localhost:${PROXY_PORT}"
+      echo "   🔌 API:         http://localhost:${PROXY_PORT}/api/..."
     else
-      echo "   🌐 API:         http://localhost:9000"
+      echo "   🌐 API:         http://localhost:${API_PORT}"
     fi
     echo "   ⚙️ Worker:      running (release)"
     if [ "$JAEGER_STARTED" = true ]; then

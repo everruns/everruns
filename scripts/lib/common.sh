@@ -62,6 +62,24 @@ ensure_docker_daemon() {
   return 1
 }
 
+apply_port_prefix_defaults() {
+  if [ -n "${PORT_PREFIX:-}" ]; then
+    : "${PROXY_PORT:=${PORT_PREFIX}00}"
+    : "${API_PORT:=${PORT_PREFIX}01}"
+    : "${UI_PORT:=${PORT_PREFIX}05}"
+    : "${DB_PORT:=${PORT_PREFIX}32}"
+    : "${COMPOSE_PROJECT_NAME:=everruns-${PORT_PREFIX}}"
+  else
+    : "${API_PORT:=9000}"
+    : "${UI_PORT:=9100}"
+    : "${PROXY_PORT:=9300}"
+    : "${DB_PORT:=5432}"
+    : "${COMPOSE_PROJECT_NAME:=everruns}"
+  fi
+
+  export PORT_PREFIX API_PORT UI_PORT PROXY_PORT DB_PORT COMPOSE_PROJECT_NAME
+}
+
 # Check if npm dependencies need to be installed/updated
 # Usage: check_npm_deps <app_name> <install_command>
 # Example: check_npm_deps "UI" "cd apps/ui && npm install"

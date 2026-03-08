@@ -74,14 +74,14 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                 <Link
                   key={session.id}
                   href={`/sessions/${session.id}`}
-                  className="flex items-start gap-3 p-3 rounded-md border hover:bg-muted transition-colors"
+                  className="flex items-start gap-3 border bg-card p-3 transition-colors hover:bg-muted/50"
                 >
                   {/* Icon */}
                   <div className="flex-shrink-0 mt-0.5">
                     {isRunning(session) ? (
                       <Loader2 className="w-4 h-4 text-primary animate-spin" />
                     ) : (
-                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      <MessageSquare className="icon-sharp h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
 
@@ -95,7 +95,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                       {getStatusBadge(session)}
                       {agent && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Bot className="w-3 h-3" />
+                          <Bot className="icon-sharp h-3 w-3" />
                           {agent.name}
                         </span>
                       )}
@@ -120,14 +120,14 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                       <span>{formatRelativeTime(session.created_at)}</span>
                       {model && (
                         <span className="flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
+                          <Sparkles className="icon-sharp h-3 w-3" />
                           {model.display_name}
                         </span>
                       )}
                       {session.usage &&
                         (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
                           <span className="flex items-center gap-1">
-                            <Zap className="w-3 h-3" />
+                            <Zap className="icon-sharp h-3 w-3" />
                             {formatTotalTokens(session.usage)}
                           </span>
                         )}

@@ -115,6 +115,12 @@
   background-image: radial-gradient(circle at center, hsl(43 60% 53% / 0.1) 1px, transparent 1px);
 }
 
+.icon-sharp {
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  shape-rendering: geometricPrecision;
+}
+
 /* Experimental page badge — hand-drawn stamp with Caveat font */
 .experimental-page-badge {
   font-family: "Caveat", cursive;
@@ -136,4 +142,56 @@
   border: 1.5px solid #d97706;
   border-radius: 50% 40% 45% 42% / 50% 45% 40% 48%;
   opacity: 0.45;
+}
+
+@keyframes tool-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tool-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes tool-progress-sheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
+.animate-tool-row-in {
+  animation: tool-row-enter 220ms ease-out both;
+}
+
+.animate-tool-pulse {
+  animation: tool-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-tool-progress-active {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-tool-progress-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.14), transparent);
+  animation: tool-progress-sheen 1.8s ease-in-out infinite;
 }

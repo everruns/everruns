@@ -14,7 +14,7 @@
 "use client";
 
 import { useState } from "react";
-import { version } from "../../../package.json";
+import packageJson from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -73,6 +73,7 @@ import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
+const { version } = packageJson;
 
 // --- Public types ---
 
@@ -179,13 +180,13 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm font-medium transition-colors",
         isActive
-          ? "bg-accent/10 text-accent-foreground border-l-2 border-accent"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground border-l-2 border-transparent",
+          ? "border-l-primary bg-card text-foreground"
+          : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card hover:text-foreground",
       )}
     >
-      <item.icon className="h-5 w-5" />
+      <item.icon className="icon-sharp h-[18px] w-[18px] shrink-0 stroke-[2.15]" />
       {item.name}
       {item.experimental && <ExperimentalBadge />}
     </Link>
@@ -209,7 +210,9 @@ function NavSection({
     <>
       {!isFirst && <div className="my-3 border-t" />}
       {section.label && (
-        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">{section.label}</p>
+        <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+          {section.label}
+        </p>
       )}
       {section.items.map((item) => (
         <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
@@ -311,9 +314,9 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   let visibleIndex = 0;
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-card">
+    <div className="flex h-full w-64 flex-col border-r bg-background">
       {/* Logo */}
-      <div className="flex h-16 items-center border-b px-6">
+      <div className="flex h-16 items-center border-b bg-card px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
           <span className="text-xl font-bold">Everruns</span>
@@ -324,12 +327,12 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
       {organizations.length > 0 && (
         <div className="border-b px-3 py-2">
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
+            <DropdownMenuTrigger className="flex w-full items-center gap-2 border border-transparent px-3 py-2 text-sm transition-colors hover:border-border hover:bg-card">
+              <Building2 className="icon-sharp h-4 w-4 text-muted-foreground" />
               <span className="flex-1 text-left truncate font-medium">
                 {currentOrg?.name ?? "Select Organization"}
               </span>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <ChevronDown className="icon-sharp h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuPositioner side="bottom" align="start">
               <DropdownMenuContent className="w-56">
@@ -343,14 +346,14 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
                     >
                       <span className="truncate">{org.name}</span>
                       {currentOrg?.public_id === org.public_id && (
-                        <Check className="h-4 w-4 text-primary" />
+                        <Check className="icon-sharp h-4 w-4 text-primary" />
                       )}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleCreateOrg}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="icon-sharp mr-2 h-4 w-4" />
                   Create Organisation
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -360,7 +363,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 py-4">
+      <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 bg-background py-4">
         {allSections.map((section, i) => {
           if (section.devOnly && !isDev) return null;
           const isFirst = visibleIndex === 0;
@@ -381,7 +384,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
       <div className="border-t p-3">
         {requiresAuth && user ? (
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-muted transition-colors">
+            <DropdownMenuTrigger className="flex w-full items-center gap-3 border border-transparent px-3 py-2 text-sm transition-colors hover:border-border hover:bg-card">
               <Avatar className="h-8 w-8">
                 {user.avatar_url && (
                   <AvatarImage src={user.avatar_url} alt={user.name || user.email} />
@@ -396,18 +399,18 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
                   <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                 )}
               </div>
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuPositioner side="top" align="start">
               <DropdownMenuContent className="w-56">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => router.push("/settings")}>
-                    <User className="mr-2 h-4 w-4" />
+                    <User className="icon-sharp mr-2 h-4 w-4" />
                     Profile
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/settings/api-keys")}>
-                    <Key className="mr-2 h-4 w-4" />
+                    <Key className="icon-sharp mr-2 h-4 w-4" />
                     API Keys
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
@@ -417,7 +420,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
                   onClick={handleLogout}
                   disabled={logoutPending}
                 >
-                  <LogOut className="mr-2 h-4 w-4" />
+                  <LogOut className="icon-sharp mr-2 h-4 w-4" />
                   {logoutPending ? "Signing out..." : "Sign out"}
                 </DropdownMenuItem>
               </DropdownMenuContent>

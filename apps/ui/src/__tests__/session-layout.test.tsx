@@ -27,15 +27,6 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-// Mock UI components
-jest.mock("@/components/ui/button", () => ({
-  buttonVariants: ({ variant }: { variant: string; size: string }) =>
-    variant === "default" ? "btn-default" : "btn-ghost",
-  Button: ({ children, ...props }: { children: React.ReactNode }) => (
-    <button {...props}>{children}</button>
-  ),
-}));
-
 jest.mock("@/components/ui/badge", () => ({
   Badge: ({
     children,
@@ -222,7 +213,8 @@ describe("SessionLayout", () => {
 
     await waitFor(() => {
       const chatLink = screen.getByRole("link", { name: /chat/i });
-      expect(chatLink).toHaveClass("btn-default");
+      expect(chatLink).toHaveClass("border-primary");
+      expect(chatLink).toHaveClass("bg-card");
     });
   });
 
@@ -232,7 +224,8 @@ describe("SessionLayout", () => {
 
     await waitFor(() => {
       const filesLink = screen.getByRole("link", { name: /workspace/i });
-      expect(filesLink).toHaveClass("btn-default");
+      expect(filesLink).toHaveClass("border-primary");
+      expect(filesLink).toHaveClass("bg-card");
     });
   });
 
@@ -242,7 +235,8 @@ describe("SessionLayout", () => {
 
     await waitFor(() => {
       const eventsLink = screen.getByRole("link", { name: /events/i });
-      expect(eventsLink).toHaveClass("btn-ghost");
+      expect(eventsLink).toHaveClass("border-transparent");
+      expect(eventsLink).toHaveClass("bg-transparent");
     });
   });
 

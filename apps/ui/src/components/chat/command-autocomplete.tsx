@@ -75,7 +75,7 @@ export function CommandAutocomplete({
   return (
     <div
       ref={listRef}
-      className="absolute bottom-full left-0 right-0 mb-1 z-50 max-h-[240px] overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+      className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-[240px] overflow-y-auto border border-border bg-card p-1"
     >
       {filtered.map((cmd, i) => (
         <button
@@ -83,8 +83,10 @@ export function CommandAutocomplete({
           data-command-item
           type="button"
           className={cn(
-            "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none",
-            i === selectedIndex ? "bg-muted text-foreground" : "text-popover-foreground",
+            "flex w-full items-center gap-2 px-2 py-2 text-sm outline-none select-none",
+            i === selectedIndex
+              ? "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] text-foreground"
+              : "text-popover-foreground",
           )}
           onMouseEnter={() => setSelectedIndex(i)}
           onMouseDown={(e) => {
@@ -93,9 +95,9 @@ export function CommandAutocomplete({
           }}
         >
           {cmd.source === "system" ? (
-            <Terminal className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+            <Terminal className="icon-sharp h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
           ) : (
-            <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+            <Sparkles className="icon-sharp h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
           )}
           <span className="font-mono text-xs text-foreground">/{cmd.name}</span>
           <span className="text-xs text-muted-foreground truncate">{cmd.description}</span>

@@ -19,7 +19,7 @@ export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
+    <div className="flex flex-wrap gap-2 border border-border bg-background px-3 py-3">
       {images.map((img) => (
         <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} />
       ))}
@@ -38,9 +38,9 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
 
   return (
     <div className="relative group">
-      <div className="w-20 h-20 rounded-md overflow-hidden bg-muted border">
+      <div className="h-20 w-20 overflow-hidden border border-border bg-muted/20">
         {image.status === "error" ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-destructive p-1">
+          <div className="flex h-full w-full flex-col items-center justify-center p-1 text-destructive">
             <AlertCircle className="w-6 h-6 mb-1" />
             <span className="text-[10px] text-center line-clamp-2">{image.error || "Error"}</span>
           </div>
@@ -59,7 +59,7 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
       {/* Remove button - monochrome style */}
       <button
         type="button"
-        className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-border bg-background opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
         onClick={() => onRemove(image.tempId)}
       >
         <X className="w-3 h-3 text-muted-foreground" />
@@ -102,7 +102,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
           <img
             src={thumbnailUrl}
             alt={filename || "Image"}
-            className="max-w-[200px] max-h-[200px] rounded-md border hover:opacity-90 transition-opacity"
+            className="max-h-[200px] max-w-[200px] border border-border hover:opacity-90 transition-opacity"
             title={filename || "Click to view full size"}
           />
         </button>
@@ -153,7 +153,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
  */
 export function ImagePlaceholder({ filename }: { filename?: string }) {
   return (
-    <div className="inline-flex flex-col items-center justify-center w-20 h-20 bg-muted rounded-md border">
+    <div className="inline-flex h-20 w-20 flex-col items-center justify-center border border-border bg-muted/20">
       <ImageIcon className="w-6 h-6 text-muted-foreground" />
       {filename && (
         <span className="text-[10px] text-muted-foreground mt-1 truncate max-w-[70px]">

@@ -124,7 +124,9 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <RecentSessions sessions={sessions} agents={agents} models={llmModels} />
+        <div className="mt-6">
+          <RecentSessions sessions={sessions} agents={agents} models={llmModels} />
+        </div>
       </div>
 
       {/* New Session Dialog */}

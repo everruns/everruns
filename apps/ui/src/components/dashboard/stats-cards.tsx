@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Boxes, MessageSquare, CheckCircle, Clock, Hash } from "lucide-react";
+import { Boxes, MessageSquare, CheckCircle, Hash } from "lucide-react";
 import type { Agent, SessionStats } from "@/lib/api/types";
 
 interface StatsCardsProps {
@@ -18,38 +18,38 @@ export function StatsCards({ agents, sessionStats }: StatsCardsProps) {
       value: agents.length,
       description: `${activeAgents} active`,
       icon: Boxes,
-      color: "text-blue-600",
+      color: "text-primary",
     },
     {
       title: "Total Sessions",
       value: sessionStats?.total ?? 0,
       description: "All sessions",
       icon: Hash,
-      color: "text-purple-600",
+      color: "text-muted-foreground",
     },
     {
       title: "Active Sessions",
       value: sessionStats?.active ?? 0,
       description: "Currently processing",
       icon: MessageSquare,
-      color: "text-yellow-600",
+      color: "text-accent-foreground",
     },
     {
       title: "Idle Sessions",
       value: sessionStats?.idle ?? 0,
       description: "Ready for input",
       icon: CheckCircle,
-      color: "text-green-600",
+      color: "text-muted-foreground",
     },
   ];
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
-        <Card key={stat.title}>
+        <Card key={stat.title} className="bg-background">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-            <stat.icon className={`h-4 w-4 ${stat.color}`} />
+            <stat.icon className={`icon-sharp h-4 w-4 ${stat.color}`} />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stat.value}</div>

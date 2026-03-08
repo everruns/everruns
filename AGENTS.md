@@ -144,6 +144,34 @@ just start-all          # Full mode (PostgreSQL)
 just --list             # All commands
 ```
 
+#### Worktrees
+
+Use a port prefix per worktree/session. Convention:
+
+- `PORT_PREFIX=xyz`
+- proxy/app: `xyz00`
+- server: `xyz01`
+- frontend: `xyz05`
+- postgres: `xyz32` (when needed)
+
+```bash
+PORT_PREFIX=271 just start-dev
+PORT_PREFIX=271 just start-all
+```
+
+- `scripts/lib/services.sh`, `scripts/lib/docker.sh`, `scripts/lib/bench.sh`, and `local/Caddyfile` read `PORT_PREFIX`
+- Explicit `API_PORT`, `UI_PORT`, `PROXY_PORT`, and `DB_PORT` still override individual ports if needed
+- If `PORT_PREFIX` is unset, repo defaults stay `9000` (API), `9100` (UI), `9300` (proxy), `5432` (Postgres)
+- UI-only worktree iteration:
+
+```bash
+cd apps/ui
+./node_modules/.bin/next dev --port 9120
+```
+
+- If `apps/ui/node_modules` is shared into the worktree via symlink, use webpack for Next.js dev/build paths; Turbopack rejects node_modules outside the worktree root
+- If the worktree does not have UI deps yet, install them in `apps/ui` before starting Next
+
 ### Rust
 
 - Stable Rust (edition 2024), toolchain in `rust-toolchain.toml`

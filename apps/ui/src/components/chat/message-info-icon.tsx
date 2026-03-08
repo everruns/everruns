@@ -37,16 +37,16 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          "p-0.5 rounded transition-colors flex-shrink-0",
+          "flex-shrink-0 rounded p-0.5 transition-colors",
           variant === "light"
-            ? "text-white/50 hover:text-white hover:bg-white/10"
-            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
+            ? "text-white/55 hover:bg-white/12 hover:text-white"
+            : "text-muted-foreground/55 hover:bg-muted hover:text-foreground",
         )}
         aria-label="Message info"
       >
         <Info className="w-3 h-3" />
       </TooltipTrigger>
-      <TooltipContent className="max-w-sm">
+      <TooltipContent className="max-w-sm border-border bg-popover px-3 py-2">
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt className="text-muted-foreground">ID</dt>
           <dd className="font-mono text-[10px] break-all">{event.id}</dd>

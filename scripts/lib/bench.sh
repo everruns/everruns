@@ -6,6 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 cmd="${1:-}"
 shift || true
 
+apply_port_prefix_defaults
+
 parse_bench_args() {
   SAVE_ARG=""
   MONIKER_ARG=""
@@ -68,23 +70,12 @@ case "$cmd" in
     echo ""
 
     DB_HOST="${DB_HOST:-localhost}"
-    DB_PORT="${DB_PORT:-5432}"
     DB_NAME="${DB_NAME:-everruns_test}"
     USING_DOCKER_POSTGRES=false
 
     echo "1️⃣  Checking PostgreSQL connection..."
 
-    if command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q everruns-postgres; then
-      echo "   Found Docker PostgreSQL container"
-      USING_DOCKER_POSTGRES=true
-      DB_USER="everruns"
-      DB_PASS="everruns"
-      echo "   Waiting for PostgreSQL to be ready..."
-      until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
-        sleep 1
-      done
-      echo "   ✅ PostgreSQL is ready"
-    elif check_postgres_ready "$DB_HOST" "$DB_PORT" "${DB_USER:-postgres}"; then
+    if check_postgres_ready "$DB_HOST" "$DB_PORT" "${DB_USER:-postgres}"; then
       echo "   ✅ Local PostgreSQL is ready"
       DB_USER="${DB_USER:-postgres}"
       DB_PASS="${DB_PASS:-postgres}"
@@ -96,7 +87,7 @@ case "$cmd" in
         "${DOCKER_COMPOSE[@]}" up -d postgres
         cd "$PROJECT_ROOT"
         sleep 3
-        until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+        until check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; do
           echo "   Waiting for Postgres to be ready..."
           sleep 1
         done
