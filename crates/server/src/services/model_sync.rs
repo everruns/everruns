@@ -605,4 +605,108 @@ mod tests {
         let results = service.sync_all().await.unwrap();
         assert_eq!(results.len(), 2);
     }
+
+    // =========================================================================
+    // Encrypted DB key model sync negative tests (EVE-57 / EVE-61)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn resolve_api_key_corrupted_encrypted_data_fails() {
+        use everruns_core::DEFAULT_ORG_ID;
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
+        );
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, Some(encryption));
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "Corrupt Provider".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(b"not-valid-encrypted-data".to_vec()),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            service.resolve_api_key(&provider).is_err(),
+            "corrupted data must error"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_api_key_wrong_key_id_fails() {
+        use everruns_core::DEFAULT_ORG_ID;
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc_v1 = Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
+        );
+        let encrypted = enc_v1.encrypt_string("sk-secret").unwrap();
+        let enc_v2 = Arc::new(
+            EncryptionService::new(
+                &crate::storage::encryption::generate_encryption_key("kek-v2"),
+                &[],
+            )
+            .unwrap(),
+        );
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, Some(enc_v2));
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "Wrong Key Provider".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(encrypted),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            service.resolve_api_key(&provider).is_err(),
+            "wrong key must error"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_all_provider_not_visible_cross_org() {
+        use everruns_core::DEFAULT_ORG_ID;
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, None);
+        let _p1 = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let _org2 = db
+            .create_organization_with_id(
+                2,
+                CreateOrganizationRow {
+                    public_id: "org-2".to_string(),
+                    name: "Org 2".to_string(),
+                    created_by: None,
+                },
+            )
+            .await
+            .unwrap();
+        let results = service.sync_all().await.unwrap();
+        assert_eq!(results.len(), 1, "org 2 has no providers");
+    }
 }

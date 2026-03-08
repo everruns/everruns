@@ -2194,4 +2194,360 @@ mod tests {
             .await;
         assert!(result.is_err());
     }
+
+    // =========================================================================
+    // Adapter contract test harness (EVE-61)
+    //
+    // Reusable macro-driven suite that defines behavioral contracts for
+    // WorkerAdapters. Each test is parameterised by an adapter constructor,
+    // so it runs against DirectWorkerAdapters today and can be wired to
+    // GrpcWorkerAdapters once an in-process gRPC loopback is available.
+    // =========================================================================
+
+    macro_rules! adapter_contract_tests {
+        ($mod_name:ident, $make_adapters:expr) => {
+            mod $mod_name {
+                use super::*;
+
+                #[tokio::test]
+                async fn grep_single_match() {
+                    let (adapters, db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    seed_file(&db, sid, "/hello.rs", "fn main() {\n    hello();\n}\n").await;
+                    let results = adapters.grep_files(sid, "hello", None).await.unwrap();
+                    assert_eq!(results.len(), 1);
+                    assert_eq!(results[0].path, "/hello.rs");
+                    assert_eq!(results[0].line_number, 2);
+                    assert!(results[0].line.contains("hello"));
+                }
+
+                #[tokio::test]
+                async fn grep_no_match_returns_empty() {
+                    let (adapters, db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    seed_file(&db, sid, "/code.rs", "let x = 1;\n").await;
+                    let results = adapters
+                        .grep_files(sid, "no_such_pattern", None)
+                        .await
+                        .unwrap();
+                    assert!(results.is_empty());
+                }
+
+                #[tokio::test]
+                async fn grep_multiple_files_and_lines() {
+                    let (adapters, db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    seed_file(&db, sid, "/a.txt", "ERR line1\nok\nERR line3\n").await;
+                    seed_file(&db, sid, "/b.txt", "ok\nERR line2\n").await;
+                    let results = adapters.grep_files(sid, "ERR", None).await.unwrap();
+                    assert_eq!(results.len(), 3);
+                    let a: Vec<_> = results.iter().filter(|m| m.path == "/a.txt").collect();
+                    assert_eq!(a.len(), 2);
+                    assert_eq!(a[0].line_number, 1);
+                    assert_eq!(a[1].line_number, 3);
+                    let b: Vec<_> = results.iter().filter(|m| m.path == "/b.txt").collect();
+                    assert_eq!(b.len(), 1);
+                    assert_eq!(b[0].line_number, 2);
+                }
+
+                #[tokio::test]
+                async fn grep_regex_pattern() {
+                    let (adapters, db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    seed_file(&db, sid, "/nums.txt", "val 1\nval 22\nval 333\n").await;
+                    let results = adapters.grep_files(sid, r"\d{2,}", None).await.unwrap();
+                    assert_eq!(results.len(), 2);
+                }
+
+                #[tokio::test]
+                async fn grep_invalid_regex_is_error() {
+                    let (adapters, _db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    assert!(adapters.grep_files(sid, "[bad", None).await.is_err());
+                }
+
+                #[tokio::test]
+                async fn grep_empty_session_returns_empty() {
+                    let (adapters, _db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    let results = adapters.grep_files(sid, "anything", None).await.unwrap();
+                    assert!(results.is_empty());
+                }
+
+                #[tokio::test]
+                async fn write_then_read_file() {
+                    let (adapters, _db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    let written = adapters
+                        .write_file(sid, "/test.txt", "content", "text")
+                        .await
+                        .unwrap();
+                    assert_eq!(written.path, "/test.txt");
+                    let read = adapters.read_file(sid, "/test.txt").await.unwrap();
+                    assert!(read.is_some());
+                    assert_eq!(read.unwrap().path, "/test.txt");
+                }
+
+                #[tokio::test]
+                async fn read_nonexistent_file_returns_none() {
+                    let (adapters, _db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    assert!(
+                        adapters
+                            .read_file(sid, "/nope.txt")
+                            .await
+                            .unwrap()
+                            .is_none()
+                    );
+                }
+
+                #[tokio::test]
+                async fn delete_file_returns_true() {
+                    let (adapters, _db) = $make_adapters;
+                    let sid = Uuid::new_v4();
+                    adapters
+                        .write_file(sid, "/del.txt", "bye", "text")
+                        .await
+                        .unwrap();
+                    assert!(adapters.delete_file(sid, "/del.txt", false).await.unwrap());
+                    assert!(adapters.read_file(sid, "/del.txt").await.unwrap().is_none());
+                }
+
+                #[tokio::test]
+                async fn resolve_image_missing_returns_none() {
+                    let (adapters, _db) = $make_adapters;
+                    let result = adapters
+                        .resolve_image(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                        .await
+                        .unwrap();
+                    assert!(result.is_none());
+                }
+
+                #[tokio::test]
+                async fn resolve_images_batch_empty_ids() {
+                    let (adapters, _db) = $make_adapters;
+                    let result = adapters
+                        .resolve_images_batch(everruns_core::DEFAULT_ORG_ID, &[])
+                        .await
+                        .unwrap();
+                    assert!(result.is_empty());
+                }
+
+                #[tokio::test]
+                async fn get_session_nonexistent_returns_none() {
+                    let (adapters, _db) = $make_adapters;
+                    let result = adapters
+                        .get_session(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                        .await
+                        .unwrap();
+                    assert!(result.is_none());
+                }
+
+                #[tokio::test]
+                async fn get_agent_nonexistent_returns_none() {
+                    let (adapters, _db) = $make_adapters;
+                    let result = adapters
+                        .get_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                        .await
+                        .unwrap();
+                    assert!(result.is_none());
+                }
+
+                #[tokio::test]
+                async fn mcp_server_not_found_is_error() {
+                    let (adapters, _db) = $make_adapters;
+                    assert!(
+                        adapters
+                            .get_mcp_server_by_prefix(
+                                everruns_core::DEFAULT_ORG_ID,
+                                "no_such_prefix"
+                            )
+                            .await
+                            .is_err()
+                    );
+                }
+
+                #[tokio::test]
+                async fn mcp_server_no_api_key() {
+                    let (adapters, db) = $make_adapters;
+                    seed_mcp_server(&db, "Plain Server", None).await;
+                    let info = adapters
+                        .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "plain_server")
+                        .await
+                        .unwrap();
+                    assert!(info.api_key.is_none());
+                    assert_eq!(info.name, "Plain Server");
+                }
+
+                #[tokio::test]
+                async fn mcp_server_with_encrypted_api_key() {
+                    let adapters = test_adapters_with_encryption();
+                    let encrypted = test_encryption().encrypt_string("sk-contract").unwrap();
+                    seed_mcp_server(&adapters.db, "Enc Server", Some(encrypted)).await;
+                    let info = adapters
+                        .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "enc_server")
+                        .await
+                        .unwrap();
+                    assert_eq!(info.api_key.as_deref(), Some("sk-contract"));
+                }
+            }
+        };
+    }
+
+    adapter_contract_tests!(direct_adapter_contract, {
+        let a = test_adapters();
+        let db = a.db.clone();
+        (a, db)
+    });
+
+    // =========================================================================
+    // Cross-org image resolution regression (EVE-56 / EVE-61)
+    // =========================================================================
+
+    async fn seed_image(db: &StorageBackend, org_id: i64) -> Uuid {
+        use crate::storage::models::CreateImageRow;
+        let row = db
+            .create_image(
+                org_id,
+                CreateImageRow {
+                    org_id,
+                    filename: "test.png".to_string(),
+                    content_type: "image/png".to_string(),
+                    size_bytes: 4,
+                    data: vec![0x89, 0x50, 0x4E, 0x47],
+                    thumbnail_data: None,
+                    thumbnail_content_type: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .expect("seed image");
+        row.id.into()
+    }
+
+    #[tokio::test]
+    async fn resolve_image_cross_org_isolation() {
+        let adapters = test_adapters();
+        let image_id = seed_image(&adapters.db, everruns_core::DEFAULT_ORG_ID).await;
+        let found = adapters
+            .resolve_image(everruns_core::DEFAULT_ORG_ID, image_id)
+            .await
+            .unwrap();
+        assert!(found.is_some(), "image should be visible in owning org");
+        let cross = adapters.resolve_image(999, image_id).await.unwrap();
+        assert!(
+            cross.is_none(),
+            "image must NOT be visible in different org"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_images_batch_cross_org_isolation() {
+        let adapters = test_adapters();
+        let img1 = seed_image(&adapters.db, everruns_core::DEFAULT_ORG_ID).await;
+        let img2 = seed_image(&adapters.db, everruns_core::DEFAULT_ORG_ID).await;
+        let batch = adapters
+            .resolve_images_batch(everruns_core::DEFAULT_ORG_ID, &[img1, img2])
+            .await
+            .unwrap();
+        assert_eq!(batch.len(), 2);
+        let cross = adapters
+            .resolve_images_batch(999, &[img1, img2])
+            .await
+            .unwrap();
+        assert!(cross.is_empty(), "images must not leak across orgs");
+    }
+
+    // =========================================================================
+    // MCP auth-required execution coverage (EVE-55 / EVE-61)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn mcp_server_encrypted_key_decrypts_correctly() {
+        let adapters = test_adapters_with_encryption();
+        let enc = test_encryption();
+        let key = "sk-mcp-auth-test-12345";
+        let encrypted = enc.encrypt_string(key).unwrap();
+        seed_mcp_server(&adapters.db, "Auth Required MCP", Some(encrypted)).await;
+        let info = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "auth_required_mcp")
+            .await
+            .unwrap();
+        assert_eq!(info.api_key.as_deref(), Some(key));
+        assert_eq!(info.url, "https://example.com/mcp");
+    }
+
+    #[tokio::test]
+    async fn mcp_server_encrypted_key_without_encryption_service_fails() {
+        let adapters = test_adapters();
+        let enc = test_encryption();
+        let encrypted = enc.encrypt_string("sk-should-fail").unwrap();
+        seed_mcp_server(&adapters.db, "Fail MCP", Some(encrypted)).await;
+        let result = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "fail_mcp")
+            .await;
+        assert!(
+            result.is_err(),
+            "decryption without encryption service must fail"
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_server_wrong_org_not_found() {
+        let adapters = test_adapters();
+        seed_mcp_server(&adapters.db, "Org Scoped MCP", None).await;
+        assert!(
+            adapters
+                .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "org_scoped_mcp")
+                .await
+                .is_ok()
+        );
+        assert!(
+            adapters
+                .get_mcp_server_by_prefix(999, "org_scoped_mcp")
+                .await
+                .is_err(),
+            "MCP server must not be visible in wrong org"
+        );
+    }
+
+    // =========================================================================
+    // Encrypted DB key model sync regression (EVE-57 / EVE-61)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn get_model_with_provider_returns_none_for_missing() {
+        let adapters = test_adapters();
+        let result = adapters
+            .get_model_with_provider(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_default_model_returns_none_when_no_providers() {
+        let adapters = test_adapters();
+        let result = adapters
+            .get_default_model(everruns_core::DEFAULT_ORG_ID)
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    // =========================================================================
+    // Usage attribution org scoping (EVE-56 / EVE-61)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn platform_store_agent_count_isolated_per_org() {
+        let adapters = test_adapters();
+        seed_agent(&adapters.db).await;
+        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID);
+        let agents_org1 = store_org1.list_agents().await.unwrap();
+        assert!(!agents_org1.is_empty(), "default org should have agents");
+        let store_org999 = adapters.platform_store(999);
+        let agents_org999 = store_org999.list_agents().await.unwrap();
+        assert!(agents_org999.is_empty(), "org 999 should have no agents");
+    }
 }

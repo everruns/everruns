@@ -887,4 +887,84 @@ mod tests {
             "rotated-secret"
         );
     }
+
+    // =========================================================================
+    // Encrypted DB key sync negative tests (EVE-57 / EVE-61)
+    // =========================================================================
+
+    #[test]
+    fn test_tampered_ciphertext_fails() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        let encrypted = service.encrypt_string("secret").unwrap();
+        let mut payload: EncryptedPayload = serde_json::from_slice(&encrypted).unwrap();
+        let mut chars: Vec<char> = payload.ciphertext.chars().collect();
+        if !chars.is_empty() {
+            chars[0] = if chars[0] == 'A' { 'B' } else { 'A' };
+        }
+        payload.ciphertext = chars.into_iter().collect();
+        let tampered = serde_json::to_vec(&payload).unwrap();
+        assert!(
+            service.decrypt(&tampered).is_err(),
+            "tampered ciphertext must fail"
+        );
+    }
+
+    #[test]
+    fn test_tampered_dek_fails() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        let encrypted = service.encrypt_string("secret").unwrap();
+        let mut payload: EncryptedPayload = serde_json::from_slice(&encrypted).unwrap();
+        let mut chars: Vec<char> = payload.dek_wrapped.chars().collect();
+        if !chars.is_empty() {
+            chars[0] = if chars[0] == 'A' { 'B' } else { 'A' };
+        }
+        payload.dek_wrapped = chars.into_iter().collect();
+        let tampered = serde_json::to_vec(&payload).unwrap();
+        assert!(
+            service.decrypt(&tampered).is_err(),
+            "tampered DEK must fail"
+        );
+    }
+
+    #[test]
+    fn test_truncated_payload_fails() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        let encrypted = service.encrypt_string("secret").unwrap();
+        let truncated = &encrypted[..encrypted.len() / 2];
+        assert!(
+            service.decrypt(truncated).is_err(),
+            "truncated payload must fail"
+        );
+    }
+
+    #[test]
+    fn test_empty_payload_fails() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        assert!(service.decrypt(&[]).is_err(), "empty payload must fail");
+    }
+
+    #[test]
+    fn test_non_json_payload_fails() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        assert!(service.decrypt(b"not json").is_err(), "non-JSON must fail");
+    }
+
+    #[test]
+    fn test_cross_key_without_registration_fails() {
+        let key_v1 = test_key("kek-v1");
+        let key_v2 = test_key("kek-v2");
+        let key_v3 = test_key("kek-v3");
+        let svc_v1 = EncryptionService::new(&key_v1, &[]).unwrap();
+        let encrypted = svc_v1.encrypt_string("secret").unwrap();
+        let svc_v3 = EncryptionService::new(&key_v3, &[&key_v2]).unwrap();
+        assert!(
+            svc_v3.decrypt(&encrypted).is_err(),
+            "unknown key_id must fail"
+        );
+    }
 }

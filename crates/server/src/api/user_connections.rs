@@ -684,4 +684,52 @@ mod tests {
         assert_eq!(query.installation_id, 12345);
         assert_eq!(query.state, None);
     }
+
+    // =========================================================================
+    // GitHub installation callback security negative tests (EVE-54 / EVE-61)
+    // =========================================================================
+
+    #[test]
+    fn empty_cookie_does_not_match_nonempty_query() {
+        let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "".to_string()));
+        let result = validate_install_state(&jar, Some("attacker_state"));
+        assert!(
+            result.is_err(),
+            "empty cookie must not match non-empty query"
+        );
+    }
+
+    #[test]
+    fn nonempty_cookie_does_not_match_empty_query() {
+        let jar = CookieJar::new().add(Cookie::new(
+            GITHUB_INSTALL_STATE_COOKIE,
+            "real_state".to_string(),
+        ));
+        let result = validate_install_state(&jar, Some(""));
+        assert!(
+            result.is_err(),
+            "non-empty cookie must not match empty query"
+        );
+    }
+
+    #[test]
+    fn whitespace_padded_state_rejected() {
+        let jar = CookieJar::new().add(Cookie::new(
+            GITHUB_INSTALL_STATE_COOKIE,
+            "abc123".to_string(),
+        ));
+        let result = validate_install_state(&jar, Some(" abc123 "));
+        assert!(result.is_err(), "whitespace-padded state must not match");
+    }
+
+    #[test]
+    fn all_state_failures_return_bad_request() {
+        let (status, _) = validate_install_state(&CookieJar::new(), Some("x")).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "x".to_string()));
+        let (status, _) = validate_install_state(&jar, None).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = validate_install_state(&jar, Some("y")).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
 }
