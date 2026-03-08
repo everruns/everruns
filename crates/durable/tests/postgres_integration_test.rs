@@ -30,12 +30,37 @@ fn get_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/everruns_test".to_string())
 }
 
+async fn reset_durable_tables(pool: &PgPool) {
+    // Integration tests assume a clean durable schema. Truncate explicitly so
+    // other integration binaries using the same test database cannot leak state.
+    sqlx::query(
+        r#"
+        TRUNCATE TABLE
+            durable_signals,
+            durable_dead_letter_queue,
+            durable_task_queue,
+            durable_workflow_events,
+            durable_workflow_instances,
+            durable_workers,
+            durable_circuit_breaker_state,
+            durable_schedule_executions,
+            durable_schedules,
+            durable_scheduler_instances
+        RESTART IDENTITY CASCADE
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to reset durable test tables");
+}
+
 /// Create a test store with a fresh database connection
 async fn create_test_store() -> PostgresWorkflowEventStore {
     let database_url = get_database_url();
     let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.");
+    reset_durable_tables(&pool).await;
     PostgresWorkflowEventStore::new(pool)
 }
 
