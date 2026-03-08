@@ -1,7 +1,7 @@
 // App hooks for Slack bot integration
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createApp,
   deleteApp,
@@ -12,8 +12,21 @@ import {
   updateApp,
 } from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateAppRequest, UpdateAppRequest } from "@/lib/api/types";
+import type { App, CreateAppRequest, UpdateAppRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
+
+// Keep list/detail app caches in sync so detail pages do not wait for a background refetch.
+function syncAppCache(queryClient: QueryClient, app: App) {
+  queryClient.setQueriesData<App | undefined>(
+    { queryKey: queryKeys.apps.detail(app.id) },
+    () => app,
+  );
+  queryClient.setQueriesData<App[] | undefined>(
+    { queryKey: queryKeys.apps.list() },
+    (existing) =>
+      existing?.map((candidate) => (candidate.id === app.id ? app : candidate)) ?? existing,
+  );
+}
 
 export function useApps() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
@@ -64,8 +77,12 @@ export function useUpdateApp() {
   return useMutation({
     mutationFn: ({ appId, data }: { appId: string; data: UpdateAppRequest }) =>
       updateApp(appId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    onSuccess: async (app) => {
+      syncAppCache(queryClient, app);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
+      ]);
     },
   });
 }
@@ -86,8 +103,12 @@ export function usePublishApp() {
 
   return useMutation({
     mutationFn: (appId: string) => publishApp(appId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    onSuccess: async (app) => {
+      syncAppCache(queryClient, app);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
+      ]);
     },
   });
 }
@@ -97,8 +118,12 @@ export function useUnpublishApp() {
 
   return useMutation({
     mutationFn: (appId: string) => unpublishApp(appId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    onSuccess: async (app) => {
+      syncAppCache(queryClient, app);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
+      ]);
     },
   });
 }
