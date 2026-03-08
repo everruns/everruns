@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
+import { Plus, Rocket, Globe, GlobeLock } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { App } from "@/lib/api/types";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
@@ -80,6 +81,7 @@ function AppCard({ app }: { app: App }) {
             <div className="flex items-center gap-2">
               <Rocket className="w-5 h-5 text-muted-foreground" />
               <h3 className="font-semibold text-lg">{app.name}</h3>
+              <CopyButton value={app.id} />
             </div>
             <Badge variant={isPublished ? "default" : "secondary"}>{app.status}</Badge>
           </div>
@@ -90,23 +92,13 @@ function AppCard({ app }: { app: App }) {
             <Badge variant="outline" className="text-xs">
               Slack
             </Badge>
-            <span>Agent: {app.agent_id}</span>
           </div>
 
           {isPublished && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted p-2 rounded">
               <Globe className="w-3 h-3 shrink-0" />
               <span className="truncate font-mono">{webhookUrl}</span>
-              <button
-                className="shrink-0 ml-1 hover:text-foreground"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(webhookUrl);
-                }}
-              >
-                <Copy className="w-3 h-3" />
-              </button>
+              <CopyButton value={webhookUrl} className="shrink-0 ml-1" />
             </div>
           )}
 
