@@ -677,13 +677,24 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })
             .ok_or_else(|| store_error(format!("MCP server not found: {}", server_prefix)))?;
 
+        // Decrypt API key if set
+        let api_key = if server.api_key_set {
+            self.mcp_server_service
+                .decrypt_api_key(org_id, server.id.uuid())
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to decrypt MCP server API key: {}", e);
+                    store_error("Failed to decrypt MCP server API key")
+                })?
+        } else {
+            None
+        };
+
         Ok(McpServerInfo {
             id: server.id.uuid(),
             name: server.name,
             url: server.url,
-            // API key is encrypted - would need decryption service access
-            // TODO: Add decryption support when needed for MCP tool execution
-            api_key: None,
+            api_key,
             headers: server.headers,
         })
     }
@@ -1875,5 +1886,117 @@ mod tests {
             config: serde_json::Value::Object(Default::default()),
             created_at: chrono::Utc::now(),
         }
+    }
+
+    // =========================================================================
+    // MCP server API key decryption tests (EVE-55)
+    // =========================================================================
+
+    fn test_encryption() -> Arc<crate::storage::EncryptionService> {
+        Arc::new(
+            crate::storage::EncryptionService::new(
+                "kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=",
+                &[],
+            )
+            .unwrap(),
+        )
+    }
+
+    fn test_adapters_with_encryption() -> DirectWorkerAdapters {
+        let encryption = test_encryption();
+        let db = Arc::new(crate::storage::StorageBackend::in_memory());
+        let event_service = Arc::new(crate::services::EventService::new(db.clone()));
+        let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
+        let mcp_server_service = Arc::new(crate::services::McpServerService::new(
+            db.clone(),
+            Some(encryption),
+        ));
+        let cap_registry = CapabilityRegistry::new();
+        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef = Arc::new(
+            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+        );
+
+        DirectWorkerAdapters::new(
+            db,
+            event_service,
+            llm_resolver,
+            mcp_server_service,
+            cap_registry,
+            sqldb_store,
+        )
+    }
+
+    /// Seed an MCP server with an optional encrypted API key. Returns server UUID.
+    async fn seed_mcp_server(
+        db: &crate::storage::StorageBackend,
+        name: &str,
+        api_key_encrypted: Option<Vec<u8>>,
+    ) -> Uuid {
+        use crate::storage::models::CreateMcpServerRow;
+        let row = db
+            .create_mcp_server(
+                everruns_core::DEFAULT_ORG_ID,
+                CreateMcpServerRow {
+                    name: name.to_string(),
+                    description: None,
+                    url: "https://example.com/mcp".to_string(),
+                    transport_type: "streamable_http".to_string(),
+                    api_key_encrypted,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("seed mcp server");
+        row.id.uuid()
+    }
+
+    #[tokio::test]
+    async fn get_mcp_server_by_prefix_returns_none_api_key_when_not_set() {
+        let adapters = test_adapters();
+        seed_mcp_server(&adapters.db, "My Server", None).await;
+
+        let info = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "my_server")
+            .await
+            .unwrap();
+        assert!(info.api_key.is_none());
+        assert_eq!(info.name, "My Server");
+    }
+
+    #[tokio::test]
+    async fn get_mcp_server_by_prefix_returns_decrypted_api_key() {
+        let adapters = test_adapters_with_encryption();
+        let encrypted = test_encryption().encrypt_string("sk-live-key").unwrap();
+        seed_mcp_server(&adapters.db, "Auth Server", Some(encrypted)).await;
+
+        let info = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "auth_server")
+            .await
+            .unwrap();
+        assert_eq!(info.api_key.as_deref(), Some("sk-live-key"));
+    }
+
+    #[tokio::test]
+    async fn get_mcp_server_by_prefix_errors_when_encryption_not_configured() {
+        // Adapters without encryption
+        let adapters = test_adapters();
+        let encrypted = test_encryption().encrypt_string("sk-secret").unwrap();
+        seed_mcp_server(&adapters.db, "No Enc Server", Some(encrypted)).await;
+
+        let result = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "no_enc_server")
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_mcp_server_by_prefix_errors_when_server_not_found() {
+        let adapters = test_adapters();
+        let result = adapters
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "nonexistent")
+            .await;
+        assert!(result.is_err());
     }
 }

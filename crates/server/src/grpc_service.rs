@@ -2540,12 +2540,15 @@ impl WorkerService for WorkerServiceImpl {
         });
 
         let server_info = if let Some(server_with_tools) = matching_server {
-            // Get API key if set (already decrypted in the service)
+            // Decrypt API key if set
             let api_key = if server_with_tools.server.api_key_set {
-                // We need to fetch the full server info with decrypted API key
-                // For now, we don't have direct access to the decrypted key in McpServerWithTools
-                // This would need enhancement in the MCP service to include decrypted key
-                None // TODO: Return decrypted API key when available
+                self.mcp_server_service
+                    .decrypt_api_key(req.org_id, server_with_tools.server.id.uuid())
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to decrypt MCP server API key: {}", e);
+                        Status::internal("Failed to decrypt MCP server API key")
+                    })?
             } else {
                 None
             };

@@ -225,6 +225,31 @@ impl McpServerService {
         }
     }
 
+    /// Decrypt API key for an MCP server by ID.
+    /// Returns None if server has no API key set.
+    pub async fn decrypt_api_key(&self, org_id: i64, id: Uuid) -> Result<Option<String>> {
+        let row = self
+            .db
+            .get_mcp_server(org_id, id)
+            .await?
+            .ok_or_else(|| anyhow!("MCP server not found"))?;
+
+        if !row.api_key_set {
+            return Ok(None);
+        }
+
+        match &row.api_key_encrypted {
+            Some(encrypted) => {
+                let encryption = self
+                    .encryption
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Encryption not configured"))?;
+                Ok(Some(encryption.decrypt_to_string(encrypted)?))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
@@ -313,4 +338,108 @@ async fn fetch_mcp_tools(
         .ok_or_else(|| anyhow!("MCP server returned empty result"))?;
 
     Ok(result.tools)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{EncryptionService, StorageBackend, models::CreateMcpServerRow};
+
+    fn test_encryption() -> Arc<EncryptionService> {
+        Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn decrypt_api_key_returns_none_when_no_key_set() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "test-server".into(),
+                    description: None,
+                    url: "https://example.com".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = svc.decrypt_api_key(1, row.id.uuid()).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn decrypt_api_key_returns_decrypted_key() {
+        let encryption = test_encryption();
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
+
+        let encrypted = encryption.encrypt_string("sk-secret-123").unwrap();
+
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "authed-server".into(),
+                    description: None,
+                    url: "https://example.com".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: Some(encrypted),
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = svc.decrypt_api_key(1, row.id.uuid()).await.unwrap();
+        assert_eq!(result.as_deref(), Some("sk-secret-123"));
+    }
+
+    #[tokio::test]
+    async fn decrypt_api_key_errors_without_encryption_service() {
+        let encryption = test_encryption();
+        let db = Arc::new(StorageBackend::in_memory());
+
+        // Create server WITH encrypted key
+        let encrypted = encryption.encrypt_string("sk-secret").unwrap();
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "no-enc-server".into(),
+                    description: None,
+                    url: "https://example.com".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: Some(encrypted),
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Service WITHOUT encryption configured
+        let svc = McpServerService::new(db, None);
+        let result = svc.decrypt_api_key(1, row.id.uuid()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn decrypt_api_key_errors_for_missing_server() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db, Some(test_encryption()));
+
+        let result = svc.decrypt_api_key(1, Uuid::new_v4()).await;
+        assert!(result.is_err());
+    }
 }
