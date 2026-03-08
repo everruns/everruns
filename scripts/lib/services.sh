@@ -703,7 +703,7 @@ case "$cmd" in
       echo "   ⚙️ Worker:      running"
     fi
     if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:${JAEGER_UI_PORT}"
+      echo "   🔍 Jaeger:      tracing enabled"
     elif [ "$NO_DOCKER" = false ]; then
       echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
@@ -973,7 +973,7 @@ case "$cmd" in
     fi
     echo "   ⚙️ Worker:      running (release)"
     if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:${JAEGER_UI_PORT}"
+      echo "   🔍 Jaeger:      tracing enabled"
     fi
     echo ""
     echo "💡 Press Ctrl+C to stop services"
