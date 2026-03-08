@@ -117,7 +117,8 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
-    expect(agentsLink).toHaveClass("border-accent");
+    expect(agentsLink).toHaveClass("border-l-primary");
+    expect(agentsLink).toHaveClass("bg-card");
   });
 
   it("highlights navigation for nested routes", () => {
@@ -125,7 +126,8 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
-    expect(agentsLink).toHaveClass("border-accent");
+    expect(agentsLink).toHaveClass("border-l-primary");
+    expect(agentsLink).toHaveClass("bg-card");
   });
 
   it("renders version in footer", () => {
@@ -181,7 +183,8 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const workersLink = screen.getByRole("link", { name: /workers/i });
-    expect(workersLink).toHaveClass("border-accent");
+    expect(workersLink).toHaveClass("border-l-primary");
+    expect(workersLink).toHaveClass("bg-card");
   });
 });
 
@@ -281,7 +284,8 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={{ navigation: customNav }} />);
 
     const exactLink = screen.getByRole("link", { name: /exact match/i });
-    expect(exactLink).toHaveClass("border-accent");
+    expect(exactLink).toHaveClass("border-l-primary");
+    expect(exactLink).toHaveClass("bg-card");
   });
 
   it("does not highlight exact-match item on child route", () => {
@@ -295,7 +299,8 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={{ navigation: customNav }} />);
 
     const link = screen.getByRole("link", { name: /exact only/i });
-    expect(link).not.toHaveClass("border-accent");
+    expect(link).not.toHaveClass("border-l-primary");
+    expect(link).toHaveClass("border-l-transparent");
   });
 
   it("renders empty config same as no config", () => {
