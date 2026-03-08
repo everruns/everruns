@@ -230,11 +230,7 @@ log_pass "agents delete completed"
 
 # Verify agent is archived or inaccessible after delete
 log_test "agents get (verify archived)"
-VERIFY_DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1) || {
-  log_pass "agents get correctly fails for deleted agent"
-}
-
-if [ -n "${VERIFY_DELETE_OUTPUT:-}" ]; then
+if VERIFY_DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1); then
   AGENT_STATUS=$(echo "$VERIFY_DELETE_OUTPUT" | jq -r '.status // empty')
   if [ "$AGENT_STATUS" = "archived" ]; then
     log_pass "agents get returned archived status after delete"
@@ -242,6 +238,8 @@ if [ -n "${VERIFY_DELETE_OUTPUT:-}" ]; then
     log_fail "agents get returned unexpected post-delete response"
     echo "$VERIFY_DELETE_OUTPUT"
   fi
+else
+  log_pass "agents get correctly fails for deleted agent"
 fi
 
 # ========================================
