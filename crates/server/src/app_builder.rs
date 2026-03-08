@@ -734,6 +734,7 @@ impl ServerAppBuilder {
                     let sync_service = Arc::new(services::ModelSyncService::new(
                         db.clone(),
                         driver_registry.clone(),
+                        encryption.clone(),
                     ));
                     let sync_interval = Duration::from_secs(sync_interval_hours * 3600);
 

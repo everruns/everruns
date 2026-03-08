@@ -2,16 +2,21 @@
 //
 // Handles synchronization of models from provider APIs into the database.
 // Supports both manual sync (via API endpoint) and background sync (periodic).
+//
+// Decision: Reuses the same API key resolution logic as LlmResolverService
+// (decrypt from DB first, then env fallback). Enumerates providers across
+// all orgs for background sync, not just DEFAULT_ORG_ID.
 
+use crate::services::llm_resolver::get_default_api_key_from_env;
 use crate::storage::{
-    StorageBackend,
+    EncryptionService, StorageBackend,
     models::{CreateLlmModelRow, LlmProviderRow, UpdateLlmModel},
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_core::{
-    DEFAULT_ORG_ID, DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderId,
-    ProviderType, get_model_profile,
+    DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderId, ProviderType,
+    get_model_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -39,13 +44,19 @@ pub enum SyncResult {
 pub struct ModelSyncService {
     db: Arc<StorageBackend>,
     driver_registry: Arc<DriverRegistry>,
+    encryption: Option<Arc<EncryptionService>>,
 }
 
 impl ModelSyncService {
-    pub fn new(db: Arc<StorageBackend>, driver_registry: Arc<DriverRegistry>) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        driver_registry: Arc<DriverRegistry>,
+        encryption: Option<Arc<EncryptionService>>,
+    ) -> Self {
         Self {
             db,
             driver_registry,
+            encryption,
         }
     }
 
@@ -73,8 +84,8 @@ impl ModelSyncService {
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
 
-        // Get API key (try database first, then env fallback)
-        let api_key = self.resolve_api_key(&provider_row).await?;
+        // Get API key (decrypt from DB first, then env fallback)
+        let api_key = self.resolve_api_key(&provider_row)?;
         let Some(api_key) = api_key else {
             return Ok(SyncResult::Failed {
                 error: "No API key configured for provider".to_string(),
@@ -143,20 +154,22 @@ impl ModelSyncService {
         Ok(sync_result)
     }
 
-    /// Sync all providers (called by background job)
+    /// Sync all providers across all orgs (called by background job)
     pub async fn sync_all(&self) -> Result<Vec<(ProviderId, SyncResult)>> {
-        // TODO: List providers across all orgs for true multi-org background sync
-        let providers = self.db.list_llm_providers(DEFAULT_ORG_ID).await?;
-        let mut results = Vec::with_capacity(providers.len());
+        let orgs = self.db.list_organizations().await?;
+        let mut results = Vec::new();
 
-        for provider in providers {
-            let result = self
-                .sync_provider(provider.org_id, provider.id.uuid())
-                .await
-                .unwrap_or_else(|e| SyncResult::Failed {
-                    error: e.to_string(),
-                });
-            results.push((provider.id, result));
+        for org in &orgs {
+            let providers = self.db.list_llm_providers(org.org_id).await?;
+            for provider in providers {
+                let result = self
+                    .sync_provider(provider.org_id, provider.id.uuid())
+                    .await
+                    .unwrap_or_else(|e| SyncResult::Failed {
+                        error: e.to_string(),
+                    });
+                results.push((provider.id, result));
+            }
         }
 
         Ok(results)
@@ -253,33 +266,38 @@ impl ModelSyncService {
         })
     }
 
-    /// Resolve API key for a provider (database or env fallback)
-    async fn resolve_api_key(
-        &self,
-        provider_row: &crate::storage::models::LlmProviderRow,
-    ) -> Result<Option<String>> {
-        // Try database first (if encryption service available)
+    /// Resolve API key for a provider.
+    ///
+    /// Resolution order (same as LlmResolverService):
+    /// 1. Decrypt from database if encryption is available and key is set
+    /// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY, etc.)
+    fn resolve_api_key(&self, provider_row: &LlmProviderRow) -> Result<Option<String>> {
         if provider_row.api_key_encrypted.is_some() {
-            // The database has an encrypted key, but we need the encryption service to decrypt it
-            // For now, fall through to env vars
-            // TODO: Integrate with EncryptionService when available in this context
+            if let Some(ref encryption) = self.encryption {
+                let provider_with_key = self
+                    .db
+                    .get_provider_with_api_key(provider_row, encryption)?;
+                if provider_with_key.api_key.is_some() {
+                    return Ok(provider_with_key.api_key);
+                }
+            } else {
+                tracing::warn!(
+                    provider_id = %provider_row.id,
+                    provider_type = %provider_row.provider_type,
+                    "Provider has encrypted API key but encryption service is not configured. \
+                     Falling back to environment variable."
+                );
+            }
         }
 
-        // Fall back to environment variables
-        let env_var = match provider_row.provider_type.as_str() {
-            "openai" => "DEFAULT_OPENAI_API_KEY",
-            "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
-            "gemini" => "DEFAULT_GEMINI_API_KEY",
-            _ => return Ok(None),
-        };
-
-        Ok(std::env::var(env_var).ok().filter(|s| !s.is_empty()))
+        Ok(get_default_api_key_from_env(&provider_row.provider_type))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::models::{CreateLlmProviderRow, CreateOrganizationRow};
 
     #[test]
     fn test_sync_result_success_serialization() {
@@ -340,70 +358,251 @@ mod tests {
         }
     }
 
-    /// Testable version with injectable env lookup (test-only).
-    fn resolve_api_key_with_lookup<F>(provider_type: &str, env_lookup: F) -> Option<String>
-    where
-        F: Fn(&str) -> Option<String>,
-    {
-        let env_var = match provider_type {
-            "openai" => "DEFAULT_OPENAI_API_KEY",
-            "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
-            "gemini" => "DEFAULT_GEMINI_API_KEY",
-            _ => return None,
-        };
+    // --- resolve_api_key tests ---
 
-        env_lookup(env_var).filter(|s| !s.is_empty())
+    #[tokio::test]
+    async fn test_resolve_api_key_with_encrypted_key() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
+        );
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, Some(encryption.clone()));
+
+        // Create provider with encrypted API key (DEFAULT_ORG pre-exists)
+        let encrypted_key = encryption.encrypt_string("sk-secret-from-db").unwrap();
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(encrypted_key),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // resolve_api_key should decrypt the DB key
+        let resolved = service.resolve_api_key(&provider).unwrap();
+        assert_eq!(resolved, Some("sk-secret-from-db".to_string()));
     }
 
-    fn mock_env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |name| {
-            vars.iter()
-                .find(|(k, _)| *k == name)
-                .map(|(_, v)| v.to_string())
+    #[tokio::test]
+    async fn test_resolve_api_key_falls_back_to_env_without_encryption() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        // No encryption service
+        let service = ModelSyncService::new(db.clone(), registry, None);
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(vec![1, 2, 3]), // encrypted but no service
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Should fall back to env (which won't be set in test) -> None
+        let resolved = service.resolve_api_key(&provider).unwrap();
+        assert!(resolved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_api_key_no_encrypted_key_falls_to_env() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, None);
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "Anthropic".to_string(),
+                    provider_type: "anthropic".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // No encrypted key, no env var -> None
+        let resolved = service.resolve_api_key(&provider).unwrap();
+        assert!(resolved.is_none());
+    }
+
+    // --- sync_all multi-org tests ---
+
+    #[tokio::test]
+    async fn test_sync_all_enumerates_providers_across_orgs() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, None);
+
+        // DEFAULT_ORG_ID (1) is pre-created by in-memory store. Create a second org.
+        let org2 = db
+            .create_organization_with_id(
+                2,
+                CreateOrganizationRow {
+                    public_id: "org-2".to_string(),
+                    name: "Org 2".to_string(),
+                    created_by: None,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Create providers in each org
+        let _p1 = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI Org1".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let _p2 = db
+            .create_llm_provider(
+                org2.org_id,
+                CreateLlmProviderRow {
+                    name: "Anthropic Org2".to_string(),
+                    provider_type: "anthropic".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // sync_all should hit providers from both orgs
+        let results = service.sync_all().await.unwrap();
+        assert_eq!(
+            results.len(),
+            2,
+            "Expected 2 providers (one per org), got {}",
+            results.len()
+        );
+
+        // Both should fail (no API key available) but the point is they were enumerated
+        for (pid, result) in &results {
+            match result {
+                SyncResult::Failed { error } => {
+                    assert!(
+                        error.contains("No API key"),
+                        "Expected 'No API key' error for {pid}, got: {error}"
+                    );
+                }
+                other => panic!("Expected Failed for {pid}, got: {other:?}"),
+            }
         }
     }
 
-    #[test]
-    fn test_resolve_api_key_openai() {
-        // Not set
-        assert!(resolve_api_key_with_lookup("openai", mock_env(&[])).is_none());
+    #[tokio::test]
+    async fn test_sync_all_no_providers_returns_empty() {
+        // In-memory store has DEFAULT_ORG pre-created but no providers
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db, registry, None);
 
-        // Set
-        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "sk-test-key")]);
-        assert_eq!(
-            resolve_api_key_with_lookup("openai", &env),
-            Some("sk-test-key".to_string())
+        let results = service.sync_all().await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_sync_all_with_encrypted_keys_across_orgs() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+                .unwrap(),
         );
-    }
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, Some(encryption.clone()));
 
-    #[test]
-    fn test_resolve_api_key_anthropic() {
-        // Not set
-        assert!(resolve_api_key_with_lookup("anthropic", mock_env(&[])).is_none());
+        // DEFAULT_ORG_ID pre-exists; create second org
+        let org2 = db
+            .create_organization_with_id(
+                2,
+                CreateOrganizationRow {
+                    public_id: "org-2".to_string(),
+                    name: "Org 2".to_string(),
+                    created_by: None,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
 
-        // Set
-        let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test")]);
-        assert_eq!(
-            resolve_api_key_with_lookup("anthropic", &env),
-            Some("sk-ant-test".to_string())
-        );
-    }
+        let enc_key1 = encryption.encrypt_string("sk-org1-key").unwrap();
+        let enc_key2 = encryption.encrypt_string("sk-org2-key").unwrap();
 
-    #[test]
-    fn test_resolve_api_key_unknown_provider() {
-        let env = mock_env(&[
-            ("DEFAULT_OPENAI_API_KEY", "sk-test"),
-            ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
-        ]);
-        // Unknown providers return None (no default key)
-        assert!(resolve_api_key_with_lookup("unknown", &env).is_none());
-        // openai_completions also has no default - shares with OpenAI
-        assert!(resolve_api_key_with_lookup("openai_completions", &env).is_none());
-    }
+        let p1 = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI Org1".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(enc_key1),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
 
-    #[test]
-    fn test_resolve_api_key_empty_value() {
-        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "")]);
-        assert!(resolve_api_key_with_lookup("openai", &env).is_none());
+        let p2 = db
+            .create_llm_provider(
+                org2.org_id,
+                CreateLlmProviderRow {
+                    name: "Anthropic Org2".to_string(),
+                    provider_type: "anthropic".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(enc_key2),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Verify resolve_api_key decrypts for both providers
+        let key1 = service.resolve_api_key(&p1).unwrap();
+        assert_eq!(key1, Some("sk-org1-key".to_string()));
+
+        let key2 = service.resolve_api_key(&p2).unwrap();
+        assert_eq!(key2, Some("sk-org2-key".to_string()));
+
+        // sync_all should enumerate both orgs (actual sync will fail since
+        // we don't have real API endpoints, but the providers are enumerated)
+        let results = service.sync_all().await.unwrap();
+        assert_eq!(results.len(), 2);
     }
 }
