@@ -18,10 +18,10 @@ kill_existing_postgres() {
             sleep 2
         fi
     fi
-    # Also check for any postgres on port 5432
-    local port_pid=$(lsof -ti :5432 2>/dev/null || true)
+    # Also check for any postgres on our port
+    local port_pid=$(lsof -ti :"${DB_PORT}" 2>/dev/null || true)
     if [ -n "$port_pid" ]; then
-        log_warn "Killing process on port 5432 (PID: $port_pid)..."
+        log_warn "Killing process on port ${DB_PORT} (PID: $port_pid)..."
         kill -9 $port_pid 2>/dev/null || true
         sleep 1
     fi
@@ -51,7 +51,7 @@ init_postgres() {
     cat >> "$PGDATA/postgresql.conf" <<EOF
 unix_socket_directories = '$PGDATA'
 listen_addresses = 'localhost'
-port = 5432
+port = ${DB_PORT}
 EOF
 
     cat >> "$PGDATA/pg_hba.conf" <<EOF
@@ -74,8 +74,8 @@ start_postgres() {
 
     # Wait for startup
     for i in {1..15}; do
-        if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-            check_pass "PostgreSQL - started on localhost:5432"
+        if pg_isready -h localhost -p "${DB_PORT}" > /dev/null 2>&1; then
+            check_pass "PostgreSQL - started on localhost:${DB_PORT}"
             return 0
         fi
         sleep 1

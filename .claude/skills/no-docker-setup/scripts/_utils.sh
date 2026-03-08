@@ -7,7 +7,11 @@ export PGDATA="/tmp/pgdata"
 export PG_LOGFILE="$PGDATA/pg.log"
 export API_LOG="/tmp/api.log"
 export WORKER_LOG="/tmp/worker.log"
-export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
+export PROXY_PORT="${PROXY_PORT:-9300}"
+export API_PORT="${API_PORT:-9301}"
+export UI_PORT="${UI_PORT:-9305}"
+export DB_PORT="${DB_PORT:-9332}"
+export DATABASE_URL="postgres://everruns:everruns@localhost:${DB_PORT}/everruns"
 
 # Detect PostgreSQL version (use highest available)
 detect_pg_version() {
