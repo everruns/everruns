@@ -2040,8 +2040,6 @@ mod tests {
     /// org 2's platform store.
     #[tokio::test]
     async fn platform_store_cross_org_isolation() {
-        use everruns_core::platform_store::PlatformStore;
-
         let adapters = test_adapters();
         let agent_id = seed_agent(&adapters.db).await;
 
