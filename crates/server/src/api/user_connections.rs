@@ -15,6 +15,7 @@ use axum::{
     response::Redirect,
     routing::{delete, get, put},
 };
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
 use everruns_core::connection_provider::{
     ConnectionFormSchema as CoreFormSchema, ConnectionProviderPlugin, ConnectionType,
@@ -105,13 +106,15 @@ pub struct ApiKeyConnectionRequest {
 /// Providers that support API-key-based connections (legacy, prefer ConnectionProviderPlugin).
 const API_KEY_PROVIDERS: &[&str] = &[];
 
+/// Cookie name for GitHub App installation CSRF state
+const GITHUB_INSTALL_STATE_COOKIE: &str = "github_install_state";
+
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
 pub struct GitHubInstallationCallbackQuery {
     pub installation_id: i64,
     #[allow(dead_code)]
     pub setup_action: Option<String>,
-    #[allow(dead_code)]
     pub state: Option<String>,
 }
 
@@ -339,8 +342,9 @@ pub async fn delete_connection(
 pub async fn github_authorize(
     State(state): State<AppState>,
     _auth: AuthUser,
+    jar: CookieJar,
     Query(_params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let config = state
         .auth_config
         .github_connection
@@ -359,20 +363,37 @@ pub async fn github_authorize(
     let bytes: [u8; 16] = rng.random();
     let install_state = hex::encode(bytes);
 
-    // TODO: Store state in session/cookie for validation in callback
+    // Store state in HttpOnly cookie for validation in callback
+    let state_cookie = Cookie::build((GITHUB_INSTALL_STATE_COOKIE, install_state.clone()))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::minutes(10))
+        .build();
+    let jar = jar.add(state_cookie);
+
     let auth_url = service.installation_url(&install_state);
-    Ok(Redirect::to(&auth_url.url))
+    Ok((jar, Redirect::to(&auth_url.url)))
 }
 
 /// GET /v1/user/connections/github/callback — GitHub App installation callback
 ///
 /// After user installs the GitHub App on their repos, GitHub redirects here
 /// with the installation_id. We verify the installation and store the ID.
+/// Validates CSRF state from cookie before proceeding.
 pub async fn github_callback(
     State(state): State<AppState>,
     auth: AuthUser,
+    jar: CookieJar,
     Query(query): Query<GitHubInstallationCallbackQuery>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    // Validate CSRF state parameter
+    validate_install_state(&jar, query.state.as_deref())?;
+
+    // Clear the state cookie after validation
+    let jar = jar.remove(Cookie::from(GITHUB_INSTALL_STATE_COOKIE));
+
     let config = state
         .auth_config
         .github_connection
@@ -424,10 +445,13 @@ pub async fn github_callback(
 
     // Redirect back to settings page
     let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
-    Ok(Redirect::to(&format!(
-        "{}/settings/connections?connected=github",
-        frontend_url
-    )))
+    Ok((
+        jar,
+        Redirect::to(&format!(
+            "{}/settings/connections?connected=github",
+            frontend_url
+        )),
+    ))
 }
 
 /// PUT /v1/user/connections/api-key/:provider — Store an API-key-based connection
@@ -504,6 +528,45 @@ pub async fn put_api_key_connection(
 }
 
 // ============================================================================
+// State validation
+// ============================================================================
+
+/// Validate CSRF state: cookie must exist, query param must exist, and they must match.
+fn validate_install_state(
+    jar: &CookieJar,
+    query_state: Option<&str>,
+) -> Result<String, (StatusCode, String)> {
+    let stored = jar
+        .get(GITHUB_INSTALL_STATE_COOKIE)
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| {
+            tracing::warn!("GitHub install callback missing state cookie (possible CSRF attempt)");
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid or expired installation state".to_string(),
+            )
+        })?;
+
+    let callback = query_state.ok_or_else(|| {
+        tracing::warn!("GitHub install callback missing state parameter");
+        (
+            StatusCode::BAD_REQUEST,
+            "Missing state parameter".to_string(),
+        )
+    })?;
+
+    if stored != callback {
+        tracing::warn!("GitHub install callback state mismatch (possible CSRF attempt)");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid installation state".to_string(),
+        ));
+    }
+
+    Ok(stored)
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -529,5 +592,96 @@ fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResponse {
                 }
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_state_accepted() {
+        let state_value = "abc123deadbeef";
+        let jar = CookieJar::new().add(Cookie::new(
+            GITHUB_INSTALL_STATE_COOKIE,
+            state_value.to_string(),
+        ));
+        let result = validate_install_state(&jar, Some(state_value));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), state_value);
+    }
+
+    #[test]
+    fn missing_cookie_rejected() {
+        let jar = CookieJar::new();
+        let (status, msg) = validate_install_state(&jar, Some("abc123")).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(msg.contains("expired"));
+    }
+
+    #[test]
+    fn missing_query_state_rejected() {
+        let jar = CookieJar::new().add(Cookie::new(
+            GITHUB_INSTALL_STATE_COOKIE,
+            "abc123".to_string(),
+        ));
+        let (status, msg) = validate_install_state(&jar, None).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(msg.contains("Missing state"));
+    }
+
+    #[test]
+    fn mismatched_state_rejected() {
+        let jar = CookieJar::new().add(Cookie::new(
+            GITHUB_INSTALL_STATE_COOKIE,
+            "correct_state".to_string(),
+        ));
+        let (status, msg) = validate_install_state(&jar, Some("wrong_state")).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(msg.contains("Invalid installation state"));
+    }
+
+    #[test]
+    fn both_missing_reports_expired() {
+        let jar = CookieJar::new();
+        // Cookie checked first — reports expired state
+        let (status, _) = validate_install_state(&jar, None).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn state_cookie_has_secure_properties() {
+        let state_value = "test_state";
+        let cookie = Cookie::build((GITHUB_INSTALL_STATE_COOKIE, state_value))
+            .path("/")
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Lax)
+            .max_age(time::Duration::minutes(10))
+            .build();
+
+        assert_eq!(cookie.name(), GITHUB_INSTALL_STATE_COOKIE);
+        assert_eq!(cookie.value(), state_value);
+        assert!(cookie.http_only().unwrap_or(false));
+        assert!(cookie.secure().unwrap_or(false));
+        assert_eq!(cookie.same_site(), Some(SameSite::Lax));
+        assert_eq!(cookie.max_age(), Some(time::Duration::minutes(10)));
+        assert_eq!(cookie.path(), Some("/"));
+    }
+
+    #[test]
+    fn callback_query_deserialize_with_state() {
+        let json = r#"{"installation_id": 12345, "state": "abc123"}"#;
+        let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.installation_id, 12345);
+        assert_eq!(query.state, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn callback_query_deserialize_without_state() {
+        let json = r#"{"installation_id": 12345}"#;
+        let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.installation_id, 12345);
+        assert_eq!(query.state, None);
     }
 }
