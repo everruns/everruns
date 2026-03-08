@@ -104,11 +104,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Resolve a single image by ID
-    async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
+    async fn resolve_image(&self, org_id: i64, image_id: Uuid) -> Result<Option<ResolvedImage>>;
 
     /// Resolve multiple images in a batch
     async fn resolve_images_batch(
         &self,
+        org_id: i64,
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>>;
 
@@ -178,7 +179,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn driver_registry(&self) -> DriverRegistry;
 
     /// Create a tool registry with defaults and agent capabilities
-    async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry>;
+    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry>;
 
     /// Create a tool registry with defaults and harness capabilities.
     ///
@@ -240,7 +241,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
 
     /// Get the session schedule store for scheduling tools.
-    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
+    /// Takes org_id so the store is scoped to the current session's organization.
+    fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
 }
 
 // =============================================================================
@@ -439,18 +441,19 @@ impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for AdapterEventEmit
 /// Adapter-based ImageResolver implementation
 pub struct AdapterImageResolver<A: WorkerAdapters> {
     adapters: A,
+    org_id: i64,
 }
 
 impl<A: WorkerAdapters> AdapterImageResolver<A> {
-    pub fn new(adapters: A) -> Self {
-        Self { adapters }
+    pub fn new(adapters: A, org_id: i64) -> Self {
+        Self { adapters, org_id }
     }
 }
 
 #[async_trait]
 impl<A: WorkerAdapters> ImageResolver for AdapterImageResolver<A> {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
-        self.adapters.resolve_image(image_id).await
+        self.adapters.resolve_image(self.org_id, image_id).await
     }
 }
 

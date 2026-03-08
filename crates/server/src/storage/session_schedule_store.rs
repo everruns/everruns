@@ -38,7 +38,7 @@ pub fn row_to_domain(row: &SessionScheduleRow) -> SessionSchedule {
 /// Database-backed session schedule store.
 ///
 /// Used by scheduling tools (create_schedule, cancel_schedule, list_schedules).
-/// Requires org_id for multitenancy — uses DEFAULT_ORG_ID for now (worker context).
+/// Requires org_id for multitenancy — callers must provide the correct org_id.
 #[derive(Clone)]
 pub struct DbSessionScheduleStore {
     db: Arc<StorageBackend>,

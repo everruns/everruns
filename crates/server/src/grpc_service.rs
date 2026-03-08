@@ -13,7 +13,6 @@ use crate::services::{
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskNotificationBroadcaster;
 use base64::Engine;
-use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
@@ -315,8 +314,6 @@ pub struct WorkerServiceImpl {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
-    /// Session schedule store for schedule CRUD
-    schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>>,
 }
 
 impl WorkerServiceImpl {
@@ -370,17 +367,6 @@ impl WorkerServiceImpl {
                 )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
             });
 
-        // Create schedule store (PostgreSQL mode only)
-        let schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> =
-            if db.pool().is_some() {
-                Some(Arc::new(crate::storage::DbSessionScheduleStore::new(
-                    db.clone(),
-                    DEFAULT_ORG_ID,
-                )))
-            } else {
-                None
-            };
-
         // Create session SQL database store (always available, in-memory backend)
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>> =
@@ -404,7 +390,6 @@ impl WorkerServiceImpl {
             sqldb_store,
             runner,
             connection_resolver,
-            schedule_store,
         }
     }
 
@@ -441,14 +426,22 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
-    /// Get schedule store or return unavailable error
+    /// Create schedule store scoped to the given org_id, or return unavailable if no pool.
     #[allow(clippy::result_large_err)]
     fn schedule_store(
         &self,
-    ) -> Result<&Arc<dyn everruns_core::traits::SessionScheduleStore>, Status> {
-        self.schedule_store
-            .as_ref()
-            .ok_or_else(|| Status::unavailable("Schedule store not available"))
+        org_id: i64,
+    ) -> Result<Arc<dyn everruns_core::traits::SessionScheduleStore>, Status> {
+        if self.db.pool().is_some() {
+            Ok(Arc::new(crate::storage::DbSessionScheduleStore::new(
+                self.db.clone(),
+                org_id,
+            )))
+        } else {
+            Err(Status::unavailable(
+                "Schedule store not available (requires PostgreSQL)",
+            ))
+        }
     }
 
     /// Build a GitHubAppTokenMinter from environment variables (if configured).
@@ -2439,9 +2432,8 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let image_id = parse_uuid(req.image_id.as_ref())?;
 
-        // Get image from storage
-        // TODO: Thread org_id through image resolution proto messages
-        let image_row = match self.db.get_image(DEFAULT_ORG_ID, image_id).await {
+        // Get image from storage (org-scoped)
+        let image_row = match self.db.get_image(req.org_id, image_id).await {
             Ok(Some(row)) => row,
             Ok(None) => {
                 return Ok(Response::new(ResolveImageResponse {
@@ -2481,8 +2473,8 @@ impl WorkerService for WorkerServiceImpl {
         for proto_id in req.image_ids {
             let image_id = parse_uuid(Some(&proto_id))?;
 
-            // Get image from storage
-            match self.db.get_image(DEFAULT_ORG_ID, image_id).await {
+            // Get image from storage (org-scoped)
+            match self.db.get_image(req.org_id, image_id).await {
                 Ok(Some(row)) => {
                     let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
                     images.insert(
@@ -2782,7 +2774,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<CreateSessionScheduleResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store()?;
+        let store = self.schedule_store(req.org_id)?;
 
         let scheduled_at = req
             .scheduled_at
@@ -2815,7 +2807,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let schedule_id = parse_uuid(req.schedule_id.as_ref())?;
-        let store = self.schedule_store()?;
+        let store = self.schedule_store(req.org_id)?;
 
         let schedule = store
             .cancel_schedule(
@@ -2839,7 +2831,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<ListSessionSchedulesResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store()?;
+        let store = self.schedule_store(req.org_id)?;
 
         let schedules = store.list_schedules(session_id.into()).await.map_err(|e| {
             tracing::error!("Failed to list schedules: {}", e);
@@ -2859,7 +2851,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<CountActiveSessionSchedulesResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store()?;
+        let store = self.schedule_store(req.org_id)?;
 
         let count = store
             .count_active_schedules(session_id.into())

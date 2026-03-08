@@ -941,6 +941,23 @@ impl Database {
         Ok(row)
     }
 
+    /// Get session without org scoping. For internal system use only (e.g. usage tracking).
+    pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// List sessions for an organization with optional agent filter.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(

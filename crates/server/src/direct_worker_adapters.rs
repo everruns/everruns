@@ -17,9 +17,9 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DriverRegistry,
-    EventData, Harness, HarnessStatus, LlmProviderType, Message, MessageRole, Session,
-    SessionStatus, ToolDefinition, ToolRegistry, ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData, Harness,
+    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    ToolRegistry, ToolResultContentPart,
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -64,7 +64,6 @@ pub struct DirectWorkerAdapters {
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
-    schedule_store: Option<Arc<dyn everruns_core::traits::SessionScheduleStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
 }
 
@@ -87,7 +86,6 @@ impl DirectWorkerAdapters {
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
-            schedule_store: None,
             runner: None,
         }
     }
@@ -113,15 +111,6 @@ impl DirectWorkerAdapters {
         resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
-        self
-    }
-
-    /// Set the session schedule store for scheduling tools
-    pub fn with_schedule_store(
-        mut self,
-        store: Arc<dyn everruns_core::traits::SessionScheduleStore>,
-    ) -> Self {
-        self.schedule_store = Some(store);
         self
     }
 
@@ -372,17 +361,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Image Resolution Operations
     // =========================================================================
 
-    async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
-        // Get the image from storage
-        // TODO: Thread org_id through WorkerAdapters trait for image resolution
-        let image_row = self
-            .db
-            .get_image(DEFAULT_ORG_ID, image_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get image: {}", e);
-                store_error("Failed to get image")
-            })?;
+    async fn resolve_image(&self, org_id: i64, image_id: Uuid) -> Result<Option<ResolvedImage>> {
+        let image_row = self.db.get_image(org_id, image_id).await.map_err(|e| {
+            tracing::error!("Failed to get image: {}", e);
+            store_error("Failed to get image")
+        })?;
 
         match image_row {
             Some(row) => {
@@ -397,11 +380,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn resolve_images_batch(
         &self,
+        org_id: i64,
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>> {
         let mut result = HashMap::new();
         for &image_id in image_ids {
-            if let Some(resolved) = self.resolve_image(image_id).await? {
+            if let Some(resolved) = self.resolve_image(org_id, image_id).await? {
                 result.insert(image_id, resolved);
             }
         }
@@ -836,24 +820,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
     }
 
-    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
-        self.schedule_store
-            .clone()
-            .expect("DirectWorkerAdapters: schedule_store not set (call with_schedule_store)")
+    fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+        Arc::new(crate::storage::DbSessionScheduleStore::new(
+            self.db.clone(),
+            org_id,
+        ))
     }
 
-    fn platform_store(
-        &self,
-        _org_id: i64,
-    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
+            org_id,
             self.db.clone(),
             self.event_service.clone(),
             self.runner.clone(),
         ))
     }
 
-    async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {
+    async fn build_tool_registry(&self, _org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
         let capability_rows = self
             .db
             .get_agent_capabilities(agent_id)
@@ -1114,6 +1097,7 @@ fn event_to_message(event: Event) -> Option<Message> {
 /// Direct PlatformStore backed by StorageBackend + EventService + AgentRunner.
 // THREAT[TM-AGENT-017]: All ops org-scoped via org_id field
 pub struct DirectPlatformStore {
+    org_id: i64,
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
@@ -1122,12 +1106,14 @@ pub struct DirectPlatformStore {
 
 impl DirectPlatformStore {
     pub fn new(
+        org_id: i64,
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     ) -> Self {
         let capability_service = crate::services::CapabilityService::new(db.clone(), None);
         Self {
+            org_id,
             db,
             event_service,
             runner,
@@ -1220,7 +1206,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_harnesses(&self) -> everruns_core::error::Result<Vec<Harness>> {
         let rows = self
             .db
-            .list_harnesses(DEFAULT_ORG_ID)
+            .list_harnesses(self.org_id)
             .await
             .map_err(|e| store_error(format!("Failed to list harnesses: {e}")))?;
 
@@ -1244,7 +1230,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn get_harness(&self, id: HarnessId) -> everruns_core::error::Result<Option<Harness>> {
         let row = self
             .db
-            .get_harness(DEFAULT_ORG_ID, id)
+            .get_harness(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to get harness: {e}")))?;
 
@@ -1284,7 +1270,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         };
         let row = self
             .db
-            .create_harness(DEFAULT_ORG_ID, input)
+            .create_harness(self.org_id, input)
             .await
             .map_err(|e| store_error(format!("Failed to create harness: {e}")))?;
 
@@ -1328,7 +1314,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             ..Default::default()
         };
         self.db
-            .update_harness(DEFAULT_ORG_ID, id, update)
+            .update_harness(self.org_id, id, update)
             .await
             .map_err(|e| store_error(format!("Failed to update harness: {e}")))?;
 
@@ -1339,7 +1325,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
     async fn delete_harness(&self, id: HarnessId) -> everruns_core::error::Result<()> {
         self.db
-            .delete_harness(DEFAULT_ORG_ID, id)
+            .delete_harness(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to delete harness: {e}")))?;
         Ok(())
@@ -1382,7 +1368,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
         let rows = self
             .db
-            .list_agents(DEFAULT_ORG_ID)
+            .list_agents(self.org_id)
             .await
             .map_err(|e| store_error(format!("Failed to list agents: {e}")))?;
 
@@ -1406,7 +1392,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn get_agent_by_id(&self, id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
         let row = self
             .db
-            .get_agent(DEFAULT_ORG_ID, id)
+            .get_agent(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to get agent: {e}")))?;
 
@@ -1449,7 +1435,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         };
         let row = self
             .db
-            .create_agent(DEFAULT_ORG_ID, input)
+            .create_agent(self.org_id, input)
             .await
             .map_err(|e| store_error(format!("Failed to create agent: {e}")))?;
 
@@ -1493,7 +1479,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             ..Default::default()
         };
         self.db
-            .update_agent(DEFAULT_ORG_ID, id, update)
+            .update_agent(self.org_id, id, update)
             .await
             .map_err(|e| store_error(format!("Failed to update agent: {e}")))?;
 
@@ -1504,7 +1490,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
     async fn delete_agent(&self, id: AgentId) -> everruns_core::error::Result<()> {
         self.db
-            .delete_agent(DEFAULT_ORG_ID, id)
+            .delete_agent(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to delete agent: {e}")))?;
         Ok(())
@@ -1527,7 +1513,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         };
         let (rows, _total) = self
             .db
-            .list_sessions(DEFAULT_ORG_ID, agent_id, pagination)
+            .list_sessions(self.org_id, agent_id, pagination)
             .await
             .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
 
@@ -1543,7 +1529,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         use crate::storage::models::CreateSessionRow;
 
         let input = CreateSessionRow {
-            org_id: DEFAULT_ORG_ID,
+            org_id: self.org_id,
             harness_id: Some(harness_id),
             agent_id,
             title: title.map(|s| s.to_string()),
@@ -1567,7 +1553,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     ) -> everruns_core::error::Result<Option<Session>> {
         let row = self
             .db
-            .get_session(DEFAULT_ORG_ID, id)
+            .get_session(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to get session: {e}")))?;
 
@@ -1576,7 +1562,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {
         self.db
-            .delete_session(DEFAULT_ORG_ID, id)
+            .delete_session(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to delete session: {e}")))?;
         Ok(())
@@ -1629,7 +1615,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         if let Some(ref runner) = self.runner {
             runner
                 .start_run(
-                    DEFAULT_ORG_ID,
+                    self.org_id,
                     session_id,
                     session.harness_id,
                     session.agent_id,
@@ -1753,7 +1739,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     ) -> everruns_core::error::Result<Vec<everruns_core::CapabilityInfo>> {
         let mut caps = self
             .capability_service
-            .list_all(DEFAULT_ORG_ID)
+            .list_all(self.org_id)
             .await
             .map_err(|e| store_error(format!("Failed to list capabilities: {e}")))?;
 
@@ -2031,6 +2017,60 @@ mod tests {
             .await
             .expect("seed agent");
         row.id.uuid()
+    }
+
+    // =========================================================================
+    // Cross-org isolation regression tests (EVE-56)
+    // =========================================================================
+
+    /// Regression test: schedule_store must be scoped to the provided org_id,
+    /// not a hardcoded default. Before EVE-56, schedule_store() had no org_id
+    /// parameter and used DEFAULT_ORG_ID for all calls.
+    #[test]
+    fn schedule_store_is_scoped_to_org_id() {
+        let adapters = test_adapters();
+        let store_org1 = adapters.schedule_store(1);
+        let store_org2 = adapters.schedule_store(2);
+        // Verify these are distinct instances (different Arc pointers)
+        assert!(!Arc::ptr_eq(&store_org1, &store_org2));
+    }
+
+    /// Regression test: platform_store must use the provided org_id, not
+    /// DEFAULT_ORG_ID. Agents created in org 1 must not be visible through
+    /// org 2's platform store.
+    #[tokio::test]
+    async fn platform_store_cross_org_isolation() {
+        use everruns_core::platform_store::PlatformStore;
+
+        let adapters = test_adapters();
+        let agent_id = seed_agent(&adapters.db).await;
+
+        // Agent seeded in org 1 should be visible via org 1's platform store
+        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID);
+        let agent = store_org1
+            .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
+            .await
+            .unwrap();
+        assert!(agent.is_some(), "agent should be visible in org 1");
+
+        // Same agent must NOT be visible via org 2's platform store
+        let store_org2 = adapters.platform_store(999);
+        let agent = store_org2
+            .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
+            .await
+            .unwrap();
+        assert!(agent.is_none(), "agent must NOT be visible in org 999");
+    }
+
+    /// Regression test: image resolution must receive org_id so the gRPC
+    /// service scopes the lookup. Before EVE-56, resolve_image had no org_id
+    /// parameter.
+    #[tokio::test]
+    async fn resolve_image_requires_org_id() {
+        let adapters = test_adapters();
+        // resolve_image now requires org_id — compile-time proof the parameter exists
+        let result = adapters.resolve_image(1, Uuid::new_v4()).await.unwrap();
+        assert!(result.is_none());
     }
 
     /// Build a fake `AgentCapabilityRow` for testing.

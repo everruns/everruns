@@ -1094,12 +1094,13 @@ use std::collections::HashMap;
 /// image data before sending messages to LLM providers.
 pub struct GrpcImageResolver {
     client: GrpcClient,
+    org_id: i64,
 }
 
 impl GrpcImageResolver {
-    /// Create a new GrpcImageResolver
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+    /// Create a new GrpcImageResolver scoped to an organization
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
     }
 
     /// Resolve multiple images in a batch (more efficient)
@@ -1118,6 +1119,7 @@ impl GrpcImageResolver {
 
         let request = proto::ResolveImagesRequest {
             image_ids: image_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
+            org_id: self.org_id,
         };
 
         let response = client
@@ -1146,6 +1148,7 @@ impl ImageResolver for GrpcImageResolver {
 
         let request = proto::ResolveImageRequest {
             image_id: Some(uuid_to_proto(image_id)),
+            org_id: self.org_id,
         };
 
         let response = client
@@ -1372,11 +1375,12 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
 /// Proxies schedule CRUD to the control-plane via gRPC RPCs.
 pub struct GrpcScheduleStore {
     client: GrpcClient,
+    org_id: i64,
 }
 
 impl GrpcScheduleStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
     }
 }
 
@@ -1431,6 +1435,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
             cron_expression,
             scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
             timezone,
+            org_id: self.org_id,
         };
         let response = client
             .create_session_schedule(request)
@@ -1452,6 +1457,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let request = proto::CancelSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             schedule_id: Some(uuid_to_proto(schedule_id.uuid())),
+            org_id: self.org_id,
         };
         let response = client
             .cancel_session_schedule(request)
@@ -1471,6 +1477,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let mut client = self.client.inner.lock().await;
         let request = proto::ListSessionSchedulesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
+            org_id: self.org_id,
         };
         let response = client
             .list_session_schedules(request)
@@ -1488,6 +1495,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let mut client = self.client.inner.lock().await;
         let request = proto::CountActiveSessionSchedulesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
+            org_id: self.org_id,
         };
         let response = client
             .count_active_session_schedules(request)

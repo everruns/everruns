@@ -169,16 +169,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // Image Resolution Operations
     // =========================================================================
 
-    async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
-        let resolver = GrpcImageResolver::new(self.client.clone());
+    async fn resolve_image(&self, org_id: i64, image_id: Uuid) -> Result<Option<ResolvedImage>> {
+        let resolver = GrpcImageResolver::new(self.client.clone(), org_id);
         everruns_core::traits::ImageResolver::resolve_image(&resolver, image_id).await
     }
 
     async fn resolve_images_batch(
         &self,
+        org_id: i64,
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>> {
-        let resolver = GrpcImageResolver::new(self.client.clone());
+        let resolver = GrpcImageResolver::new(self.client.clone(), org_id);
         resolver
             .resolve_images_batch(image_ids)
             .await
@@ -346,22 +347,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
-    fn schedule_store(&self) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+    fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
             self.client.clone(),
+            org_id,
         ))
     }
 
-    async fn build_tool_registry(&self, agent_id: Uuid) -> Result<ToolRegistry> {
+    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
         let mut registry = ToolRegistry::with_defaults();
 
         // Get agent to access capabilities
-        // Note: We use DEFAULT_ORG_ID here since tool building doesn't need org context
-        // The agent lookup will work because agent_id is globally unique
-        if let Ok(Some(agent)) = self
-            .get_agent(everruns_core::DEFAULT_ORG_ID, agent_id)
-            .await
-        {
+        if let Ok(Some(agent)) = self.get_agent(org_id, agent_id).await {
             let builtin_cap_ids: Vec<String> = agent
                 .capabilities
                 .iter()
