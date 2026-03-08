@@ -163,28 +163,75 @@ The session strategy controls how Slack messages map to Everruns sessions:
 
 ## How It Works
 
+### Architecture
+
+```mermaid
+graph LR
+    Thread["Slack Thread"] <-->|messages| Bot["Slack Bot"]
+    Bot -->|"POST /v1/apps/{id}/slack/events"| Webhook["Webhook Endpoint"]
+    Webhook -->|"verify HMAC-SHA256"| App
+    App -->|references| Harness
+    App -->|references| Agent
+    App -->|config| SlackConfig["Slack Config<br/>(signing_secret, bot_token,<br/>session_strategy)"]
+    App -->|"find/create by tag"| Session
+    Session -->|runs| RuntimeAgent["Runtime Agent"]
+    RuntimeAgent -->|emits events| Dispatcher["Slack Delivery<br/>Dispatcher"]
+    Dispatcher -->|"chat.postMessage<br/>(with retry)"| Bot
+
+    classDef slack fill:#e8f5e9,stroke:#4a154b,color:#1b4332
+    classDef security fill:#fff3e0,stroke:#e07b39,color:#5a3000
+    classDef app fill:#e8daef,stroke:#7d3c98,color:#4a235a
+    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
+
+    class Thread,Bot slack
+    class Webhook security
+    class App,SlackConfig app
+    class Harness,Agent config
+    class Session,RuntimeAgent,Dispatcher runtime
+```
+
+### Message Flow
+
 ```mermaid
 sequenceDiagram
     participant S as Slack
-    participant E as Everruns
-    participant A as Agent
+    participant W as Webhook
+    participant A as App
+    participant R as Runtime Agent
+    participant D as Delivery Dispatcher
 
-    S->>E: POST /v1/apps/{app_id}/slack/events
-    E->>E: Verify signing secret (HMAC-SHA256)
-    E->>S: 200 OK (acknowledge within 3s)
-    E->>E: Find or create session (by tags)
-    E->>A: Create user message → triggers agent turn
-    A->>A: Process message
-    E->>E: Poll for agent response
-    E->>S: chat.postMessage with response
+    S->>W: POST /v1/apps/{app_id}/slack/events
+    W->>W: Verify signing secret (HMAC-SHA256)
+    W->>W: Dedup check (slack_ts)
+    W->>S: 200 OK (< 3 seconds)
+    W->>A: Route to App
+    A->>A: Find or create Session (by tag strategy)
+    A->>R: Create user message → trigger agent turn
+    A->>D: Register delivery for this turn
+    R->>R: Process message (tools, LLM calls, etc.)
+    R-->>D: output.message.completed (via PG NOTIFY)
+    D->>S: chat.postMessage to thread (with retry)
+    R-->>D: turn.completed
+    D->>D: Unregister delivery
 ```
 
-1. Slack sends a message event to the webhook endpoint
-2. Everruns verifies the request using the signing secret
-3. The request is acknowledged immediately (Slack requires a response within 3 seconds)
-4. A session is found or created based on the session strategy tags
-5. The message is sent to the agent, which processes it asynchronously
-6. Once the agent responds, the response is posted back to Slack via `chat.postMessage`
+**Inbound path:**
+
+1. Slack sends a message event to the per-app webhook endpoint
+2. Everruns verifies the request using the HMAC-SHA256 signing secret
+3. Duplicate events are skipped (Slack sends both `app_mention` and `message` for @mentions)
+4. The request is acknowledged immediately — Slack requires a response within 3 seconds
+5. A session is found or created based on session strategy tags (e.g., `slack:thread:{ts}`)
+6. A user message is created, triggering an agent turn
+
+**Outbound path:**
+
+7. The `SlackDeliveryDispatcher` registers to watch for events from this turn
+8. As the agent produces responses, `output.message.completed` events are broadcast via PostgreSQL NOTIFY
+9. The dispatcher posts each response to Slack using `chat.postMessage` with the bot token
+10. On transient failures, delivery is retried with exponential backoff (up to 3 attempts)
+11. When the turn completes or fails, the dispatcher unregisters
 
 ## Troubleshooting
 
