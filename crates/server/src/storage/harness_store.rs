@@ -2,10 +2,13 @@
 //
 // Implements the core HarnessStore trait for retrieving
 // harness configurations from the database.
+//
+// Decision: org_id is baked into the struct at construction time,
+// matching the Grpc/Adapter store pattern.
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, DEFAULT_ORG_ID, HarnessId, Result,
+    AgentCapabilityConfig, AgentLoopError, HarnessId, Result,
     harness::{Harness, HarnessStatus},
     traits::HarnessStore,
 };
@@ -23,11 +26,12 @@ use super::repositories::Database;
 #[derive(Clone)]
 pub struct DbHarnessStore {
     db: Database,
+    org_id: i64,
 }
 
 impl DbHarnessStore {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: Database, org_id: i64) -> Self {
+        Self { db, org_id }
     }
 }
 
@@ -36,7 +40,7 @@ impl HarnessStore for DbHarnessStore {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
         let harness_row = self
             .db
-            .get_harness(DEFAULT_ORG_ID, harness_id)
+            .get_harness(self.org_id, harness_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -75,7 +79,7 @@ impl HarnessStore for DbHarnessStore {
 // Factory functions
 // ============================================================================
 
-/// Create a database-backed harness store
-pub fn create_db_harness_store(db: Database) -> DbHarnessStore {
-    DbHarnessStore::new(db)
+/// Create a database-backed harness store scoped to the given org
+pub fn create_db_harness_store(db: Database, org_id: i64) -> DbHarnessStore {
+    DbHarnessStore::new(db, org_id)
 }

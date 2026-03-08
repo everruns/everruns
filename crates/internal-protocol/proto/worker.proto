@@ -497,7 +497,10 @@ message GetModelWithProviderResponse {
     optional ModelWithProvider model = 1;
 }
 
-message GetDefaultModelRequest {}
+message GetDefaultModelRequest {
+    // Organization ID for resource scoping
+    int64 org_id = 1;
+}
 
 message GetDefaultModelResponse {
     optional ModelWithProvider model = 1;

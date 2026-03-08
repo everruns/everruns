@@ -17,9 +17,9 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData, Harness,
-    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
-    ToolRegistry, ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
+    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
+    ToolResultContentPart,
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -199,7 +199,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
             Session {
                 id: r.id,
-                organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                organization_id: everruns_core::org_public_id_from_internal(org_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 title: r.title,
@@ -319,12 +319,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn get_model_with_provider(
         &self,
-        _org_id: i64,
+        org_id: i64,
         model_id: Uuid,
     ) -> Result<Option<ModelWithProvider>> {
         let resolved = self
             .llm_resolver
-            .resolve_model(model_id)
+            .resolve_model(org_id, model_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve model: {}", e);
@@ -339,10 +339,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
-    async fn get_default_model(&self, _org_id: i64) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
         let resolved = self
             .llm_resolver
-            .resolve_default_model()
+            .resolve_default_model(org_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve default model: {}", e);
@@ -1119,11 +1119,11 @@ impl DirectPlatformStore {
         }
     }
 
-    fn row_to_session(row: crate::storage::SessionRow) -> Session {
+    fn row_to_session(&self, row: crate::storage::SessionRow) -> Session {
         let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
         Session {
             id: row.id,
-            organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            organization_id: everruns_core::org_public_id_from_internal(self.org_id),
             harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
             agent_id: row.agent_id,
             title: row.title,
@@ -1466,7 +1466,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
 
-        Ok(rows.into_iter().map(Self::row_to_session).collect())
+        Ok(rows.into_iter().map(|r| self.row_to_session(r)).collect())
     }
 
     async fn create_session(
@@ -1493,7 +1493,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to create session: {e}")))?;
 
-        Ok(Self::row_to_session(row))
+        Ok(self.row_to_session(row))
     }
 
     async fn get_session_by_id(
@@ -1506,7 +1506,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to get session: {e}")))?;
 
-        Ok(row.map(Self::row_to_session))
+        Ok(row.map(|r| self.row_to_session(r)))
     }
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {
@@ -2457,6 +2457,47 @@ mod tests {
                 .await
                 .is_err(),
             "MCP server must not be visible in wrong org"
+        );
+    }
+
+    // =========================================================================
+    // Cross-org isolation regression tests (EVE-59)
+    // =========================================================================
+
+    /// Regression: get_session must populate organization_id from org_id,
+    /// not hardcode DEFAULT_ORG_PUBLIC_ID.
+    #[tokio::test]
+    async fn get_session_carries_org_public_id() {
+        use crate::storage::models::CreateSessionRow;
+
+        let adapters = test_adapters();
+        let agent_id = seed_agent(&adapters.db).await;
+
+        let row = adapters
+            .db
+            .create_session(CreateSessionRow {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                agent_id: Some(AgentId::from_uuid(agent_id)),
+                harness_id: Some(HarnessId::from_seed(1)),
+                title: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::Value::Array(vec![]),
+                tools: serde_json::Value::Array(vec![]),
+            })
+            .await
+            .expect("create session");
+
+        let session = adapters
+            .get_session(everruns_core::DEFAULT_ORG_ID, row.id.uuid())
+            .await
+            .unwrap()
+            .expect("session should exist");
+
+        assert_eq!(
+            session.organization_id,
+            everruns_core::DEFAULT_ORG_PUBLIC_ID,
+            "session must carry the correct org public_id"
         );
     }
 

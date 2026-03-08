@@ -659,7 +659,9 @@ impl LlmProviderStore for GrpcLlmProviderStore {
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::GetDefaultModelRequest {};
+        let request = proto::GetDefaultModelRequest {
+            org_id: self.org_id,
+        };
 
         let response = client
             .get_default_model(request)

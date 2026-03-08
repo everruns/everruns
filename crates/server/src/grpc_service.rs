@@ -870,7 +870,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
             self.llm_resolver_service
-                .resolve_model(mid.uuid())
+                .resolve_model(req.org_id, mid.uuid())
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to resolve model: {}", e);
@@ -880,7 +880,7 @@ impl WorkerService for WorkerServiceImpl {
         } else {
             // Try to get the default model
             self.llm_resolver_service
-                .resolve_default_model()
+                .resolve_default_model(req.org_id)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to resolve default model: {}", e);
@@ -1381,7 +1381,7 @@ impl WorkerService for WorkerServiceImpl {
         // Resolve model via LlmResolverService
         let resolved = self
             .llm_resolver_service
-            .resolve_model(model_id)
+            .resolve_model(req.org_id, model_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve model: {}", e);
@@ -1395,8 +1395,9 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn get_default_model(
         &self,
-        _request: Request<GetDefaultModelRequest>,
+        request: Request<GetDefaultModelRequest>,
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
+        let req = request.into_inner();
         // Check if encryption service is available
         if !self.llm_resolver_service.has_encryption() {
             tracing::error!("gRPC get_default_model: encryption service not available");
@@ -1408,7 +1409,7 @@ impl WorkerService for WorkerServiceImpl {
         // Resolve default model via LlmResolverService
         let resolved = self
             .llm_resolver_service
-            .resolve_default_model()
+            .resolve_default_model(req.org_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve default model: {}", e);

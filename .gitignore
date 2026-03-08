@@ -3,6 +3,9 @@
 **/target/
 **/*.rs.bk
 
+# Claude Code agent worktrees
+.claude/worktrees/
+
 # IDE
 .idea/
 .vscode/
