@@ -37,7 +37,6 @@ services:
   # ==========================================================================
   postgres:
     image: postgres:17-alpine
-    container_name: everruns-postgres
     environment:
       POSTGRES_USER: everruns
       POSTGRES_PASSWORD: everruns
@@ -55,7 +54,6 @@ services:
   # ==========================================================================
   valkey:
     image: valkey/valkey:8-alpine
-    container_name: everruns-valkey
     volumes:
       - valkey_data:/data
     healthcheck:
@@ -71,7 +69,6 @@ services:
   # ==========================================================================
   server:
     image: ghcr.io/everruns/everruns-server:${EVERRUNS_TAG:-latest}
-    container_name: everruns-server
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       VALKEY_URL: redis://valkey:6379
@@ -81,7 +78,7 @@ services:
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       HOST: 0.0.0.0
-      PORT: "9000"
+      PORT: "9301"
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
@@ -103,7 +100,6 @@ services:
   # ==========================================================================
   worker-1:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
-    container_name: everruns-worker-1
     environment:
       WORKER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
@@ -116,7 +112,6 @@ services:
 
   worker-2:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
-    container_name: everruns-worker-2
     environment:
       WORKER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
@@ -129,7 +124,6 @@ services:
 
   worker-3:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
-    container_name: everruns-worker-3
     environment:
       WORKER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
@@ -145,9 +139,8 @@ services:
   # ==========================================================================
   ui:
     image: ghcr.io/everruns/everruns-ui:${EVERRUNS_TAG:-latest}
-    container_name: everruns-ui
     environment:
-      PORT: "9100"
+      PORT: "9305"
       HOSTNAME: 0.0.0.0
     depends_on:
       server:
@@ -158,9 +151,8 @@ services:
   # ==========================================================================
   caddy:
     image: caddy:2-alpine
-    container_name: everruns-caddy
     ports:
-      - "9300:9300"
+      - "${EXAMPLE_PROXY_PORT:-9300}:9300"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
@@ -174,9 +166,8 @@ services:
   # ==========================================================================
   jaeger:
     image: jaegertracing/jaeger:2.4.0
-    container_name: everruns-jaeger
     ports:
-      - "16686:16686" # Jaeger UI
+      - "${EXAMPLE_JAEGER_UI_PORT:-16686}:16686" # Jaeger UI
     # OTLP ports exposed only to internal network
     expose:
       - "4317" # OTLP gRPC
@@ -205,19 +196,19 @@ configs:
       # SDK reconnects transparently (no retry budget cost).
       :9300 {
         handle_path /api/* {
-          reverse_proxy server:9000 {
+          reverse_proxy server:9301 {
             # Disable response buffering for SSE streaming
             flush_interval -1
           }
         }
         handle /api-doc/* {
-          reverse_proxy server:9000
+          reverse_proxy server:9301
         }
         handle /health {
-          reverse_proxy server:9000
+          reverse_proxy server:9301
         }
         handle {
-          reverse_proxy ui:9100
+          reverse_proxy ui:9305
         }
       }
 

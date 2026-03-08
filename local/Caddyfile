@@ -1,9 +1,13 @@
 # Local development reverse proxy
 # Unifies API and UI behind a single port.
+admin :{$CADDY_ADMIN_PORT:2019}
+
 # Recommended:
 #   PORT_PREFIX=271  -> proxy 27100, api 27101, ui 27105
+# Default main checkout uses the same schema:
+#   proxy 9300, api 9301, ui 9305
 # Override individual ports with:
-#   API_PORT=9000 UI_PORT=9100 PROXY_PORT=9300
+#   API_PORT=9301 UI_PORT=9305 PROXY_PORT=9300 CADDY_ADMIN_PORT=2019
 #
 # Routes:
 #   /api/*     -> API server at :API_PORT (strips /api prefix)
@@ -17,18 +21,18 @@
 #   - SDK reconnects transparently on disconnecting events (no retry budget cost)
 :{$PROXY_PORT:9300} {
 	handle_path /api/* {
-		reverse_proxy localhost:{$API_PORT:9000} {
+		reverse_proxy localhost:{$API_PORT:9301} {
 			# Disable response buffering for SSE streaming
 			flush_interval -1
 		}
 	}
 	handle /api-doc/* {
-		reverse_proxy localhost:{$API_PORT:9000}
+		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle /health {
-		reverse_proxy localhost:{$API_PORT:9000}
+		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle {
-		reverse_proxy localhost:{$UI_PORT:9100}
+		reverse_proxy localhost:{$UI_PORT:9305}
 	}
 }

@@ -5,12 +5,17 @@
 start tag="latest":
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/lib/common.sh
+    apply_port_prefix_defaults
+    : "${EXAMPLE_PROXY_PORT:=$PROXY_PORT}"
+    : "${EXAMPLE_JAEGER_UI_PORT:=$JAEGER_UI_PORT}"
+    : "${EXAMPLE_COMPOSE_PROJECT_NAME:=${COMPOSE_PROJECT_NAME}-example}"
     # Check if local docker compose containers are running (not from example compose)
     # We check the com.docker.compose.project label to distinguish local vs example containers
-    local_postgres=$(docker ps --filter "name=^everruns-postgres$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
-    local_jaeger=$(docker ps --filter "name=^everruns-jaeger$" --filter "label=com.docker.compose.project=local" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
+    local_postgres=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "label=com.docker.compose.service=postgres" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
+    local_jaeger=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "label=com.docker.compose.service=jaeger" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
     if [[ -n "$local_postgres" || -n "$local_jaeger" ]]; then
-        echo "❌ Local docker compose appears to be running (found containers from 'local' project)."
+        echo "❌ Local docker compose appears to be running (project '$COMPOSE_PROJECT_NAME')."
         echo "   Stop it first with: just stop-docker"
         exit 1
     fi
@@ -41,24 +46,49 @@ start tag="latest":
 
     echo "✅ Local docker compose not running, starting example full stack..."
     cd examples
-    docker compose -f docker-compose-full.yaml up --pull always -d
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml up --pull always -d
     echo "✅ Example full stack started!"
-    echo "   - UI: http://localhost:9300"
-    echo "   - Jaeger UI: http://localhost:16686"
+    echo "   - UI: http://localhost:${EXAMPLE_PROXY_PORT}"
+    echo "   - Jaeger UI: http://localhost:${EXAMPLE_JAEGER_UI_PORT}"
 
 # Stop example docker-compose-full
 stop:
-    cd examples && docker compose -f docker-compose-full.yaml down
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/common.sh
+    apply_port_prefix_defaults
+    export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
+    cd examples
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml down
 
 # Reset example docker-compose-full (removes volumes)
 reset:
-    cd examples && docker compose -f docker-compose-full.yaml down -v
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/common.sh
+    apply_port_prefix_defaults
+    export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
+    cd examples
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml down -v
 
 # Follow logs from example docker-compose-full
 logs *args:
-    cd examples && docker compose -f docker-compose-full.yaml logs -f {{args}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/common.sh
+    apply_port_prefix_defaults
+    export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
+    cd examples
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml logs -f {{args}}
 
 # Pull latest images for example docker-compose-full
 # Optional: specify image tag (e.g., `just example pull v0.1.0`)
 pull tag="latest":
-    export EVERRUNS_TAG={{tag}} && cd examples && docker compose -f docker-compose-full.yaml pull
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/common.sh
+    apply_port_prefix_defaults
+    export EVERRUNS_TAG={{tag}}
+    export EXAMPLE_COMPOSE_PROJECT_NAME="${EXAMPLE_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME}-example}"
+    cd examples
+    docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml pull

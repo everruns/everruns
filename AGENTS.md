@@ -158,9 +158,9 @@ PORT_PREFIX=271 just start-dev
 PORT_PREFIX=271 just start-all
 ```
 
-- `scripts/lib/services.sh`, `scripts/lib/docker.sh`, `scripts/lib/bench.sh`, and `local/Caddyfile` read `PORT_PREFIX`
-- Explicit `API_PORT`, `UI_PORT`, `PROXY_PORT`, and `DB_PORT` still override individual ports if needed
-- If `PORT_PREFIX` is unset, repo defaults stay `9000` (API), `9100` (UI), `9300` (proxy), `5432` (Postgres)
+- `scripts/lib/services.sh`, `scripts/lib/docker.sh`, `scripts/lib/bench.sh`, `example.just`, and `local/Caddyfile` read `PORT_PREFIX`
+- Explicit `API_PORT`, `WORKER_GRPC_PORT`, `UI_PORT`, `PROXY_PORT`, `VALKEY_PORT`, and `DB_PORT` still override individual ports if needed
+- If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `9332` (Postgres)
 - UI-only worktree iteration:
 
 ```bash

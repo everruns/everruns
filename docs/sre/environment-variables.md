@@ -202,8 +202,8 @@ DEFAULT_GEMINI_API_KEY=AIza...
 The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse proxy strips `/api` and forwards to the backend.
 
 **Local Development:**
-- Caddy on `:9300` routes `/api/*` to backend at `:9000` (strips `/api` prefix)
-- Example: `/api/v1/agents` → `http://localhost:9000/v1/agents`
+- Caddy on `:9300` routes `/api/*` to backend at `:9301` (strips `/api` prefix)
+- Example: `/api/v1/agents` → `http://localhost:9301/v1/agents`
 - SSE streaming works via `flush_interval -1` in Caddy config
 - No CORS needed (same-origin through Caddy)
 
@@ -249,7 +249,7 @@ WORKER_GRPC_ADDRESS=127.0.0.1:9001
 
 **Notes:**
 - Workers communicate with the control-plane via gRPC for all database operations
-- The control-plane exposes both HTTP (port 9000) and gRPC (port 9001) interfaces
+- The control-plane exposes both HTTP (local dev default `9301`) and gRPC (default `9001`) interfaces
 - Workers are stateless and do not connect directly to the database
 
 ### WORKER_GRPC_AUTH_TOKEN
@@ -472,7 +472,7 @@ The `local/docker-compose.yml` includes Jaeger for local trace visualization:
 
 ```bash
 # Start all services including Jaeger
-just start
+just start-all
 
 # Set OTLP endpoint for API and Worker
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
@@ -480,6 +480,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 # View traces at
 open http://localhost:16686
 ```
+
+These are the default host ports. When using `PORT_PREFIX`, the dev scripts remap them to isolated ports per worktree.
 
 ### Jaeger Ports
 
@@ -546,4 +548,3 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_PROJECT_NAME` | No | `My Project` | Project name for organizing traces |
 | `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name lookup) |
 | `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
-

@@ -50,6 +50,16 @@ docker compose pull  # Fetch latest images
 docker compose up -d
 ```
 
+The published compose file defaults to:
+- App entry point on `9300`
+- Jaeger UI on `16686`
+
+If those ports are busy, override them before startup:
+
+```bash
+EXAMPLE_PROXY_PORT=10300 EXAMPLE_JAEGER_UI_PORT=16687 docker compose up -d
+```
+
 This starts:
 - PostgreSQL database
 - Control plane API
@@ -68,6 +78,17 @@ This starts:
 | **Jaeger Tracing** | http://localhost:16686 |
 
 ## Configuration
+
+### Run Multiple Copies
+
+If you want multiple Everruns compose stacks on the same machine, set both a Compose project name and host-port overrides:
+
+```bash
+COMPOSE_PROJECT_NAME=everruns-demo-2 \
+EXAMPLE_PROXY_PORT=10300 \
+EXAMPLE_JAEGER_UI_PORT=16687 \
+docker compose up -d
+```
 
 ### Configure LLM Provider
 
@@ -120,7 +141,7 @@ Or modify `docker-compose.yaml` to add more worker services.
 docker compose logs -f
 
 # Specific service
-docker compose logs -f api
+docker compose logs -f server
 docker compose logs -f worker-1
 ```
 

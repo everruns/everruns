@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph Server["Server (Control Plane)"]
-        REST[REST API<br/>:9000]
+        REST[REST API<br/>:9301]
         GRPC[gRPC Server<br/>:9001]
         Services[Services Layer]
         Storage[(PostgreSQL)]
@@ -464,7 +464,7 @@ The control-plane follows a strict layered architecture:
 │                    Transport Layer                       │
 │  ┌─────────────────────┐  ┌─────────────────────────┐  │
 │  │   HTTP API (axum)   │  │   gRPC Server (tonic)   │  │
-│  │     Port 9000       │  │       Port 9001         │  │
+│  │     Port 9301       │  │       Port 9001         │  │
 │  │   (Public REST)     │  │   (Internal Workers)    │  │
 │  │  HTTP/2 flow ctrl   │  │                         │  │
 │  └──────────┬──────────┘  └────────────┬────────────┘  │
@@ -540,7 +540,7 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
      - `CapabilityService` - Capability listing
 
 4. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
-   - **HTTP API** (axum) on port 9000 - public REST API
+   - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module
    - Handlers handle protocol concerns only, delegating ALL business logic to services

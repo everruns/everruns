@@ -14,7 +14,7 @@
 # max_retries(5), sessions running >25 min would exhaust retries.
 #
 # Prerequisites:
-#   - Running server on :9000 (via `just start-dev` or no-docker setup)
+#   - Running server on :9301 (via `just start-dev` or no-docker setup)
 #   - Caddy installed (`apt install caddy` or via no-docker setup)
 #   - curl, jq
 #
@@ -37,9 +37,15 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-API_PORT="${API_PORT:-9000}"
-PROXY_PORT="${PROXY_PORT:-9300}"
-CADDY_ADMIN_PORT=2019
+if [ -n "${PORT_PREFIX:-}" ]; then
+    API_PORT="${API_PORT:-${PORT_PREFIX}01}"
+    PROXY_PORT="${PROXY_PORT:-${PORT_PREFIX}00}"
+    CADDY_ADMIN_PORT="${CADDY_ADMIN_PORT:-${PORT_PREFIX}03}"
+else
+    API_PORT="${API_PORT:-9301}"
+    PROXY_PORT="${PROXY_PORT:-9300}"
+    CADDY_ADMIN_PORT="${CADDY_ADMIN_PORT:-2019}"
+fi
 SSE_CYCLE_SECS="${SSE_CYCLE_SECS:-15}"  # Short cycle for faster repro
 
 log() { echo -e "${CYAN}[repro]${NC} $1"; }
@@ -73,6 +79,8 @@ start_caddy_proxy() {
 
     if [ "$mode" = "h2c" ]; then
         cat > "$caddyfile" <<EOF
+admin :${CADDY_ADMIN_PORT}
+
 :${PROXY_PORT} {
     handle_path /api/* {
         reverse_proxy localhost:${API_PORT} {
@@ -91,6 +99,8 @@ EOF
     else
         # HTTP/1.1 default (the buggy config)
         cat > "$caddyfile" <<EOF
+admin :${CADDY_ADMIN_PORT}
+
 :${PROXY_PORT} {
     handle_path /api/* {
         reverse_proxy localhost:${API_PORT} {

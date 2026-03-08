@@ -3,7 +3,7 @@
 # Tests the everruns CLI against a running server
 #
 # Prerequisites:
-# - Server running at localhost:9000 (with worker)
+# - Server running via local dev scripts (`localhost:9301` by default) or raw binary defaults (`localhost:9000`)
 # - CLI binary built: cargo build -p everruns-cli
 # - EVERRUNS_API_KEY set (any value works with AUTH_MODE=none)
 #
@@ -18,7 +18,34 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Configuration
-API_URL="${EVERRUNS_API_URL:-http://localhost:9000}"
+detect_api_url() {
+  if [ -n "${EVERRUNS_API_URL:-}" ]; then
+    echo "$EVERRUNS_API_URL"
+    return
+  fi
+
+  if [ -n "${API_PORT:-}" ]; then
+    echo "http://localhost:${API_PORT}"
+    return
+  fi
+
+  if [ -n "${PORT_PREFIX:-}" ]; then
+    echo "http://localhost:${PORT_PREFIX}01"
+    return
+  fi
+
+  for candidate in "http://localhost:9301" "http://localhost:9000"; do
+    if curl -s "$candidate/health" > /dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+
+  # Prefer script-managed local dev defaults when nothing is up yet.
+  echo "http://localhost:9301"
+}
+
+API_URL="$(detect_api_url)"
 CLI="./target/debug/everruns"
 SKIP_CHAT="${1:-}"
 
@@ -201,10 +228,16 @@ DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents delete "$AGENT_ID" --output jso
 }
 log_pass "agents delete completed"
 
-# Verify agent is deleted (should fail to get)
-log_test "agents get (verify deleted)"
-if $CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1; then
-  log_fail "agents get should fail for deleted agent"
+# Verify agent is archived or inaccessible after delete
+log_test "agents get (verify archived)"
+if VERIFY_DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1); then
+  AGENT_STATUS=$(echo "$VERIFY_DELETE_OUTPUT" | jq -r '.status // empty')
+  if [ "$AGENT_STATUS" = "archived" ]; then
+    log_pass "agents get returned archived status after delete"
+  else
+    log_fail "agents get returned unexpected post-delete response"
+    echo "$VERIFY_DELETE_OUTPUT"
+  fi
 else
   log_pass "agents get correctly fails for deleted agent"
 fi
