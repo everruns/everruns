@@ -91,9 +91,12 @@ export default function DevPage() {
               Developer Tools
             </p>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">UI reference pages</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            UI reference pages
+          </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            Development-only previews for the application’s canonical component styles and behaviors.
+            Development-only previews for the application’s canonical component styles and
+            behaviors.
           </p>
         </div>
 

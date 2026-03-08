@@ -227,8 +227,7 @@ function ToolActivityRow({
       className={cn(
         "animate-tool-row-in border px-3 py-2.5 transition-all duration-300",
         isComplete && !hasError && "border-transparent bg-transparent",
-        isRunning &&
-          "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)]",
+        isRunning && "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)]",
         hasError && "border-red-200 bg-red-500/[0.04] dark:border-red-900/70 dark:bg-red-950/20",
       )}
     >
@@ -258,7 +257,9 @@ function ToolActivityRow({
             )}
           </div>
 
-          {hasError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>}
+          {hasError && (
+            <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>
+          )}
 
           {!hasError && !isExpanded && hasOutput && (
             <div className="mt-1 truncate text-xs text-muted-foreground/70">

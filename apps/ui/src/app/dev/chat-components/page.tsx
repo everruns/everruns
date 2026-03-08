@@ -147,7 +147,9 @@ export default function DevChatComponentsPage() {
             description="Metadata affordance for user and assistant messages."
           >
             <div className="flex items-center justify-between border border-border bg-background px-4 py-3">
-              <div className="text-sm text-foreground">Components now follow the canonical chat style.</div>
+              <div className="text-sm text-foreground">
+                Components now follow the canonical chat style.
+              </div>
               <MessageInfoIcon event={infoEvent} />
             </div>
           </Section>

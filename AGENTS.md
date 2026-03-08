@@ -169,7 +169,7 @@ cd apps/ui
 ./node_modules/.bin/next dev --port 9120
 ```
 
-- If `apps/ui/node_modules` is shared into the worktree via symlink, use `--webpack`; Turbopack rejects node_modules outside the worktree root
+- If `apps/ui/node_modules` is shared into the worktree via symlink, use webpack for Next.js dev/build paths; Turbopack rejects node_modules outside the worktree root
 - If the worktree does not have UI deps yet, install them in `apps/ui` before starting Next
 
 ### Rust

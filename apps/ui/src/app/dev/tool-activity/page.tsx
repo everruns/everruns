@@ -168,7 +168,9 @@ const scheduledInputEvent: Event = {
       session_id: "session-dev-tool-activity",
       sequence: 1,
       role: "user",
-      content: [{ type: "text", text: "Can you inspect this project and sketch the rewrite steps?" }],
+      content: [
+        { type: "text", text: "Can you inspect this project and sketch the rewrite steps?" },
+      ],
       tool_call_id: null,
       created_at: "2026-03-07T21:20:00Z",
       metadata: { source: "schedule" },

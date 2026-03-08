@@ -14,7 +14,7 @@
 "use client";
 
 import { useState } from "react";
-import { version } from "../../../package.json";
+import packageJson from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -73,6 +73,7 @@ import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
+const { version } = packageJson;
 
 // --- Public types ---
 

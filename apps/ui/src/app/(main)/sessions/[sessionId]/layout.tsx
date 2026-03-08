@@ -275,27 +275,18 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
 
         {/* Tabs */}
         <div className="flex gap-1 mt-4">
-          <Link
-            href={`${basePath}/chat`}
-            className={getTabClassName(activeTab === "chat")}
-          >
+          <Link href={`${basePath}/chat`} className={getTabClassName(activeTab === "chat")}>
             <MessageSquare className="icon-sharp h-4 w-4" />
             Chat
           </Link>
           {hasFeature("file_system") && (
-            <Link
-              href={`${basePath}/files`}
-              className={getTabClassName(activeTab === "files")}
-            >
+            <Link href={`${basePath}/files`} className={getTabClassName(activeTab === "files")}>
               <Folder className="icon-sharp h-4 w-4" />
               Workspace
             </Link>
           )}
           {(hasFeature("secrets") || hasFeature("key_value")) && (
-            <Link
-              href={`${basePath}/storage`}
-              className={getTabClassName(activeTab === "storage")}
-            >
+            <Link href={`${basePath}/storage`} className={getTabClassName(activeTab === "storage")}>
               <Database className="icon-sharp h-4 w-4" />
               Storage
             </Link>
@@ -314,10 +305,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
               )}
             </Link>
           )}
-          <Link
-            href={`${basePath}/events`}
-            className={getTabClassName(activeTab === "events")}
-          >
+          <Link href={`${basePath}/events`} className={getTabClassName(activeTab === "events")}>
             <Activity className="icon-sharp h-4 w-4" />
             Events
           </Link>

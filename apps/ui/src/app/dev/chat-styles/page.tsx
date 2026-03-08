@@ -76,7 +76,11 @@ const toolResults = new Map<string, ToolCompletedData>([
 ]);
 
 function Note({ children }: { children: React.ReactNode }) {
-  return <div className="border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{children}</div>;
+  return (
+    <div className="border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
 }
 
 export default function ChatStylesPage() {
@@ -108,8 +112,8 @@ export default function ChatStylesPage() {
             Canonical chat surface
           </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            The application now uses this single style: sharp surfaces, left and right border accents,
-            muted chrome, and info affordances on message rows.
+            The application now uses this single style: sharp surfaces, left and right border
+            accents, muted chrome, and info affordances on message rows.
           </p>
         </div>
 
@@ -119,7 +123,9 @@ export default function ChatStylesPage() {
               <div className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                 Live transcript pattern
               </div>
-              <div className="mt-1 text-sm font-medium text-foreground">Default chat composition</div>
+              <div className="mt-1 text-sm font-medium text-foreground">
+                Default chat composition
+              </div>
             </div>
 
             <div className="space-y-6 bg-background/80 px-4 py-5 sm:px-6">
@@ -168,12 +174,16 @@ export default function ChatStylesPage() {
                     <ImagePlus className="icon-sharp h-4 w-4" />
                   </button>
                   <div className="flex h-10 items-center gap-2 border border-border bg-background px-3 text-sm">
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Model</span>
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                      Model
+                    </span>
                     <span className="text-foreground">Kimi K2.5</span>
                   </div>
                   <div className="flex h-10 items-center gap-2 border border-border bg-background px-3 text-sm">
                     <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Reasoning</span>
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                      Reasoning
+                    </span>
                     <span className="text-foreground">Default</span>
                   </div>
                 </div>
@@ -199,8 +209,13 @@ export default function ChatStylesPage() {
 
           <div className="space-y-4">
             <Note>User messages anchor on a right gold border, not a rounded bubble.</Note>
-            <Note>Agent messages stay flatter: icon rail, left primary border, metadata icon on the side.</Note>
-            <Note>Tool execution and todos inherit the same surface rules, so chat reads as one system.</Note>
+            <Note>
+              Agent messages stay flatter: icon rail, left primary border, metadata icon on the
+              side.
+            </Note>
+            <Note>
+              Tool execution and todos inherit the same surface rules, so chat reads as one system.
+            </Note>
           </div>
         </div>
       </div>

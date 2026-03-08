@@ -84,7 +84,9 @@ export function CommandAutocomplete({
           type="button"
           className={cn(
             "flex w-full items-center gap-2 px-2 py-2 text-sm outline-none select-none",
-            i === selectedIndex ? "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] text-foreground" : "text-popover-foreground",
+            i === selectedIndex
+              ? "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] text-foreground"
+              : "text-popover-foreground",
           )}
           onMouseEnter={() => setSelectedIndex(i)}
           onMouseDown={(e) => {

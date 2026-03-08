@@ -192,11 +192,6 @@
   position: absolute;
   inset: 0;
   width: 45%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    hsl(var(--accent) / 0.14),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.14), transparent);
   animation: tool-progress-sheen 1.8s ease-in-out infinite;
 }

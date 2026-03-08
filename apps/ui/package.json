@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "next dev --port 9100",
-    "build": "next build",
+    "build": "node ./scripts/next-build.mjs",
     "start": "next start",
     "lint": "oxlint -c oxlint.json ./src",
     "format": "oxfmt --write ./src",
