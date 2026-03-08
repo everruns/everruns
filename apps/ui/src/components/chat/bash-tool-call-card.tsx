@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
 interface BashToolCallCardProps {
@@ -10,7 +11,7 @@ interface BashToolCallCardProps {
   toolResult?: ToolCompletedData;
 }
 
-interface BashOutput {
+export interface BashOutput {
   stdout: string;
   stderr: string;
   exit_code: number;
@@ -20,7 +21,7 @@ interface BashOutput {
 /**
  * Try to parse bash JSON output: {"stdout":"...","stderr":"...","exit_code":0,"success":true}
  */
-function parseBashOutput(text: string): BashOutput | null {
+export function parseBashOutput(text: string): BashOutput | null {
   try {
     const parsed = JSON.parse(text);
     if (
@@ -40,6 +41,75 @@ function parseBashOutput(text: string): BashOutput | null {
     // Not JSON — fall through
   }
   return null;
+}
+
+interface BashToolResultDetailsProps {
+  fullText: string;
+  containerClassName?: string;
+  stdoutClassName?: string;
+  stderrClassName?: string;
+  showExitCode?: boolean;
+  exitCodeClassName?: string;
+}
+
+export function BashToolResultDetails({
+  fullText,
+  containerClassName,
+  stdoutClassName,
+  stderrClassName,
+  showExitCode = true,
+  exitCodeClassName,
+}: BashToolResultDetailsProps) {
+  const bashOutput = parseBashOutput(fullText);
+
+  if (!bashOutput) {
+    return (
+      <pre
+        className={cn(
+          "max-h-60 overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted/20 p-1.5 text-[10px] leading-tight",
+          containerClassName,
+        )}
+      >
+        {fullText}
+      </pre>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "space-y-0 rounded bg-muted/20 p-1.5 text-[10px] leading-tight",
+        containerClassName,
+      )}
+    >
+      {bashOutput.stdout && (
+        <pre
+          className={cn(
+            "max-h-60 overflow-x-auto whitespace-pre-wrap break-all text-inherit",
+            stdoutClassName,
+          )}
+        >
+          {bashOutput.stdout}
+        </pre>
+      )}
+      {bashOutput.stderr && (
+        <pre
+          className={cn(
+            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-red-600/80 dark:text-red-400/80",
+            bashOutput.stdout && "mt-3 border-t border-red-400/20 pt-3",
+            stderrClassName,
+          )}
+        >
+          {bashOutput.stderr}
+        </pre>
+      )}
+      {showExitCode && bashOutput.exit_code !== 0 && (
+        <div className={cn("mt-3 text-[10px] text-red-500/70", exitCodeClassName)}>
+          exit code {bashOutput.exit_code}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -63,8 +133,12 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
   // Determine if there's meaningful output to show
   const hasStdout = !!bashOutput?.stdout;
   const hasStderr = !!bashOutput?.stderr;
-  const hasOutput = bashOutput ? hasStdout || hasStderr : fullText.length > 0;
+  const hasOutput = bashOutput
+    ? hasStdout || hasStderr || bashOutput.exit_code !== 0
+    : fullText.length > 0;
   const exitedWithError = bashOutput ? !bashOutput.success : hasError;
+  const exitCodeLabel =
+    bashOutput && bashOutput.exit_code !== 0 ? `exit ${bashOutput.exit_code}` : null;
 
   // Status icon
   const statusIcon = isComplete ? (
@@ -94,9 +168,16 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
           onClick={() => hasOutput && setIsExpanded(!isExpanded)}
           className={`flex items-center gap-1 min-w-0 ${hasOutput ? "cursor-pointer hover:text-muted-foreground" : "cursor-default"}`}
         >
-          <span className="font-mono truncate">
-            <span className="opacity-50">$ </span>
-            {command ?? "bash"}
+          <span className="inline-flex min-w-0 items-baseline gap-2 font-mono">
+            <span className="truncate">
+              <span className="opacity-50">$ </span>
+              {command ?? "bash"}
+            </span>
+            {exitCodeLabel && (
+              <span className="flex-shrink-0 text-[10px] leading-none text-red-500/70">
+                {exitCodeLabel}
+              </span>
+            )}
           </span>
         </button>
         {durationLabel && (
@@ -128,34 +209,8 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
 
       {/* Expanded output */}
       {isExpanded && (
-        <div className="mt-1 ml-[22px] space-y-0">
-          {bashOutput ? (
-            <>
-              {/* stdout */}
-              {hasStdout && (
-                <pre className="p-1.5 bg-muted/20 rounded text-[10px] leading-tight overflow-x-auto max-h-60 whitespace-pre-wrap break-all">
-                  {bashOutput.stdout}
-                </pre>
-              )}
-              {/* stderr */}
-              {hasStderr && (
-                <pre className="p-1.5 bg-red-500/5 border-l-2 border-red-400/30 rounded-r text-[10px] leading-tight overflow-x-auto max-h-40 whitespace-pre-wrap break-all text-red-600/80 dark:text-red-400/80">
-                  {bashOutput.stderr}
-                </pre>
-              )}
-              {/* Non-zero exit code */}
-              {bashOutput.exit_code !== 0 && (
-                <div className="text-[10px] text-red-500/70 mt-0.5">
-                  exit code {bashOutput.exit_code}
-                </div>
-              )}
-            </>
-          ) : (
-            /* Fallback: raw text output */
-            <pre className="p-1.5 bg-muted/20 rounded text-[10px] leading-tight overflow-x-auto max-h-60 whitespace-pre-wrap break-all">
-              {fullText}
-            </pre>
-          )}
+        <div className="mt-1 ml-[22px] space-y-2">
+          <BashToolResultDetails fullText={fullText} showExitCode={false} />
         </div>
       )}
     </div>

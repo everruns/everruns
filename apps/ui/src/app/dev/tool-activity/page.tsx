@@ -80,7 +80,7 @@ const completedToolCalls: ToolCallContent[] = [
   {
     id: "tool-shell",
     name: "bash",
-    arguments: { command: "mv apps/web/src projects/ui/src" },
+    arguments: { command: "cargo test -p everruns-ui" },
   },
   {
     id: "tool-edit",
@@ -95,15 +95,20 @@ const completedToolResults = new Map<string, ToolCompletedData>([
     {
       tool_call_id: "tool-shell",
       tool_name: "bash",
-      success: true,
-      status: "success",
+      success: false,
+      status: "error",
       result: [
         {
           type: "text",
-          text: "$ mv apps/web/src projects/ui/src\nRenamed 18 files successfully.",
+          text: JSON.stringify({
+            stdout: "running 4 tests\n3 passed",
+            stderr: "thread 'tool_activity' panicked at assertion failed: left == right",
+            exit_code: 101,
+            success: false,
+          }),
         },
       ],
-      duration_ms: 380,
+      duration_ms: 910,
     },
   ],
   [

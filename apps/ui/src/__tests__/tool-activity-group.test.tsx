@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
@@ -47,5 +47,51 @@ describe("ToolActivityGroup", () => {
     expect(screen.getByText("Read README.md")).toBeInTheDocument();
     expect(screen.getByText("Find **/README*")).toBeInTheDocument();
     expect(screen.getByText("Search web for project architecture")).toBeInTheDocument();
+  });
+
+  it("renders structured bash details with separate stdout and stderr", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-shell",
+        name: "bash",
+        arguments: { command: "cargo test" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-shell",
+        {
+          tool_call_id: "tool-shell",
+          tool_name: "bash",
+          success: false,
+          status: "error",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                stdout: "running 4 tests\n3 passed",
+                stderr: "test suite failed",
+                exit_code: 101,
+                success: false,
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    expect(screen.getByText("exit 101")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+
+    expect(screen.getByText(/running 4 tests\s+3 passed/)).toBeInTheDocument();
+    expect(screen.getByText("test suite failed")).toBeInTheDocument();
+    expect(screen.queryByText("exit code 101")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^output$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^stderr$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/"stdout":/)).not.toBeInTheDocument();
   });
 });
