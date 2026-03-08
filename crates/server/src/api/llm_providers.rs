@@ -36,13 +36,13 @@ impl AppState {
         llm_resolver: Option<Arc<LlmResolverService>>,
     ) -> Self {
         let service = if let Some(resolver) = llm_resolver {
-            LlmProviderService::with_resolver(db.clone(), encryption, resolver)
+            LlmProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
         } else {
-            LlmProviderService::new(db.clone(), encryption)
+            LlmProviderService::new(db.clone(), encryption.clone())
         };
         Self {
             service: Arc::new(service),
-            sync_service: Arc::new(ModelSyncService::new(db, driver_registry)),
+            sync_service: Arc::new(ModelSyncService::new(db, driver_registry, encryption)),
             auth,
         }
     }
