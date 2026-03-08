@@ -953,11 +953,30 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
-    // Build the YAML manifest (no event_subscriptions — requires live URL)
-    let manifest_yaml = format!(
+    let manifest_yaml = build_manifest_yaml(&app.name, &display_name);
+
+    // URL-encode the manifest for the Slack "create from manifest" URL
+    let encoded = urlencoding_encode(&manifest_yaml);
+    let create_url = format!(
+        "https://api.slack.com/apps?new_app=1&manifest_yaml={}",
+        encoded
+    );
+
+    Ok(Json(ManifestResponse {
+        manifest_yaml,
+        create_url,
+    }))
+}
+
+/// Build the YAML manifest for a Slack app (no event_subscriptions — requires live URL).
+fn build_manifest_yaml(app_name: &str, display_name: &str) -> String {
+    let name = yaml_escape(app_name);
+    let display_name = yaml_escape(display_name);
+    format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
-         \x20 description: \"AI agent powered by Everruns\"\n\
+         \x20 description: \"{name} (Powered by Everruns)\"\n\
+         \x20 long_description: \"AI agent powered by Everruns — https://everruns.com\"\n\
          \x20 background_color: \"#1a1a2e\"\n\
          features:\n\
          \x20 bot_user:\n\
@@ -978,21 +997,7 @@ async fn handle_slack_manifest(
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\
          \x20 token_rotation_enabled: false\n",
-        name = yaml_escape(&app.name),
-        display_name = yaml_escape(&display_name),
-    );
-
-    // URL-encode the manifest for the Slack "create from manifest" URL
-    let encoded = urlencoding_encode(&manifest_yaml);
-    let create_url = format!(
-        "https://api.slack.com/apps?new_app=1&manifest_yaml={}",
-        encoded
-    );
-
-    Ok(Json(ManifestResponse {
-        manifest_yaml,
-        create_url,
-    }))
+    )
 }
 
 /// Truncate display name to 80 chars (Slack limit for bot_user display_name).
@@ -1642,6 +1647,40 @@ mod tests {
         let truncated = truncate_display_name(&name);
         assert!(truncated.len() <= 80);
         assert!(truncated.is_char_boundary(truncated.len()));
+    }
+
+    #[test]
+    fn test_manifest_yaml_contains_description_and_long_description() {
+        let yaml = build_manifest_yaml("My Bot", "My Bot");
+        assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
+        assert!(yaml.contains(r#"long_description: "AI agent powered by Everruns"#));
+        assert!(yaml.contains("https://everruns.com"));
+    }
+
+    #[test]
+    fn test_manifest_yaml_description_within_slack_limit() {
+        // Slack description limit is 140 chars. Worst case: 35-char app name
+        // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
+        let long_name = "a".repeat(35);
+        let yaml = build_manifest_yaml(&long_name, &long_name);
+        // Extract the description value
+        let desc_prefix = "description: \"";
+        let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
+        let desc_end = yaml[desc_start..].find('"').unwrap();
+        let description = &yaml[desc_start..desc_start + desc_end];
+        assert!(
+            description.len() <= 140,
+            "Description '{}' is {} chars, exceeds Slack's 140 limit",
+            description,
+            description.len()
+        );
+    }
+
+    #[test]
+    fn test_manifest_yaml_escapes_special_chars_in_name() {
+        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special");
+        assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
+        assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
     }
 
     #[test]
