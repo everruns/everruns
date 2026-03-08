@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based sandboxes as an agent execution environment. Agents can create, manage, and interact with multiple isolated environments per session via the Daytona REST API. This supports multiple sandboxes per session, each identified by a `sandbox_id`.
+The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based sandboxes as an agent execution environment. Agents can create, manage, and interact with multiple isolated environments per session via the Daytona REST API. Supports multiple sandboxes per session, each identified by a `sandbox_id`.
 
 **Status**: Available (All environments)
 
@@ -217,10 +217,6 @@ See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for f
 | No context | `ToolError` | "{tool_name} requires context." |
 
 ## Design Decisions
-
-### Integration pattern
-
-The Daytona integration uses prefix-based tool naming, state management via session secrets, and capability registration via inventory plugin.
 
 ### Synchronous exec only
 
