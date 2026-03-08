@@ -44,11 +44,11 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```ignore
-/// // In integrations/docker/src/lib.rs:
+/// // In integrations/daytona/src/lib.rs:
 /// inventory::submit! {
 ///     everruns_core::capabilities::IntegrationPlugin {
-///         experimental_only: true,
-///         factory: || Box::new(DockerCapability),
+///         experimental_only: false,
+///         factory: || Box::new(DaytonaCapability),
 ///     }
 /// }
 /// ```
@@ -460,7 +460,7 @@ impl CapabilityRegistry {
     /// Create a registry with built-in capabilities for a specific deployment grade
     ///
     /// Experimental capabilities are included via integration plugins in dev environments.
-    /// Non-experimental integration plugins are included in all environments.
+    /// Non-experimental integration plugins (like Daytona) are included in all environments.
     pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
         let mut registry = Self::new();
 
