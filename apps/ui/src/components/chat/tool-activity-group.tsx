@@ -3,6 +3,8 @@
 /**
  * Decisions:
  * - Group tool-only assistant steps into a single activity block so the transcript reads like progress, not raw logs.
+ * - Shell calls stay standalone in transcript order; they should not be wrapped in the grouped activity card.
+ * - Error emphasis relies on iconography and copy, not red box styling around the activity row.
  * - Keep motion CSS-only: fade/slide in, status transitions, and collapsible output without adding another runtime dependency.
  * - Match the Slate system: sharp corners, grayscale surfaces, and gold border accents for active work.
  */
@@ -13,15 +15,17 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Info,
   Loader2,
   MonitorSmartphone,
-  Terminal,
 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { BashToolResultDetails, isBashTool, parseBashOutput } from "./bash-tool-call-card";
+import {
+  BashToolCallCard,
+  BashToolResultDetails,
+  isBashTool,
+  parseBashOutput,
+} from "./bash-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 
@@ -30,6 +34,10 @@ interface ToolActivityGroupProps {
   toolResultsMap: Map<string, ToolCompletedData>;
   mode?: "server" | "client";
 }
+
+type ActivitySegment =
+  | { type: "group"; toolCalls: ToolCallContent[] }
+  | { type: "shell"; toolCall: ToolCallContent };
 
 type ToolCategory = "read" | "search" | "write" | "shell" | "tool";
 
@@ -152,9 +160,7 @@ function summarizeToolCalls(toolCalls: ToolCallContent[]): string {
   if (toolCalls.length === 0) return "Working";
 
   if (toolCalls.length === 1) {
-    const [toolCall] = toolCalls;
-    if (isBashTool(toolCall.name)) return "Shell";
-    return getToolLabel(toolCall);
+    return getToolLabel(toolCalls[0]);
   }
 
   const counts = {
@@ -211,18 +217,37 @@ function getResultPreview(result: ToolCompletedData | undefined): string | null 
   return previewLine.length > 120 ? `${previewLine.slice(0, 120)}...` : previewLine;
 }
 
-function InfoHint({ text }: { text: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        className="rounded p-0.5 text-muted-foreground/55 transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Tool activity info"
-      >
-        <Info className="h-3 w-3" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-56 text-xs leading-5">{text}</TooltipContent>
-    </Tooltip>
-  );
+function buildActivitySegments(
+  toolCalls: ToolCallContent[],
+  mode: "server" | "client",
+): ActivitySegment[] {
+  if (toolCalls.length === 0) return [];
+
+  if (mode === "client") {
+    return [{ type: "group", toolCalls }];
+  }
+
+  const segments: ActivitySegment[] = [];
+  let currentGroup: ToolCallContent[] = [];
+
+  const pushGroup = () => {
+    if (currentGroup.length === 0) return;
+    segments.push({ type: "group", toolCalls: currentGroup });
+    currentGroup = [];
+  };
+
+  for (const toolCall of toolCalls) {
+    if (isBashTool(toolCall.name)) {
+      pushGroup();
+      segments.push({ type: "shell", toolCall });
+      continue;
+    }
+
+    currentGroup.push(toolCall);
+  }
+
+  pushGroup();
+  return segments;
 }
 
 function ToolActivityRow({
@@ -250,10 +275,8 @@ function ToolActivityRow({
   return (
     <div
       className={cn(
-        "animate-tool-row-in border px-3 py-2.5 transition-all duration-300",
-        isComplete && !hasError && "border-transparent bg-transparent",
+        "animate-tool-row-in px-3 py-2.5 transition-all duration-300",
         isRunning && "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)]",
-        hasError && "border-red-200 bg-red-500/[0.04] dark:border-red-900/70 dark:bg-red-950/20",
       )}
     >
       <div className="flex items-start gap-2">
@@ -270,9 +293,6 @@ function ToolActivityRow({
           <div className="flex items-center gap-2">
             {mode === "client" && (
               <MonitorSmartphone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/75" />
-            )}
-            {isBashTool(toolCall.name) && mode === "server" && (
-              <Terminal className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/55" />
             )}
             <div className="min-w-0 inline-flex items-baseline gap-2">
               <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
@@ -340,92 +360,112 @@ function ToolActivityRow({
   );
 }
 
-export function ToolActivityGroup({
+function GroupedActivityCard({
   toolCalls,
   toolResultsMap,
   mode = "server",
 }: ToolActivityGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const activityCompletedCount = useMemo(
+    () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
+    [toolCalls, toolResultsMap],
+  );
+  const isActive = activityCompletedCount < toolCalls.length;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden border bg-card/95",
+        isActive ? "border-border border-l-2 border-l-accent" : "border-border",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-sm text-foreground">{summarizeToolCalls(toolCalls)}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground/70">
+            {activityCompletedCount} of {toolCalls.length} complete
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isActive ? (
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-accent-foreground/70">
+              <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" />
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={isExpanded ? "Collapse tool activity" : "Expand tool activity"}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-out",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-1 px-3 py-2">
+            {toolCalls.map((toolCall) => (
+              <ToolActivityRow
+                key={toolCall.id}
+                toolCall={toolCall}
+                toolResult={toolResultsMap.get(toolCall.id)}
+                mode={mode}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ToolActivityGroup({
+  toolCalls,
+  toolResultsMap,
+  mode = "server",
+}: ToolActivityGroupProps) {
   const todoToolCalls = toolCalls.filter((toolCall) => isWriteTodosTool(toolCall.name));
   const activityToolCalls = toolCalls.filter((toolCall) => !isWriteTodosTool(toolCall.name));
-
-  const activityCompletedCount = useMemo(
-    () => activityToolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
-    [activityToolCalls, toolResultsMap],
+  const activitySegments = useMemo(
+    () => buildActivitySegments(activityToolCalls, mode),
+    [activityToolCalls, mode],
   );
-  const isActive = activityCompletedCount < activityToolCalls.length;
 
   if (toolCalls.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      {activityToolCalls.length > 0 && (
-        <div
-          className={cn(
-            "overflow-hidden border bg-card/95",
-            isActive ? "border-border border-l-2 border-l-accent" : "border-border",
-          )}
-        >
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-foreground">
-                  {summarizeToolCalls(activityToolCalls)}
-                </div>
-                <InfoHint
-                  text={
-                    mode === "client"
-                      ? "Client-side tools wait for a browser action before the assistant continues."
-                      : "Grouped tool execution keeps intermediate reads, searches, and edits compact inside the transcript."
-                  }
-                />
-              </div>
-              <div className="mt-0.5 text-xs text-muted-foreground/70">
-                {activityCompletedCount} of {activityToolCalls.length} complete
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {isActive ? (
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-accent-foreground/70">
-                  <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" />
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setIsExpanded((current) => !current)}
-                className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-                aria-label={isExpanded ? "Collapse tool activity" : "Expand tool activity"}
-              >
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-          </div>
+      {activitySegments.map((segment, index) => {
+        if (segment.type === "shell") {
+          return (
+            <BashToolCallCard
+              key={segment.toolCall.id}
+              toolCall={segment.toolCall}
+              toolResult={toolResultsMap.get(segment.toolCall.id)}
+            />
+          );
+        }
 
-          <div
-            className={cn(
-              "grid transition-all duration-300 ease-out",
-              isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-            )}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="space-y-1 px-3 py-2">
-                {activityToolCalls.map((toolCall) => (
-                  <ToolActivityRow
-                    key={toolCall.id}
-                    toolCall={toolCall}
-                    toolResult={toolResultsMap.get(toolCall.id)}
-                    mode={mode}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        return (
+          <GroupedActivityCard
+            key={`${segment.toolCalls[0]?.id ?? "group"}-${index}`}
+            toolCalls={segment.toolCalls}
+            toolResultsMap={toolResultsMap}
+            mode={mode}
+          />
+        );
+      })}
 
       {todoToolCalls.map((toolCall) => {
         const toolResult = toolResultsMap.get(toolCall.id);
