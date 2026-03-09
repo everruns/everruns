@@ -57,6 +57,9 @@ pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 
+// URL validation for SSRF prevention (shared utility)
+pub mod url_validation;
+
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
@@ -238,6 +241,9 @@ pub use typed_id::{
     AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId,
     MessageId, ModelId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
+
+// URL validation re-exports
+pub use url_validation::{UrlValidationError, validate_safe_url};
 
 // Deployment configuration
 pub use deployment::DeploymentGrade;

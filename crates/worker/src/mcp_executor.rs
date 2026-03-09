@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use everruns_core::traits::{ToolContext, ToolExecutor};
 use everruns_core::{
     McpContent, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition, ToolResult,
-    ToolResultImage, is_mcp_tool, parse_mcp_tool_name,
+    ToolResultImage, is_mcp_tool, parse_mcp_tool_name, validate_safe_url,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -114,6 +114,17 @@ async fn call_mcp_tool(
     tool_name: &str,
     arguments: serde_json::Value,
 ) -> Result<(serde_json::Value, Vec<ToolResultImage>)> {
+    // Re-validate URL at execution time to catch TOCTOU / post-registration changes
+    validate_safe_url(&server_info.url).map_err(|e| {
+        tracing::warn!(
+            mcp_server = %server_info.name,
+            url = %server_info.url,
+            error = %e,
+            "Blocked MCP tool execution: URL failed SSRF validation"
+        );
+        anyhow!("MCP server URL blocked: {}", e)
+    })?;
+
     let client = reqwest::Client::builder()
         .timeout(MCP_TOOL_TIMEOUT)
         .build()?;
@@ -457,6 +468,68 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
         assert_eq!(images[0].media_type, "image/png");
         assert_eq!(images[0].base64, "iVBORw0KGgo=");
         assert_eq!(text_parts, vec!["Here's the chart"]);
+    }
+
+    // --- SSRF validation at execution time ---
+
+    #[tokio::test]
+    async fn ssrf_blocks_localhost_at_execution_time() {
+        let server = McpServerInfo {
+            id: uuid::Uuid::new_v4(),
+            name: "evil-server".into(),
+            url: "http://localhost:9999/mcp".into(),
+            api_key: None,
+            headers: HashMap::new(),
+        };
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("blocked"),
+            "expected 'blocked' in: {err_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ssrf_blocks_private_ip_at_execution_time() {
+        let server = McpServerInfo {
+            id: uuid::Uuid::new_v4(),
+            name: "internal-server".into(),
+            url: "http://10.0.0.1/mcp".into(),
+            api_key: None,
+            headers: HashMap::new(),
+        };
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_blocks_metadata_endpoint_at_execution_time() {
+        let server = McpServerInfo {
+            id: uuid::Uuid::new_v4(),
+            name: "metadata-probe".into(),
+            url: "http://169.254.169.254/latest/meta-data/".into(),
+            api_key: None,
+            headers: HashMap::new(),
+        };
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_blocks_ipv6_loopback_at_execution_time() {
+        let server = McpServerInfo {
+            id: uuid::Uuid::new_v4(),
+            name: "ipv6-loopback".into(),
+            url: "http://[::1]:8080/mcp".into(),
+            api_key: None,
+            headers: HashMap::new(),
+        };
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
     }
 
     #[test]
