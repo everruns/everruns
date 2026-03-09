@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Rocket, Globe, GlobeLock } from "lucide-react";
+import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { App } from "@/lib/api/types";
@@ -98,7 +98,16 @@ function AppCard({ app }: { app: App }) {
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted p-2 rounded">
               <Globe className="w-3 h-3 shrink-0" />
               <span className="truncate font-mono">{webhookUrl}</span>
-              <CopyButton value={webhookUrl} className="shrink-0 ml-1" />
+              <button
+                className="shrink-0 ml-1 hover:text-foreground"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(webhookUrl);
+                }}
+              >
+                <Copy className="w-3 h-3" />
+              </button>
             </div>
           )}
 
