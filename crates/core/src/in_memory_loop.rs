@@ -627,6 +627,7 @@ impl InMemoryAgenticLoop {
                             org_id: 0,
                             mcp_tool_definitions: vec![],
                             previous_response_id: previous_response_id.take(),
+                            iteration: state_machine.current_iteration() as u32 + 1,
                         })
                         .await?;
 

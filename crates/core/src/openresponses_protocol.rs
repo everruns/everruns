@@ -200,10 +200,18 @@ impl OpenResponsesProtocolLlmDriver {
             }
         };
 
+        // Only include phase on assistant messages (never on user/system/tool)
+        let phase = if msg.role == LlmMessageRole::Assistant {
+            msg.phase.clone()
+        } else {
+            None
+        };
+
         ResponsesInputItem::Message {
             r#type: "message".to_string(),
             role: Self::convert_role(&msg.role).to_string(),
             content,
+            phase,
         }
     }
 
@@ -1393,6 +1401,7 @@ impl CompactOutputItem {
                     content: llm_content,
                     tool_calls: None,
                     tool_call_id: None,
+                    phase: None,
                     thinking: None,
                     thinking_signature: None,
                 })
@@ -1490,6 +1499,11 @@ enum ResponsesInputItem {
         r#type: String,
         role: String,
         content: ResponsesContent,
+        /// Execution phase for assistant messages (e.g., "in_progress", "completed").
+        /// Helps GPT-5.x distinguish intermediate working commentary from final answers.
+        /// Only set on assistant messages; must be preserved when replaying history.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        phase: Option<String>,
     },
     FunctionCall {
         r#type: String,
@@ -1601,6 +1615,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
             }],
             instructions: Some("You are helpful".to_string()),
             previous_response_id: None,
@@ -1627,6 +1642,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Think about this".to_string()),
+                phase: None,
             }],
             instructions: None,
             previous_response_id: None,
@@ -1658,6 +1674,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
             }],
             instructions: None,
             previous_response_id: None,
@@ -1801,6 +1818,7 @@ mod tests {
                     arguments: json!({"timezone": "UTC"}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1809,6 +1827,7 @@ mod tests {
                 content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1851,6 +1870,7 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -2069,6 +2089,7 @@ mod tests {
                 content: LlmMessageContent::Text("I have thought about this.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("This is my chain of thought reasoning...".to_string()),
                 thinking_signature: Some("encrypted_reasoning_token_123".to_string()),
             },
@@ -2116,6 +2137,7 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("I need to call the get_time tool...".to_string()),
                 thinking_signature: Some("encrypted_token_xyz".to_string()),
             },
@@ -2124,6 +2146,7 @@ mod tests {
                 content: LlmMessageContent::Text("10:30 AM".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_123".to_string()),
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -2163,6 +2186,7 @@ mod tests {
                 content: LlmMessageContent::Text("Hi there!".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("Some thinking...".to_string()),
                 thinking_signature: None, // No signature!
             },
@@ -2434,6 +2458,7 @@ mod tests {
                 content: LlmMessageContent::Text("Hi there!".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -2457,6 +2482,7 @@ mod tests {
                 content: LlmMessageContent::Text("First answer.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("thinking 1".to_string()),
                 thinking_signature: Some("encrypted_1".to_string()),
             },
@@ -2466,6 +2492,7 @@ mod tests {
                 content: LlmMessageContent::Text("Second answer.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("thinking 2".to_string()),
                 thinking_signature: Some("encrypted_2".to_string()),
             },

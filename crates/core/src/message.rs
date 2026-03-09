@@ -127,6 +127,16 @@ pub struct Message {
     /// Message content as array of content parts (text, images, tool calls, tool results)
     pub content: Vec<ContentPart>,
 
+    /// Execution phase for this message.
+    ///
+    /// Helps LLMs (especially GPT-5.x) distinguish between intermediate working
+    /// commentary and completed answers in multi-step tool-calling flows.
+    /// Values: `"in_progress"` (intermediate, has tool calls) or `"completed"` (final answer).
+    /// Only set on agent (assistant) messages. Must be preserved when replaying history.
+    /// See: specs/execution-phases.md
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// This is the model's chain-of-thought reasoning before producing the response.
     /// Must be included in subsequent API calls when thinking is enabled.
@@ -520,6 +530,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -535,6 +546,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Agent,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -570,6 +582,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Agent,
             content: parts,
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -585,6 +598,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -609,6 +623,7 @@ impl Message {
                 result,
                 error,
             ))],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -644,6 +659,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::ToolResult,
             content,
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -651,6 +667,14 @@ impl Message {
             external_actor: None,
             created_at: Utc::now(),
         }
+    }
+
+    /// Set the execution phase on this message and return self.
+    ///
+    /// Phase values: `"in_progress"` (intermediate, has tool calls) or `"completed"` (final answer).
+    pub fn with_phase(mut self, phase: impl Into<String>) -> Self {
+        self.phase = Some(phase.into());
+        self
     }
 
     /// Get the tool_call_id from a tool result message

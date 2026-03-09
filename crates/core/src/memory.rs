@@ -78,6 +78,7 @@ impl InMemoryMessageRetriever {
             id: MessageId::new(),
             role: input.role,
             content: input.content,
+            phase: None,
             thinking: None, // InputMessage doesn't include thinking (user messages don't have thinking)
             thinking_signature: None,
             controls: input.controls,

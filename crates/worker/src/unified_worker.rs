@@ -650,6 +650,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         org_id: input.org_id,
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
         previous_response_id: input.previous_response_id.clone(),
+        iteration: 1,
     };
 
     let result = atom.execute(reason_input).await?;

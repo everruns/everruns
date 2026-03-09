@@ -1218,6 +1218,7 @@ mod tests {
                 arguments: serde_json::json!({"city": "London"}),
             }]),
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }];
@@ -1304,6 +1305,7 @@ mod tests {
                 content: LlmMessageContent::Text("You are helpful".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1312,6 +1314,7 @@ mod tests {
                 content: LlmMessageContent::Text("Hello".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1331,6 +1334,7 @@ mod tests {
             content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }];
@@ -1373,6 +1377,7 @@ mod tests {
             ]),
             tool_calls: None,
             tool_call_id: Some("call_img".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         };
@@ -1425,6 +1430,7 @@ mod tests {
             content: LlmMessageContent::Text("result text".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_txt".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         };

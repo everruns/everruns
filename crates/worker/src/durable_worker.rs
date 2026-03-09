@@ -900,6 +900,7 @@ impl DurableWorker {
             org_id: input.org_id,
             mcp_tool_definitions: turn_context.mcp_tool_definitions,
             previous_response_id: input.previous_response_id.clone(),
+            iteration: 1,
         };
 
         // Use the existing reason_activity function with gRPC adapters

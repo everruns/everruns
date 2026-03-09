@@ -244,6 +244,11 @@ pub struct LlmMessage {
     pub content: LlmMessageContent,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
+    /// Execution phase for assistant messages.
+    /// Helps models distinguish between intermediate working commentary (`"in_progress"`)
+    /// and completed answers (`"completed"`) in multi-step tool-calling flows.
+    /// Only set on assistant messages. Must be preserved when replaying conversation history.
+    pub phase: Option<String>,
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// Must be included in subsequent API calls when thinking is enabled
     pub thinking: Option<String>,
@@ -260,6 +265,7 @@ impl LlmMessage {
             content: LlmMessageContent::Text(content.into()),
             tool_calls: None,
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }
@@ -272,6 +278,7 @@ impl LlmMessage {
             content: LlmMessageContent::Parts(parts),
             tool_calls: None,
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }
@@ -591,6 +598,7 @@ impl From<&crate::message::Message> for LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            phase: msg.phase.clone(),
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
@@ -718,6 +726,7 @@ impl LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            phase: msg.phase.clone(),
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
@@ -1131,6 +1140,7 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1150,6 +1160,7 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Just text".to_string(),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1182,6 +1193,7 @@ mod tests {
                     filename: Some("test2.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1204,6 +1216,7 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Hello".to_string(),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1237,6 +1250,7 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1279,6 +1293,7 @@ mod tests {
                 image_id: image_id.into(),
                 filename: Some("missing.png".to_string()),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,

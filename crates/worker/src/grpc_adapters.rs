@@ -343,6 +343,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         id: id.into(),
         role,
         content,
+        phase: None,
         thinking: proto_msg.thinking, // Thinking content from extended thinking models
         thinking_signature: proto_msg.thinking_signature, // Cryptographic signature for thinking
         controls,

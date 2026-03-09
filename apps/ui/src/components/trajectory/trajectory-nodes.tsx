@@ -97,6 +97,11 @@ export const AgentMessageNode = memo(function AgentMessageNode({
       <div className="flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 mb-0.5">
         <Bot className="w-3 h-3" />
         Agent
+        {d.phase && (
+          <span className="ml-auto text-[10px] font-normal opacity-70">
+            {d.phase === "in_progress" ? "working" : d.phase}
+          </span>
+        )}
       </div>
       {d.preview && (
         <p className="text-[11px] text-violet-900/80 dark:text-violet-200/80 line-clamp-2 leading-relaxed">

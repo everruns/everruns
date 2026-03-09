@@ -191,6 +191,7 @@ async fn test_reason_atom_with_fixed_response() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -274,6 +275,7 @@ async fn test_reason_atom_with_tool_calls() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -332,6 +334,7 @@ async fn test_reason_atom_with_echo_response() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -388,6 +391,7 @@ async fn test_reason_atom_with_different_configs() {
             org_id: 0,
             mcp_tool_definitions: vec![],
             previous_response_id: None,
+            iteration: 1,
         })
         .await
         .expect("First call should succeed");
@@ -446,6 +450,7 @@ async fn test_reason_atom_with_different_configs() {
             org_id: 0,
             mcp_tool_definitions: vec![],
             previous_response_id: None,
+            iteration: 1,
         })
         .await
         .expect("Second call should succeed");
@@ -505,6 +510,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -595,6 +601,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -649,6 +656,7 @@ async fn test_reason_atom_with_lorem_response() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -707,6 +715,7 @@ async fn test_reason_atom_handles_llm_error() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -809,6 +818,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -959,6 +969,7 @@ async fn test_reason_atom_handles_model_not_available() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -1074,6 +1085,7 @@ async fn test_reason_atom_returns_response_id_from_driver() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -1129,6 +1141,7 @@ async fn test_reason_atom_response_id_none_when_driver_omits_it() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
 
     let result = atom
@@ -1153,6 +1166,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: Some("resp_xyz789".to_string()),
+        iteration: 1,
     };
     let json = serde_json::to_value(&input).unwrap();
     assert_eq!(json["previous_response_id"], "resp_xyz789");
@@ -1170,6 +1184,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
         org_id: 0,
         mcp_tool_definitions: vec![],
         previous_response_id: None,
+        iteration: 1,
     };
     let json_none = serde_json::to_value(&input_none).unwrap();
     assert!(

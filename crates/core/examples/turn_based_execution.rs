@@ -261,6 +261,7 @@ async fn main() -> anyhow::Result<()> {
                 org_id: 0,
                 mcp_tool_definitions: vec![],
                 previous_response_id: None,
+                iteration: 1,
             })
             .await?;
 
