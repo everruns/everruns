@@ -182,7 +182,7 @@ impl TestServer {
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
         let session_databases_state =
-            api::session_databases::AppState::new(sqldb_store, auth_state.clone());
+            api::session_databases::AppState::new(sqldb_store, db.clone(), auth_state.clone());
         let users_state = api::users::UsersState {
             db: db.clone(),
             auth: auth_state.clone(),

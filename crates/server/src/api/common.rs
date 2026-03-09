@@ -4,8 +4,12 @@
 
 use axum::Json;
 use axum::http::StatusCode;
+use everruns_core::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::ToSchema;
+
+use crate::storage::StorageBackend;
 
 /// Standard error response for API endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -196,6 +200,23 @@ pub struct CreateEventRequest {
     pub event_type: String,
     /// Event payload as JSON. Structure depends on event_type.
     pub data: serde_json::Value,
+}
+
+/// Verify that a session belongs to the caller's organization.
+///
+/// Returns Ok(()) if the session exists under org_id, or a 404 (StatusCode only)
+/// if not found / wrong org. Use this before touching any session subresource
+/// (files, storage, databases) to enforce tenant isolation.
+pub async fn verify_session_ownership(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    session_id: SessionId,
+) -> Result<(), StatusCode> {
+    db.get_session(org_id, session_id)
+        .await
+        .log_internal_error("verify session ownership")?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(())
 }
 
 #[cfg(test)]

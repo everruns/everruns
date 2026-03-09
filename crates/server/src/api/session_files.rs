@@ -25,7 +25,7 @@ use axum::{
 use everruns_core::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
-use super::common::ListResponse;
+use super::common::{ListResponse, verify_session_ownership};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -136,13 +136,15 @@ pub enum GetResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub file_service: Arc<SessionFileService>,
+    pub db: Arc<StorageBackend>,
     pub auth: AuthState,
 }
 
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
-            file_service: Arc::new(SessionFileService::new(db)),
+            file_service: Arc::new(SessionFileService::new(db.clone())),
+            db,
             auth,
         }
     }
@@ -238,7 +240,7 @@ fn is_reserved_path(path: &str) -> bool {
     tag = "filesystem"
 )]
 pub async fn get_root(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Query(query): Query<GetQuery>,
@@ -249,6 +251,9 @@ pub async fn get_root(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     get_path_impl(state, session_id.uuid(), "/", query).await
 }
 
@@ -270,7 +275,7 @@ pub async fn get_root(
     tag = "filesystem"
 )]
 pub async fn get_path(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<GetQuery>,
@@ -281,6 +286,9 @@ pub async fn get_path(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let normalized = normalize_path(&path);
     get_path_impl(state, session_id.uuid(), &normalized, query).await
 }
@@ -374,7 +382,7 @@ pub async fn create_root(_org: ResolvedOrg) -> (StatusCode, String) {
     tag = "filesystem"
 )]
 pub async fn create_path(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
@@ -385,6 +393,9 @@ pub async fn create_path(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
@@ -483,7 +494,7 @@ pub async fn create_path(
     tag = "filesystem"
 )]
 pub async fn update_path(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
@@ -494,6 +505,9 @@ pub async fn update_path(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
@@ -558,7 +572,7 @@ pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
     tag = "filesystem"
 )]
 pub async fn delete_path(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
@@ -569,6 +583,9 @@ pub async fn delete_path(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
@@ -612,7 +629,7 @@ pub async fn delete_path(
     tag = "filesystem"
 )]
 pub async fn move_file(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<MoveFileRequest>,
@@ -623,6 +640,9 @@ pub async fn move_file(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let input = MoveFileInput {
         src_path: req.src_path,
@@ -672,7 +692,7 @@ pub async fn move_file(
     tag = "filesystem"
 )]
 pub async fn copy_file(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<CopyFileRequest>,
@@ -683,6 +703,9 @@ pub async fn copy_file(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let input = CopyFileInput {
         src_path: req.src_path,
@@ -730,7 +753,7 @@ pub async fn copy_file(
     tag = "filesystem"
 )]
 pub async fn grep_files(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<GrepRequest>,
@@ -741,6 +764,9 @@ pub async fn grep_files(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let input = GrepInput {
         pattern: req.pattern,
@@ -784,7 +810,7 @@ pub async fn grep_files(
     tag = "filesystem"
 )]
 pub async fn stat_file(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<StatRequest>,
@@ -795,6 +821,9 @@ pub async fn stat_file(
             format!("Invalid session ID: {}", e),
         )
     })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|s| (s, "Session not found".to_string()))?;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&req.path);
 

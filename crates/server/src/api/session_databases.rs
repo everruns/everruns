@@ -17,7 +17,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::ListResponse;
+use crate::storage::StorageBackend;
+
+use super::common::{ListResponse, verify_session_ownership};
 
 /// Request body for creating a database.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -59,12 +61,21 @@ pub struct SchemaResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub sqldb_store: Arc<dyn SessionSqlDbStore>,
+    pub db: Arc<StorageBackend>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(sqldb_store: Arc<dyn SessionSqlDbStore>, auth: AuthState) -> Self {
-        Self { sqldb_store, auth }
+    pub fn new(
+        sqldb_store: Arc<dyn SessionSqlDbStore>,
+        db: Arc<StorageBackend>,
+        auth: AuthState,
+    ) -> Self {
+        Self {
+            sqldb_store,
+            db,
+            auth,
+        }
     }
 }
 
@@ -104,11 +115,12 @@ pub fn routes(state: AppState) -> Router {
     tag = "session-databases"
 )]
 pub async fn list_databases(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<DatabaseInfoResponse>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let databases = state
         .sqldb_store
@@ -137,12 +149,13 @@ pub async fn list_databases(
     tag = "session-databases"
 )]
 pub async fn create_database(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<CreateDatabaseRequest>,
 ) -> Result<(StatusCode, Json<DatabaseInfoResponse>), StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let info = state
         .sqldb_store
@@ -179,11 +192,12 @@ pub async fn create_database(
     tag = "session-databases"
 )]
 pub async fn get_database(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<Json<DatabaseInfoResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let info = state
         .sqldb_store
@@ -213,11 +227,12 @@ pub async fn get_database(
     tag = "session-databases"
 )]
 pub async fn delete_database(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let deleted = state
         .sqldb_store
@@ -250,11 +265,12 @@ pub async fn delete_database(
     tag = "session-databases"
 )]
 pub async fn get_schema(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<Json<SchemaResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let tables = state
         .sqldb_store
