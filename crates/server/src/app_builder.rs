@@ -459,7 +459,7 @@ impl ServerAppBuilder {
                         as Arc<dyn WorkflowEventStore + Send + Sync>
                 })
             };
-        // TM-DURABLE-010: All durable endpoints require authentication
+        // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
         durable_state.spawn_metrics_sampler();
         let scheduler_store = durable_store.clone();
