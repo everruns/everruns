@@ -583,6 +583,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "404": {
             "description": "Execution not found",
             "content": {
@@ -666,6 +669,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -714,6 +720,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required"
           },
           "409": {
             "description": "Schedule name already exists",
@@ -768,6 +777,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "404": {
             "description": "Schedule not found",
             "content": {
@@ -811,6 +823,9 @@
         "responses": {
           "204": {
             "description": "Schedule deleted"
+          },
+          "401": {
+            "description": "Authentication required"
           },
           "404": {
             "description": "Schedule not found",
@@ -882,6 +897,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required"
           },
           "404": {
             "description": "Schedule not found",
@@ -967,6 +985,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "404": {
             "description": "Schedule not found",
             "content": {
@@ -1019,6 +1040,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required"
           },
           "404": {
             "description": "Schedule not found",
@@ -1073,6 +1097,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "404": {
             "description": "Schedule not found",
             "content": {
@@ -1126,6 +1153,9 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required"
+          },
           "404": {
             "description": "Schedule not found",
             "content": {
@@ -1178,6 +1208,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required"
           },
           "404": {
             "description": "Schedule not found",

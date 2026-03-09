@@ -1,5 +1,8 @@
 // Durable Scheduled Tasks API routes
 //
+// Decision: All endpoints require authentication via AuthUser extractor.
+//   Matches the pattern used by durable control plane handlers (api/durable.rs).
+//
 // Provides CRUD operations and management for scheduled tasks:
 // - Schedule creation, listing, updates, and deletion
 // - Pause/resume functionality
@@ -8,7 +11,7 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{FromRef, Path, Query, State},
     http::StatusCode,
     routing::{delete, get, patch, post},
 };
@@ -24,17 +27,26 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::common::ErrorResponse;
+use crate::auth::middleware::{AuthState, AuthUser};
 
 /// App state for schedule routes
+/// All schedule endpoints require authentication.
 #[derive(Clone)]
 pub struct ScheduleAppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    auth: AuthState,
+}
+
+impl FromRef<ScheduleAppState> for AuthState {
+    fn from_ref(state: &ScheduleAppState) -> Self {
+        state.auth.clone()
+    }
 }
 
 impl ScheduleAppState {
-    /// Create new state with an optional workflow event store
-    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>) -> Self {
-        Self { store }
+    /// Create new state with an optional workflow event store and auth state
+    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>, auth: AuthState) -> Self {
+        Self { store, auth }
     }
 
     /// Get the store, returning an error response if not available
@@ -382,12 +394,14 @@ pub struct ListExecutionsQuery {
     responses(
         (status = 201, description = "Schedule created", body = ScheduleResponse),
         (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 401, description = "Authentication required"),
         (status = 409, description = "Schedule name already exists", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn create_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -491,11 +505,13 @@ pub async fn create_schedule(
     ),
     responses(
         (status = 200, description = "List of schedules", body = SchedulesListResponse),
+        (status = 401, description = "Authentication required"),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn list_schedules(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Query(query): Query<ListSchedulesQuery>,
 ) -> Result<Json<SchedulesListResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -554,12 +570,14 @@ pub async fn list_schedules(
     ),
     responses(
         (status = 200, description = "Schedule details", body = ScheduleResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn get_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -597,12 +615,14 @@ pub async fn get_schedule(
     responses(
         (status = 200, description = "Schedule updated", body = ScheduleResponse),
         (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn update_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Json(req): Json<UpdateScheduleRequest>,
@@ -693,12 +713,14 @@ pub async fn update_schedule(
     ),
     responses(
         (status = 204, description = "Schedule deleted"),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn delete_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -737,12 +759,14 @@ pub async fn delete_schedule(
     ),
     responses(
         (status = 200, description = "Schedule paused", body = ScheduleResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn pause_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -802,12 +826,14 @@ pub async fn pause_schedule(
     ),
     responses(
         (status = 200, description = "Schedule resumed", body = ScheduleResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn resume_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -887,12 +913,14 @@ pub async fn resume_schedule(
     ),
     responses(
         (status = 200, description = "Schedule triggered", body = TriggerResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn trigger_schedule(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<Json<TriggerResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -949,12 +977,14 @@ pub async fn trigger_schedule(
     ),
     responses(
         (status = 200, description = "List of executions", body = ScheduleExecutionsListResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn list_schedule_executions(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Query(query): Query<ListExecutionsQuery>,
@@ -1029,12 +1059,14 @@ pub async fn list_schedule_executions(
     ),
     responses(
         (status = 200, description = "Execution details", body = ScheduleExecutionResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Execution not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn get_execution(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(execution_id): Path<Uuid>,
 ) -> Result<Json<ScheduleExecutionResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1073,12 +1105,14 @@ pub async fn get_execution(
     ),
     responses(
         (status = 200, description = "Schedule statistics", body = ScheduleStatsResponse),
+        (status = 401, description = "Authentication required"),
         (status = 404, description = "Schedule not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "durable-schedules"
 )]
 pub async fn get_schedule_stats(
+    _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<Json<ScheduleStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1134,6 +1168,212 @@ fn calculate_next_trigger(cron_expression: &str) -> Result<Option<DateTime<Utc>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
+
+    /// AuthState with auth disabled (anonymous admin user)
+    fn test_auth_state_none() -> AuthState {
+        let config = AuthConfig::default(); // mode = None
+        AuthState::builtin(
+            config,
+            Arc::new(crate::storage::StorageBackend::in_memory()),
+        )
+    }
+
+    /// AuthState with auth enabled (requires valid JWT/API key)
+    fn test_auth_state_full() -> AuthState {
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            jwt: JwtConfig {
+                secret: "test-secret-for-unit-tests-only".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        AuthState::builtin(
+            config,
+            Arc::new(crate::storage::StorageBackend::in_memory()),
+        )
+    }
+
+    /// Build schedule router with given auth state (no backing store)
+    fn app_with_auth(auth: AuthState) -> Router {
+        routes(ScheduleAppState::new(None, auth))
+    }
+
+    /// Verify unauthenticated request to the given method+path returns 401
+    async fn assert_unauthenticated_rejected(method: &str, path: &str) {
+        let app = app_with_auth(test_auth_state_full());
+
+        let method = method.parse::<axum::http::Method>().unwrap();
+        let req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status().as_u16(),
+            401,
+            "Expected 401 for unauthenticated {} {}",
+            resp.status(),
+            path
+        );
+    }
+
+    /// Verify authenticated request (no-auth mode) passes auth layer
+    /// (may fail with 503 since no store, but should NOT be 401)
+    async fn assert_authenticated_passes(method: &str, path: &str) {
+        let app = app_with_auth(test_auth_state_none());
+
+        let method = method.parse::<axum::http::Method>().unwrap();
+        let req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        // Should not be 401 - auth passed. Likely 503 (no store) or 400/404.
+        assert_ne!(
+            resp.status().as_u16(),
+            401,
+            "Authenticated user should not get 401 for {}",
+            path
+        );
+    }
+
+    // ---- Unauthenticated rejection tests (all endpoints) ----
+
+    #[tokio::test]
+    async fn test_create_schedule_unauthenticated() {
+        assert_unauthenticated_rejected("POST", "/v1/durable/schedules").await;
+    }
+
+    #[tokio::test]
+    async fn test_list_schedules_unauthenticated() {
+        assert_unauthenticated_rejected("GET", "/v1/durable/schedules").await;
+    }
+
+    #[tokio::test]
+    async fn test_get_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_update_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("PATCH", &format!("/v1/durable/schedules/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("DELETE", &format!("/v1/durable/schedules/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_pause_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/pause")).await;
+    }
+
+    #[tokio::test]
+    async fn test_resume_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/resume"))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_trigger_schedule_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/trigger"))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_list_executions_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}/executions"))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_get_execution_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("GET", &format!("/v1/durable/executions/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_stats_unauthenticated() {
+        let id = Uuid::now_v7();
+        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}/stats")).await;
+    }
+
+    // ---- Authenticated access tests (no-auth mode passes auth layer) ----
+
+    #[tokio::test]
+    async fn test_list_schedules_authenticated() {
+        assert_authenticated_passes("GET", "/v1/durable/schedules").await;
+    }
+
+    #[tokio::test]
+    async fn test_get_schedule_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_schedule_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("DELETE", &format!("/v1/durable/schedules/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_pause_schedule_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/pause")).await;
+    }
+
+    #[tokio::test]
+    async fn test_resume_schedule_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/resume")).await;
+    }
+
+    #[tokio::test]
+    async fn test_trigger_schedule_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/trigger")).await;
+    }
+
+    #[tokio::test]
+    async fn test_list_executions_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}/executions")).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_execution_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("GET", &format!("/v1/durable/executions/{id}")).await;
+    }
+
+    #[tokio::test]
+    async fn test_get_stats_authenticated() {
+        let id = Uuid::now_v7();
+        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}/stats")).await;
+    }
+
+    // ---- Existing unit tests ----
 
     #[test]
     fn test_calculate_next_trigger_valid() {
