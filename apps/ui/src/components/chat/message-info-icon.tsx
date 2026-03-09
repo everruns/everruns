@@ -2,6 +2,7 @@
 
 import { Info } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
 import type { Event, OutputMessageCompletedData, TokenUsage } from "@/lib/api/types";
 
@@ -49,7 +50,9 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
       <TooltipContent className="max-w-sm border-border bg-popover px-3 py-2">
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt className="text-muted-foreground">ID</dt>
-          <dd className="font-mono text-[10px] break-all">{event.id}</dd>
+          <dd>
+            <CopyButton value={event.id} />
+          </dd>
           {model && (
             <>
               <dt className="text-muted-foreground">Model</dt>

@@ -519,7 +519,7 @@ export function AgentFilterMenu({ value, onValueChange, className }) {
 **Why:** IDs are for programmatic use (API calls, debugging). Users need to copy them occasionally but don't need to see them constantly. This keeps the UI clean while maintaining accessibility.
 
 **Components:**
-- `CopyButton` - `components/ui/copy-button.tsx` - Icon button that copies value to clipboard
+- `CopyButton` - `components/ui/copy-button.tsx` - Hash (`#`) icon button that copies value to clipboard. Uses `Hash` icon (not generic `Copy`) to visually distinguish "copy ID" from other copy actions (e.g., URL copy buttons). Shows green `Check` icon after copying.
 
 ### List Page Structure
 

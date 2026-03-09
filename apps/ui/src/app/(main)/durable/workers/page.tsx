@@ -25,6 +25,7 @@ import {
   Play,
   CheckCircle,
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 
 function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
   const now = new Date();
@@ -103,7 +104,7 @@ function WorkerRow({
           <div className={`w-2 h-2 rounded-full ${getStatusColor(worker.status)}`} />
           <div>
             <p className="font-medium">{worker.hostname || worker.id.slice(0, 20)}</p>
-            <p className="text-xs text-muted-foreground font-mono">{worker.id.slice(0, 16)}...</p>
+            <CopyButton value={worker.id} />
           </div>
         </div>
       </TableCell>
