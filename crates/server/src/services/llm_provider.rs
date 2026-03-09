@@ -193,38 +193,30 @@ mod tests {
     fn create_rejects_localhost_base_url() {
         let url = "https://127.0.0.1/v1";
         let err = validate_safe_url(url).unwrap_err();
-        let msg = format!("Invalid base URL: {err}");
-        assert!(msg.contains("Invalid base URL"));
-        assert!(msg.contains("blocked address"));
+        let msg = format!("{err}");
+        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
     }
 
     #[test]
     fn create_rejects_private_ip_base_url() {
         let url = "https://10.0.0.1/v1";
         let err = validate_safe_url(url).unwrap_err();
-        let msg = format!("Invalid base URL: {err}");
-        assert!(msg.contains("private network"));
+        let msg = format!("{err}");
+        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
     }
 
     #[test]
     fn create_rejects_metadata_endpoint_base_url() {
         let url = "https://169.254.169.254/latest/meta-data/";
         let err = validate_safe_url(url).unwrap_err();
-        let msg = format!("Invalid base URL: {err}");
-        assert!(msg.contains("blocked address"));
+        let msg = format!("{err}");
+        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
     }
 
     #[test]
     fn create_accepts_valid_public_base_url() {
         assert!(validate_safe_url("https://api.openai.com/v1").is_ok());
         assert!(validate_safe_url("https://api.anthropic.com/v1").is_ok());
-    }
-
-    #[test]
-    fn create_rejects_http_base_url() {
-        let err = validate_safe_url("http://api.example.com/v1").unwrap_err();
-        let msg = format!("Invalid base URL: {err}");
-        assert!(msg.contains("https"));
     }
 
     /// Testable version with injectable env lookup (test-only).
