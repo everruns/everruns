@@ -194,7 +194,10 @@ mod tests {
         let url = "https://127.0.0.1/v1";
         let err = validate_safe_url(url).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
+        assert!(
+            msg.contains("Blocked host"),
+            "expected blocked host error, got: {msg}"
+        );
     }
 
     #[test]
@@ -202,7 +205,10 @@ mod tests {
         let url = "https://10.0.0.1/v1";
         let err = validate_safe_url(url).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
+        assert!(
+            msg.contains("Blocked host"),
+            "expected blocked host error, got: {msg}"
+        );
     }
 
     #[test]
@@ -210,7 +216,10 @@ mod tests {
         let url = "https://169.254.169.254/latest/meta-data/";
         let err = validate_safe_url(url).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("Blocked host"), "expected blocked host error, got: {msg}");
+        assert!(
+            msg.contains("Blocked host"),
+            "expected blocked host error, got: {msg}"
+        );
     }
 
     #[test]
