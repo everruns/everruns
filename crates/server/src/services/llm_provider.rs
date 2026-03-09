@@ -10,6 +10,7 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
+use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -51,6 +52,11 @@ impl LlmProviderService {
     }
 
     pub async fn create(&self, org_id: i64, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
+        // SSRF prevention: validate base_url before persisting (EVE-69)
+        if let Some(ref url) = req.base_url {
+            validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
+        }
+
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -91,6 +97,11 @@ impl LlmProviderService {
         id: Uuid,
         req: UpdateLlmProviderRequest,
     ) -> Result<Option<LlmProvider>> {
+        // SSRF prevention: validate base_url before persisting (EVE-69)
+        if let Some(ref url) = req.base_url {
+            validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
+        }
+
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -174,6 +185,48 @@ fn has_default_api_key_from_env(provider_type: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use everruns_core::url_validation::validate_safe_url;
+
+    // ---- SSRF prevention tests (EVE-69) ----
+
+    #[test]
+    fn create_rejects_localhost_base_url() {
+        let url = "https://127.0.0.1/v1";
+        let err = validate_safe_url(url).unwrap_err();
+        let msg = format!("Invalid base URL: {err}");
+        assert!(msg.contains("Invalid base URL"));
+        assert!(msg.contains("blocked address"));
+    }
+
+    #[test]
+    fn create_rejects_private_ip_base_url() {
+        let url = "https://10.0.0.1/v1";
+        let err = validate_safe_url(url).unwrap_err();
+        let msg = format!("Invalid base URL: {err}");
+        assert!(msg.contains("private network"));
+    }
+
+    #[test]
+    fn create_rejects_metadata_endpoint_base_url() {
+        let url = "https://169.254.169.254/latest/meta-data/";
+        let err = validate_safe_url(url).unwrap_err();
+        let msg = format!("Invalid base URL: {err}");
+        assert!(msg.contains("blocked address"));
+    }
+
+    #[test]
+    fn create_accepts_valid_public_base_url() {
+        assert!(validate_safe_url("https://api.openai.com/v1").is_ok());
+        assert!(validate_safe_url("https://api.anthropic.com/v1").is_ok());
+    }
+
+    #[test]
+    fn create_rejects_http_base_url() {
+        let err = validate_safe_url("http://api.example.com/v1").unwrap_err();
+        let msg = format!("Invalid base URL: {err}");
+        assert!(msg.contains("https"));
+    }
+
     /// Testable version with injectable env lookup (test-only).
     fn has_default_api_key_with_lookup<F>(provider_type: &str, env_lookup: F) -> bool
     where

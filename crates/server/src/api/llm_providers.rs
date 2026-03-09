@@ -132,7 +132,8 @@ pub async fn create_provider(
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
     let provider = state.service.create(org.org_id, req).await.map_err(|e| {
         let error_msg = e.to_string();
-        if error_msg.contains("Encryption not configured") {
+        if error_msg.contains("Encryption not configured") || error_msg.contains("Invalid base URL")
+        {
             (
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse { error: error_msg }),
@@ -266,7 +267,9 @@ pub async fn update_provider(
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
-            if error_msg.contains("Encryption not configured") {
+            if error_msg.contains("Encryption not configured")
+                || error_msg.contains("Invalid base URL")
+            {
                 (
                     StatusCode::BAD_REQUEST,
                     Json(ErrorResponse { error: error_msg }),
@@ -479,6 +482,14 @@ mod tests {
             parsed["error"],
             "Encryption not configured. Cannot store API key."
         );
+    }
+
+    #[test]
+    fn test_invalid_base_url_error_is_client_facing() {
+        // URL validation errors should be returned as-is (not masked as internal error)
+        let error_msg =
+            "Invalid base URL: URL host resolves to a blocked address: loopback (127.0.0.0/8)";
+        assert!(error_msg.contains("Invalid base URL"));
     }
 
     #[test]

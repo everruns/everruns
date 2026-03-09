@@ -221,6 +221,7 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-API-010 | WebFetch internal DNS probing | Medium | fetchkit v0.1.2 resolve-then-check validates resolved IPs against blocked ranges before connecting | MITIGATED |
 | TM-API-011 | WebFetch internal port scanning | Medium | fetchkit v0.1.2 blocks private IP ranges; agents cannot reach internal hosts | MITIGATED |
 | TM-API-012 | WebFetch DNS rebinding | Medium | fetchkit v0.1.2 DNS pinning: resolves hostname, validates IP, pins to resolved address for connection | MITIGATED |
+| TM-API-013 | LLM provider base URL SSRF | High | `url_validation::validate_url()` blocks private IPs, loopback, link-local, cloud metadata, non-HTTPS on provider create/update (EVE-69) | MITIGATED |
 
 ### Mitigation Details
 
