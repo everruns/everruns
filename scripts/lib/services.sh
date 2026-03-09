@@ -608,6 +608,11 @@ case "$cmd" in
       local start_time=$(date +%s)
       local max_duration=90
       local retry_delay=5
+      local inner_pid=""
+
+      # Propagate signals to the inner cargo process so the subshell
+      # doesn't hang waiting for a foreground command that never got signaled.
+      trap '[ -n "$inner_pid" ] && kill -TERM "$inner_pid" 2>/dev/null; exit 0' SIGINT SIGTERM
 
       while true; do
         local now=$(date +%s)
@@ -619,11 +624,14 @@ case "$cmd" in
         fi
 
         if [ "$NO_WATCH" = true ]; then
-          cargo run -p everruns-worker
+          cargo run -p everruns-worker &
         else
-          cargo watch -w crates -x 'run -p everruns-worker'
+          cargo watch -w crates -x 'run -p everruns-worker' &
         fi
+        inner_pid=$!
+        wait $inner_pid
         local exit_code=$?
+        inner_pid=""
 
         # Check if we should retry
         now=$(date +%s)
