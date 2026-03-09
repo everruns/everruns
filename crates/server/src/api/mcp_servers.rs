@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::McpServerId;
-use everruns_core::{McpServer, McpServerStatus, McpServerTransportType};
+use everruns_core::{McpServer, McpServerStatus, McpServerTransportType, validate_safe_url};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
@@ -153,12 +153,16 @@ pub async fn create_mcp_server(
         );
     }
 
-    // Validate URL is not empty
+    // Validate URL: non-empty, safe scheme, no private/internal targets (SSRF)
     if req.url.trim().is_empty() {
         return Err(
             ErrorResponse::new("URL cannot be empty").into_response(StatusCode::BAD_REQUEST)
         );
     }
+    validate_safe_url(&req.url).map_err(|e| {
+        ErrorResponse::new(format!("Invalid MCP server URL: {e}"))
+            .into_response(StatusCode::BAD_REQUEST)
+    })?;
 
     let server = state.service.create(org.org_id, req).await.map_err(|e| {
         // Check if it's a duplicate name error
@@ -276,13 +280,17 @@ pub async fn update_mcp_server(
         );
     }
 
-    // Validate URL if provided
-    if let Some(ref url) = req.url
-        && url.trim().is_empty()
-    {
-        return Err(
-            ErrorResponse::new("URL cannot be empty").into_response(StatusCode::BAD_REQUEST)
-        );
+    // Validate URL if provided: non-empty, safe scheme, no private/internal targets (SSRF)
+    if let Some(ref url) = req.url {
+        if url.trim().is_empty() {
+            return Err(
+                ErrorResponse::new("URL cannot be empty").into_response(StatusCode::BAD_REQUEST)
+            );
+        }
+        validate_safe_url(url).map_err(|e| {
+            ErrorResponse::new(format!("Invalid MCP server URL: {e}"))
+                .into_response(StatusCode::BAD_REQUEST)
+        })?;
     }
 
     let server = state
@@ -418,5 +426,57 @@ mod tests {
     #[test]
     fn test_default_transport_type() {
         assert_eq!(default_transport_type(), McpServerTransportType::Http);
+    }
+
+    // --- SSRF validation tests (URL safety) ---
+
+    use everruns_core::validate_safe_url;
+
+    #[test]
+    fn ssrf_rejects_localhost_url() {
+        assert!(validate_safe_url("http://localhost/mcp").is_err());
+        assert!(validate_safe_url("http://localhost:8080/mcp").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_loopback_ip() {
+        assert!(validate_safe_url("http://127.0.0.1/mcp").is_err());
+        assert!(validate_safe_url("http://127.0.0.2:9999/mcp").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_private_ips() {
+        assert!(validate_safe_url("http://10.0.0.1/mcp").is_err());
+        assert!(validate_safe_url("http://172.16.0.1/mcp").is_err());
+        assert!(validate_safe_url("http://192.168.1.1/mcp").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_cloud_metadata() {
+        assert!(validate_safe_url("http://169.254.169.254/latest/meta-data/").is_err());
+        assert!(validate_safe_url("http://metadata.google.internal/computeMetadata/v1/").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv6_loopback() {
+        assert!(validate_safe_url("http://[::1]/mcp").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv4_mapped_ipv6() {
+        assert!(validate_safe_url("http://[::ffff:127.0.0.1]/mcp").is_err());
+        assert!(validate_safe_url("http://[::ffff:169.254.169.254]/mcp").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_disallowed_schemes() {
+        assert!(validate_safe_url("ftp://example.com/mcp").is_err());
+        assert!(validate_safe_url("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn ssrf_allows_valid_public_https() {
+        assert!(validate_safe_url("https://mcp.atlassian.com/v1/mcp").is_ok());
+        assert!(validate_safe_url("https://mcp.example.com:8443/v1").is_ok());
     }
 }

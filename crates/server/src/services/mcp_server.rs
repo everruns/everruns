@@ -16,6 +16,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+use everruns_core::validate_safe_url;
+
 use crate::api::mcp_servers::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
 /// How long cached tools are considered fresh (1 hour)
@@ -351,6 +353,9 @@ async fn fetch_mcp_tools(
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
+    // Re-validate URL at fetch time (SSRF defense-in-depth)
+    validate_safe_url(url).map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
+
     let client = reqwest::Client::builder()
         .timeout(MCP_CLIENT_TIMEOUT)
         .build()?;
@@ -562,6 +567,35 @@ mod tests {
         let resolved = svc.resolve_by_prefix(1, "auth_server").await.unwrap();
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap().api_key.as_deref(), Some("sk-mcp-secret"));
+    }
+
+    // --- SSRF: fetch_mcp_tools blocks unsafe URLs ---
+
+    #[tokio::test]
+    async fn fetch_tools_blocks_localhost() {
+        let result =
+            super::fetch_mcp_tools("http://localhost:9999/mcp", None, &HashMap::new()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn fetch_tools_blocks_private_ip() {
+        let result = super::fetch_mcp_tools("http://10.0.0.1/mcp", None, &HashMap::new()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn fetch_tools_blocks_metadata_endpoint() {
+        let result = super::fetch_mcp_tools(
+            "http://169.254.169.254/latest/meta-data/",
+            None,
+            &HashMap::new(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("blocked"));
     }
 
     #[tokio::test]
