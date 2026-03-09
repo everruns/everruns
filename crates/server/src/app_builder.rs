@@ -463,8 +463,10 @@ impl ServerAppBuilder {
         let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
         durable_state.spawn_metrics_sampler();
         let scheduler_store = durable_store.clone();
-        let schedules_state =
-            api::schedules::routes(api::schedules::ScheduleAppState::new(durable_store));
+        let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
+            durable_store,
+            auth_state.clone(),
+        ));
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
