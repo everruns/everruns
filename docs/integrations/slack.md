@@ -249,6 +249,18 @@ sequenceDiagram
 - Confirm the signing secret in Everruns matches the one in Slack's **Basic Information** page
 - Check that your server clock is accurate (signing verification uses timestamps)
 
+## Overview Video
+
+<iframe
+  width="100%"
+  style="aspect-ratio: 16 / 9; border-radius: 8px; margin-top: 1rem;"
+  src="https://www.youtube.com/embed/RuNeh8i6Bdk"
+  title="Slack Integration Overview"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen>
+</iframe>
+
 ## Links
 
 - [Slack API Documentation](https://api.slack.com/docs)
