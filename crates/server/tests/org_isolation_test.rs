@@ -12,8 +12,12 @@ use uuid::Uuid;
 
 use everruns_server::storage::{
     CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
-    CreateOrganizationRow, InMemoryDatabase, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
+    CreateOrganizationRow, CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateLlmModel,
+    UpdateLlmProvider, UpdateMcpServer,
 };
+
+use everruns_server::api::common::verify_session_ownership;
+use std::sync::Arc;
 
 /// Helper: create a second org in the in-memory database.
 /// The default org (org_id=1) already exists.
@@ -788,6 +792,148 @@ async fn test_update_mcp_server_tools_cross_org() {
     let tools: Vec<serde_json::Value> =
         serde_json::from_value(original.cached_tools.clone()).unwrap_or_default();
     assert!(tools.is_empty());
+}
+
+// ============================================
+// Session Subresource Ownership Tests
+// ============================================
+
+/// Helper: create a StorageBackend wrapping a fresh InMemoryDatabase.
+fn make_backend() -> Arc<StorageBackend> {
+    Arc::new(StorageBackend::in_memory())
+}
+
+/// Helper: create a second org via StorageBackend.
+async fn create_second_org_backend(backend: &StorageBackend) -> i64 {
+    let org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Second Org".to_string(),
+            created_by: None,
+        })
+        .await
+        .expect("Failed to create second org");
+    org.org_id
+}
+
+/// Helper: create a session in the given org via StorageBackend.
+async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everruns_core::SessionId {
+    let row = backend
+        .create_session(CreateSessionRow {
+            org_id,
+            harness_id: None,
+            agent_id: None,
+            title: Some("Test Session".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .unwrap();
+    row.id
+}
+
+#[tokio::test]
+async fn test_session_ownership_positive_own_org() {
+    let backend = make_backend();
+
+    let session_id = create_session_in_org(&backend, ORG1).await;
+
+    // Same org can access session
+    assert!(
+        verify_session_ownership(&backend, ORG1, session_id)
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn test_session_ownership_negative_cross_org() {
+    let backend = make_backend();
+    let org2 = create_second_org_backend(&backend).await;
+
+    let session_id = create_session_in_org(&backend, ORG1).await;
+
+    // Different org cannot access session - returns 404
+    let result = verify_session_ownership(&backend, org2, session_id).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_session_ownership_negative_nonexistent_session() {
+    let backend = make_backend();
+
+    let fake_session_id = everruns_core::SessionId::new();
+
+    // Non-existent session returns 404
+    let result = verify_session_ownership(&backend, ORG1, fake_session_id).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_session_files_cross_org_blocked() {
+    // verify_session_ownership is called at the API layer before
+    // any file service operation. We test the helper directly.
+    let backend = make_backend();
+    let org2 = create_second_org_backend(&backend).await;
+
+    // Create session in org1, try to access from org2
+    let session_id = create_session_in_org(&backend, ORG1).await;
+    assert!(
+        verify_session_ownership(&backend, org2, session_id)
+            .await
+            .is_err()
+    );
+
+    // Create session in org2, verify org2 can access
+    let session_id_org2 = create_session_in_org(&backend, org2).await;
+    assert!(
+        verify_session_ownership(&backend, org2, session_id_org2)
+            .await
+            .is_ok()
+    );
+
+    // But org1 cannot access org2's session
+    assert!(
+        verify_session_ownership(&backend, ORG1, session_id_org2)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn test_session_storage_cross_org_blocked() {
+    // Session storage (keys, secrets) is guarded by verify_session_ownership
+    let backend = make_backend();
+    let org2 = create_second_org_backend(&backend).await;
+
+    let session_id = create_session_in_org(&backend, ORG1).await;
+
+    // Org2 cannot pass ownership check
+    assert!(
+        verify_session_ownership(&backend, org2, session_id)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn test_session_databases_cross_org_blocked() {
+    // Session databases are guarded by verify_session_ownership
+    let backend = make_backend();
+    let org2 = create_second_org_backend(&backend).await;
+
+    let session_id = create_session_in_org(&backend, ORG1).await;
+
+    // Org2 cannot pass ownership check
+    assert!(
+        verify_session_ownership(&backend, org2, session_id)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

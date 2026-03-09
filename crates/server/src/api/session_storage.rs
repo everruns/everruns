@@ -16,7 +16,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ApiResultExt, ListResponse};
+use super::common::{ApiResultExt, ListResponse, verify_session_ownership};
 
 /// Key-value entry info (key and timestamps, no value)
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -87,11 +87,12 @@ pub fn routes(state: AppState) -> Router {
     tag = "session-storage"
 )]
 pub async fn list_keys(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     // Get all keys with their values
     let keys = state
@@ -137,11 +138,12 @@ pub async fn list_keys(
     tag = "session-storage"
 )]
 pub async fn list_secrets(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    verify_session_ownership(&state.db, org.org_id, session_id).await?;
 
     let secrets = state
         .db
