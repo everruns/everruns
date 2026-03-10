@@ -1,9 +1,11 @@
 "use client";
 
-// Main app layout with sidebar and auth guard
+// Main app layout with sidebar, auth guard, and global command palette
 import { Suspense, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
+import { CommandPalette } from "@/components/command-palette";
+import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { Loader2 } from "lucide-react";
@@ -18,6 +20,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
   const { isLoading: orgLoading } = useOrg();
+  const commandPalette = useCommandPaletteState();
 
   // Combined loading state - wait for both auth and org to initialize
   const isLoading = authLoading || orgLoading;
@@ -59,10 +62,13 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-    </div>
+    <CommandPaletteContext value={commandPalette}>
+      <div className="flex h-screen">
+        <Sidebar />
+        <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+        <CommandPalette />
+      </div>
+    </CommandPaletteContext>
   );
 }
 
