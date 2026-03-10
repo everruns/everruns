@@ -30,6 +30,7 @@ System-level feature flags that control feature availability across the platform
 |------|---------|------|-------------|
 | `global_chat` | `FEATURE_GLOBAL_CHAT` | Experimental | Per-user singleton chat session |
 | `apps` | `FEATURE_APPS` | Experimental | Apps (agent deployment to distribution channels) |
+| `global_search` | `FEATURE_GLOBAL_SEARCH` | Experimental | Global search / command palette (Cmd+K) |
 
 ## Architecture
 
