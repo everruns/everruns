@@ -494,11 +494,7 @@ export default function QueuesPage() {
     refetch: refetchTasks,
   } = useTasks(taskParams);
   const { data: statsData, isLoading: statsLoading } = useTaskStats();
-  const {
-    data: dlqData,
-    isLoading: dlqLoading,
-    refetch: refetchDlq,
-  } = useDlq({ limit: 100 });
+  const { data: dlqData, isLoading: dlqLoading, refetch: refetchDlq } = useDlq({ limit: 100 });
   const requeueMutation = useRequeueDlqEntry();
   const deleteDlqMutation = useDeleteDlqEntry();
   const purgeDlqMutation = usePurgeDlq();
@@ -651,21 +647,15 @@ export default function QueuesPage() {
         <div className="flex items-center gap-6 text-sm text-muted-foreground mb-6">
           <div className="flex items-center gap-1">
             <Timer className="h-3.5 w-3.5" />
-            <span>
-              Oldest pending: {formatDuration(stats.oldest_pending_task_age_ms)}
-            </span>
+            <span>Oldest pending: {formatDuration(stats.oldest_pending_task_age_ms)}</span>
           </div>
           <div className="flex items-center gap-1">
             <ArrowUpDown className="h-3.5 w-3.5" />
-            <span>
-              Avg wait: {formatDuration(stats.avg_schedule_to_start_ms)}
-            </span>
+            <span>Avg wait: {formatDuration(stats.avg_schedule_to_start_ms)}</span>
           </div>
           <div className="flex items-center gap-1">
             <Activity className="h-3.5 w-3.5" />
-            <span>
-              Avg exec: {formatDuration(stats.avg_execution_time_ms)}
-            </span>
+            <span>Avg exec: {formatDuration(stats.avg_execution_time_ms)}</span>
           </div>
         </div>
       )}
