@@ -128,7 +128,7 @@ impl SessionFileService {
             self.ensure_directory_exists(session_id, &parent).await?;
         }
 
-        // Check if file already exists
+        // Fast-path check (non-racy for in-memory; Postgres constraint catches races)
         if self.db.session_file_exists(session_id, &path).await? {
             return Err(anyhow!("File already exists at path: {}", path));
         }
@@ -141,7 +141,17 @@ impl SessionFileService {
             is_readonly: req.is_readonly.unwrap_or(false),
         };
 
-        let row = self.db.create_session_file(input).await?;
+        let row = self.db.create_session_file(input).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("duplicate key")
+                || msg.contains("unique constraint")
+                || msg.contains("UNIQUE constraint")
+            {
+                anyhow!("File already exists at path: {}", path)
+            } else {
+                e
+            }
+        })?;
         Ok(Self::row_to_session_file(row))
     }
 
@@ -176,7 +186,25 @@ impl SessionFileService {
             is_readonly: false,
         };
 
-        let row = self.db.create_session_file(input).await?;
+        let row = match self.db.create_session_file(input).await {
+            Ok(row) => row,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("duplicate key")
+                    || msg.contains("unique constraint")
+                    || msg.contains("UNIQUE constraint")
+                {
+                    // Race: another request created it concurrently; return existing
+                    if let Some(existing) = self.db.get_session_file(session_id, &path).await?
+                        && existing.is_directory
+                    {
+                        return Ok(Self::row_to_file_info(existing));
+                    }
+                    return Err(anyhow!("A file exists at path: {}", path));
+                }
+                return Err(e);
+            }
+        };
         Ok(Self::row_to_file_info(row))
     }
 
@@ -209,8 +237,26 @@ impl SessionFileService {
             is_readonly: false,
         };
 
-        self.db.create_session_file(input).await?;
-        Ok(())
+        match self.db.create_session_file(input).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("duplicate key")
+                    || msg.contains("unique constraint")
+                    || msg.contains("UNIQUE constraint")
+                {
+                    // Race: another request created it concurrently; check it's a directory
+                    if let Some(existing) = self.db.get_session_file(session_id, path).await?
+                        && existing.is_directory
+                    {
+                        return Ok(());
+                    }
+                    Err(anyhow!("A file exists at path: {}", path))
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     /// Read a file
@@ -809,6 +855,7 @@ mod tests {
     use super::*;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateSessionFileRow;
+    use std::sync::Arc;
 
     /// Seed a text file into the in-memory store.
     async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
@@ -872,6 +919,33 @@ mod tests {
 
         let result = grep_session_files(&db, sid, "[invalid", None).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn create_duplicate_file_returns_already_exists_error() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db.clone()));
+
+        let input = CreateFileInput {
+            path: "/test.txt".to_string(),
+            content: Some("hello".to_string()),
+            encoding: None,
+            is_readonly: None,
+        };
+        svc.create_file(sid, input).await.unwrap();
+
+        let input2 = CreateFileInput {
+            path: "/test.txt".to_string(),
+            content: Some("world".to_string()),
+            encoding: None,
+            is_readonly: None,
+        };
+        let err = svc.create_file(sid, input2).await.unwrap_err();
+        assert!(
+            err.to_string().contains("already exists"),
+            "Expected 'already exists' in: {err}"
+        );
     }
 
     #[tokio::test]

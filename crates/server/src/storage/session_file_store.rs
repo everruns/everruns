@@ -85,8 +85,30 @@ impl DbSessionFileStore {
             is_readonly: false,
         };
 
-        self.db.create_session_file(input).await?;
-        Ok(())
+        match self.db.create_session_file(input).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("duplicate key")
+                    || msg.contains("unique constraint")
+                    || msg.contains("UNIQUE constraint")
+                {
+                    // Race: directory was created concurrently; verify it's a directory
+                    if let Some(existing) =
+                        self.db.get_session_file(session_id.uuid(), path).await?
+                        && existing.is_directory
+                    {
+                        return Ok(());
+                    }
+                    Err(AgentLoopError::store(format!(
+                        "A file exists at path: {}",
+                        path
+                    )))
+                } else {
+                    Err(AgentLoopError::store(e.to_string()))
+                }
+            }
+        }
     }
 }
 
@@ -481,11 +503,42 @@ impl SessionFileStore for DbSessionFileStore {
             is_readonly: false,
         };
 
-        let row = self
-            .db
-            .create_session_file(input)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let row = match self.db.create_session_file(input).await {
+            Ok(row) => row,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("duplicate key")
+                    || msg.contains("unique constraint")
+                    || msg.contains("UNIQUE constraint")
+                {
+                    // Race: directory created concurrently; return existing
+                    if let Some(existing) = self
+                        .db
+                        .get_session_file(session_id.uuid(), &path)
+                        .await
+                        .map_err(|e| AgentLoopError::store(e.to_string()))?
+                        && existing.is_directory
+                    {
+                        return Ok(FileInfo {
+                            id: existing.id,
+                            session_id: existing.session_id.uuid(),
+                            path: existing.path.clone(),
+                            name: FileInfo::name_from_path(&existing.path),
+                            is_directory: existing.is_directory,
+                            is_readonly: existing.is_readonly,
+                            size_bytes: existing.size_bytes,
+                            created_at: existing.created_at,
+                            updated_at: existing.updated_at,
+                        });
+                    }
+                    return Err(AgentLoopError::store(format!(
+                        "A file exists at path: {}",
+                        path
+                    )));
+                }
+                return Err(AgentLoopError::store(e.to_string()));
+            }
+        };
 
         Ok(FileInfo {
             id: row.id,

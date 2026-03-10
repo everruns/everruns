@@ -150,11 +150,30 @@ impl DirectWorkerAdapters {
             is_readonly: false,
         };
 
-        self.db
-            .create_session_file(input)
-            .await
-            .map_err(|e| store_error(format!("Failed to create directory: {}", e)))?;
-        Ok(())
+        match self.db.create_session_file(input).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("duplicate key")
+                    || msg.contains("unique constraint")
+                    || msg.contains("UNIQUE constraint")
+                {
+                    // Race: directory was created concurrently; verify it's a directory
+                    if let Some(existing) = self
+                        .db
+                        .get_session_file(session_id, path)
+                        .await
+                        .map_err(|e| store_error(format!("Failed to check directory: {}", e)))?
+                        && existing.is_directory
+                    {
+                        return Ok(());
+                    }
+                    Err(store_error(format!("A file exists at path: {}", path)))
+                } else {
+                    Err(store_error(format!("Failed to create directory: {}", e)))
+                }
+            }
+        }
     }
 }
 
@@ -489,10 +508,33 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 is_directory: false,
                 is_readonly: false,
             };
-            self.db.create_session_file(create).await.map_err(|e| {
-                tracing::error!("Failed to create file: {}", e);
-                store_error("Failed to write file")
-            })?
+            match self.db.create_session_file(create).await {
+                Ok(row) => row,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("duplicate key")
+                        || msg.contains("unique constraint")
+                        || msg.contains("UNIQUE constraint")
+                    {
+                        // Race: file was created concurrently; fall back to update
+                        let update = UpdateSessionFile {
+                            content: Some(content_bytes.clone()),
+                            ..Default::default()
+                        };
+                        self.db
+                            .update_session_file(session_id, path, update)
+                            .await
+                            .map_err(|e| {
+                                tracing::error!("Failed to update file after race: {}", e);
+                                store_error("Failed to write file")
+                            })?
+                            .ok_or_else(|| store_error("File disappeared during update"))?
+                    } else {
+                        tracing::error!("Failed to create file: {}", e);
+                        return Err(store_error("Failed to write file"));
+                    }
+                }
+            }
         };
 
         Ok(SessionFile {
