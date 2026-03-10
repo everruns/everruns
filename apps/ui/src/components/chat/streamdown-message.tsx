@@ -48,7 +48,19 @@ const streamdownStyles = `
   .streamdown th, .streamdown td { border: 1px solid var(--color-border); padding: 0.5em; text-align: left; }
   .streamdown th { background: var(--color-muted); font-weight: 600; }
   .streamdown img { max-width: 100%; height: auto; }
-  .streamdown [data-streamdown-code] { border-radius: 0; }
+
+  /* Streamdown code block overrides: sharp corners, no nested borders/backgrounds,
+     toolbar overlapping header (the Tailwind -mt-10 class may not be generated). */
+  .streamdown [data-streamdown="code-block"] { border-radius: 0; position: relative; }
+  .streamdown [data-streamdown="code-block-body"] { border-radius: 0; border: none; }
+  .streamdown [data-streamdown="code-block-body"] pre { background: none; padding: 0; margin: 0; }
+  .streamdown [data-streamdown="code-block-body"] pre code { background: none; padding: 0; }
+  .streamdown [data-streamdown="code-block-header"] { display: inline-flex; }
+  .streamdown [data-streamdown="code-block-actions"] {
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+  }
 
   /* GitHub-style alerts */
   .streamdown .markdown-alert { padding: 0.5em 1em; margin: 0.5em 0; border-left: 4px solid; }
