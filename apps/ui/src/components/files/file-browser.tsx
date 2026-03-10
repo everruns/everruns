@@ -409,7 +409,7 @@ export function FileBrowser({
       </div>
 
       {/* File Tree */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="size-4 animate-spin mr-2" />
