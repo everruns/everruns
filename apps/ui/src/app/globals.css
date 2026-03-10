@@ -3,6 +3,11 @@
 /* Enable Tailwind to scan Streamdown for classes */
 @source "../node_modules/streamdown/dist/*.js";
 
+/* Safelist Streamdown code block classes that Tailwind v4 @source misses from
+   minified JS (negative margins, color/opacity variants). Without these, the
+   code block toolbar positioning and background colors break. */
+@source inline("-mt-10 bg-sidebar/70 bg-sidebar/80 border-sidebar border-muted-foreground/30");
+
 /**
  * Slate Design System
  *
@@ -35,6 +40,9 @@
     --border: 0 0% 88%;
     --input: 0 0% 85%;
     --ring: 43 60% 53%;
+    /* Sidebar: used by Streamdown code blocks */
+    --sidebar: 0 0% 96%;
+    --sidebar-foreground: 0 0% 10%;
     /* Sharp corners */
     --radius: 0px;
   }
@@ -62,6 +70,9 @@
     --border: 220 15% 18%;
     --input: 220 15% 18%;
     --ring: 43 60% 53%;
+    /* Sidebar: used by Streamdown code blocks */
+    --sidebar: 220 15% 15%;
+    --sidebar-foreground: 0 0% 95%;
   }
 }
 
@@ -85,6 +96,8 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   /* Sharp corners - all radius values are 0 */
   --radius-sm: 0px;
   --radius-md: 0px;
