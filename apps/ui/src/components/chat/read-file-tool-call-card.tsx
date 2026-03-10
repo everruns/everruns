@@ -26,12 +26,17 @@ interface ReadFilePayload {
   media_type?: string;
 }
 
+interface ParsedReadFileImage {
+  src: string;
+  mediaType?: string;
+}
+
 interface ParsedReadFileResult {
   path?: string;
   content: string | null;
   encoding?: string;
   sizeBytes?: number;
-  images: Array<{ src: string; mediaType?: string }>;
+  images: ParsedReadFileImage[];
 }
 
 function basename(value: string): string {
@@ -90,13 +95,15 @@ function parseReadFileResult(
 ): ParsedReadFileResult {
   const rawText = getFullText(result);
   const payload = parseReadFilePayload(rawText);
-  const images = (result ?? [])
-    .filter(isImagePart)
-    .map((part) => ({
-      src: buildImageSrc(part),
+  const images = (result ?? []).filter(isImagePart).reduce<ParsedReadFileImage[]>((all, part) => {
+    const src = buildImageSrc(part);
+    if (!src) return all;
+    all.push({
+      src,
       mediaType: part.media_type,
-    }))
-    .filter((part): part is { src: string; mediaType?: string } => part.src !== null);
+    });
+    return all;
+  }, []);
 
   return {
     path:
@@ -225,6 +232,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
           {hasImages && (
             <div className="space-y-2">
               {parsed.images.map((image, index) => (
+                // eslint-disable-next-line @next/next/no-img-element -- tool output can be data URLs or arbitrary remote images.
                 <img
                   key={`${image.src}-${index}`}
                   src={image.src}

@@ -481,7 +481,15 @@ function GroupedActivityCard({
   toolResultsMap,
   mode = "server",
 }: ToolActivityGroupProps) {
-  if (toolCalls.length === 1) {
+  const isSingleRow = toolCalls.length === 1;
+  const [isExpanded, setIsExpanded] = useState(true);
+  const activityCompletedCount = useMemo(
+    () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
+    [toolCalls, toolResultsMap],
+  );
+  const isActive = activityCompletedCount < toolCalls.length;
+
+  if (isSingleRow) {
     const toolCall = toolCalls[0];
     return (
       <ToolActivityRow
@@ -491,13 +499,6 @@ function GroupedActivityCard({
       />
     );
   }
-
-  const [isExpanded, setIsExpanded] = useState(true);
-  const activityCompletedCount = useMemo(
-    () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
-    [toolCalls, toolResultsMap],
-  );
-  const isActive = activityCompletedCount < toolCalls.length;
 
   return (
     <div className="space-y-1.5">
