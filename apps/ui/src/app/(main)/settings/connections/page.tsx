@@ -124,12 +124,7 @@ function ConnectionRow({
       </div>
       <div className="flex items-center gap-2">
         {isApiKey && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleVerify}
-            disabled={verify.isPending}
-          >
+          <Button variant="outline" size="sm" onClick={handleVerify} disabled={verify.isPending}>
             {verify.isPending ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
