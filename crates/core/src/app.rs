@@ -152,6 +152,12 @@ pub struct SlackChannelConfig {
     /// How incoming messages map to sessions.
     #[serde(default)]
     pub session_strategy: SessionStrategy,
+    /// Set when Slack successfully verifies the webhook URL (url_verification challenge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub webhook_verified_at: Option<DateTime<Utc>>,
+    /// Set when the first real message is received from Slack.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_message_received_at: Option<DateTime<Utc>>,
 }
 
 impl App {
@@ -253,6 +259,42 @@ mod tests {
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
         assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+        assert!(config.webhook_verified_at.is_none());
+        assert!(config.first_message_received_at.is_none());
+    }
+
+    #[test]
+    fn test_slack_channel_config_with_verification_timestamps() {
+        let json = r#"{
+            "signing_secret": "s",
+            "bot_token": "t",
+            "webhook_verified_at": "2025-01-01T00:00:00Z",
+            "first_message_received_at": "2025-01-01T01:00:00Z"
+        }"#;
+        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
+        assert!(config.webhook_verified_at.is_some());
+        assert!(config.first_message_received_at.is_some());
+
+        // Round-trip: timestamps should be preserved
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert!(serialized.get("webhook_verified_at").is_some());
+        assert!(serialized.get("first_message_received_at").is_some());
+    }
+
+    #[test]
+    fn test_slack_channel_config_timestamps_skipped_when_none() {
+        let config = SlackChannelConfig {
+            signing_secret: "s".into(),
+            bot_token: "t".into(),
+            channel_id: None,
+            team_id: None,
+            session_strategy: SessionStrategy::PerThread,
+            webhook_verified_at: None,
+            first_message_received_at: None,
+        };
+        let json = serde_json::to_value(&config).unwrap();
+        assert!(json.get("webhook_verified_at").is_none());
+        assert!(json.get("first_message_received_at").is_none());
     }
 
     #[test]

@@ -24,6 +24,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+use chrono::Utc;
 use everruns_core::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
@@ -38,6 +39,7 @@ use crate::api::sessions::CreateSessionRequest;
 use crate::services::{AppService, MessageService, SessionService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
+use crate::storage::models::UpdateApp;
 
 use super::common::ErrorResponse;
 
@@ -277,6 +279,26 @@ async fn handle_slack_event(
         "url_verification" => {
             let challenge = envelope.challenge.unwrap_or_default();
             tracing::info!(app_id = %app_id, "Slack URL verification challenge received");
+
+            // Record webhook verification timestamp (idempotent — only sets if not already set)
+            if slack_config.webhook_verified_at.is_none() {
+                let mut updated_config = slack_config.clone();
+                updated_config.webhook_verified_at = Some(Utc::now());
+                if let Ok(config_json) = serde_json::to_value(&updated_config) {
+                    let input = UpdateApp {
+                        channel_config: Some(config_json),
+                        ..Default::default()
+                    };
+                    if let Err(e) = state
+                        .db
+                        .update_app(app.org_id, app.internal_id, input)
+                        .await
+                    {
+                        tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
+                    }
+                }
+            }
+
             Ok((
                 StatusCode::OK,
                 Json(serde_json::to_value(ChallengeResponse { challenge }).unwrap()),
@@ -309,6 +331,25 @@ async fn handle_slack_event(
                     thread_ts = ?event.thread_ts,
                     "Slack message received"
                 );
+
+                // Record first message timestamp (idempotent — only sets once)
+                if slack_config.first_message_received_at.is_none() {
+                    let mut updated_config = slack_config.clone();
+                    updated_config.first_message_received_at = Some(Utc::now());
+                    if let Ok(config_json) = serde_json::to_value(&updated_config) {
+                        let input = UpdateApp {
+                            channel_config: Some(config_json),
+                            ..Default::default()
+                        };
+                        if let Err(e) = state
+                            .db
+                            .update_app(app.org_id, app.internal_id, input)
+                            .await
+                        {
+                            tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
+                        }
+                    }
+                }
 
                 // Process message in background (Slack requires 200 within 3 seconds)
                 let state = state.clone();
@@ -1377,6 +1418,8 @@ mod tests {
             channel_id: None,
             team_id: None,
             session_strategy: strategy,
+            webhook_verified_at: None,
+            first_message_received_at: None,
         }
     }
 

@@ -9,6 +9,8 @@ import { Copy, CircleCheck, Circle, ExternalLink, Pencil } from "lucide-react";
 interface SlackSetupGuidanceProps {
   hasSlackConfig: boolean;
   isPublished: boolean;
+  webhookVerified: boolean;
+  firstMessageReceived: boolean;
   webhookUrl: string;
   webhookPath: string;
   isLocalhost: boolean;
@@ -20,6 +22,8 @@ interface SlackSetupGuidanceProps {
 export function SlackSetupGuidance({
   hasSlackConfig,
   isPublished,
+  webhookVerified,
+  firstMessageReceived,
   webhookUrl,
   webhookPath,
   isLocalhost,
@@ -33,6 +37,8 @@ export function SlackSetupGuidance({
       <SetupSteps
         hasSlackConfig={hasSlackConfig}
         isPublished={isPublished}
+        webhookVerified={webhookVerified}
+        firstMessageReceived={firstMessageReceived}
         webhookUrl={webhookUrl}
         webhookPath={webhookPath}
         isLocalhost={isLocalhost}
@@ -55,6 +61,8 @@ function StepIcon({ done }: { done: boolean }) {
 function SetupSteps({
   hasSlackConfig,
   isPublished,
+  webhookVerified,
+  firstMessageReceived,
   webhookUrl,
   webhookPath,
   isLocalhost,
@@ -62,7 +70,15 @@ function SetupSteps({
   creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
-  const currentStep = !hasSlackConfig ? 1 : !isPublished ? 3 : 4;
+  const currentStep = !hasSlackConfig
+    ? 1
+    : !isPublished
+      ? 3
+      : !webhookVerified
+        ? 4
+        : !firstMessageReceived
+          ? 5
+          : 5;
 
   return (
     <div className="space-y-4">
@@ -145,9 +161,13 @@ function SetupSteps({
       </div>
 
       <div className="flex gap-3">
-        <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+        <StepIcon done={webhookVerified} />
         <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium">4. Configure Event Subscriptions</p>
+          <p
+            className={`text-sm font-medium ${webhookVerified ? "text-muted-foreground line-through" : ""}`}
+          >
+            4. Configure Event Subscriptions
+          </p>
           {currentStep === 4 ? (
             <div className="space-y-2">
               {isLocalhost ? (
@@ -201,9 +221,13 @@ function SetupSteps({
       </div>
 
       <div className="flex gap-3">
-        <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
+        <StepIcon done={firstMessageReceived} />
         <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium">5. Invite the bot and test</p>
+          <p
+            className={`text-sm font-medium ${firstMessageReceived ? "text-muted-foreground line-through" : ""}`}
+          >
+            5. Invite the bot and test
+          </p>
           <p className="text-xs text-muted-foreground">
             In Slack, use <code>/invite @botname</code> in a channel, then send a message.
           </p>
