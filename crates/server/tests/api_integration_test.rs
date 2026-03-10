@@ -2052,3 +2052,44 @@ async fn test_can_delete_non_readonly_file() {
         .json();
     assert_eq!(result["deleted"], true);
 }
+
+// ============================================
+// User Connection Verify Endpoint Tests
+// ============================================
+
+#[tokio::test]
+async fn test_verify_connection_no_connection_returns_404() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post("/v1/user/connections/nonexistent/verify", json!({}))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_verify_connection_providers_listed() {
+    let server = TestServer::in_memory().await;
+
+    let resp: Value = server
+        .get("/v1/user/connections/providers")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    // Should be an array (may include plugin-registered providers)
+    assert!(resp.is_array());
+}
+
+#[tokio::test]
+async fn test_list_connections_initially_empty() {
+    let server = TestServer::in_memory().await;
+
+    let resp: Vec<Value> = server
+        .get("/v1/user/connections")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert!(resp.is_empty());
+}

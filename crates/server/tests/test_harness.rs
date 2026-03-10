@@ -198,6 +198,12 @@ impl TestServer {
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags,
         };
+        let user_connections_state = api::user_connections::AppState {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            auth: auth_state.clone(),
+            auth_config: auth_config.clone(),
+        };
 
         // Build API routes
         let api_routes = Router::new()
@@ -220,6 +226,7 @@ impl TestServer {
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::feature_flags::routes(feature_flags_state))
+            .merge(api::user_connections::routes(user_connections_state))
             .merge(auth::routes(auth_backend));
 
         // Build main router with health endpoint

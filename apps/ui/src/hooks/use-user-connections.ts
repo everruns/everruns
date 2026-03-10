@@ -6,6 +6,7 @@ import {
   getConnectionProviders,
   createApiKeyConnection,
   deleteUserConnection,
+  verifyConnection,
 } from "@/lib/api/user-connections";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -36,6 +37,12 @@ export function useCreateApiKeyConnection() {
         queryKey: queryKeys.userConnections.all,
       });
     },
+  });
+}
+
+export function useVerifyConnection() {
+  return useMutation({
+    mutationFn: (provider: string) => verifyConnection(provider),
   });
 }
 

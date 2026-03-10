@@ -1664,6 +1664,11 @@ export interface ConnectionFormField {
   help_text?: string;
 }
 
+export interface VerifyConnectionResponse {
+  valid: boolean;
+  error?: string;
+}
+
 // ============================================
 // Command types
 // ============================================

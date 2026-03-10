@@ -21,6 +21,7 @@ import {
   useDeleteUserConnection,
   useConnectionProviders,
   useCreateApiKeyConnection,
+  useVerifyConnection,
 } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
 import {
@@ -29,9 +30,13 @@ import {
   LinkIcon,
   Trash2,
   Check,
+  CheckCircle,
   Cloud,
   Search,
   AlertCircle,
+  ShieldCheck,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
@@ -64,6 +69,27 @@ function ConnectionRow({
 }) {
   const displayName = provider?.display_name ?? connection.provider;
   const icon = provider?.icon ?? "link";
+  const isApiKey = connection.connection_type === "api_key";
+  const verify = useVerifyConnection();
+  const [verifyStatus, setVerifyStatus] = useState<"idle" | "valid" | "invalid">("idle");
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  const handleVerify = async () => {
+    setVerifyStatus("idle");
+    setVerifyError(null);
+    try {
+      const result = await verify.mutateAsync(connection.provider);
+      if (result.valid) {
+        setVerifyStatus("valid");
+      } else {
+        setVerifyStatus("invalid");
+        setVerifyError(result.error ?? "Verification failed");
+      }
+    } catch {
+      setVerifyStatus("invalid");
+      setVerifyError("Failed to verify connection");
+    }
+  };
 
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -82,18 +108,42 @@ function ConnectionRow({
             Connected {new Date(connection.connected_at).toLocaleDateString()}
             {connection.scopes && <span className="ml-2">({connection.scopes})</span>}
           </div>
+          {verifyStatus === "valid" && (
+            <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs mt-1">
+              <CheckCircle className="h-3 w-3" />
+              API key is valid
+            </div>
+          )}
+          {verifyStatus === "invalid" && (
+            <div className="flex items-center gap-1 text-destructive text-xs mt-1">
+              <XCircle className="h-3 w-3" />
+              {verifyError}
+            </div>
+          )}
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="text-destructive"
-        onClick={() => onDisconnect(connection.provider)}
-        disabled={isDisconnecting}
-      >
-        <Trash2 className="h-4 w-4 mr-1" />
-        Disconnect
-      </Button>
+      <div className="flex items-center gap-2">
+        {isApiKey && (
+          <Button variant="outline" size="sm" onClick={handleVerify} disabled={verify.isPending}>
+            {verify.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4 mr-1" />
+            )}
+            {verify.isPending ? "Verifying..." : "Verify"}
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive"
+          onClick={() => onDisconnect(connection.provider)}
+          disabled={isDisconnecting}
+        >
+          <Trash2 className="h-4 w-4 mr-1" />
+          Disconnect
+        </Button>
+      </div>
     </div>
   );
 }

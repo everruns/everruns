@@ -13,7 +13,7 @@ use axum::{
     extract::{FromRef, Path, Query, State},
     http::StatusCode,
     response::Redirect,
-    routing::{delete, get, put},
+    routing::{delete, get, post, put},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
@@ -133,6 +133,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/user/connections/{provider}",
             delete(delete_connection).post(create_api_key_connection),
+        )
+        .route(
+            "/v1/user/connections/{provider}/verify",
+            post(verify_connection),
         )
         .route(
             "/v1/user/connections/github/authorize",
@@ -335,6 +339,103 @@ pub async fn delete_connection(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)
+    }
+}
+
+/// Response for connection verification
+#[derive(Debug, Serialize)]
+pub struct VerifyConnectionResponse {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// POST /v1/user/connections/:provider/verify — Verify stored API key still works
+///
+/// Generic endpoint: decrypts the stored credential and calls the provider's
+/// validate() method. Works for any API-key provider that implements
+/// ConnectionProvider::validate().
+pub async fn verify_connection(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(provider_id): Path<String>,
+) -> Result<Json<VerifyConnectionResponse>, (StatusCode, String)> {
+    let grade = DeploymentGrade::from_env();
+
+    // Look up the stored connection
+    let row = state
+        .db
+        .get_user_connection(auth.id, &provider_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to look up connection for verify: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to look up connection".to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("No connection found for provider: {provider_id}"),
+            )
+        })?;
+
+    // Only API-key connections can be verified this way
+    if row.connection_type != "api_key" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("Provider '{provider_id}' does not support API key verification"),
+        ));
+    }
+
+    let encrypted = row.access_token_encrypted.ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "No stored credential found".to_string(),
+        )
+    })?;
+
+    // Decrypt
+    let encryption = state.encryption.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Encryption not configured".to_string(),
+        )
+    })?;
+    let credential = encryption.decrypt_to_string(&encrypted).map_err(|e| {
+        tracing::error!("Failed to decrypt credential for verify: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to decrypt credential".to_string(),
+        )
+    })?;
+
+    // Find the provider plugin
+    let provider: Option<Box<dyn everruns_core::connection_provider::ConnectionProvider>> =
+        inventory::iter::<ConnectionProviderPlugin>
+            .into_iter()
+            .filter(|p| !p.experimental_only || grade.experimental_features_enabled())
+            .map(|p| (p.factory)())
+            .find(|p| p.provider_id() == provider_id);
+
+    let provider = provider.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Unknown connection provider: {provider_id}"),
+        )
+    })?;
+
+    // Call provider's validate()
+    match provider.validate(&credential).await {
+        Ok(_) => Ok(Json(VerifyConnectionResponse {
+            valid: true,
+            error: None,
+        })),
+        Err(msg) => Ok(Json(VerifyConnectionResponse {
+            valid: false,
+            error: Some(msg),
+        })),
     }
 }
 
@@ -731,5 +832,34 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let (status, _) = validate_install_state(&jar, Some("y")).unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    // =========================================================================
+    // VerifyConnectionResponse serialization tests
+    // =========================================================================
+
+    #[test]
+    fn verify_response_valid_serializes_without_error() {
+        let resp = VerifyConnectionResponse {
+            valid: true,
+            error: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], true);
+        assert!(
+            json.get("error").is_none(),
+            "error field should be skipped when None"
+        );
+    }
+
+    #[test]
+    fn verify_response_invalid_serializes_with_error() {
+        let resp = VerifyConnectionResponse {
+            valid: false,
+            error: Some("Invalid API key".to_string()),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["error"], "Invalid API key");
     }
 }
