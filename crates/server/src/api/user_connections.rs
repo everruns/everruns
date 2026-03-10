@@ -846,7 +846,10 @@ mod tests {
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["valid"], true);
-        assert!(json.get("error").is_none(), "error field should be skipped when None");
+        assert!(
+            json.get("error").is_none(),
+            "error field should be skipped when None"
+        );
     }
 
     #[test]
