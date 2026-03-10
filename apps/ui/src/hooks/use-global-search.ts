@@ -191,7 +191,7 @@ export function useGlobalSearch(query: string) {
           resolvedName = agents.find((a) => a.id === idValue)?.name;
         } else if (prefix === "session_") {
           const s = sessions.find((s) => s.id === idValue);
-          resolvedName = s?.title || s?.preview;
+          resolvedName = s?.title ?? s?.preview ?? undefined;
         } else if (prefix === "harness_") {
           resolvedName = harnesses.find((h) => h.id === idValue)?.name;
         } else if (prefix === "skill_") {
