@@ -68,6 +68,7 @@ import {
   BookOpen,
   Plus,
   Rocket,
+  ListTodo,
 } from "lucide-react";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -133,6 +134,7 @@ export const defaultDurableNavigation: NavigationItem[] = [
   { name: "Overview", href: "/durable", icon: Cog, exact: true },
   { name: "Workers", href: "/durable/workers", icon: Server },
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
+  { name: "Queues", href: "/durable/queues", icon: ListTodo },
   { name: "Schedules", href: "/durable/schedules", icon: Calendar },
 ];
 
