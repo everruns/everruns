@@ -953,5 +953,4 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["name"], "only.txt");
     }
-
 }
