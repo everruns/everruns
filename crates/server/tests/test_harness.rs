@@ -205,9 +205,17 @@ impl TestServer {
             auth_config: auth_config.clone(),
         };
 
+        let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
+        let slack_state = api::slack_events::SlackState::new(
+            db.clone(),
+            runner.clone(),
+            None, // No delivery dispatcher in tests
+        );
+
         // Build API routes
         let api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::apps::routes(apps_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
@@ -227,6 +235,7 @@ impl TestServer {
             .merge(api::organizations::routes(organizations_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
+            .merge(api::slack_events::routes(slack_state))
             .merge(auth::routes(auth_backend));
 
         // Build main router with health endpoint
@@ -263,6 +272,43 @@ impl TestServer {
     /// Make a DELETE request
     pub async fn delete(&self, uri: &str) -> TestResponse {
         self.request(Method::DELETE, uri, None::<()>).await
+    }
+
+    /// Make a raw request with custom headers and body bytes (for Slack webhook testing)
+    pub async fn request_raw(
+        &self,
+        method: Method,
+        uri: &str,
+        headers: Vec<(&str, &str)>,
+        body: Vec<u8>,
+    ) -> TestResponse {
+        let mut builder = Request::builder().method(method).uri(uri);
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
+        let request = builder
+            .body(Body::from(body))
+            .expect("Failed to build request");
+
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("Request failed");
+
+        let status = response.status();
+        let body_bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("Failed to read body")
+            .to_bytes();
+
+        TestResponse {
+            status,
+            body: body_bytes.to_vec(),
+        }
     }
 
     /// Make a request with custom method and optional body
