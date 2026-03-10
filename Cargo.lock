@@ -1555,6 +1555,7 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "uuid",
+ "wiremock",
  "zip",
 ]
 

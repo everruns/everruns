@@ -83,6 +83,7 @@ http-body-util = "0.1"
 sysinfo = "0.33"
 serde_html_form = "0.2"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
+wiremock = "0.6"
 
 [[bench]]
 name = "load_test"

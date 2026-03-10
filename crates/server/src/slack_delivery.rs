@@ -478,11 +478,21 @@ async fn post_to_slack_with_retry(
     thread_ts: &str,
     text: &str,
 ) -> anyhow::Result<()> {
+    post_to_slack_with_retry_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await
+}
+
+async fn post_to_slack_with_retry_base(
+    base_url: &str,
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+) -> anyhow::Result<()> {
     let max_attempts = 3;
     let mut delay = std::time::Duration::from_secs(1);
 
     for attempt in 1..=max_attempts {
-        match post_to_slack(bot_token, channel, thread_ts, text).await {
+        match post_to_slack_base(base_url, bot_token, channel, thread_ts, text).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 let error_str = e.to_string();
@@ -517,8 +527,21 @@ async fn post_to_slack_with_retry(
     unreachable!()
 }
 
+const SLACK_API_BASE: &str = "https://slack.com/api";
+
 /// Post a message to Slack using the Bot API.
 pub(crate) async fn post_to_slack(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+) -> anyhow::Result<()> {
+    post_to_slack_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await
+}
+
+/// Post a message to Slack using the Bot API (with configurable base URL for testing).
+pub(crate) async fn post_to_slack_base(
+    base_url: &str,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
@@ -536,7 +559,7 @@ pub(crate) async fn post_to_slack(
     }
 
     let response = client
-        .post("https://slack.com/api/chat.postMessage")
+        .post(format!("{}/chat.postMessage", base_url))
         .header("Authorization", format!("Bearer {}", bot_token))
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -713,5 +736,388 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(key.clone(), "value");
         assert_eq!(map.get(&key), Some(&"value"));
+    }
+
+    // ==========================================
+    // WireMock integration tests — post_to_slack
+    // ==========================================
+
+    mod wiremock_tests {
+        use super::*;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        #[tokio::test]
+        async fn test_post_to_slack_success() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .and(header("Authorization", "Bearer xoxb-test-token"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "channel": "C123",
+                    "ts": "1234567890.123456"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1234567890.000000",
+                "Hello from agent!",
+            )
+            .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_success_no_thread_ts() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "channel": "C123",
+                    "ts": "1234567890.123456"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            // Empty thread_ts should still succeed (message not in thread)
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_channel_not_found() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "channel_not_found"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C_INVALID",
+                "",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("channel_not_found")
+            );
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_invalid_auth() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "invalid_auth"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-bad-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("invalid_auth"));
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_rate_limited() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "ratelimited"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("rate limited"));
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_token_revoked() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "token_revoked"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-revoked", "C123", "", "Hello!").await;
+
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("token_revoked"));
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_unknown_error() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "some_unexpected_error"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("some_unexpected_error")
+            );
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_malformed_json() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_server_error() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            // 500 with non-JSON body → reqwest JSON parse error
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_retry_non_retryable_errors_fail_immediately() {
+            let mock_server = MockServer::start().await;
+
+            // Non-retryable error should only be called once (no retry)
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "channel_not_found"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_with_retry_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C_GONE",
+                "",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("channel_not_found")
+            );
+            // .expect(1) verifies exactly one call was made (no retries)
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_retry_success_on_first_attempt() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "channel": "C123",
+                    "ts": "1234567890.123456"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_with_retry_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1234.0000",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_retry_not_authed() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "not_authed"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_with_retry_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_err());
+            // Should not retry — exactly 1 call
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_retry_account_inactive() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "account_inactive"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_with_retry_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_retry_no_text() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "no_text"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = post_to_slack_with_retry_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "",
+                "",
+            )
+            .await;
+
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_ok_false_no_error_field() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result =
+                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
+                    .await;
+
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("unknown"));
+        }
     }
 }

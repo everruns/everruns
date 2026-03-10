@@ -1027,6 +1027,8 @@ fn extract_response_text(data: &serde_json::Value) -> Option<String> {
     crate::slack_delivery::extract_response_text(data)
 }
 
+const SLACK_API_BASE: &str = "https://slack.com/api";
+
 /// Resolve a Slack user ID to a display name via `users.info` API.
 ///
 /// Returns the display name (or real_name fallback) on success, or `None` if
@@ -1034,6 +1036,16 @@ fn extract_response_text(data: &serde_json::Value) -> Option<String> {
 /// Results are cached: successful lookups and permanent failures (missing scope)
 /// are not retried. Transient errors are retried on next call.
 async fn resolve_slack_user_name(
+    cache: &SlackUserCache,
+    bot_token: &str,
+    user_id: &str,
+) -> Option<String> {
+    resolve_slack_user_name_base(SLACK_API_BASE, cache, bot_token, user_id).await
+}
+
+/// Resolve a Slack user ID to a display name (with configurable base URL for testing).
+async fn resolve_slack_user_name_base(
+    base_url: &str,
     cache: &SlackUserCache,
     bot_token: &str,
     user_id: &str,
@@ -1048,7 +1060,7 @@ async fn resolve_slack_user_name(
 
     // Call Slack API (user IDs are alphanumeric, safe to interpolate)
     let client = reqwest::Client::new();
-    let url = format!("https://slack.com/api/users.info?user={user_id}");
+    let url = format!("{}/users.info?user={user_id}", base_url);
     let result = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", bot_token))
@@ -2458,6 +2470,410 @@ mod tests {
 
         async fn active_count(&self) -> usize {
             0
+        }
+    }
+
+    // ==========================================
+    // WireMock integration tests — Slack API
+    // ==========================================
+
+    mod wiremock_tests {
+        use super::*;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // ------------------------------------------
+        // resolve_slack_user_name — success paths
+        // ------------------------------------------
+
+        #[tokio::test]
+        async fn test_resolve_user_name_display_name() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .and(header("Authorization", "Bearer xoxb-test-token"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "user": {
+                        "id": "U123",
+                        "name": "alice",
+                        "real_name": "Alice Smith",
+                        "profile": {
+                            "display_name": "Alice S."
+                        }
+                    }
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, Some("Alice S.".to_string()));
+
+            // Verify it was cached
+            let cached = cache.read().await.get("U123").cloned();
+            assert_eq!(cached, Some(Some("Alice S.".to_string())));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_fallback_to_real_name() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "user": {
+                        "id": "U123",
+                        "name": "alice",
+                        "real_name": "Alice Smith",
+                        "profile": {
+                            "display_name": ""
+                        }
+                    }
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            // Empty display_name → falls back to real_name
+            assert_eq!(result, Some("Alice Smith".to_string()));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_fallback_to_name() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "user": {
+                        "id": "U123",
+                        "name": "alice",
+                        "profile": {
+                            "display_name": ""
+                        }
+                    }
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            // No real_name → falls back to name
+            assert_eq!(result, Some("alice".to_string()));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_no_profile() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "user": {
+                        "id": "U123",
+                        "name": "alice"
+                    }
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            // No profile → falls back to name
+            assert_eq!(result, Some("alice".to_string()));
+        }
+
+        // ------------------------------------------
+        // resolve_slack_user_name — cache behavior
+        // ------------------------------------------
+
+        #[tokio::test]
+        async fn test_resolve_user_name_uses_cache() {
+            let mock_server = MockServer::start().await;
+
+            // No mock mounted — any actual HTTP call would fail
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            cache
+                .write()
+                .await
+                .insert("U123".to_string(), Some("Cached Alice".to_string()));
+
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, Some("Cached Alice".to_string()));
+            // No HTTP call made (mock server received 0 requests)
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_cached_none_skips_api() {
+            let mock_server = MockServer::start().await;
+
+            // Cache a None (permanent failure like missing_scope)
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            cache.write().await.insert("U123".to_string(), None);
+
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+        }
+
+        // ------------------------------------------
+        // resolve_slack_user_name — error paths
+        // ------------------------------------------
+
+        #[tokio::test]
+        async fn test_resolve_user_name_missing_scope_cached() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "missing_scope"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+
+            // Permanent error should be cached as None
+            let cached = cache.read().await.get("U123").cloned();
+            assert_eq!(cached, Some(None));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_invalid_auth_cached() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "invalid_auth"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-bad-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_token_revoked_cached() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "token_revoked"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-revoked", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_transient_error_not_cached() {
+            let mock_server = MockServer::start().await;
+
+            // Transient error (e.g. internal_error) should NOT be cached
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "internal_error"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+
+            // Transient error should NOT be cached (allow retry)
+            assert!(cache.read().await.get("U123").is_none());
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_malformed_json() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+            // Parse failure is transient — not cached
+            assert!(cache.read().await.get("U123").is_none());
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_account_inactive_cached() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "account_inactive"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+        }
+
+        #[tokio::test]
+        async fn test_resolve_user_name_not_authed_cached() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/users.info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "not_authed"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let result =
+                resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
+                    .await;
+
+            assert_eq!(result, None);
+            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+        }
+
+        // ------------------------------------------
+        // post_to_slack via slack_delivery module
+        // ------------------------------------------
+
+        #[tokio::test]
+        async fn test_post_to_slack_success() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .and(header("Authorization", "Bearer xoxb-test-token"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "channel": "C123",
+                    "ts": "1234567890.123456"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = crate::slack_delivery::post_to_slack_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1234567890.000000",
+                "Hello from agent!",
+            )
+            .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_post_to_slack_error() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "channel_not_found"
+                })))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let result = crate::slack_delivery::post_to_slack_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C_INVALID",
+                "",
+                "Hello!",
+            )
+            .await;
+
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("channel_not_found")
+            );
         }
     }
 }
