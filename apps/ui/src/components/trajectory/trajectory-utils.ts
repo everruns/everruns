@@ -39,6 +39,8 @@ export interface AgentMessageNodeData {
   eventId: string;
   timestamp: string;
   hasToolCalls: boolean;
+  /** Execution phase: "in_progress" or "completed" */
+  phase?: string;
 }
 
 export interface ReasoningNodeData {
@@ -145,7 +147,13 @@ export interface TurnAccumulator {
   inputMessageId?: string;
   userMessage?: { eventId: string; text: string; ts: string; messageId?: string };
   iterations: IterationAccumulator[];
-  agentMessage?: { eventId: string; text: string; ts: string; hasToolCalls: boolean };
+  agentMessage?: {
+    eventId: string;
+    text: string;
+    ts: string;
+    hasToolCalls: boolean;
+    phase?: string;
+  };
   completed: boolean;
   failed: boolean;
   errorMessage?: string;
@@ -304,6 +312,7 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
           text,
           ts: event.ts,
           hasToolCalls,
+          phase: data.message?.phase,
         };
         break;
       }
@@ -470,6 +479,7 @@ export function buildTrajectory(events: Event[]): {
         eventId: turn.agentMessage.eventId,
         timestamp: turn.agentMessage.ts,
         hasToolCalls: turn.agentMessage.hasToolCalls,
+        phase: turn.agentMessage.phase,
       } as AgentMessageNodeData);
       childY += CHILD_SPACING_CONTENT;
     }

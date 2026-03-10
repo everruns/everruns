@@ -45,7 +45,7 @@ pub enum LlmStreamEvent {
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Streaming completed
-    Done(LlmCompletionMetadata),
+    Done(Box<LlmCompletionMetadata>),
     /// Error during streaming
     Error(String),
 }
@@ -94,6 +94,10 @@ pub struct LlmCompletionMetadata {
     /// Provider's response ID (e.g., OpenAI response ID from response.completed).
     /// Used for `previous_response_id` chaining and OTel tracing.
     pub response_id: Option<String>,
+    /// Execution phase from the provider's response (e.g., "commentary", "final_answer").
+    /// When present, this value should be preserved on the assistant message and sent
+    /// back as-is in subsequent requests. Only set by providers with native phase support.
+    pub phase: Option<String>,
 }
 
 /// Trait for LLM drivers
@@ -129,7 +133,7 @@ pub trait LlmDriver: Send + Sync {
                 LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
                 LlmStreamEvent::ThinkingSignature(sig) => thinking_signature = Some(sig),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
-                LlmStreamEvent::Done(meta) => metadata = meta,
+                LlmStreamEvent::Done(meta) => metadata = *meta,
                 LlmStreamEvent::Error(err) => return Err(crate::error::AgentLoopError::llm(err)),
             }
         }
@@ -244,6 +248,11 @@ pub struct LlmMessage {
     pub content: LlmMessageContent,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
+    /// Execution phase for assistant messages.
+    /// Helps models distinguish between intermediate working commentary (`Commentary`)
+    /// and completed answers (`FinalAnswer`) in multi-step tool-calling flows.
+    /// Only set on assistant messages. Must be preserved when replaying conversation history.
+    pub phase: Option<crate::message::ExecutionPhase>,
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// Must be included in subsequent API calls when thinking is enabled
     pub thinking: Option<String>,
@@ -260,6 +269,7 @@ impl LlmMessage {
             content: LlmMessageContent::Text(content.into()),
             tool_calls: None,
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }
@@ -272,6 +282,7 @@ impl LlmMessage {
             content: LlmMessageContent::Parts(parts),
             tool_calls: None,
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }
@@ -591,6 +602,7 @@ impl From<&crate::message::Message> for LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            phase: msg.phase,
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
@@ -718,6 +730,7 @@ impl LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            phase: msg.phase,
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
@@ -1131,6 +1144,7 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1150,6 +1164,7 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Just text".to_string(),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1182,6 +1197,7 @@ mod tests {
                     filename: Some("test2.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1204,6 +1220,7 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Hello".to_string(),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1237,6 +1254,7 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -1279,6 +1297,7 @@ mod tests {
                 image_id: image_id.into(),
                 filename: Some("missing.png".to_string()),
             })],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,

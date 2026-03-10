@@ -136,7 +136,7 @@ impl OpenResponsesProtocolLlmDriver {
         }
     }
 
-    fn convert_message(msg: &LlmMessage) -> ResponsesInputItem {
+    fn convert_message(msg: &LlmMessage, supports_phases: bool) -> ResponsesInputItem {
         // Handle tool result messages differently
         // Note: OpenAI Responses API function_call_output only supports text output.
         // Images in tool results are dropped with a warning.
@@ -200,10 +200,19 @@ impl OpenResponsesProtocolLlmDriver {
             }
         };
 
+        // Only include phase on assistant messages when the model supports it.
+        // Map ExecutionPhase enum to the provider's wire format string.
+        let phase = if supports_phases && msg.role == LlmMessageRole::Assistant {
+            msg.phase.map(|p| p.as_provider_str().to_string())
+        } else {
+            None
+        };
+
         ResponsesInputItem::Message {
             r#type: "message".to_string(),
             role: Self::convert_role(&msg.role).to_string(),
             content,
+            phase,
         }
     }
 
@@ -458,7 +467,10 @@ impl OpenResponsesProtocolLlmDriver {
     /// Handles the conversion of:
     /// - Assistant messages with tool_calls into separate FunctionCall items
     /// - Assistant messages with thinking into Reasoning items (for o-series/GPT-5 models)
-    fn build_input(messages: &[LlmMessage]) -> (Option<String>, Vec<ResponsesInputItem>) {
+    fn build_input(
+        messages: &[LlmMessage],
+        supports_phases: bool,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
         let mut instructions: Option<String> = None;
         let mut input_items = Vec::new();
         // Counter for generating reasoning item IDs
@@ -502,7 +514,7 @@ impl OpenResponsesProtocolLlmDriver {
                         LlmMessageContent::Parts(parts) => !parts.is_empty(),
                     };
                     if has_content {
-                        input_items.push(Self::convert_message(msg));
+                        input_items.push(Self::convert_message(msg, supports_phases));
                     }
 
                     // Then emit FunctionCall items for each tool call
@@ -517,10 +529,10 @@ impl OpenResponsesProtocolLlmDriver {
                         }
                     }
                 } else {
-                    input_items.push(Self::convert_message(msg));
+                    input_items.push(Self::convert_message(msg, supports_phases));
                 }
             } else {
-                input_items.push(Self::convert_message(msg));
+                input_items.push(Self::convert_message(msg, supports_phases));
             }
         }
 
@@ -535,7 +547,15 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        let (instructions, input_items) = Self::build_input(&messages);
+        // Check model profile to determine if phases should be sent in the wire format.
+        // Only GPT-5.4+ models support native execution phases.
+        let supports_phases = crate::llm_model_profiles::get_model_profile(
+            &crate::llm_models::LlmProviderType::Openai,
+            &config.model,
+        )
+        .is_some_and(|p| p.supports_phases);
+
+        let (instructions, input_items) = Self::build_input(&messages, supports_phases);
 
         let tools = if config.tools.is_empty() {
             None
@@ -893,11 +913,30 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             _ => "stop".to_string(),
                                         };
 
+                                        // Extract phase from the last assistant message in output items
+                                        let phase = response_obj
+                                            .get("output")
+                                            .and_then(|o| o.as_array())
+                                            .and_then(|items| {
+                                                items.iter().rev().find_map(|item| {
+                                                    if item.get("type")?.as_str()? == "message"
+                                                        && item.get("role")?.as_str()?
+                                                            == "assistant"
+                                                    {
+                                                        item.get("phase")?
+                                                            .as_str()
+                                                            .map(String::from)
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            });
+
                                         let input = *input_tokens.lock().unwrap();
                                         let output = *output_tokens.lock().unwrap();
                                         let cached = *cache_read_tokens.lock().unwrap();
 
-                                        Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                                        Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                             total_tokens: Some(input + output),
                                             prompt_tokens: Some(input),
                                             completion_tokens: Some(output),
@@ -908,7 +947,8 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
                                             response_id: None,
-                                        }))
+                                            phase,
+                                        })))
                                     }
 
                                     Some("error") => {
@@ -1101,11 +1141,21 @@ fn handle_streaming_event(
                 _ => "stop".to_string(),
             };
 
+            // Extract phase from the last assistant message in output items.
+            // The API assigns the phase; we preserve it as-is for subsequent requests.
+            let phase = response.output.iter().rev().find_map(|item| {
+                if let types::OutputItem::Message { phase, .. } = item {
+                    phase.clone()
+                } else {
+                    None
+                }
+            });
+
             let input = *input_tokens.lock().unwrap();
             let output = *output_tokens.lock().unwrap();
             let cached = *cache_read_tokens.lock().unwrap();
 
-            LlmStreamEvent::Done(LlmCompletionMetadata {
+            LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 total_tokens: Some(input + output),
                 prompt_tokens: Some(input),
                 completion_tokens: Some(output),
@@ -1115,7 +1165,8 @@ fn handle_streaming_event(
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
-            })
+                phase,
+            }))
         }
 
         StreamingEvent::Error { error, .. } => {
@@ -1393,6 +1444,7 @@ impl CompactOutputItem {
                     content: llm_content,
                     tool_calls: None,
                     tool_call_id: None,
+                    phase: None,
                     thinking: None,
                     thinking_signature: None,
                 })
@@ -1490,6 +1542,11 @@ enum ResponsesInputItem {
         r#type: String,
         role: String,
         content: ResponsesContent,
+        /// Execution phase for assistant messages (e.g., "in_progress", "completed").
+        /// Helps GPT-5.x distinguish intermediate working commentary from final answers.
+        /// Only set on assistant messages; must be preserved when replaying history.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        phase: Option<String>,
     },
     FunctionCall {
         r#type: String,
@@ -1601,6 +1658,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
             }],
             instructions: Some("You are helpful".to_string()),
             previous_response_id: None,
@@ -1627,6 +1685,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Think about this".to_string()),
+                phase: None,
             }],
             instructions: None,
             previous_response_id: None,
@@ -1658,6 +1717,7 @@ mod tests {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
                 content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
             }],
             instructions: None,
             previous_response_id: None,
@@ -1736,7 +1796,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Hello"),
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         assert_eq!(
             instructions,
@@ -1801,6 +1861,7 @@ mod tests {
                     arguments: json!({"timezone": "UTC"}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1809,12 +1870,13 @@ mod tests {
                 content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // System message becomes instructions
         assert_eq!(instructions, Some("You are helpful".to_string()));
@@ -1851,12 +1913,13 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message, function_call
         assert_eq!(input.len(), 3);
@@ -2069,13 +2132,14 @@ mod tests {
                 content: LlmMessageContent::Text("I have thought about this.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("This is my chain of thought reasoning...".to_string()),
                 thinking_signature: Some("encrypted_reasoning_token_123".to_string()),
             },
             LlmMessage::text(LlmMessageRole::User, "What else?"),
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, reasoning item, assistant message, user message
         assert_eq!(input.len(), 4);
@@ -2116,6 +2180,7 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("I need to call the get_time tool...".to_string()),
                 thinking_signature: Some("encrypted_token_xyz".to_string()),
             },
@@ -2124,12 +2189,13 @@ mod tests {
                 content: LlmMessageContent::Text("10:30 AM".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_123".to_string()),
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user, reasoning, assistant, function_call, function_call_output
         assert_eq!(input.len(), 5);
@@ -2163,12 +2229,13 @@ mod tests {
                 content: LlmMessageContent::Text("Hi there!".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("Some thinking...".to_string()),
                 thinking_signature: None, // No signature!
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message (no reasoning item)
         assert_eq!(input.len(), 2);
@@ -2434,12 +2501,13 @@ mod tests {
                 content: LlmMessageContent::Text("Hi there!".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         assert_eq!(input.len(), 2);
         let json = serde_json::to_value(&input[1]).unwrap();
@@ -2457,6 +2525,7 @@ mod tests {
                 content: LlmMessageContent::Text("First answer.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("thinking 1".to_string()),
                 thinking_signature: Some("encrypted_1".to_string()),
             },
@@ -2466,12 +2535,13 @@ mod tests {
                 content: LlmMessageContent::Text("Second answer.".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: Some("thinking 2".to_string()),
                 thinking_signature: Some("encrypted_2".to_string()),
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
         assert_eq!(input.len(), 6);
@@ -2484,6 +2554,48 @@ mod tests {
         assert_ne!(r1["id"], r2["id"], "Reasoning items should have unique IDs");
         assert_eq!(r1["encrypted_content"], "encrypted_1");
         assert_eq!(r2["encrypted_content"], "encrypted_2");
+    }
+
+    #[test]
+    fn test_build_input_with_phases_enabled() {
+        use crate::message::ExecutionPhase;
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Working on it...".to_string()),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".to_string(),
+                    name: "search".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: Some(ExecutionPhase::Commentary),
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        // With supports_phases=true, assistant message should include phase
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, true);
+        let assistant_json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(assistant_json["phase"], "commentary");
+
+        // With supports_phases=false, phase should be absent
+        let (_, input_no_phases) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
+        assert!(assistant_json_no.get("phase").is_none() || assistant_json_no["phase"].is_null());
     }
 
     // ========================================================================

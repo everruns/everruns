@@ -72,6 +72,7 @@ impl MessageService {
             id: message_id.into(),
             role: everruns_core::MessageRole::User,
             content: content.clone(),
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: req.controls.clone(),

@@ -696,7 +696,7 @@ impl LlmDriver for AnthropicLlmDriver {
                                 let cache_read = *cache_read_tokens.lock().unwrap();
                                 let cache_creation = *cache_creation_tokens.lock().unwrap();
 
-                                Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                     total_tokens: Some(in_tokens + out_tokens),
                                     prompt_tokens: Some(in_tokens),
                                     completion_tokens: Some(out_tokens),
@@ -707,7 +707,8 @@ impl LlmDriver for AnthropicLlmDriver {
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: None,
-                                }))
+                                    phase: None,
+                                })))
                             }
                             "error" => Ok(LlmStreamEvent::Error(format!(
                                 "Anthropic stream error: {}",
@@ -1218,6 +1219,7 @@ mod tests {
                 arguments: serde_json::json!({"city": "London"}),
             }]),
             tool_call_id: None,
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }];
@@ -1304,6 +1306,7 @@ mod tests {
                 content: LlmMessageContent::Text("You are helpful".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1312,6 +1315,7 @@ mod tests {
                 content: LlmMessageContent::Text("Hello".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             },
@@ -1331,6 +1335,7 @@ mod tests {
             content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         }];
@@ -1373,6 +1378,7 @@ mod tests {
             ]),
             tool_calls: None,
             tool_call_id: Some("call_img".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         };
@@ -1425,6 +1431,7 @@ mod tests {
             content: LlmMessageContent::Text("result text".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_txt".to_string()),
+            phase: None,
             thinking: None,
             thinking_signature: None,
         };

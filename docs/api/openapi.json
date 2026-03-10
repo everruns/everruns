@@ -5393,6 +5393,14 @@
           }
         }
       },
+      "ExecutionPhase": {
+        "type": "string",
+        "description": "Execution phase for assistant messages in multi-step tool-calling flows.\n\nProviders that natively support phases (OpenAI GPT-5.x) send the phase value\ndirectly in the API request. For providers without native support (Anthropic,\nGemini), the phase is still tracked internally and derived from state in the\nReasonAtom, but is not sent to the provider API.\n\nSerialized as lowercase strings for backward compatibility with existing\npersisted messages: `\"commentary\"` and `\"final_answer\"`.\n\nLegacy values `\"in_progress\"` and `\"completed\"` are accepted during\ndeserialization for backward compatibility.",
+        "enum": [
+          "Commentary",
+          "FinalAnswer"
+        ]
+      },
       "ExternalActor": {
         "type": "object",
         "description": "External actor identity for messages originating from external channels\n(Slack, Discord, Teams, etc.).\n\nChannel adapters populate this to identify the sender without coupling\ncore logic to any specific channel. The ReasonAtom uses this to prefix\nuser messages so the LLM knows who is speaking.",
@@ -7425,6 +7433,10 @@
             "type": "boolean",
             "description": "Whether the model supports structured output (JSON mode)"
           },
+          "supports_phases": {
+            "type": "boolean",
+            "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4+ via OpenAI Responses API."
+          },
           "temperature": {
             "type": "boolean",
             "description": "Whether temperature control is supported"
@@ -7772,6 +7784,17 @@
             ],
             "description": "Message-level metadata"
           },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPhase",
+                "description": "Execution phase for this message.\n\nHelps LLMs distinguish between intermediate working commentary and completed\nanswers in multi-step tool-calling flows. Only set on agent (assistant) messages.\nProviders with native phase support (OpenAI GPT-5.x) send this value in the API\nrequest; others derive it from state but don't send it to the provider."
+              }
+            ]
+          },
           "role": {
             "$ref": "#/components/schemas/MessageRole",
             "description": "Message role"
@@ -7955,6 +7978,15 @@
           "turn_id"
         ],
         "properties": {
+          "iteration": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Current iteration number within this turn (1-based).\nUseful for UI to show progress during multi-step tool-calling flows.",
+            "minimum": 0
+          },
           "model": {
             "type": [
               "string",

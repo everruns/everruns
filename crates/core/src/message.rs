@@ -14,6 +14,92 @@ use crate::typed_id::{ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+// ============================================
+// Execution Phase
+// ============================================
+
+/// Execution phase for assistant messages in multi-step tool-calling flows.
+///
+/// Providers that natively support phases (OpenAI GPT-5.x) send the phase value
+/// directly in the API request. For providers without native support (Anthropic,
+/// Gemini), the phase is still tracked internally and derived from state in the
+/// ReasonAtom, but is not sent to the provider API.
+///
+/// Serialized as lowercase strings for backward compatibility with existing
+/// persisted messages: `"commentary"` and `"final_answer"`.
+///
+/// Legacy values `"in_progress"` and `"completed"` are accepted during
+/// deserialization for backward compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum ExecutionPhase {
+    /// Intermediate update — preamble or commentary before/between tool calls.
+    /// The model is still working and may issue more tool calls.
+    Commentary,
+    /// Final completed response — no more tool calls expected.
+    FinalAnswer,
+}
+
+impl ExecutionPhase {
+    /// Derive phase from whether the response contains tool calls.
+    pub fn from_has_tool_calls(has_tool_calls: bool) -> Self {
+        if has_tool_calls {
+            Self::Commentary
+        } else {
+            Self::FinalAnswer
+        }
+    }
+
+    /// Parse a provider wire value into an ExecutionPhase.
+    /// Returns `None` for unrecognized values.
+    pub fn from_provider_str(s: &str) -> Option<Self> {
+        match s {
+            "commentary" | "in_progress" => Some(Self::Commentary),
+            "final_answer" | "completed" => Some(Self::FinalAnswer),
+            _ => None,
+        }
+    }
+
+    /// Wire value used by providers that support native phases (OpenAI).
+    pub fn as_provider_str(&self) -> &'static str {
+        match self {
+            Self::Commentary => "commentary",
+            Self::FinalAnswer => "final_answer",
+        }
+    }
+}
+
+impl std::fmt::Display for ExecutionPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_provider_str())
+    }
+}
+
+impl Serialize for ExecutionPhase {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_provider_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionPhase {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "commentary" | "in_progress" => Ok(Self::Commentary),
+            "final_answer" | "completed" => Ok(Self::FinalAnswer),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["commentary", "final_answer", "in_progress", "completed"],
+            )),
+        }
+    }
+}
+
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -126,6 +212,15 @@ pub struct Message {
 
     /// Message content as array of content parts (text, images, tool calls, tool results)
     pub content: Vec<ContentPart>,
+
+    /// Execution phase for this message.
+    ///
+    /// Helps LLMs distinguish between intermediate working commentary and completed
+    /// answers in multi-step tool-calling flows. Only set on agent (assistant) messages.
+    /// Providers with native phase support (OpenAI GPT-5.x) send this value in the API
+    /// request; others derive it from state but don't send it to the provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<ExecutionPhase>,
 
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// This is the model's chain-of-thought reasoning before producing the response.
@@ -520,6 +615,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -535,6 +631,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Agent,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -570,6 +667,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Agent,
             content: parts,
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -585,6 +683,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -609,6 +708,7 @@ impl Message {
                 result,
                 error,
             ))],
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -644,6 +744,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::ToolResult,
             content,
+            phase: None,
             thinking: None,
             thinking_signature: None,
             controls: None,
@@ -651,6 +752,12 @@ impl Message {
             external_actor: None,
             created_at: Utc::now(),
         }
+    }
+
+    /// Set the execution phase on this message and return self.
+    pub fn with_phase(mut self, phase: ExecutionPhase) -> Self {
+        self.phase = Some(phase);
+        self
     }
 
     /// Get the tool_call_id from a tool result message
@@ -1127,5 +1234,89 @@ mod tests {
         // ToolResult parts are handled at message level
         let part = ContentPart::tool_result("call_1", Some(serde_json::json!({})), None);
         assert!(part.to_openai_format().is_none());
+    }
+
+    #[test]
+    fn test_execution_phase_from_has_tool_calls() {
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(true),
+            ExecutionPhase::Commentary
+        );
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(false),
+            ExecutionPhase::FinalAnswer
+        );
+    }
+
+    #[test]
+    fn test_execution_phase_from_provider_str() {
+        assert_eq!(
+            ExecutionPhase::from_provider_str("commentary"),
+            Some(ExecutionPhase::Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::from_provider_str("final_answer"),
+            Some(ExecutionPhase::FinalAnswer)
+        );
+        // Legacy values
+        assert_eq!(
+            ExecutionPhase::from_provider_str("in_progress"),
+            Some(ExecutionPhase::Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::from_provider_str("completed"),
+            Some(ExecutionPhase::FinalAnswer)
+        );
+        assert_eq!(ExecutionPhase::from_provider_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_execution_phase_serde_roundtrip() {
+        let commentary = ExecutionPhase::Commentary;
+        let json = serde_json::to_string(&commentary).unwrap();
+        assert_eq!(json, "\"commentary\"");
+        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ExecutionPhase::Commentary);
+
+        let final_answer = ExecutionPhase::FinalAnswer;
+        let json = serde_json::to_string(&final_answer).unwrap();
+        assert_eq!(json, "\"final_answer\"");
+        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ExecutionPhase::FinalAnswer);
+    }
+
+    #[test]
+    fn test_execution_phase_deserialize_legacy() {
+        let legacy_in_progress: ExecutionPhase = serde_json::from_str("\"in_progress\"").unwrap();
+        assert_eq!(legacy_in_progress, ExecutionPhase::Commentary);
+
+        let legacy_completed: ExecutionPhase = serde_json::from_str("\"completed\"").unwrap();
+        assert_eq!(legacy_completed, ExecutionPhase::FinalAnswer);
+    }
+
+    #[test]
+    fn test_execution_phase_deserialize_unknown_fails() {
+        let result = serde_json::from_str::<ExecutionPhase>("\"bogus\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_message_with_phase() {
+        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::Commentary);
+        assert_eq!(msg.phase, Some(ExecutionPhase::Commentary));
+    }
+
+    #[test]
+    fn test_message_phase_skipped_when_none() {
+        let msg = Message::assistant("Hello");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json.get("phase").is_none());
+    }
+
+    #[test]
+    fn test_message_phase_included_when_set() {
+        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::FinalAnswer);
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json.get("phase").unwrap(), "final_answer");
     }
 }

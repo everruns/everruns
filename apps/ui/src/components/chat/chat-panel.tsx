@@ -51,6 +51,7 @@ export function ChatPanel() {
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingIteration,
     sendMessage,
     cancelCurrentTurn,
     getMessageText,
@@ -420,6 +421,11 @@ export function ChatPanel() {
                 <Bot className="h-3.5 w-3.5" />
               </div>
               <div className="flex-1 border-l-2 border-l-primary bg-card px-4 py-3">
+                {streamingIteration && streamingIteration > 1 && (
+                  <div className="mb-1 text-xs text-muted-foreground">
+                    Iteration {streamingIteration}
+                  </div>
+                )}
                 {isThinking && !streamingText ? (
                   <ThinkingIndicator />
                 ) : streamingText ? (

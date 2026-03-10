@@ -486,7 +486,7 @@ impl LlmDriver for LlmSimDriver {
             if let Some(calls) = tool_calls_tail {
                 tail.push(Ok(LlmStreamEvent::ToolCalls(calls)));
             }
-            tail.push(Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+            tail.push(Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 total_tokens: Some(prompt_tokens + completion_tokens),
                 prompt_tokens: Some(prompt_tokens),
                 completion_tokens: Some(completion_tokens),
@@ -496,7 +496,8 @@ impl LlmDriver for LlmSimDriver {
                 finish_reason: Some("stop".to_string()),
                 retry_metadata: None,
                 response_id: response_id_for_done,
-            })));
+                phase: None,
+            }))));
             tail
         };
 

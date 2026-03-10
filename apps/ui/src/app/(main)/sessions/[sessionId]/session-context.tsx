@@ -16,6 +16,7 @@ import type {
   ToolCompletedData,
   InputMessageData,
   OutputMessageCompletedData,
+  OutputMessageStartedData,
   Message,
   TokenUsage,
   LlmGenerationData,
@@ -57,6 +58,8 @@ interface SessionContextValue {
   isThinking: boolean;
   streamingText: string | null;
   streamingTurnId: string | null;
+  /** Current iteration number within the active turn (1-based) */
+  streamingIteration: number | null;
   // Message sending
   sendMessage: UseMutationResult<
     Message,
@@ -112,6 +115,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
+  const [streamingIteration, setStreamingIteration] = useState<number | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
@@ -230,6 +234,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           setIsThinking(false);
           setStreamingText(null);
           setStreamingTurnId(null);
+          setStreamingIteration(null);
         }
         break;
       }
@@ -241,6 +246,15 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         setStreamingText(data.accumulated);
         setStreamingTurnId(data.turn_id);
         break;
+      }
+
+      // output.message.started tracks iteration number
+      if (event.type === "output.message.started") {
+        const data = event.data as OutputMessageStartedData;
+        if (data.iteration) {
+          setStreamingIteration(data.iteration);
+        }
+        // Don't break - continue looking for delta/thinking events
       }
 
       // reason.thinking.started indicates LLM is generating (before first text)
@@ -264,6 +278,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     setIsThinking(false);
     setStreamingText(null);
     setStreamingTurnId(null);
+    setStreamingIteration(null);
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
@@ -454,6 +469,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     isThinking,
     streamingText,
     streamingTurnId,
+    streamingIteration,
     sendMessage,
     cancelCurrentTurn,
     getMessageText,

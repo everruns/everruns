@@ -318,6 +318,8 @@ export interface Message {
   /** Cryptographic signature for thinking (required for multi-turn) */
   thinking_signature?: string;
   created_at: string;
+  /** Execution phase: "in_progress" (intermediate, has tool calls) or "completed" (final answer) */
+  phase?: string;
 }
 
 // Message input for creating a message
@@ -423,6 +425,8 @@ export interface InputMessageData {
 export interface OutputMessageStartedData {
   turn_id: string;
   model?: string;
+  /** 1-based iteration number within the turn */
+  iteration?: number;
 }
 
 /** Data for output.message.delta event (streaming text update) */

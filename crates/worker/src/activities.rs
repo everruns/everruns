@@ -426,6 +426,7 @@ mod tests {
             org_id: 1,
             mcp_tool_definitions: vec![],
             previous_response_id: None,
+            iteration: 1,
         };
 
         let json = serde_json::to_string(&input).unwrap();

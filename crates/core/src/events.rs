@@ -474,6 +474,11 @@ pub struct OutputMessageStartedData {
     /// Optional model name being used
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+
+    /// Current iteration number within this turn (1-based).
+    /// Useful for UI to show progress during multi-step tool-calling flows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iteration: Option<u32>,
 }
 
 /// Data for output.message.delta event
@@ -1966,6 +1971,7 @@ mod tests {
         let data = OutputMessageStartedData {
             turn_id,
             model: Some("claude-4-opus".to_string()),
+            iteration: None,
         };
 
         let event_data: EventData = data.into();
@@ -1983,6 +1989,7 @@ mod tests {
         let data = OutputMessageStartedData {
             turn_id,
             model: None,
+            iteration: None,
         };
 
         // Model should be skipped when None
@@ -2096,6 +2103,7 @@ mod tests {
         let data = OutputMessageStartedData {
             turn_id,
             model: Some("claude-3".to_string()),
+            iteration: None,
         };
 
         // Serialize to JSON
@@ -2283,6 +2291,7 @@ mod contract_tests {
         let data = OutputMessageStartedData {
             turn_id: test_turn_id(),
             model: Some("gpt-4o".to_string()),
+            iteration: None,
         };
         with_settings!({
             sort_maps => true,
@@ -2790,6 +2799,7 @@ mod contract_tests {
                 OutputMessageStartedData {
                     turn_id: test_turn_id(),
                     model: None,
+                    iteration: None,
                 }
                 .into(),
             ),

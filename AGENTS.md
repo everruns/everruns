@@ -77,7 +77,8 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
-- `specs/events.md` - Event types and SSE streaming
+- `specs/events.md` - Event types, SSE streaming
+- `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system

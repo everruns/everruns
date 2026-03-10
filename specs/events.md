@@ -222,10 +222,13 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
   },
   "data": {
     "turn_id": "...",
-    "model": "gpt-4o"
+    "model": "gpt-4o",
+    "iteration": 1
   }
 }
 ```
+
+**`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
 
 #### `output.message.delta`
 
@@ -270,6 +273,7 @@ Agent response message. Emitted when LLM generation completes.
       "content": [
         { "type": "text", "text": "Hello! How can I help?" }
       ],
+      "phase": "completed",
       "created_at": "2024-01-15T10:30:01.000Z"
     },
     "metadata": {
@@ -284,6 +288,8 @@ Agent response message. Emitted when LLM generation completes.
   }
 }
 ```
+
+**`message.phase`** (optional, string): Execution phase — `"in_progress"` for intermediate messages with tool calls (agent is still working), `"completed"` for the final answer. Set by `ReasonAtom` based on whether tool calls are present. Sent as input to the OpenAI Responses API on assistant messages; other providers store it internally for consistent UI behavior. See `crates/core/src/atoms/reason.rs`.
 
 **Streaming Timeline:**
 

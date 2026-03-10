@@ -379,7 +379,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                             let cached = *cache_read_tokens.lock().unwrap();
                             let reason = finish_reason.lock().unwrap().clone();
 
-                            return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                            return Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                 total_tokens: Some(input_tokens + output_tokens),
                                 prompt_tokens: Some(input_tokens),
                                 completion_tokens: Some(output_tokens),
@@ -389,7 +389,8 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                 finish_reason: reason.or_else(|| Some("stop".to_string())),
                                 retry_metadata: retry_metadata_for_done.map(|arc| (*arc).clone()),
                                 response_id: None,
-                            }));
+                                phase: None,
+                            })));
                         }
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {

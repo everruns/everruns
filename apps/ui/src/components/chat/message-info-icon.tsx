@@ -26,6 +26,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
   const messageMetadata = agentData?.message?.metadata as Record<string, unknown> | undefined;
   const model = (messageMetadata?.model as string) ?? agentData?.metadata?.model;
   const reasoningEffort = messageMetadata?.reasoning_effort as string | undefined;
+  const phase = agentData?.message?.phase;
 
   // Token usage from OutputMessageCompletedData (if populated)
   const usage: TokenUsage | undefined = agentData?.usage;
@@ -63,6 +64,12 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
             <>
               <dt className="text-muted-foreground">Reasoning</dt>
               <dd className="capitalize">{reasoningEffort}</dd>
+            </>
+          )}
+          {phase && (
+            <>
+              <dt className="text-muted-foreground">Phase</dt>
+              <dd className="capitalize">{phase.replace("_", " ")}</dd>
             </>
           )}
           <dt className="text-muted-foreground">Time</dt>

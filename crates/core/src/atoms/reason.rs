@@ -115,6 +115,14 @@ pub struct ReasonInput {
     /// Enables server-side context caching across reason iterations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
+    /// Current iteration number within this turn (1-based).
+    /// Used for output.message.started events so UI can show progress.
+    #[serde(default = "default_iteration")]
+    pub iteration: u32,
+}
+
+fn default_iteration() -> u32 {
+    1
 }
 
 /// Result of the ReasonAtom
@@ -281,6 +289,7 @@ where
             org_id,
             mcp_tool_definitions,
             previous_response_id,
+            iteration,
         } = input;
 
         tracing::info!(
@@ -347,6 +356,7 @@ where
                 &trace_id,
                 &reason_span_id,
                 previous_response_id,
+                iteration,
             )
             .await
         {
@@ -504,6 +514,7 @@ where
         trace_id: &str,
         reason_span_id: &str,
         previous_response_id: Option<String>,
+        iteration: u32,
     ) -> Result<ReasonResult> {
         // 1. Retrieve harness
         let harness = self
@@ -654,6 +665,7 @@ where
                 content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
+                phase: None,
                 thinking: None,
                 thinking_signature: None,
             });
@@ -733,6 +745,7 @@ where
                 OutputMessageStartedData {
                     turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
+                    iteration: Some(iteration),
                 },
             ))
             .await
@@ -886,6 +899,7 @@ where
                             )),
                             tool_calls: None,
                             tool_call_id: None,
+                            phase: None,
                             thinking: None,
                             thinking_signature: None,
                         });
@@ -1082,7 +1096,7 @@ where
                             "ReasonAtom: failed to emit reason.thinking.completed event"
                         );
                     }
-                    completion_metadata = Some(metadata);
+                    completion_metadata = Some(*metadata);
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
@@ -1216,6 +1230,18 @@ where
         } else {
             Message::assistant(&text)
         };
+        // Use the API-provided phase when available (preserving the provider's value),
+        // otherwise derive from state: Commentary for intermediate iterations (with tool
+        // calls), FinalAnswer for the completed response.
+        assistant_message.phase = completion_metadata
+            .as_ref()
+            .and_then(|meta| meta.phase.as_deref())
+            .and_then(crate::message::ExecutionPhase::from_provider_str)
+            .or_else(|| {
+                Some(crate::message::ExecutionPhase::from_has_tool_calls(
+                    has_tool_calls,
+                ))
+            });
         assistant_message.metadata = Some(metadata);
         // Store thinking content and signature for extended thinking models
         // Both are required for subsequent API calls when thinking is enabled

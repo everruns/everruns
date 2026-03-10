@@ -177,6 +177,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-4o-mini" => Some(LlmModelProfile {
@@ -207,6 +208,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o1" => Some(LlmModelProfile {
@@ -237,6 +239,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o1-mini" => Some(LlmModelProfile {
@@ -267,6 +270,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o1-pro" => Some(LlmModelProfile {
@@ -297,6 +301,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o3-mini" => Some(LlmModelProfile {
@@ -327,6 +332,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o3" => Some(LlmModelProfile {
@@ -357,6 +363,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o3-pro" => Some(LlmModelProfile {
@@ -387,6 +394,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o4-mini" => Some(LlmModelProfile {
@@ -417,6 +425,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-4.1 family models
@@ -448,6 +457,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-4.1-mini" => Some(LlmModelProfile {
@@ -478,6 +488,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-4.1-nano" => Some(LlmModelProfile {
@@ -508,6 +519,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5 family models
@@ -540,6 +552,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5-mini" => Some(LlmModelProfile {
@@ -570,6 +583,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5-nano" => Some(LlmModelProfile {
@@ -600,6 +614,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5-pro" => Some(LlmModelProfile {
@@ -630,6 +645,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5-codex" => Some(LlmModelProfile {
@@ -660,6 +676,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5.1 models: default none, supports none/low/medium/high
@@ -691,6 +708,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.1-codex" => Some(LlmModelProfile {
@@ -721,6 +739,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.1-codex-mini" => Some(LlmModelProfile {
@@ -751,6 +770,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5.1-codex-max and after: supports xhigh
@@ -782,6 +802,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5.2 models: supports xhigh, 400K context
@@ -813,6 +834,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.2-pro" => Some(LlmModelProfile {
@@ -843,6 +865,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.2-codex" => Some(LlmModelProfile {
@@ -873,6 +896,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
@@ -904,6 +928,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // GPT-5.4 models: 1.05M context, native computer use, released 2026-03-05
@@ -935,6 +960,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supports_phases: true,
         }),
 
         "gpt-5.4-pro" => Some(LlmModelProfile {
@@ -965,6 +991,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: true,
+            supports_phases: true,
         }),
 
         // GPT-5 chat-latest models (point to latest chat-optimized versions)
@@ -996,6 +1023,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.1-chat-latest" => Some(LlmModelProfile {
@@ -1026,6 +1054,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gpt-5.2-chat-latest" => Some(LlmModelProfile {
@@ -1056,6 +1085,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Deep research models
@@ -1087,6 +1117,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o4-mini-deep-research" => Some(LlmModelProfile {
@@ -1117,6 +1148,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "o1-preview" => Some(LlmModelProfile {
@@ -1147,6 +1179,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         _ => None,
@@ -1187,6 +1220,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-sonnet-4-6" => Some(LlmModelProfile {
@@ -1217,6 +1251,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Claude 4.5 series
@@ -1248,6 +1283,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-sonnet-4-5" => Some(LlmModelProfile {
@@ -1278,6 +1314,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-haiku-4-5" => Some(LlmModelProfile {
@@ -1308,6 +1345,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Claude 4.1 series
@@ -1339,6 +1377,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Claude 4 series
@@ -1370,6 +1409,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-opus-4" => Some(LlmModelProfile {
@@ -1400,6 +1440,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Claude 3.7 series
@@ -1431,6 +1472,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supports_phases: false,
         }),
 
         // Claude 3.5 series
@@ -1462,6 +1504,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-3-5-haiku" => Some(LlmModelProfile {
@@ -1492,6 +1535,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-3-opus" => Some(LlmModelProfile {
@@ -1522,6 +1566,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-3-sonnet" => Some(LlmModelProfile {
@@ -1552,6 +1597,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "claude-3-haiku" => Some(LlmModelProfile {
@@ -1582,6 +1628,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         _ => None,
@@ -1649,6 +1696,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gemini-2.5-flash" => Some(LlmModelProfile {
@@ -1684,6 +1732,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gemini-2.0-flash" => Some(LlmModelProfile {
@@ -1719,6 +1768,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gemini-1.5-pro" => Some(LlmModelProfile {
@@ -1754,6 +1804,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         "gemini-1.5-flash" => Some(LlmModelProfile {
@@ -1789,6 +1840,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supports_phases: false,
         }),
 
         _ => None,
@@ -1827,6 +1879,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()), // Same as GPT-5.2
             tool_search: false,
+            supports_phases: false,
         }),
         _ => None,
     }
@@ -2205,6 +2258,8 @@ mod tests {
         assert!((cost.output - 15.00).abs() < f64::EPSILON);
         assert!((cost.cache_read.unwrap() - 0.25).abs() < f64::EPSILON);
 
+        assert!(profile.supports_phases);
+
         // gpt-5.4: default none, supports none/low/medium/high/xhigh
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::None);
@@ -2227,6 +2282,8 @@ mod tests {
         assert!((cost.input - 30.00).abs() < f64::EPSILON);
         assert!((cost.output - 180.00).abs() < f64::EPSILON);
         assert!(cost.cache_read.is_none());
+
+        assert!(profile.supports_phases);
 
         // gpt-5.4-pro: default medium, supports medium/high/xhigh
         let effort = profile.reasoning_effort.unwrap();
