@@ -391,7 +391,7 @@ impl InMemoryLlmProviderStore {
         // Check for OpenAI first
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
             let model = ModelWithProvider {
-                model: "gpt-4o".to_string(),
+                model: "gpt-5.4".to_string(),
                 provider_type: LlmProviderType::Openai,
                 api_key: Some(api_key),
                 base_url: std::env::var("OPENAI_BASE_URL").ok(),
