@@ -12,7 +12,7 @@ In agentic loops with multiple reason→act iterations, earlier assistant messag
 
 ### Solution: Derive-and-Map
 
-Phases are **always derived from state** in the ReasonAtom, then **mapped to provider-specific wire values** when the driver supports native phases. Providers without native phase support still benefit from internal phase tracking (events, observability).
+Phases are **always derived from state** in the ReasonAtom, then **mapped to provider-specific wire values** when the model profile has `supports_phases: true`. Models without native phase support still benefit from internal phase tracking (events, observability).
 
 ```
 ReasonAtom (derives phase from state)
@@ -22,7 +22,8 @@ ReasonAtom (derives phase from state)
                               │
                     ┌─────────┴─────────┐
                     │                   │
-            supports_phases()    !supports_phases()
+            supports_phases      !supports_phases
+            (model profile)      (model profile)
                     │                   │
             Send to provider     Track internally
             (wire format)        (events, UI)
@@ -43,24 +44,27 @@ Legacy values are accepted during deserialization:
 - `"in_progress"` → `Commentary`
 - `"completed"` → `FinalAnswer`
 
-## LlmDriver Trait
+## Model Profile Flag
 
-`supports_phases() -> bool` — indicates whether the driver sends phase values to the provider API.
+`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API.
 
-| Driver | `supports_phases()` | Notes |
+| Model | `supports_phases` | Notes |
 |---|---|---|
-| OpenAI Responses API | `true` | Native support via `phase` field on input messages |
-| OpenAI Chat Completions | `false` | Legacy API, no phase support |
-| Anthropic | `false` | Phase tracked internally only |
-| Gemini | `false` | Phase tracked internally only |
+| GPT-5.4 | `true` | Native support via `phase` field on input messages |
+| GPT-5.4 Pro | `true` | Native support via `phase` field on input messages |
+| All other models | `false` | Phase tracked internally only |
+
+This replaced the previous `LlmDriver::supports_phases()` trait method. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable (GPT-5.4) and non-phase models.
 
 ## Provider Mapping
 
-### OpenAI Responses API
+### OpenAI Responses API (GPT-5.4+)
 
 The `phase` field is serialized as a string on assistant messages in the `input` array:
 - `ExecutionPhase::Commentary` → `"commentary"`
 - `ExecutionPhase::FinalAnswer` → `"final_answer"`
+
+For non-GPT-5.4 models on the same driver, the `phase` field is omitted from the wire format.
 
 See `crates/core/src/openresponses_protocol.rs` for the mapping.
 
@@ -75,5 +79,5 @@ Phase is not sent to the provider API. The `ExecutionPhase` value is still set o
 3. Phase is stored on the `Message` (persisted via events)
 4. On next iteration, message history is converted to `LlmMessage` — phase is preserved
 5. Driver converts `LlmMessage` to provider format:
-   - OpenAI Responses: maps `ExecutionPhase` → `"commentary"` / `"final_answer"` string
+   - OpenAI Responses (GPT-5.4+): maps `ExecutionPhase` → `"commentary"` / `"final_answer"` string
    - Others: phase field is ignored by the driver

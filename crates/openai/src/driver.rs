@@ -142,10 +142,6 @@ impl LlmDriver for OpenAILlmDriver {
         list_openai_models(self.inner.client(), self.inner.api_key()).await
     }
 
-    fn supports_phases(&self) -> bool {
-        self.inner.supports_phases()
-    }
-
     fn supports_compact(&self) -> bool {
         self.inner.supports_compact()
     }

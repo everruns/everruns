@@ -315,6 +315,11 @@ pub struct LlmModelProfile {
     /// token usage for large tool sets. Currently supported by GPT-5.4+.
     #[serde(default)]
     pub tool_search: bool,
+    /// Whether the model supports native execution phases ("commentary" / "final_answer").
+    /// When true, the driver sends the `phase` field on assistant messages in the wire format.
+    /// Currently supported by GPT-5.4+ via OpenAI Responses API.
+    #[serde(default)]
+    pub supports_phases: bool,
 }
 
 #[cfg(test)]

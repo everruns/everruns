@@ -136,7 +136,7 @@ impl OpenResponsesProtocolLlmDriver {
         }
     }
 
-    fn convert_message(msg: &LlmMessage) -> ResponsesInputItem {
+    fn convert_message(msg: &LlmMessage, supports_phases: bool) -> ResponsesInputItem {
         // Handle tool result messages differently
         // Note: OpenAI Responses API function_call_output only supports text output.
         // Images in tool results are dropped with a warning.
@@ -200,9 +200,9 @@ impl OpenResponsesProtocolLlmDriver {
             }
         };
 
-        // Only include phase on assistant messages (never on user/system/tool).
+        // Only include phase on assistant messages when the model supports it.
         // Map ExecutionPhase enum to the provider's wire format string.
-        let phase = if msg.role == LlmMessageRole::Assistant {
+        let phase = if supports_phases && msg.role == LlmMessageRole::Assistant {
             msg.phase.map(|p| p.as_provider_str().to_string())
         } else {
             None
@@ -467,7 +467,10 @@ impl OpenResponsesProtocolLlmDriver {
     /// Handles the conversion of:
     /// - Assistant messages with tool_calls into separate FunctionCall items
     /// - Assistant messages with thinking into Reasoning items (for o-series/GPT-5 models)
-    fn build_input(messages: &[LlmMessage]) -> (Option<String>, Vec<ResponsesInputItem>) {
+    fn build_input(
+        messages: &[LlmMessage],
+        supports_phases: bool,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
         let mut instructions: Option<String> = None;
         let mut input_items = Vec::new();
         // Counter for generating reasoning item IDs
@@ -511,7 +514,7 @@ impl OpenResponsesProtocolLlmDriver {
                         LlmMessageContent::Parts(parts) => !parts.is_empty(),
                     };
                     if has_content {
-                        input_items.push(Self::convert_message(msg));
+                        input_items.push(Self::convert_message(msg, supports_phases));
                     }
 
                     // Then emit FunctionCall items for each tool call
@@ -526,10 +529,10 @@ impl OpenResponsesProtocolLlmDriver {
                         }
                     }
                 } else {
-                    input_items.push(Self::convert_message(msg));
+                    input_items.push(Self::convert_message(msg, supports_phases));
                 }
             } else {
-                input_items.push(Self::convert_message(msg));
+                input_items.push(Self::convert_message(msg, supports_phases));
             }
         }
 
@@ -544,7 +547,15 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        let (instructions, input_items) = Self::build_input(&messages);
+        // Check model profile to determine if phases should be sent in the wire format.
+        // Only GPT-5.4+ models support native execution phases.
+        let supports_phases = crate::llm_model_profiles::get_model_profile(
+            &crate::llm_models::LlmProviderType::Openai,
+            &config.model,
+        )
+        .is_some_and(|p| p.supports_phases);
+
+        let (instructions, input_items) = Self::build_input(&messages, supports_phases);
 
         let tools = if config.tools.is_empty() {
             None
@@ -948,11 +959,6 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         }));
 
         Ok(converted_stream)
-    }
-
-    fn supports_phases(&self) -> bool {
-        // OpenAI Responses API supports native execution phases (GPT-5.x)
-        true
     }
 
     fn supports_compact(&self) -> bool {
@@ -1759,7 +1765,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Hello"),
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         assert_eq!(
             instructions,
@@ -1839,7 +1845,7 @@ mod tests {
             },
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // System message becomes instructions
         assert_eq!(instructions, Some("You are helpful".to_string()));
@@ -1882,7 +1888,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message, function_call
         assert_eq!(input.len(), 3);
@@ -2102,7 +2108,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "What else?"),
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, reasoning item, assistant message, user message
         assert_eq!(input.len(), 4);
@@ -2158,7 +2164,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user, reasoning, assistant, function_call, function_call_output
         assert_eq!(input.len(), 5);
@@ -2198,7 +2204,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message (no reasoning item)
         assert_eq!(input.len(), 2);
@@ -2470,7 +2476,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         assert_eq!(input.len(), 2);
         let json = serde_json::to_value(&input[1]).unwrap();
@@ -2504,7 +2510,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
 
         // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
         assert_eq!(input.len(), 6);

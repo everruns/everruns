@@ -163,18 +163,6 @@ pub trait LlmDriver: Send + Sync {
         Ok(None)
     }
 
-    /// Check if this driver supports native execution phases.
-    ///
-    /// When `true`, the driver sends `ExecutionPhase` values (e.g., `"commentary"`,
-    /// `"final_answer"`) to the provider API. When `false`, phases are still tracked
-    /// internally but are not sent to the provider.
-    ///
-    /// Currently supported by OpenAI Responses API (GPT-5.x models).
-    fn supports_phases(&self) -> bool {
-        // Default: not supported. Providers override if their API accepts phases.
-        false
-    }
-
     /// Check if this driver supports the compact endpoint
     ///
     /// The compact endpoint compresses conversation history by replacing
@@ -234,10 +222,6 @@ impl LlmDriver for Box<dyn LlmDriver> {
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
         (**self).list_models().await
-    }
-
-    fn supports_phases(&self) -> bool {
-        (**self).supports_phases()
     }
 
     fn supports_compact(&self) -> bool {
