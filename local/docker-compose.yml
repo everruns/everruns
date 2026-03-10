@@ -27,14 +27,6 @@ services:
       timeout: 5s
       retries: 5
 
-  jaeger:
-    image: jaegertracing/jaeger:2.4.0
-    ports:
-      # OTLP gRPC receiver
-      - "${OTEL_GRPC_PORT:-4317}:4317"
-      # OTLP HTTP receiver
-      - "${OTEL_HTTP_PORT:-4318}:4318"
-
 volumes:
   postgres_data:
   valkey_data:

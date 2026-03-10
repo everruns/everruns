@@ -381,7 +381,7 @@ Everruns supports distributed tracing via OpenTelemetry with OTLP export. Traces
 
 ### OTEL_EXPORTER_OTLP_ENDPOINT
 
-OTLP endpoint for trace export (e.g., Jaeger, Grafana Tempo, or any OTLP-compatible backend).
+OTLP endpoint for trace export (e.g., Grafana Tempo, Datadog, or any OTLP-compatible backend).
 
 | Property | Value |
 |----------|-------|
@@ -391,7 +391,7 @@ OTLP endpoint for trace export (e.g., Jaeger, Grafana Tempo, or any OTLP-compati
 **Example:**
 
 ```bash
-# For local Jaeger
+# For local OTLP collector
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 # For production Tempo
@@ -400,7 +400,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4317
 
 **Notes:**
 - When set, traces are exported via OTLP/gRPC
-- For local development, Jaeger is included in `docker-compose.yml`
+- Connect to any OTLP-compatible backend for trace visualization
 - Without this variable, only console logging is enabled
 
 ### OTEL_SERVICE_NAME
@@ -466,30 +466,17 @@ OTEL_RECORD_CONTENT=true
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 
-## Local Development with Jaeger
+## Local Development with OpenTelemetry
 
-The `local/docker-compose.yml` includes Jaeger for local trace visualization:
+To visualize traces locally, point `OTEL_EXPORTER_OTLP_ENDPOINT` at any OTLP-compatible collector:
 
 ```bash
-# Start all services including Jaeger
-just start-all
-
 # Set OTLP endpoint for API and Worker
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
-# View traces at
-open http://localhost:16686
+# Start services
+just start-all
 ```
-
-These are the default host ports. When using `PORT_PREFIX`, the dev scripts remap them to isolated ports per worktree.
-
-### Jaeger Ports
-
-| Port | Description |
-|------|-------------|
-| 4317 | OTLP gRPC receiver |
-| 4318 | OTLP HTTP receiver |
-| 16686 | Jaeger UI |
 
 ### Gen-AI Trace Structure
 

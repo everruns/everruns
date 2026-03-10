@@ -4,7 +4,7 @@ Full-featured OpenTelemetry integration following the Gen-AI semantic convention
 
 ## Abstract
 
-Everruns provides native OpenTelemetry (OTel) tracing for the complete agentic execution lifecycle. All 13 event types produce properly-nested spans with parent-child relationships, enabling full trace visualization in any OTel-compatible backend (Jaeger, Grafana Tempo, Datadog, Honeycomb, etc.). Content recording (prompts, completions, tool arguments) is opt-in via standard OTel environment variables.
+Everruns provides native OpenTelemetry (OTel) tracing for the complete agentic execution lifecycle. All 13 event types produce properly-nested spans with parent-child relationships, enabling full trace visualization in any OTel-compatible backend (Grafana Tempo, Datadog, Honeycomb, etc.). Content recording (prompts, completions, tool arguments) is opt-in via standard OTel environment variables.
 
 ## References
 
@@ -340,13 +340,13 @@ Tests must verify span creation, attributes, hierarchy, and lifecycle:
 | `test_content_recording_tool_args` | Tool arguments and results |
 | `test_full_agent_trace` | End-to-end: turn→reason→chat→act→tool→reason→chat→complete |
 
-### Smoke Test (with Jaeger)
+### Smoke Test (with OTLP collector)
 
-Verify real traces appear correctly in Jaeger:
+Verify real traces appear correctly in an OTLP-compatible backend:
 
-1. Start system with `just start-all` (includes Jaeger)
+1. Start system with `just start-all` and `OTEL_EXPORTER_OTLP_ENDPOINT` configured
 2. Create agent, send message, wait for completion
-3. Query Jaeger API for traces by service name
+3. Query the tracing backend for traces by service name
 4. Assert: trace has correct span count, hierarchy, and attributes
 5. Assert: all spans have duration > 0 (not point-in-time)
 6. Assert: parent-child relationships form expected tree

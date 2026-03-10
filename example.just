@@ -12,8 +12,7 @@ start tag="latest":
     # Check if local docker compose containers are running (not from example compose)
     # We check the com.docker.compose.project label to distinguish local vs example containers
     local_postgres=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "label=com.docker.compose.service=postgres" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
-    local_jaeger=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "label=com.docker.compose.service=jaeger" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
-    if [[ -n "$local_postgres" || -n "$local_jaeger" ]]; then
+    if [[ -n "$local_postgres" ]]; then
         echo "❌ Local docker compose appears to be running (project '$COMPOSE_PROJECT_NAME')."
         echo "   Stop it first with: just stop-docker"
         exit 1

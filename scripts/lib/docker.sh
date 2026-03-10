@@ -16,7 +16,6 @@ case "$cmd" in
     echo "✅ Services started!"
     echo "   - Postgres: localhost:${DB_PORT}"
     echo "   - Valkey:   localhost:${VALKEY_PORT}"
-    echo "   - Jaeger:    tracing enabled"
     echo "   - OTLP gRPC: localhost:${OTEL_GRPC_PORT}"
     ;;
 
