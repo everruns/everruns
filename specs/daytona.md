@@ -77,7 +77,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, image?, autoStopInterval }` |
+| POST | `/sandbox` | Create sandbox | `{ name?, image?, autoStopInterval, labels? }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
 | POST | `/sandbox/{id}/start` | Start sandbox | — |
 | POST | `/sandbox/{id}/stop` | Stop sandbox | — |
@@ -213,6 +213,27 @@ See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for f
 | No context | `ToolError` | "{tool_name} requires context." |
 
 ## Design Decisions
+
+### Sandbox metadata labels (required)
+
+All sandboxes **must** include Daytona `labels` at creation time for audit, dashboard visibility, and orphan cleanup. Labels are `Record<string, string>` key-value pairs stored on the Daytona side.
+
+Required labels:
+
+| Label key | Value | Source |
+|-----------|-------|--------|
+| `everruns` | `"true"` | Static — identifies Everruns-owned sandboxes |
+| `everruns.session_id` | Session ID | `context.session_id` |
+| `everruns.harness_id` | Harness ID | `session.harness_id` |
+| `everruns.org_id` | Organization ID | `session.organization_id` |
+| `everruns.agent_id` | Agent ID (if set) | `session.agent_id` |
+
+This enables:
+- Filtering sandboxes by org/agent/session in the Daytona dashboard
+- Automated cleanup of orphaned sandboxes via label queries
+- Audit trail linking sandboxes back to their Everruns origin
+
+Any new sandbox integration (Daytona or otherwise) must attach equivalent ownership metadata.
 
 ### Synchronous exec only
 

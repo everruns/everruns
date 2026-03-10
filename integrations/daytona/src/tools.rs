@@ -82,9 +82,34 @@ impl Tool for DaytonaCreateSandboxTool {
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("Everruns Sandbox");
+
+        // Build ownership labels for audit/cleanup traceability
+        let mut labels = serde_json::Map::new();
+        labels.insert("everruns".to_string(), json!("true"));
+        labels.insert(
+            "everruns.session_id".to_string(),
+            json!(context.session_id.to_string()),
+        );
+        if let Some(session_store) = &context.session_store
+            && let Ok(Some(session)) = session_store.get_session(context.session_id).await
+        {
+            labels.insert(
+                "everruns.harness_id".to_string(),
+                json!(session.harness_id.to_string()),
+            );
+            labels.insert(
+                "everruns.org_id".to_string(),
+                json!(&session.organization_id),
+            );
+            if let Some(agent_id) = &session.agent_id {
+                labels.insert("everruns.agent_id".to_string(), json!(agent_id.to_string()));
+            }
+        }
+
         let mut create_body = json!({
             "name": title,
             "autoStopInterval": AUTO_STOP_INTERVAL_MINUTES,
+            "labels": labels,
         });
         if let Some(image) = arguments.get("image").and_then(|v| v.as_str()) {
             create_body["image"] = json!(image);
