@@ -50,14 +50,10 @@ docker compose pull  # Fetch latest images
 docker compose up -d
 ```
 
-The published compose file defaults to:
-- App entry point on `9300`
-- Jaeger UI on `16686`
-
-If those ports are busy, override them before startup:
+The published compose file defaults to app entry point on `9300`. If that port is busy, override before startup:
 
 ```bash
-EXAMPLE_PROXY_PORT=10300 EXAMPLE_JAEGER_UI_PORT=16687 docker compose up -d
+EXAMPLE_PROXY_PORT=10300 docker compose up -d
 ```
 
 This starts:
@@ -66,7 +62,6 @@ This starts:
 - 3 worker instances
 - Next.js UI
 - Caddy reverse proxy
-- Jaeger tracing
 
 ### 5. Access the Platform
 
@@ -75,7 +70,6 @@ This starts:
 | **Web UI** | http://localhost:9300 |
 | **API** | http://localhost:9300/api/... |
 | **Health Check** | http://localhost:9300/health |
-| **Jaeger Tracing** | http://localhost:16686 |
 
 ## Configuration
 
@@ -86,7 +80,6 @@ If you want multiple Everruns compose stacks on the same machine, set both a Com
 ```bash
 COMPOSE_PROJECT_NAME=everruns-demo-2 \
 EXAMPLE_PROXY_PORT=10300 \
-EXAMPLE_JAEGER_UI_PORT=16687 \
 docker compose up -d
 ```
 
@@ -147,7 +140,7 @@ docker compose logs -f worker-1
 
 ### Distributed Tracing
 
-Jaeger UI is available at http://localhost:16686 for viewing request traces across services.
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces to any OTLP-compatible backend (Grafana Tempo, Datadog, etc.).
 
 ## Stopping Services
 

@@ -70,7 +70,7 @@ The context provides correlation data for tracing and filtering:
 
 ### Hierarchical Tracing (OTel-Style)
 
-Events within an agent turn form a hierarchical trace structure using OpenTelemetry-style span relationships. This enables observability tools (Braintrust, Jaeger, etc.) to visualize the execution as a tree.
+Events within an agent turn form a hierarchical trace structure using OpenTelemetry-style span relationships. This enables observability tools (Braintrust, Grafana Tempo, etc.) to visualize the execution as a tree.
 
 **Trace Structure:**
 

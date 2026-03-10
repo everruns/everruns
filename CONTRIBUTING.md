@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Docker & Docker Compose (for PostgreSQL and Jaeger)
+- Docker & Docker Compose (for PostgreSQL)
 - Rust stable toolchain
 - Node.js 18+ (for UI)
 - [just](https://github.com/casey/just) command runner
@@ -31,8 +31,6 @@ just start-all
 Services available at:
 - **App**: http://localhost:9300
 - **API**: http://localhost:9300/api/...
-- **Jaeger**: http://localhost:16686
-
 ### Quick Start (DEV_MODE - No Database)
 
 For quick UI development without PostgreSQL:
@@ -173,9 +171,6 @@ We use `cargo-deny` to ensure permissive licenses only.
 ## Debugging
 
 ```bash
-# Jaeger UI (distributed tracing)
-open http://localhost:16686
-
 # Database access
 docker exec -it everruns-postgres psql -U everruns -d everruns
 
