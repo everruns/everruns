@@ -26,6 +26,9 @@ tokio.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 
+[features]
+daytona-live-tests = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
