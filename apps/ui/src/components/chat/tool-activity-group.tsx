@@ -20,14 +20,11 @@ import {
 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import {
-  BashToolCallCard,
-  BashToolResultDetails,
-  isBashTool,
-  parseBashOutput,
-} from "./bash-tool-call-card";
+import { BashToolCallCard, isBashTool, parseBashOutput } from "./bash-tool-call-card";
+import { ReadFileToolCallCard, isReadFileTool } from "./read-file-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
+import { WriteFileToolCallCard, isWriteLikeTool } from "./write-file-tool-call-card";
 
 interface ToolActivityGroupProps {
   toolCalls: ToolCallContent[];
@@ -37,7 +34,9 @@ interface ToolActivityGroupProps {
 
 type ActivitySegment =
   | { type: "group"; toolCalls: ToolCallContent[] }
-  | { type: "shell"; toolCall: ToolCallContent };
+  | { type: "shell"; toolCall: ToolCallContent }
+  | { type: "read_file"; toolCall: ToolCallContent }
+  | { type: "write_file"; toolCall: ToolCallContent };
 
 type ToolCategory = "read" | "search" | "write" | "shell" | "tool";
 
@@ -118,7 +117,7 @@ function getToolLabel(toolCall: ToolCallContent): string {
     return `List files in ${formatLocation(args.path)}`;
   }
 
-  if (name === "read_file") {
+  if (isReadFileTool(name)) {
     const path = args.path;
     return typeof path === "string" && path.trim().length > 0
       ? `Read ${basename(path)}`
@@ -153,6 +152,30 @@ function getToolLabel(toolCall: ToolCallContent): string {
       : "Edit file";
   }
 
+  if (name === "secret_store") {
+    const operation = args.operation;
+    const secretName = args.name;
+    if (operation === "list") return "List secrets";
+    if (
+      typeof operation === "string" &&
+      typeof secretName === "string" &&
+      secretName.trim().length > 0
+    ) {
+      return `${toTitleCase(operation)} ${secretName}`;
+    }
+    return "Secret Store";
+  }
+
+  if (name === "kv_store") {
+    const operation = args.operation;
+    const key = args.key;
+    if (operation === "list") return "List stored values";
+    if (typeof operation === "string" && typeof key === "string" && key.trim().length > 0) {
+      return `${toTitleCase(operation)} ${key}`;
+    }
+    return "Key Value Store";
+  }
+
   return toolCall.display_name ?? toTitleCase(name);
 }
 
@@ -185,7 +208,102 @@ function summarizeToolCalls(toolCalls: ToolCallContent[]): string {
   return `Exploring ${parts.join(", ")}`;
 }
 
-function getResultPreview(result: ToolCompletedData | undefined): string | null {
+function parseStructuredText(text: string): unknown | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function maskSensitiveFields(toolName: string, value: unknown): unknown {
+  if (
+    toolName !== "secret_store" ||
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (!("value" in record) || record.value == null) {
+    return value;
+  }
+
+  return {
+    ...record,
+    value: "[hidden]",
+  };
+}
+
+function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): string | null {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const record = parsed as Record<string, unknown>;
+
+  if (toolCall.name === "secret_store") {
+    const operation = record.operation;
+    const name = record.name;
+    if (operation === "get" && typeof name === "string") {
+      return record.found ? `${name} found` : `${name} not found`;
+    }
+    if (operation === "set" && typeof name === "string") {
+      return `${name} saved`;
+    }
+    if (operation === "delete" && typeof name === "string") {
+      return record.deleted ? `${name} deleted` : `${name} not found`;
+    }
+    if (operation === "list" && typeof record.count === "number") {
+      return `${record.count} secret${record.count === 1 ? "" : "s"}`;
+    }
+  }
+
+  if (toolCall.name === "kv_store") {
+    const operation = record.operation;
+    const key = record.key;
+    if (operation === "get" && typeof key === "string") {
+      return record.found ? `${key} found` : `${key} not found`;
+    }
+    if ((operation === "set" || operation === "delete") && typeof key === "string") {
+      return `${key} ${operation === "set" ? "saved" : "deleted"}`;
+    }
+    if (operation === "list" && typeof record.count === "number") {
+      return `${record.count} value${record.count === 1 ? "" : "s"}`;
+    }
+  }
+
+  if (typeof record.message === "string" && record.message.trim().length > 0) {
+    return record.message;
+  }
+
+  const scalarEntries = Object.entries(record).filter(
+    ([, value]) => ["string", "number", "boolean"].includes(typeof value) || value === null,
+  );
+  if (scalarEntries.length === 0) return null;
+
+  const preview = scalarEntries
+    .slice(0, 2)
+    .map(([key, value]) => `${key}: ${value === null ? "null" : String(value)}`)
+    .join(" · ");
+
+  return preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
+}
+
+function formatResultDetails(toolCall: ToolCallContent, fullText: string): string {
+  const parsed = parseStructuredText(fullText);
+  if (!parsed) return fullText;
+
+  return JSON.stringify(maskSensitiveFields(toolCall.name, parsed), null, 2);
+}
+
+function getResultPreview(
+  toolCall: ToolCallContent,
+  result: ToolCompletedData | undefined,
+): string | null {
   const fullText = getFullText(result?.result);
   if (!fullText) return null;
 
@@ -207,6 +325,10 @@ function getResultPreview(result: ToolCompletedData | undefined): string | null 
 
     return null;
   }
+
+  const parsed = parseStructuredText(fullText);
+  const structuredPreview = summarizeStructuredResult(toolCall, parsed);
+  if (structuredPreview) return structuredPreview;
 
   const previewLine = fullText
     .split("\n")
@@ -243,6 +365,18 @@ function buildActivitySegments(
       continue;
     }
 
+    if (isReadFileTool(toolCall.name)) {
+      pushGroup();
+      segments.push({ type: "read_file", toolCall });
+      continue;
+    }
+
+    if (isWriteLikeTool(toolCall.name)) {
+      pushGroup();
+      segments.push({ type: "write_file", toolCall });
+      continue;
+    }
+
     currentGroup.push(toolCall);
   }
 
@@ -261,22 +395,17 @@ function ToolActivityRow({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
-  const bashOutput = isBashTool(toolCall.name) ? parseBashOutput(fullText) : null;
-  const hasOutput = bashOutput
-    ? !!bashOutput.stdout || !!bashOutput.stderr || bashOutput.exit_code !== 0
-    : fullText.length > 0;
+  const hasOutput = fullText.length > 0;
   const hasToolError = !!toolResult?.error;
-  const hasError = hasToolError || (bashOutput ? !bashOutput.success : false);
+  const hasError = hasToolError;
   const isComplete = !!toolResult;
   const isRunning = !isComplete && !hasError;
-  const exitCodeLabel =
-    bashOutput && bashOutput.exit_code !== 0 ? `exit ${bashOutput.exit_code}` : null;
 
   return (
     <div
       className={cn(
-        "animate-tool-row-in px-3 py-2.5 transition-all duration-300",
-        isRunning && "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)]",
+        "animate-tool-row-in py-2 transition-all duration-300",
+        isRunning && "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)] pl-2",
       )}
     >
       <div className="flex items-start gap-2">
@@ -294,14 +423,7 @@ function ToolActivityRow({
             {mode === "client" && (
               <MonitorSmartphone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/75" />
             )}
-            <div className="min-w-0 inline-flex items-baseline gap-2">
-              <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
-              {exitCodeLabel && (
-                <span className="flex-shrink-0 text-[10px] leading-none uppercase tracking-[0.16em] text-red-500/75">
-                  {exitCodeLabel}
-                </span>
-              )}
-            </div>
+            <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
             {isRunning && (
               <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
                 {mode === "client" ? "waiting" : "running"}
@@ -315,7 +437,7 @@ function ToolActivityRow({
 
           {!hasError && !isExpanded && hasOutput && (
             <div className="mt-1 truncate text-xs text-muted-foreground/70">
-              {getResultPreview(toolResult)}
+              {getResultPreview(toolCall, toolResult)}
             </div>
           )}
 
@@ -323,7 +445,7 @@ function ToolActivityRow({
             <button
               type="button"
               onClick={() => setIsExpanded((current) => !current)}
-              className="mt-1.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/65 transition-colors hover:text-foreground"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/65 transition-colors hover:text-foreground"
             >
               {isExpanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -337,20 +459,14 @@ function ToolActivityRow({
           <div
             className={cn(
               "grid transition-all duration-300 ease-out",
-              isExpanded ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+              isExpanded ? "mt-1.5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
             )}
           >
             <div className="min-h-0 overflow-hidden">
               {hasOutput && (
-                <div className="font-mono text-[11px] leading-relaxed text-muted-foreground/85">
-                  <BashToolResultDetails
-                    fullText={fullText}
-                    containerClassName="border border-border/60 bg-background px-3 py-3 text-[11px] leading-relaxed text-muted-foreground/85 max-h-80"
-                    stdoutClassName="text-[11px] leading-relaxed text-muted-foreground/85"
-                    stderrClassName="border-red-400/25 pt-3 text-[11px] leading-relaxed text-red-700/85 dark:text-red-300/85"
-                    showExitCode={false}
-                  />
-                </div>
+                <pre className="max-h-80 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
+                  {formatResultDetails(toolCall, fullText)}
+                </pre>
               )}
             </div>
           </div>
@@ -365,6 +481,7 @@ function GroupedActivityCard({
   toolResultsMap,
   mode = "server",
 }: ToolActivityGroupProps) {
+  const isSingleRow = toolCalls.length === 1;
   const [isExpanded, setIsExpanded] = useState(true);
   const activityCompletedCount = useMemo(
     () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
@@ -372,18 +489,28 @@ function GroupedActivityCard({
   );
   const isActive = activityCompletedCount < toolCalls.length;
 
+  if (isSingleRow) {
+    const toolCall = toolCalls[0];
+    return (
+      <ToolActivityRow
+        toolCall={toolCall}
+        toolResult={toolResultsMap.get(toolCall.id)}
+        mode={mode}
+      />
+    );
+  }
+
   return (
-    <div
-      className={cn(
-        "overflow-hidden border bg-card/95",
-        isActive ? "border-border border-l-2 border-l-accent" : "border-border",
-      )}
-    >
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 py-1">
         <div className="min-w-0">
-          <div className="text-sm text-foreground">{summarizeToolCalls(toolCalls)}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground/70">
-            {activityCompletedCount} of {toolCalls.length} complete
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/70">
+              {summarizeToolCalls(toolCalls)}
+            </div>
+            <div className="text-[10px] text-muted-foreground/50">
+              {activityCompletedCount}/{toolCalls.length}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -414,7 +541,7 @@ function GroupedActivityCard({
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="space-y-1 px-3 py-2">
+          <div className="space-y-1 border-l border-border/60 pl-3">
             {toolCalls.map((toolCall) => (
               <ToolActivityRow
                 key={toolCall.id}
@@ -450,6 +577,26 @@ export function ToolActivityGroup({
         if (segment.type === "shell") {
           return (
             <BashToolCallCard
+              key={segment.toolCall.id}
+              toolCall={segment.toolCall}
+              toolResult={toolResultsMap.get(segment.toolCall.id)}
+            />
+          );
+        }
+
+        if (segment.type === "read_file") {
+          return (
+            <ReadFileToolCallCard
+              key={segment.toolCall.id}
+              toolCall={segment.toolCall}
+              toolResult={toolResultsMap.get(segment.toolCall.id)}
+            />
+          );
+        }
+
+        if (segment.type === "write_file") {
+          return (
+            <WriteFileToolCallCard
               key={segment.toolCall.id}
               toolCall={segment.toolCall}
               toolResult={toolResultsMap.get(segment.toolCall.id)}

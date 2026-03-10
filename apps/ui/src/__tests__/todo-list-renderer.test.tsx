@@ -3,7 +3,7 @@ import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 
 describe("TodoListRenderer", () => {
   it("renders a progress header and uses activeForm for in-progress items", () => {
-    render(
+    const { container } = render(
       <TodoListRenderer
         arguments={{
           todos: [
@@ -28,8 +28,12 @@ describe("TodoListRenderer", () => {
       />,
     );
 
+    const root = container.firstElementChild as HTMLElement;
+
     expect(screen.getByText("1 of 3 todos completed")).toBeInTheDocument();
     expect(screen.getAllByText("Running tests")).toHaveLength(2);
     expect(screen.getByText("Update docs")).toBeInTheDocument();
+    expect(root).not.toHaveClass("border");
+    expect(root.className).not.toContain("bg-card/95");
   });
 });

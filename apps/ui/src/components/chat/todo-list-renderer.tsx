@@ -2,15 +2,14 @@
 
 /**
  * Decisions:
- * - Render todos as a persistent progress card so long-running tool work has a clear anchor near the composer.
- * - Prefer low-key motion: progress bar width changes and active-row pulse instead of a heavy animated widget.
- * - Match the Slate system: sharp corners, muted surfaces, and gold accents only for active state and progress.
+ * - Keep todos in the transcript flow: one inline progress block, not a nested card with its own chrome.
+ * - Prefer low-key motion: progress width changes and active-row pulse instead of a heavyweight widget.
+ * - Reserve borders for the active item; avoid stacking box-on-box surfaces inside the chat transcript.
  */
 
 import { useState } from "react";
-import { CheckSquare2, ChevronDown, ChevronRight, Info, Loader2, Square } from "lucide-react";
+import { CheckSquare2, ChevronDown, ChevronRight, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ContentPart } from "@/lib/api/types";
 
 // Todo item structure from write_todos tool
@@ -84,20 +83,6 @@ function getStatusIcon(status: string, isActive: boolean = false) {
   }
 }
 
-function InfoHint({ text }: { text: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        className="rounded p-0.5 text-muted-foreground/55 transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Execution plan info"
-      >
-        <Info className="h-3 w-3" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-56 text-xs leading-5">{text}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean }) {
   const isCompleted = todo.status === "completed";
   const isInProgress = todo.status === "in_progress";
@@ -108,9 +93,9 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
   return (
     <div
       className={cn(
-        "flex items-start gap-2 border px-3 py-2.5 transition-all duration-300",
-        isInProgress && "border-border/70 border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)]",
-        !isInProgress && "border-transparent",
+        "flex items-start gap-2 py-1.5 transition-all duration-300",
+        isInProgress && "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] pl-2",
+        !isInProgress && "pl-[10px]",
       )}
     >
       {getStatusIcon(todo.status, isActive)}
@@ -134,7 +119,7 @@ function TodoListFromItems({ todos, isActive }: { todos: TodoItem[]; isActive?: 
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {todos.map((todo, index) => (
         <TodoItemRow
           key={`${todo.content}-${index}`}
@@ -185,53 +170,39 @@ export function TodoListRenderer({
   const activeTodo = todos.find((todo) => todo.status === "in_progress");
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden border bg-card/95",
-        isExecuting ? "border-border border-l-2 border-l-accent" : "border-border",
-      )}
-    >
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <div className="text-sm text-foreground">
               {completedCount} of {totalCount} todos completed
             </div>
-            <InfoHint text="The execution plan persists while tools run so users can see current intent and remaining work." />
+            {isExecuting && (
+              <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" aria-hidden />
+            )}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground/70">
             {activeTodo ? activeTodo.activeForm : "Plan captured from write_todos"}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isExecuting && (
-            <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" aria-hidden />
-          )}
-          <button
-            type="button"
-            onClick={() => setIsExpanded((current) => !current)}
-            className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={isExpanded ? "Collapse execution plan" : "Expand execution plan"}
-          >
-            {isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+          aria-label={isExpanded ? "Collapse execution plan" : "Expand execution plan"}
+        >
+          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
       </div>
 
-      <div className="border-y border-border/60 px-4 py-3">
-        <div className="h-1.5 overflow-hidden bg-muted/80">
-          <div
-            className={cn(
-              "h-full bg-accent transition-[width] duration-500 ease-out",
-              isExecuting && "animate-tool-progress-active",
-            )}
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+      <div className="h-1.5 overflow-hidden bg-muted/80">
+        <div
+          className={cn(
+            "h-full bg-accent transition-[width] duration-500 ease-out",
+            isExecuting && "animate-tool-progress-active",
+          )}
+          style={{ width: `${progressPercent}%` }}
+        />
       </div>
 
       <div
@@ -241,7 +212,7 @@ export function TodoListRenderer({
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="space-y-1 px-3 py-2">
+          <div className="space-y-1">
             <TodoListFromItems todos={todos} isActive={isExecuting} />
             {warning && <div className="mt-0.5 text-xs text-amber-600">{warning}</div>}
           </div>

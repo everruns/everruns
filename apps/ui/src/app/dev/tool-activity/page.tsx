@@ -69,7 +69,12 @@ const activeToolResults = new Map<string, ToolCompletedData>([
       result: [
         {
           type: "text",
-          text: "# Everruns\nDurable agent runtime and UI for long-running tasks.",
+          text: JSON.stringify({
+            path: "/workspace/README.md",
+            content: "# Everruns\nDurable agent runtime and UI for long-running tasks.",
+            encoding: "text",
+            size_bytes: 63,
+          }),
         },
       ],
     },
@@ -121,7 +126,11 @@ const completedToolResults = new Map<string, ToolCompletedData>([
       result: [
         {
           type: "text",
-          text: "Updated README.md with the new project structure and setup notes.",
+          text: JSON.stringify({
+            path: "/workspace/README.md",
+            size_bytes: 1584,
+            created: true,
+          }),
         },
       ],
       duration_ms: 95,
