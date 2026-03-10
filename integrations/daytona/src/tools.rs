@@ -106,14 +106,19 @@ impl Tool for DaytonaCreateSandboxTool {
             // Continue anyway — the sandbox was created, agent can retry later
         }
 
-        let workspace_path = "/sandbox".to_string();
+        let workspace_path = crate::DAYTONA_WORKSPACE_PATH.to_string();
 
-        // Ensure /sandbox directory exists
+        // Ensure workspace directory exists
         if let Err(e) = client
-            .exec(sandbox_id, "mkdir -p /sandbox", None, None)
+            .exec(
+                sandbox_id,
+                &format!("mkdir -p {}", crate::DAYTONA_WORKSPACE_PATH),
+                None,
+                None,
+            )
             .await
         {
-            warn!("Failed to create /sandbox directory: {e}");
+            warn!("Failed to create workspace directory: {e}");
         }
 
         // Save state
@@ -303,7 +308,7 @@ impl Tool for DaytonaReadFileTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Path to file in sandbox (e.g., '/sandbox/main.py')"
+                    "description": "Path to file in sandbox (e.g., '/home/daytona/main.py')"
                 }
             },
             "required": ["sandbox_id", "path"],
@@ -384,7 +389,7 @@ impl Tool for DaytonaWriteFileTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Path for file in sandbox (e.g., '/sandbox/main.py')"
+                    "description": "Path for file in sandbox (e.g., '/home/daytona/main.py')"
                 },
                 "content": {
                     "type": "string",
@@ -812,7 +817,7 @@ impl Tool for DaytonaGitCloneTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Clone destination path inside sandbox (optional, defaults to /sandbox/<owner>/<repo>)"
+                    "description": "Clone destination path inside sandbox (optional, defaults to /home/daytona/<owner>/<repo>)"
                 }
             },
             "required": ["sandbox_id", "repo_url"],
@@ -854,7 +859,7 @@ impl Tool for DaytonaGitCloneTool {
         // Normalize repo URL: "user/repo" → "https://github.com/user/repo.git"
         let repo_url = normalize_repo_url(repo_url_raw);
 
-        // Build default clone path: /sandbox/owner/repo (preserves user/repo structure)
+        // Build default clone path: <workspace>/owner/repo (preserves user/repo structure)
         let default_path = if let Some(owner_repo) = extract_owner_repo(repo_url_raw) {
             format!("{}/{}", state.workspace_path, owner_repo)
         } else {
@@ -1699,7 +1704,7 @@ mod tests {
         // Seed sandbox state
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
-            workspace_path: "/sandbox".to_string(),
+            workspace_path: "/home/daytona".to_string(),
             started_at: "2026-01-01T00:00:00Z".to_string(),
         };
         store
@@ -1743,7 +1748,7 @@ mod tests {
             .await;
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
-            workspace_path: "/sandbox".to_string(),
+            workspace_path: "/home/daytona".to_string(),
             started_at: "2026-01-01T00:00:00Z".to_string(),
         };
         store
@@ -1786,7 +1791,7 @@ mod tests {
             .await;
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
-            workspace_path: "/sandbox".to_string(),
+            workspace_path: "/home/daytona".to_string(),
             started_at: "2026-01-01T00:00:00Z".to_string(),
         };
         store

@@ -58,6 +58,8 @@ const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SANDBOX_READY_MAX_WAIT: Duration = Duration::from_secs(60);
 /// Auto-stop after 5 minutes of inactivity (safety net)
 const AUTO_STOP_INTERVAL_MINUTES: u64 = 5;
+/// Default workspace path inside Daytona sandboxes
+const DAYTONA_WORKSPACE_PATH: &str = "/home/daytona";
 
 // ============================================================================
 // DaytonaCapability
@@ -121,10 +123,10 @@ All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a
 Sandboxes auto-stop after 5 minutes of inactivity.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
 
-Git cloning: Use `daytona_git_clone` to clone repositories into `/sandbox/owner/repo`.
+Git cloning: Use `daytona_git_clone` to clone repositories into `/home/daytona/owner/repo`.
 If the user has connected their GitHub account (Settings > Connections), private repos
 are automatically authenticated. For public repos, no credentials are needed.
-Supports "user/repo" shorthand. Working directory is `/sandbox`.
+Supports "user/repo" shorthand. Working directory is `/home/daytona`.
 
 Git push/pull/fetch: After cloning, call `daytona_git_credentials` once to configure
 credentials in the sandbox. Then use `daytona_exec` for any git command (push, pull,
