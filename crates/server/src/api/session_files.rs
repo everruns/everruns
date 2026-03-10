@@ -18,7 +18,7 @@ use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -176,6 +176,7 @@ pub fn routes(state: AppState) -> Router {
                 .put(update_path)
                 .delete(delete_path),
         )
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .with_state(state)
 }
 
