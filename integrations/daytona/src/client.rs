@@ -953,4 +953,48 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["name"], "only.txt");
     }
+
+    #[tokio::test]
+    async fn test_client_create_sandbox_forwards_labels() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sandbox"))
+            .and(wiremock::matchers::body_json(json!({
+                "name": "Labeled Sandbox",
+                "autoStopInterval": 5,
+                "labels": {
+                    "everruns": "true",
+                    "everruns.session_id": "session_abc",
+                    "everruns.org_id": "org_123"
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_labeled",
+                "name": "Labeled Sandbox",
+                "state": "started"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .create_sandbox(json!({
+                "name": "Labeled Sandbox",
+                "autoStopInterval": 5,
+                "labels": {
+                    "everruns": "true",
+                    "everruns.session_id": "session_abc",
+                    "everruns.org_id": "org_123"
+                }
+            }))
+            .await;
+        assert!(result.is_ok());
+        let info = result.unwrap();
+        assert_eq!(info.id, "sb_labeled");
+    }
 }
