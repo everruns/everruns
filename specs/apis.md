@@ -555,20 +555,27 @@ GET /v1/agents/{id}/sessions?limit=10
 
 ### Search
 
-All entity list endpoints support an optional `?search=` query parameter for case-insensitive substring matching on name and description fields.
+All entity list endpoints support an optional `?search=` query parameter for tokenized multi-word search across name and description fields.
+
+**Behavior:**
+- The query is split on whitespace into tokens; each token must match somewhere in the concatenated searchable fields (case-insensitive).
+- Example: `?search=customer+bot` matches an agent named "Customer Support Bot" because both "customer" and "bot" appear.
+- Tokens are capped at 8 to prevent performance degradation from excessively long queries (e.g. pasting a poem).
+- LIKE wildcards (`%`, `_`, `\`) in user input are escaped so they are treated as literal characters.
+- Empty or whitespace-only search values are treated as no filter.
 
 **Supported endpoints:**
 
 | Endpoint | Fields searched |
 |----------|---------------|
 | `GET /v1/agents?search=` | `name`, `description` |
-| `GET /v1/sessions?search=` | `title`, `preview` |
+| `GET /v1/sessions?search=` | `title` |
 | `GET /v1/harnesses?search=` | `name`, `description` |
 | `GET /v1/skills?search=` | `name`, `description` |
 | `GET /v1/apps?search=` | `name`, `description` |
 | `GET /v1/mcp-servers?search=` | `name`, `description` |
 
-**Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive substring). Empty or whitespace-only search values are treated as no filter.
+**Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive, tokenized). Empty or whitespace-only search values are treated as no filter.
 
 ### Error Responses
 
