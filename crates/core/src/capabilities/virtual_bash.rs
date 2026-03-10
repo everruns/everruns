@@ -1891,4 +1891,168 @@ mod tests {
             panic!("Expected success, got: {:?}", result);
         }
     }
+
+    // ========================================================================
+    // Overwrite / existing-file tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_bash_overwrite_existing_file() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Write a file
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'first' > /workspace/overwrite.txt"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Overwrite with new content
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'second' > /workspace/overwrite.txt"}),
+                &context,
+            )
+            .await;
+        if let ToolExecutionResult::Success(output) = &result {
+            assert_eq!(output["exit_code"], 0, "Overwrite should succeed");
+        } else {
+            panic!("Expected success on overwrite, got: {:?}", result);
+        }
+
+        // Read back — should have new content
+        let result = tool
+            .execute_with_context(json!({"command": "cat /workspace/overwrite.txt"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "second\n");
+        } else {
+            panic!("Expected success on read, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_append_to_existing_file() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create file
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'line1' > /workspace/append.txt"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+
+        // Append
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'line2' >> /workspace/append.txt"}),
+                &context,
+            )
+            .await;
+        if let ToolExecutionResult::Success(output) = &result {
+            assert_eq!(output["exit_code"], 0, "Append should succeed");
+        } else {
+            panic!("Expected success on append, got: {:?}", result);
+        }
+
+        // Verify combined content
+        let result = tool
+            .execute_with_context(json!({"command": "cat /workspace/append.txt"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "line1\nline2\n");
+        } else {
+            panic!("Expected success on read");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_adapter_overwrite_existing_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write initial
+        adapter
+            .write_file(Path::new("/workspace/ow.txt"), b"original")
+            .await
+            .unwrap();
+
+        // Overwrite
+        adapter
+            .write_file(Path::new("/workspace/ow.txt"), b"updated")
+            .await
+            .unwrap();
+
+        // Verify new content
+        let content = adapter
+            .read_file(Path::new("/workspace/ow.txt"))
+            .await
+            .unwrap();
+        assert_eq!(content, b"updated");
+    }
+
+    #[tokio::test]
+    async fn test_adapter_append_to_existing_file() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write initial
+        adapter
+            .write_file(Path::new("/workspace/ap.txt"), b"AAA")
+            .await
+            .unwrap();
+
+        // Append
+        adapter
+            .append_file(Path::new("/workspace/ap.txt"), b"BBB")
+            .await
+            .unwrap();
+
+        // Verify combined
+        let content = adapter
+            .read_file(Path::new("/workspace/ap.txt"))
+            .await
+            .unwrap();
+        assert_eq!(content, b"AAABBB");
+    }
+
+    #[tokio::test]
+    async fn test_bash_redirect_creates_parent_dirs() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Write to a nested path — parent dirs should be auto-created
+        let result = tool
+            .execute_with_context(
+                json!({"command": "echo 'deep' > /workspace/a/b/c/deep.txt"}),
+                &context,
+            )
+            .await;
+        if let ToolExecutionResult::Success(output) = &result {
+            assert_eq!(output["exit_code"], 0, "Nested write should succeed");
+        } else {
+            panic!("Expected success, got: {:?}", result);
+        }
+
+        // Read back
+        let result = tool
+            .execute_with_context(
+                json!({"command": "cat /workspace/a/b/c/deep.txt"}),
+                &context,
+            )
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "deep\n");
+        } else {
+            panic!("Expected success on read");
+        }
+    }
 }

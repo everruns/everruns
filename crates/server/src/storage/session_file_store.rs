@@ -203,15 +203,39 @@ impl SessionFileStore for DbSessionFileStore {
             let input = CreateSessionFileRow {
                 session_id,
                 path: path.clone(),
-                content: Some(bytes),
+                content: Some(bytes.clone()),
                 is_directory: false,
                 is_readonly: false,
             };
 
-            self.db
-                .create_session_file(input)
-                .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?
+            match self.db.create_session_file(input).await {
+                Ok(row) => row,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("duplicate key")
+                        || msg.contains("unique constraint")
+                        || msg.contains("UNIQUE constraint")
+                    {
+                        // Race: file was created concurrently; fall back to update
+                        self.db
+                            .update_session_file(
+                                session_id.uuid(),
+                                &path,
+                                UpdateSessionFile {
+                                    content: Some(bytes),
+                                    is_readonly: None,
+                                },
+                            )
+                            .await
+                            .map_err(|e| AgentLoopError::store(e.to_string()))?
+                            .ok_or_else(|| {
+                                AgentLoopError::store("File not found after race recovery")
+                            })?
+                    } else {
+                        return Err(AgentLoopError::store(e.to_string()));
+                    }
+                }
+            }
         };
 
         // Convert row to SessionFile
