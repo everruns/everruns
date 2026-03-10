@@ -187,6 +187,23 @@ Create an API-key connection. Validates the key, encrypts, and stores.
 - `404` — Unknown provider
 - `400` — Provider uses OAuth (not API key), or validation failed
 
+#### POST /v1/user/connections/{provider}/verify
+
+Verify a stored API key still works. Decrypts the stored credential and calls the provider's `validate()` method. Generic — works for any API-key provider.
+
+**Response:** `200 OK`
+```json
+{ "valid": true }
+```
+or
+```json
+{ "valid": false, "error": "Invalid API key. Check that the key is correct and active." }
+```
+
+**Errors:**
+- `404` — No connection found or unknown provider
+- `400` — Provider is not API-key type
+
 #### DELETE /v1/user/connections/{provider}
 
 Disconnect. Deletes the stored installation_id/token.

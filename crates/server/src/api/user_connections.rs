@@ -833,4 +833,30 @@ mod tests {
         let (status, _) = validate_install_state(&jar, Some("y")).unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
+
+    // =========================================================================
+    // VerifyConnectionResponse serialization tests
+    // =========================================================================
+
+    #[test]
+    fn verify_response_valid_serializes_without_error() {
+        let resp = VerifyConnectionResponse {
+            valid: true,
+            error: None,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], true);
+        assert!(json.get("error").is_none(), "error field should be skipped when None");
+    }
+
+    #[test]
+    fn verify_response_invalid_serializes_with_error() {
+        let resp = VerifyConnectionResponse {
+            valid: false,
+            error: Some("Invalid API key".to_string()),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["error"], "Invalid API key");
+    }
 }
