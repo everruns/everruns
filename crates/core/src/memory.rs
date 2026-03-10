@@ -597,7 +597,7 @@ impl ToolExecutor for FailingToolExecutor {
 
 use crate::events::{Event, EventRequest};
 use crate::llm_driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use crate::traits::EventEmitter;
 use futures::stream;
@@ -699,9 +699,9 @@ impl LlmDriver for MockLlmProvider {
             if let Some(tool_calls) = response.tool_calls {
                 Ok(LlmStreamEvent::ToolCalls(tool_calls))
             } else {
-                Ok(LlmStreamEvent::Done(LlmCompletionMetadata::default()))
+                Ok(LlmStreamEvent::Done(Box::default()))
             },
-            Ok(LlmStreamEvent::Done(LlmCompletionMetadata::default())),
+            Ok(LlmStreamEvent::Done(Box::default())),
         ];
 
         Ok(Box::pin(stream::iter(events)))

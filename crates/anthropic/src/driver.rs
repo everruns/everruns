@@ -696,7 +696,7 @@ impl LlmDriver for AnthropicLlmDriver {
                                 let cache_read = *cache_read_tokens.lock().unwrap();
                                 let cache_creation = *cache_creation_tokens.lock().unwrap();
 
-                                Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                     total_tokens: Some(in_tokens + out_tokens),
                                     prompt_tokens: Some(in_tokens),
                                     completion_tokens: Some(out_tokens),
@@ -707,7 +707,8 @@ impl LlmDriver for AnthropicLlmDriver {
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: None,
-                                }))
+                                    phase: None,
+                                })))
                             }
                             "error" => Ok(LlmStreamEvent::Error(format!(
                                 "Anthropic stream error: {}",

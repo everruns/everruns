@@ -422,17 +422,21 @@ impl LlmDriver for GeminiLlmDriver {
                             let out_tokens = *completion_tokens.lock().unwrap();
                             let cached = *cached_tokens.lock().unwrap();
 
-                            let result = Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
-                                total_tokens: Some(in_tokens + out_tokens),
-                                prompt_tokens: Some(in_tokens),
-                                completion_tokens: Some(out_tokens),
-                                cache_read_tokens: cached,
-                                cache_creation_tokens: None,
-                                model: Some(model.clone()),
-                                finish_reason: Some("stop".to_string()),
-                                retry_metadata: retry_metadata.as_ref().map(|arc| (**arc).clone()),
-                                response_id: None,
-                            }));
+                            let result =
+                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                                    total_tokens: Some(in_tokens + out_tokens),
+                                    prompt_tokens: Some(in_tokens),
+                                    completion_tokens: Some(out_tokens),
+                                    cache_read_tokens: cached,
+                                    cache_creation_tokens: None,
+                                    model: Some(model.clone()),
+                                    finish_reason: Some("stop".to_string()),
+                                    retry_metadata: retry_metadata
+                                        .as_ref()
+                                        .map(|arc| (**arc).clone()),
+                                    response_id: None,
+                                    phase: None,
+                                })));
                             return Some((
                                 result,
                                 (
@@ -551,8 +555,8 @@ impl LlmDriver for GeminiLlmDriver {
                                                 _ => "stop",
                                             };
 
-                                            let result =
-                                                Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                                            let result = Ok(LlmStreamEvent::Done(Box::new(
+                                                LlmCompletionMetadata {
                                                     total_tokens: Some(in_tokens + out_tokens),
                                                     prompt_tokens: Some(in_tokens),
                                                     completion_tokens: Some(out_tokens),
@@ -564,7 +568,9 @@ impl LlmDriver for GeminiLlmDriver {
                                                         .as_ref()
                                                         .map(|arc| (**arc).clone()),
                                                     response_id: None,
-                                                }));
+                                                    phase: None,
+                                                },
+                                            )));
                                             return Some((
                                                 result,
                                                 (
@@ -648,17 +654,21 @@ impl LlmDriver for GeminiLlmDriver {
                             let out_tokens = *completion_tokens.lock().unwrap();
                             let cached = *cached_tokens.lock().unwrap();
 
-                            let result = Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
-                                total_tokens: Some(in_tokens + out_tokens),
-                                prompt_tokens: Some(in_tokens),
-                                completion_tokens: Some(out_tokens),
-                                cache_read_tokens: cached,
-                                cache_creation_tokens: None,
-                                model: Some(model.clone()),
-                                finish_reason: Some("stop".to_string()),
-                                retry_metadata: retry_metadata.as_ref().map(|arc| (**arc).clone()),
-                                response_id: None,
-                            }));
+                            let result =
+                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                                    total_tokens: Some(in_tokens + out_tokens),
+                                    prompt_tokens: Some(in_tokens),
+                                    completion_tokens: Some(out_tokens),
+                                    cache_read_tokens: cached,
+                                    cache_creation_tokens: None,
+                                    model: Some(model.clone()),
+                                    finish_reason: Some("stop".to_string()),
+                                    retry_metadata: retry_metadata
+                                        .as_ref()
+                                        .map(|arc| (**arc).clone()),
+                                    response_id: None,
+                                    phase: None,
+                                })));
                             return Some((
                                 result,
                                 (

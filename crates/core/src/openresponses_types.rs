@@ -702,6 +702,10 @@ pub enum OutputItem {
         status: ItemStatus,
         role: MessageRole,
         content: Vec<ContentPart>,
+        /// Execution phase assigned by the model (e.g., "commentary", "final_answer").
+        /// Must be preserved and sent back when replaying conversation history.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        phase: Option<String>,
     },
     #[serde(rename = "function_call")]
     FunctionCall {

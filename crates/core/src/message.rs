@@ -50,6 +50,16 @@ impl ExecutionPhase {
         }
     }
 
+    /// Parse a provider wire value into an ExecutionPhase.
+    /// Returns `None` for unrecognized values.
+    pub fn from_provider_str(s: &str) -> Option<Self> {
+        match s {
+            "commentary" | "in_progress" => Some(Self::Commentary),
+            "final_answer" | "completed" => Some(Self::FinalAnswer),
+            _ => None,
+        }
+    }
+
     /// Wire value used by providers that support native phases (OpenAI).
     pub fn as_provider_str(&self) -> &'static str {
         match self {

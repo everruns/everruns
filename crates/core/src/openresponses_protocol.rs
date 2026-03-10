@@ -913,11 +913,30 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             _ => "stop".to_string(),
                                         };
 
+                                        // Extract phase from the last assistant message in output items
+                                        let phase = response_obj
+                                            .get("output")
+                                            .and_then(|o| o.as_array())
+                                            .and_then(|items| {
+                                                items.iter().rev().find_map(|item| {
+                                                    if item.get("type")?.as_str()? == "message"
+                                                        && item.get("role")?.as_str()?
+                                                            == "assistant"
+                                                    {
+                                                        item.get("phase")?
+                                                            .as_str()
+                                                            .map(String::from)
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            });
+
                                         let input = *input_tokens.lock().unwrap();
                                         let output = *output_tokens.lock().unwrap();
                                         let cached = *cache_read_tokens.lock().unwrap();
 
-                                        Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
+                                        Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                             total_tokens: Some(input + output),
                                             prompt_tokens: Some(input),
                                             completion_tokens: Some(output),
@@ -928,7 +947,8 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
                                             response_id: None,
-                                        }))
+                                            phase,
+                                        })))
                                     }
 
                                     Some("error") => {
@@ -1121,11 +1141,21 @@ fn handle_streaming_event(
                 _ => "stop".to_string(),
             };
 
+            // Extract phase from the last assistant message in output items.
+            // The API assigns the phase; we preserve it as-is for subsequent requests.
+            let phase = response.output.iter().rev().find_map(|item| {
+                if let types::OutputItem::Message { phase, .. } = item {
+                    phase.clone()
+                } else {
+                    None
+                }
+            });
+
             let input = *input_tokens.lock().unwrap();
             let output = *output_tokens.lock().unwrap();
             let cached = *cache_read_tokens.lock().unwrap();
 
-            LlmStreamEvent::Done(LlmCompletionMetadata {
+            LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 total_tokens: Some(input + output),
                 prompt_tokens: Some(input),
                 completion_tokens: Some(output),
@@ -1135,7 +1165,8 @@ fn handle_streaming_event(
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
-            })
+                phase,
+            }))
         }
 
         StreamingEvent::Error { error, .. } => {

@@ -1096,7 +1096,7 @@ where
                             "ReasonAtom: failed to emit reason.thinking.completed event"
                         );
                     }
-                    completion_metadata = Some(metadata);
+                    completion_metadata = Some(*metadata);
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
@@ -1230,13 +1230,18 @@ where
         } else {
             Message::assistant(&text)
         };
-        // Derive execution phase from state: Commentary for intermediate iterations
-        // (with tool calls), FinalAnswer for the completed response. For drivers with
-        // native phase support (OpenAI), this is sent to the API. For others
-        // (Anthropic, Gemini), it's tracked internally but not sent to the provider.
-        assistant_message.phase = Some(crate::message::ExecutionPhase::from_has_tool_calls(
-            has_tool_calls,
-        ));
+        // Use the API-provided phase when available (preserving the provider's value),
+        // otherwise derive from state: Commentary for intermediate iterations (with tool
+        // calls), FinalAnswer for the completed response.
+        assistant_message.phase = completion_metadata
+            .as_ref()
+            .and_then(|meta| meta.phase.as_deref())
+            .and_then(crate::message::ExecutionPhase::from_provider_str)
+            .or_else(|| {
+                Some(crate::message::ExecutionPhase::from_has_tool_calls(
+                    has_tool_calls,
+                ))
+            });
         assistant_message.metadata = Some(metadata);
         // Store thinking content and signature for extended thinking models
         // Both are required for subsequent API calls when thinking is enabled
