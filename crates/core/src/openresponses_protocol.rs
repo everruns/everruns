@@ -2593,13 +2593,9 @@ mod tests {
         assert_eq!(assistant_json["phase"], "commentary");
 
         // With supports_phases=false, phase should be absent
-        let (_, input_no_phases) =
-            OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input_no_phases) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
         let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
-        assert!(
-            assistant_json_no.get("phase").is_none()
-                || assistant_json_no["phase"].is_null()
-        );
+        assert!(assistant_json_no.get("phase").is_none() || assistant_json_no["phase"].is_null());
     }
 
     // ========================================================================

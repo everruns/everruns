@@ -1287,12 +1287,10 @@ mod tests {
 
     #[test]
     fn test_execution_phase_deserialize_legacy() {
-        let legacy_in_progress: ExecutionPhase =
-            serde_json::from_str("\"in_progress\"").unwrap();
+        let legacy_in_progress: ExecutionPhase = serde_json::from_str("\"in_progress\"").unwrap();
         assert_eq!(legacy_in_progress, ExecutionPhase::Commentary);
 
-        let legacy_completed: ExecutionPhase =
-            serde_json::from_str("\"completed\"").unwrap();
+        let legacy_completed: ExecutionPhase = serde_json::from_str("\"completed\"").unwrap();
         assert_eq!(legacy_completed, ExecutionPhase::FinalAnswer);
     }
 
