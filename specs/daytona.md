@@ -92,7 +92,6 @@ This avoids entering the key in chat (see TM-AGENT-016).
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
 | POST | `/process/execute` | Execute command (sync) | `{ command, cwd?, timeout? }` |
-| POST | `/git/clone` | Clone git repository | `{ url, path, branch?, username?, password? }` |
 | GET | `/files?path=` | List directory | — |
 | GET | `/files/download?path=` | Download file | — |
 | POST | `/files/upload?path=` | Upload file (multipart) | multipart/form-data |
@@ -173,12 +172,12 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
   - `path`: string (optional) — destination inside sandbox (defaults to `/home/daytona/<owner>/<repo>`)
 - **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
 
-**Implementation:** Uses Daytona's native `POST /git/clone` Toolbox API endpoint. Credentials are passed directly in the request body (`username`/`password` fields) — no credential helper scripts needed.
+**Implementation:** Runs `git clone` via the `exec` endpoint (`POST /process/execute`). For authenticated clones, the GitHub token is embedded in the HTTPS URL (`https://oauth2:<token>@github.com/...`). Uses `--depth 1` for faster clones.
 
 **Authentication flow:**
 1. Lazily resolves GitHub token from user connections (`connection_resolver`)
 2. Falls back to `GITHUB_TOKEN` session secret
-3. If token found: passes `username=oauth2`, `password=<token>` to the git clone API
+3. If token found: embeds `oauth2:<token>` in the clone URL
 4. If no token: public repos only; private repos fail with hint to connect GitHub
 
 ### daytona_git_credentials
