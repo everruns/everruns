@@ -425,15 +425,20 @@ impl FileSystem for SessionFileSystemAdapter {
         // Check if it's a file
         match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
-                let size = file.size_bytes as u64;
                 let now = SystemTime::now();
+
+                let file_type = if file.is_directory {
+                    FileType::Directory
+                } else {
+                    FileType::File
+                };
 
                 // Use 0o755 so files are executable by default in the virtual filesystem.
                 // The session filesystem doesn't track Unix permissions, and scripts
                 // stored in /workspace need to be directly executable.
                 Ok(Metadata {
-                    file_type: FileType::File,
-                    size,
+                    file_type,
+                    size: file.size_bytes as u64,
                     mode: 0o755,
                     modified: now,
                     created: now,
@@ -1344,6 +1349,50 @@ mod tests {
 
         let stat = adapter.stat(Path::new("/workspace")).await.unwrap();
         assert!(stat.file_type.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_adapter_stat_directory_returns_dir_type() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Create a directory
+        adapter
+            .mkdir(Path::new("/workspace/mydir"), false)
+            .await
+            .unwrap();
+
+        // stat should report it as a directory, not a file
+        let stat = adapter.stat(Path::new("/workspace/mydir")).await.unwrap();
+        assert!(
+            stat.file_type.is_dir(),
+            "Expected directory but got file type for /workspace/mydir"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_adapter_stat_file_returns_file_type() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Write a file
+        adapter
+            .write_file(Path::new("/workspace/test.txt"), b"hello")
+            .await
+            .unwrap();
+
+        // stat should report it as a file
+        let stat = adapter
+            .stat(Path::new("/workspace/test.txt"))
+            .await
+            .unwrap();
+        assert!(
+            stat.file_type.is_file(),
+            "Expected file but got directory type for /workspace/test.txt"
+        );
+        assert_eq!(stat.size, 5);
     }
 
     #[tokio::test]
