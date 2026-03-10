@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
 import { Settings, Zap } from "lucide-react";
@@ -161,13 +161,36 @@ describe("Sidebar", () => {
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
   });
 
-  it("renders Durable Execution navigation items", () => {
+  it("hides Durable Execution navigation items by default (collapsed)", () => {
     render(<Sidebar />);
+
+    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+    expect(screen.queryByText("Workers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
+    expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
+  });
+
+  it("shows Durable Execution navigation items when expanded", () => {
+    render(<Sidebar />);
+
+    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    fireEvent.click(toggle);
 
     expect(screen.getByText("Overview")).toBeInTheDocument();
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
+  });
+
+  it("collapses Durable Execution section again on second click", () => {
+    render(<Sidebar />);
+
+    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    fireEvent.click(toggle);
+    expect(screen.getByText("Workers")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByText("Workers")).not.toBeInTheDocument();
   });
 
   it("nav element has overflow-y-auto and min-h-0 to prevent sidebar overflow", () => {
@@ -181,6 +204,10 @@ describe("Sidebar", () => {
   it("highlights durable navigation for nested routes", () => {
     mockPathname.mockReturnValue("/durable/workers");
     render(<Sidebar />);
+
+    // Expand the collapsed durable section first
+    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    fireEvent.click(toggle);
 
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-l-primary");
