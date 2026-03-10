@@ -1706,6 +1706,8 @@ export interface SlackChannelConfig {
   channel_id?: string;
   team_id?: string;
   session_strategy: SessionStrategy;
+  webhook_verified_at?: string | null;
+  first_message_received_at?: string | null;
 }
 
 export interface App {
