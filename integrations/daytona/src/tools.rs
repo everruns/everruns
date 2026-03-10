@@ -1227,7 +1227,7 @@ mod tests {
         }
     }
 
-    /// Mock connection resolver that returns a fixed token.
+    /// Mock connection resolver that returns a fixed token for all providers.
     struct MockConnectionResolver {
         token: Option<String>,
     }
@@ -1240,6 +1240,30 @@ mod tests {
             _provider: &str,
         ) -> Result<Option<String>> {
             Ok(self.token.clone())
+        }
+    }
+
+    /// Mock connection resolver that returns tokens only for specific providers.
+    struct ProviderAwareResolver {
+        tokens: std::collections::HashMap<String, String>,
+    }
+
+    impl ProviderAwareResolver {
+        fn daytona_only(api_key: &str) -> Self {
+            let mut tokens = std::collections::HashMap::new();
+            tokens.insert("daytona".to_string(), api_key.to_string());
+            Self { tokens }
+        }
+    }
+
+    #[async_trait]
+    impl UserConnectionResolver for ProviderAwareResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            provider: &str,
+        ) -> Result<Option<String>> {
+            Ok(self.tokens.get(provider).cloned())
         }
     }
 
@@ -1653,7 +1677,7 @@ mod tests {
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
-        // No DAYTONA_API_KEY secret seeded
+        // No connection resolver — API key cannot be resolved
         let context = ToolContext::with_storage_store(session_id, store);
         let result = tool
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
@@ -1661,7 +1685,7 @@ mod tests {
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(
-                    msg.contains("DAYTONA_API_KEY"),
+                    msg.contains("not configured") || msg.contains("Settings > Connections"),
                     "Expected API key error, got: {msg}"
                 );
             }
@@ -1674,11 +1698,10 @@ mod tests {
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
-        // Seed API key but no sandbox state
-        store
-            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
-            .await;
-        let context = ToolContext::with_storage_store(session_id, store);
+        // Connection resolver provides Daytona API key but no sandbox state
+        let resolver = Arc::new(ProviderAwareResolver::daytona_only("test_key"));
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
         let result = tool
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
@@ -1698,9 +1721,6 @@ mod tests {
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
-        store
-            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
-            .await;
         // Seed sandbox state
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
@@ -1714,8 +1734,10 @@ mod tests {
                 &serde_json::to_string(&state).unwrap(),
             )
             .await;
-        // No GitHub token — neither connection resolver nor GITHUB_TOKEN secret
-        let context = ToolContext::with_storage_store(session_id, store);
+        // Daytona API key via connection resolver, but no GitHub token
+        let resolver = Arc::new(ProviderAwareResolver::daytona_only("test_key"));
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
         let result = tool
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
@@ -1737,15 +1759,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_git_credentials_with_github_token_secret() {
-        // When GITHUB_TOKEN session secret is set (but no connection resolver),
-        // the tool should attempt to upload credentials. It will fail because
-        // the Daytona API is not reachable, but the token resolution should succeed.
+        // When GITHUB_TOKEN session secret is set, the tool should attempt to
+        // upload credentials. It will fail because the Daytona API is not
+        // reachable, but the token resolution should succeed.
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
-        store
-            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
-            .await;
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
             workspace_path: "/home/daytona".to_string(),
@@ -1761,7 +1780,10 @@ mod tests {
         store
             .seed_secret(session_id, "GITHUB_TOKEN", "ghp_test_token_123")
             .await;
-        let context = ToolContext::with_storage_store(session_id, store);
+        // Daytona API key via connection resolver (but not GitHub — that comes from secret)
+        let resolver = Arc::new(ProviderAwareResolver::daytona_only("test_key"));
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
         let result = tool
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
@@ -1781,14 +1803,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_git_credentials_with_connection_resolver() {
-        // When connection resolver provides a token, it should be preferred
-        // over GITHUB_TOKEN session secret.
+        // When connection resolver provides a GitHub token, it should be used.
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
-        store
-            .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
-            .await;
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
             workspace_path: "/home/daytona".to_string(),
@@ -1801,6 +1819,7 @@ mod tests {
                 &serde_json::to_string(&state).unwrap(),
             )
             .await;
+        // Connection resolver provides both Daytona key and GitHub token
         let resolver = Arc::new(MockConnectionResolver {
             token: Some("ghs_connection_token_456".to_string()),
         });
@@ -1830,8 +1849,8 @@ mod tests {
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(
-                    msg.contains("not available") || msg.contains("DAYTONA_API_KEY"),
-                    "Expected storage error, got: {msg}"
+                    msg.contains("not available") || msg.contains("not configured"),
+                    "Expected storage/config error, got: {msg}"
                 );
             }
             _ => panic!("Expected ToolError for missing storage store"),
@@ -1867,6 +1886,7 @@ mod tests {
         let tool = DaytonaGitCloneTool;
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
+        // No connection resolver — API key cannot be resolved
         let context = ToolContext::with_storage_store(session_id, store);
         let result = tool
             .execute_with_context(
@@ -1877,7 +1897,7 @@ mod tests {
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(
-                    msg.contains("DAYTONA_API_KEY"),
+                    msg.contains("not configured") || msg.contains("Settings > Connections"),
                     "Expected API key error, got: {msg}"
                 );
             }

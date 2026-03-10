@@ -737,7 +737,7 @@ Daytona sandboxes are remote Linux environments managed via REST API. The agent 
 | TM-DAYTONA-001 | Git token persisted on sandbox disk | Medium | Token written to `/tmp/.git-credentials`; lost on sandbox stop/delete; same trust boundary as `daytona_exec` (anyone who can exec can already read the file) | **ACCEPTED** |
 | TM-DAYTONA-002 | Git token expiry — stale credentials | Low | GitHub App installation tokens expire in ~1 hour; tool hint tells agent to call `daytona_git_credentials` again to refresh | MITIGATED |
 | TM-DAYTONA-003 | Git token scope — over-privileged access | Medium | Token scoped by GitHub App installation permissions; user controls repo access via GitHub App settings | **CALLER RISK** |
-| TM-DAYTONA-004 | Daytona API key compromise | High | Stored as encrypted session secret (`DAYTONA_API_KEY`); envelope encryption (AES-256-GCM) at rest | MITIGATED |
+| TM-DAYTONA-004 | Daytona API key compromise | High | Stored in user connections (Settings > Connections); encrypted at rest via envelope encryption (AES-256-GCM) | MITIGATED |
 | TM-DAYTONA-005 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`daytona_sandbox:{id}`); session isolation enforced by storage store | MITIGATED |
 | TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop after 5 min inactivity; system prompt instructs agent to delete when done | MITIGATED |
 | TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |

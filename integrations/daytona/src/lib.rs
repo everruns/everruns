@@ -51,7 +51,6 @@ inventory::submit! {
 
 const DAYTONA_API_BASE: &str = "https://app.daytona.io/api";
 const DAYTONA_TOOLBOX_BASE: &str = "https://proxy.app.daytona.io/toolbox";
-const DAYTONA_API_KEY_SECRET: &str = "DAYTONA_API_KEY";
 const DAYTONA_SANDBOX_SECRET_PREFIX: &str = "daytona_sandbox:";
 const EXEC_TIMEOUT_MS: u64 = 120_000;
 const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -104,10 +103,8 @@ impl Capability for DaytonaCapability {
 
 Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with full Linux and network access.
 
-Authentication: Daytona API key is resolved automatically:
-1. Session secret `DAYTONA_API_KEY` (if set for this session)
-2. User connection (if configured in Settings > Connections > Daytona)
-If neither is available, guide the user to set up their key in Settings > Connections.
+Authentication: Daytona API key is resolved automatically from Settings > Connections > Daytona.
+If not configured, guide the user to set up their key in Settings > Connections.
 
 Tools:
 - `daytona_create_sandbox` - Create and start a new sandbox
@@ -197,7 +194,6 @@ mod tests {
         assert!(prompt.contains("daytona_create_sandbox"));
         assert!(prompt.contains("daytona_git_clone"));
         assert!(prompt.contains("daytona_git_credentials"));
-        assert!(prompt.contains("DAYTONA_API_KEY"));
         assert!(prompt.contains("Daytona"));
         assert!(prompt.contains("Settings > Connections"));
     }
