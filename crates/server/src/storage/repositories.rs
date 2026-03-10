@@ -57,6 +57,48 @@ impl DatabasePoolConfig {
     }
 }
 
+/// Build multi-word search SQL conditions. Each whitespace-separated token must
+/// match somewhere in the concatenated fields (case-insensitive).
+///
+/// Returns `(sql_fragment, patterns)` where `sql_fragment` looks like
+/// ` AND (lower_expr LIKE $2) AND (lower_expr LIKE $3)` and `patterns` is
+/// `["%token1%", "%token2%"]`.
+///
+/// `lower_expr` should be a SQL expression like
+/// `LOWER(name || ' ' || COALESCE(description, ''))`.
+fn build_search_sql(
+    search: Option<&str>,
+    lower_expr: &str,
+    start_param: usize,
+) -> (String, Vec<String>) {
+    let tokens: Vec<String> = search
+        .filter(|q| !q.trim().is_empty())
+        .map(|q| {
+            q.trim()
+                .to_lowercase()
+                .split_whitespace()
+                .map(|t| format!("%{t}%"))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if tokens.is_empty() {
+        return (String::new(), Vec::new());
+    }
+
+    let mut sql = String::new();
+    for (i, _) in tokens.iter().enumerate() {
+        use std::fmt::Write;
+        write!(
+            sql,
+            " AND ({lower_expr} LIKE ${idx})",
+            idx = start_param + i
+        )
+        .unwrap();
+    }
+    (sql, tokens)
+}
+
 #[derive(Clone)]
 pub struct Database {
     pool: PgPool,
@@ -604,41 +646,20 @@ impl Database {
     }
 
     pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
-        let rows = match search {
-            Some(q) if !q.trim().is_empty() => {
-                let pattern = format!("%{}%", q.trim().to_lowercase());
-                sqlx::query_as::<_, AgentRow>(
-                    r#"
-                    SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
-                           total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                    FROM agents
-                    WHERE org_id = $1 AND status = 'active'
-                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .bind(&pattern)
-                .fetch_all(&self.pool)
-                .await?
-            }
-            _ => {
-                sqlx::query_as::<_, AgentRow>(
-                    r#"
-                    SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
-                           total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                    FROM agents
-                    WHERE org_id = $1 AND status = 'active'
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
-
-        Ok(rows)
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                FROM agents
+                WHERE org_id = $1 AND status = 'active'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, AgentRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
@@ -854,39 +875,19 @@ impl Database {
         org_id: i64,
         search: Option<&str>,
     ) -> Result<Vec<HarnessRow>> {
-        let rows = match search {
-            Some(q) if !q.trim().is_empty() => {
-                let pattern = format!("%{}%", q.trim().to_lowercase());
-                sqlx::query_as::<_, HarnessRow>(
-                    r#"
-                    SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-                    FROM harnesses
-                    WHERE org_id = $1 AND status = 'active'
-                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .bind(&pattern)
-                .fetch_all(&self.pool)
-                .await?
-            }
-            _ => {
-                sqlx::query_as::<_, HarnessRow>(
-                    r#"
-                    SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-                    FROM harnesses
-                    WHERE org_id = $1 AND status = 'active'
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
-
-        Ok(rows)
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+                FROM harnesses
+                WHERE org_id = $1 AND status = 'active'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, HarnessRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_harness(
@@ -1012,41 +1013,37 @@ impl Database {
         search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        let search_pattern = search
-            .filter(|q| !q.trim().is_empty())
-            .map(|q| format!("%{}%", q.trim().to_lowercase()));
-
         // Build WHERE clause dynamically
         let mut where_clause = "WHERE org_id = $1".to_string();
         let mut param_idx = 2;
 
-        let agent_param_idx = if agent_id.is_some() {
-            let idx = param_idx;
-            where_clause.push_str(&format!(" AND agent_id = ${idx}"));
+        if agent_id.is_some() {
+            where_clause.push_str(&format!(" AND agent_id = ${param_idx}"));
             param_idx += 1;
-            Some(idx)
-        } else {
-            None
-        };
+        }
 
-        let search_param_idx = if search_pattern.is_some() {
-            let idx = param_idx;
-            where_clause.push_str(&format!(" AND (LOWER(COALESCE(title, '')) LIKE ${idx})"));
-            param_idx += 1;
-            Some(idx)
-        } else {
-            None
-        };
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(COALESCE(title, ''))", param_idx);
+        where_clause.push_str(&search_sql);
+        param_idx += patterns.len();
+
+        // Helper: bind org_id, agent_id, and search patterns to a query
+        macro_rules! bind_params {
+            ($q:expr) => {{
+                let mut q = $q.bind(org_id);
+                if let Some(aid) = agent_id {
+                    q = q.bind(aid);
+                }
+                for pat in &patterns {
+                    q = q.bind(pat);
+                }
+                q
+            }};
+        }
 
         // Get total count
         let count_sql = format!("SELECT COUNT(*) as count FROM sessions {where_clause}");
-        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql).bind(org_id);
-        if let Some(aid) = agent_id {
-            count_query = count_query.bind(aid);
-        }
-        if let Some(ref pat) = search_pattern {
-            count_query = count_query.bind(pat);
-        }
+        let count_query = bind_params!(sqlx::query_as::<_, (i64,)>(&count_sql));
         let total: (i64,) = count_query.fetch_one(&self.pool).await?;
 
         // Get paginated results
@@ -1059,21 +1056,12 @@ impl Database {
             ORDER BY created_at DESC
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
         );
-        let mut data_query = sqlx::query_as::<_, SessionRow>(&select_sql).bind(org_id);
-        if let Some(aid) = agent_id {
-            data_query = data_query.bind(aid);
-        }
-        if let Some(ref pat) = search_pattern {
-            data_query = data_query.bind(pat);
-        }
+        let data_query = bind_params!(sqlx::query_as::<_, SessionRow>(&select_sql));
         let rows: Vec<SessionRow> = data_query
             .bind(pagination.limit as i64)
             .bind(pagination.offset as i64)
             .fetch_all(&self.pool)
             .await?;
-
-        // Suppress unused variable warnings for the param index tracking
-        let _ = (agent_param_idx, search_param_idx);
 
         Ok((rows, total.0 as u32))
     }
@@ -2820,41 +2808,19 @@ impl Database {
         org_id: i64,
         search: Option<&str>,
     ) -> Result<Vec<McpServerRow>> {
-        let search_pattern = search
-            .filter(|q| !q.trim().is_empty())
-            .map(|q| format!("%{}%", q.trim().to_lowercase()));
-
-        let rows = match &search_pattern {
-            Some(pattern) => {
-                sqlx::query_as::<_, McpServerRow>(
-                    r#"
-                    SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-                    FROM mcp_servers
-                    WHERE org_id = $1 AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .bind(pattern)
-                .fetch_all(&self.pool)
-                .await?
-            }
-            None => {
-                sqlx::query_as::<_, McpServerRow>(
-                    r#"
-                    SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-                    FROM mcp_servers
-                    WHERE org_id = $1
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
-
-        Ok(rows)
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+                FROM mcp_servers
+                WHERE org_id = $1{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, McpServerRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     /// List only active MCP servers (for capability listing)
@@ -3016,39 +2982,19 @@ impl Database {
     }
 
     pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
-        let rows = match search {
-            Some(q) if !q.trim().is_empty() => {
-                let pattern = format!("%{}%", q.trim().to_lowercase());
-                sqlx::query_as::<_, SkillRow>(
-                    r#"
-                    SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
-                    FROM skills
-                    WHERE org_id = $1
-                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .bind(&pattern)
-                .fetch_all(&self.pool)
-                .await?
-            }
-            _ => {
-                sqlx::query_as::<_, SkillRow>(
-                    r#"
-                    SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
-                    FROM skills
-                    WHERE org_id = $1
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
-
-        Ok(rows)
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+                FROM skills
+                WHERE org_id = $1{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, SkillRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_skill(
@@ -4348,39 +4294,19 @@ impl Database {
     }
 
     pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
-        let rows = match search {
-            Some(q) if !q.trim().is_empty() => {
-                let pattern = format!("%{}%", q.trim().to_lowercase());
-                sqlx::query_as::<_, AppRow>(
-                    r#"
-                    SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
-                    FROM apps
-                    WHERE org_id = $1 AND status != 'archived'
-                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .bind(&pattern)
-                .fetch_all(&self.pool)
-                .await?
-            }
-            _ => {
-                sqlx::query_as::<_, AppRow>(
-                    r#"
-                    SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
-                    FROM apps
-                    WHERE org_id = $1 AND status != 'archived'
-                    ORDER BY created_at DESC
-                    "#,
-                )
-                .bind(org_id)
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
-
-        Ok(rows)
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+                FROM apps
+                WHERE org_id = $1 AND status != 'archived'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, AppRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_app(

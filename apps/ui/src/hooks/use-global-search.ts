@@ -131,8 +131,18 @@ const ID_PREFIX_MAP: Record<
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/settings/mcp-servers" },
 };
 
-function matchesQuery(text: string, query: string): boolean {
-  return text.toLowerCase().includes(query);
+/**
+ * Tokenized multi-word search. Every word in the query must appear
+ * somewhere in the combined searchable text. This means "Daytona Agent"
+ * matches an agent named "Daytona Coder" because "daytona" hits the name
+ * and "agent" hits the category context passed via `extraContext`.
+ */
+function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]): boolean {
+  const combined = texts
+    .filter(Boolean)
+    .map((t) => t!.toLowerCase())
+    .join(" ");
+  return tokens.every((token) => combined.includes(token));
 }
 
 const EMPTY_ARRAY: never[] = [];
@@ -165,6 +175,7 @@ export function useGlobalSearch(query: string) {
       );
     }
 
+    const tokens = q.split(/\s+/).filter(Boolean);
     const results: SearchResult[] = [];
     const MAX_PER_CATEGORY = 5;
 
@@ -204,9 +215,7 @@ export function useGlobalSearch(query: string) {
     let navCount = 0;
     for (const page of NAVIGATION_PAGES) {
       if (navCount >= MAX_PER_CATEGORY) break;
-      const matches =
-        matchesQuery(page.title, q) || page.keywords?.some((kw) => matchesQuery(kw, q));
-      if (matches) {
+      if (matchesTokens(tokens, page.title, ...(page.keywords ?? []))) {
         results.push({
           id: `nav:${page.href}`,
           category: "navigation",
@@ -222,11 +231,7 @@ export function useGlobalSearch(query: string) {
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesQuery(agent.name, q) ||
-        (agent.description && matchesQuery(agent.description, q)) ||
-        matchesQuery(agent.id, q)
-      ) {
+      if (matchesTokens(tokens, agent.name, agent.description, agent.id, "agent")) {
         results.push({
           id: `agent:${agent.id}`,
           category: "agent",
@@ -244,11 +249,7 @@ export function useGlobalSearch(query: string) {
     for (const session of sessions) {
       if (sessionCount >= MAX_PER_CATEGORY) break;
       const title = session.title || session.preview || session.id;
-      if (
-        matchesQuery(title, q) ||
-        matchesQuery(session.id, q) ||
-        (session.preview && matchesQuery(session.preview, q))
-      ) {
+      if (matchesTokens(tokens, title, session.id, session.preview, "session")) {
         results.push({
           id: `session:${session.id}`,
           category: "session",
@@ -265,11 +266,7 @@ export function useGlobalSearch(query: string) {
     let harnessCount = 0;
     for (const harness of harnesses) {
       if (harnessCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesQuery(harness.name, q) ||
-        (harness.description && matchesQuery(harness.description, q)) ||
-        matchesQuery(harness.id, q)
-      ) {
+      if (matchesTokens(tokens, harness.name, harness.description, harness.id, "harness")) {
         results.push({
           id: `harness:${harness.id}`,
           category: "harness",
@@ -286,11 +283,7 @@ export function useGlobalSearch(query: string) {
     let skillCount = 0;
     for (const skill of skills) {
       if (skillCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesQuery(skill.name, q) ||
-        (skill.description && matchesQuery(skill.description, q)) ||
-        matchesQuery(skill.id, q)
-      ) {
+      if (matchesTokens(tokens, skill.name, skill.description, skill.id, "skill")) {
         results.push({
           id: `skill:${skill.id}`,
           category: "skill",
@@ -307,11 +300,7 @@ export function useGlobalSearch(query: string) {
     let mcpCount = 0;
     for (const server of mcpServers) {
       if (mcpCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesQuery(server.name, q) ||
-        (server.description && matchesQuery(server.description, q)) ||
-        matchesQuery(server.id, q)
-      ) {
+      if (matchesTokens(tokens, server.name, server.description, server.id, "mcp server")) {
         results.push({
           id: `mcp:${server.id}`,
           category: "mcp_server",
