@@ -231,6 +231,56 @@ describe("FileTreeFolder", () => {
       expect(screen.getByText("button.tsx")).toBeInTheDocument();
     });
   });
+
+  describe("actions prop", () => {
+    it("renders actions inline in the folder row", () => {
+      render(
+        <FileTree expanded={new Set(["/src"])}>
+          <FileTreeFolder
+            path="/src"
+            name="src"
+            actions={
+              <FileTreeActions>
+                <span data-testid="inline-action">Add</span>
+              </FileTreeActions>
+            }
+          >
+            <FileTreeFile path="/src/index.ts" name="index.ts" />
+          </FileTreeFolder>
+        </FileTree>,
+      );
+
+      const action = screen.getByTestId("inline-action");
+      expect(action).toBeInTheDocument();
+      // Action and folder name share the same row container (not in collapsible content)
+      const folderName = screen.getByText("src");
+      const row = folderName.closest("button")!.parentElement!;
+      expect(row).toContainElement(action);
+    });
+
+    it("keeps actions outside the trigger button (no nested buttons)", () => {
+      render(
+        <FileTree expanded={new Set(["/src"])}>
+          <FileTreeFolder
+            path="/src"
+            name="src"
+            actions={
+              <FileTreeActions>
+                <span data-testid="inline-action">Add</span>
+              </FileTreeActions>
+            }
+          >
+            <FileTreeFile path="/src/index.ts" name="index.ts" />
+          </FileTreeFolder>
+        </FileTree>,
+      );
+
+      // Actions should be a sibling of the trigger, not nested inside it
+      const trigger = screen.getByRole("button", { expanded: true });
+      const action = screen.getByTestId("inline-action");
+      expect(trigger).not.toContainElement(action);
+    });
+  });
 });
 
 describe("FileTreeFile", () => {

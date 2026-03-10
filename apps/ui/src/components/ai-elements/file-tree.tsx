@@ -122,33 +122,37 @@ export const FileTreeFolder = ({
     <FileTreeFolderContext.Provider value={{ isExpanded, name, path }}>
       <Collapsible onOpenChange={handleOpenChange} open={isExpanded}>
         <div className={cn("group", className)} role="treeitem" {...props}>
-          <CollapsibleTrigger asChild>
-            <button
-              className={cn(
-                "flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors",
-                "hover:bg-muted/60",
-                isSelected && "bg-accent/20 text-accent-foreground",
-              )}
-              onClick={handleSelect}
-              type="button"
-            >
-              <ChevronRightIcon
-                className={cn(
-                  "size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150",
-                  isExpanded && "rotate-90",
-                )}
-              />
-              <FileTreeIcon>
-                {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-amber-500" />
-                ) : (
-                  <FolderIcon className="size-4 text-amber-500/80" />
-                )}
-              </FileTreeIcon>
-              <FileTreeName className="font-medium">{name}</FileTreeName>
-              {actions}
-            </button>
-          </CollapsibleTrigger>
+          <div
+            className={cn(
+              "flex items-center px-2 py-1 transition-colors",
+              "hover:bg-muted/60",
+              isSelected && "bg-accent/20 text-accent-foreground",
+            )}
+          >
+            <CollapsibleTrigger asChild>
+              <button
+                className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
+                onClick={handleSelect}
+                type="button"
+              >
+                <ChevronRightIcon
+                  className={cn(
+                    "size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150",
+                    isExpanded && "rotate-90",
+                  )}
+                />
+                <FileTreeIcon>
+                  {isExpanded ? (
+                    <FolderOpenIcon className="size-4 text-amber-500" />
+                  ) : (
+                    <FolderIcon className="size-4 text-amber-500/80" />
+                  )}
+                </FileTreeIcon>
+                <FileTreeName className="font-medium">{name}</FileTreeName>
+              </button>
+            </CollapsibleTrigger>
+            {actions}
+          </div>
           <CollapsibleContent>
             <div className="ml-3 border-l border-border/50 pl-2">{children}</div>
           </CollapsibleContent>
