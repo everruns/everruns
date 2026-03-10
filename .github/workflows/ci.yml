@@ -168,21 +168,22 @@ jobs:
     if: needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
     timeout-minutes: 10
 
-    env:
-      DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Daytona API key
+      - name: Check for Doppler token
         id: check-key
         run: |
-          if [ -z "$DAYTONA_API_KEY" ]; then
+          if [ -z "$DOPPLER_TOKEN" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DAYTONA_API_KEY not configured, skipping live tests"
+            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Install Doppler CLI
+        if: steps.check-key.outputs.skip != 'true'
+        uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
         if: steps.check-key.outputs.skip != 'true'
@@ -208,7 +209,7 @@ jobs:
 
       - name: Run Daytona live integration tests
         if: steps.check-key.outputs.skip != 'true'
-        run: cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
