@@ -35,7 +35,7 @@ use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
-use crate::services::{AppService, MessageService, SessionService};
+use crate::services::{AppService, EventService, MessageService, SessionService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 
@@ -183,6 +183,7 @@ pub struct SlackState {
     pub app_service: Arc<AppService>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    pub event_service: Arc<EventService>,
     /// Cache of Slack user ID → display name. Shared across requests.
     user_name_cache: SlackUserCache,
     /// Event-driven Slack delivery dispatcher (None in DEV_MODE without PostgreSQL).
@@ -199,6 +200,7 @@ impl SlackState {
             app_service: Arc::new(AppService::new(db.clone())),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(db.clone(), runner)),
+            event_service: Arc::new(EventService::new(db.clone())),
             db,
             user_name_cache: Arc::new(RwLock::new(HashMap::new())),
             delivery_dispatcher,
@@ -397,43 +399,74 @@ async fn process_slack_message(
     let session_tags = build_session_tags(app, slack_config, event);
 
     // Find or create session
-    let session = match state.db.find_session_by_tags(org_id, &session_tags).await? {
-        Some(row) => {
-            tracing::debug!(
-                session_id = %row.id,
-                tags = ?session_tags,
-                "Found existing Slack session"
+    let (session, is_new_session) =
+        match state.db.find_session_by_tags(org_id, &session_tags).await? {
+            Some(row) => {
+                tracing::debug!(
+                    session_id = %row.id,
+                    tags = ?session_tags,
+                    "Found existing Slack session"
+                );
+                (SessionService::row_to_session(row, &org_public_id), false)
+            }
+            None => {
+                tracing::info!(
+                    tags = ?session_tags,
+                    "Creating new Slack session"
+                );
+                let title = build_session_title(slack_config, event);
+                let req = CreateSessionRequest {
+                    harness_id: app.harness_id,
+                    agent_id: Some(app.agent_id),
+                    title: Some(title),
+                    tags: session_tags.clone(),
+                    model_id: None,
+                    capabilities: vec![],
+                    tools: vec![],
+                };
+                let s = state
+                    .session_service
+                    .create(
+                        org_id,
+                        &org_public_id,
+                        app.harness_id.uuid(),
+                        Some(app.agent_id.uuid()),
+                        Some(app.agent_id),
+                        req,
+                    )
+                    .await?;
+                (s, true)
+            }
+        };
+
+    // Inject thread context: when joining an existing thread mid-conversation,
+    // fetch prior messages from Slack and inject them as context so the agent
+    // sees the full conversation history.
+    if is_new_session
+        && slack_config.session_strategy == SessionStrategy::PerThread
+        && event.thread_ts.is_some()
+    {
+        let thread_ts = event.thread_ts.as_deref().unwrap();
+        let channel = event.channel.as_deref().unwrap_or("unknown");
+        if let Err(e) = inject_thread_context(
+            state,
+            &slack_config.bot_token,
+            channel,
+            thread_ts,
+            session.id,
+            event.ts.as_deref(),
+        )
+        .await
+        {
+            // Non-fatal: agent proceeds without historical context
+            tracing::warn!(
+                session_id = %session.id,
+                thread_ts = thread_ts,
+                error = %e,
+                "Failed to inject thread context (agent will proceed without history)"
             );
-            SessionService::row_to_session(row, &org_public_id)
         }
-        None => {
-            tracing::info!(
-                tags = ?session_tags,
-                "Creating new Slack session"
-            );
-            let title = build_session_title(slack_config, event);
-            let req = CreateSessionRequest {
-                harness_id: app.harness_id,
-                agent_id: Some(app.agent_id),
-                title: Some(title),
-                tags: session_tags.clone(),
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-            };
-            state
-                .session_service
-                .create(
-                    org_id,
-                    &org_public_id,
-                    app.harness_id.uuid(),
-                    Some(app.agent_id.uuid()),
-                    Some(app.agent_id),
-                    req,
-                )
-                .await?
-        }
-    };
+    }
 
     // Dedup: Slack sends both app_mention and message events for @mentions.
     // Check if we already have an input.message with this slack_ts in the session.
@@ -677,6 +710,203 @@ fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) ->
             format!("Slack user {} in {}", user, channel)
         }
     }
+}
+
+/// Reply message from Slack's conversations.replies API.
+#[derive(Debug, Deserialize)]
+struct SlackReplyMessage {
+    /// User who sent the message (absent for bot messages).
+    #[serde(default)]
+    user: Option<String>,
+    /// Message text.
+    #[serde(default)]
+    text: Option<String>,
+    /// Message timestamp.
+    #[serde(default)]
+    ts: Option<String>,
+    /// Bot ID (present when message is from a bot).
+    #[serde(default)]
+    bot_id: Option<String>,
+    /// Subtype (e.g., "bot_message", "thread_broadcast").
+    #[serde(default)]
+    subtype: Option<String>,
+}
+
+/// Fetch thread replies from Slack's conversations.replies API.
+///
+/// Returns messages in chronological order. Gracefully returns empty vec on
+/// API errors (missing scope, invalid token, etc.) so the agent can proceed
+/// without history rather than failing the entire message flow.
+async fn fetch_thread_replies(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+) -> Vec<SlackReplyMessage> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://slack.com/api/conversations.replies?channel={}&ts={}&limit=100",
+        channel, thread_ts
+    );
+    let result = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .send()
+        .await;
+
+    let response = match result {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch thread replies (network)");
+            return vec![];
+        }
+    };
+
+    let body: serde_json::Value = match response.json().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse conversations.replies response");
+            return vec![];
+        }
+    };
+
+    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let error = body
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown");
+        tracing::warn!(
+            error = error,
+            channel = channel,
+            thread_ts = thread_ts,
+            "Slack conversations.replies API error (thread context unavailable)"
+        );
+        return vec![];
+    }
+
+    match serde_json::from_value::<Vec<SlackReplyMessage>>(
+        body.get("messages").cloned().unwrap_or_default(),
+    ) {
+        Ok(msgs) => msgs,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse thread reply messages");
+            vec![]
+        }
+    }
+}
+
+/// Inject thread history as context messages into a newly created session.
+///
+/// Fetches prior messages from Slack's conversations.replies API and stores
+/// them as input.message events (without triggering agent workflows). This
+/// gives the agent full conversational context when first mentioned mid-thread.
+///
+/// Messages from bots (including our own) are injected as assistant-role
+/// messages. Messages from users get user-role with ExternalActor attribution.
+/// The triggering message (matching `exclude_ts`) is skipped since it will be
+/// created normally by the caller.
+async fn inject_thread_context(
+    state: &SlackState,
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    session_id: everruns_core::typed_id::SessionId,
+    exclude_ts: Option<&str>,
+) -> anyhow::Result<()> {
+    let replies = fetch_thread_replies(bot_token, channel, thread_ts).await;
+
+    if replies.is_empty() {
+        return Ok(());
+    }
+
+    let mut injected = 0u32;
+    for reply in &replies {
+        // Skip the triggering message (it will be created by the normal flow)
+        if let (Some(reply_ts), Some(skip_ts)) = (reply.ts.as_deref(), exclude_ts)
+            && reply_ts == skip_ts
+        {
+            continue;
+        }
+
+        // Skip messages with no text content
+        let text = reply.text.as_deref().unwrap_or("");
+        if text.is_empty() {
+            continue;
+        }
+
+        // Skip subtypes we can't meaningfully represent (channel_join, etc.)
+        if let Some(ref subtype) = reply.subtype
+            && subtype != "bot_message"
+            && subtype != "thread_broadcast"
+        {
+            continue;
+        }
+
+        // Determine role: bot messages → assistant, human messages → user
+        let (role, external_actor) = if reply.bot_id.is_some() {
+            (everruns_core::MessageRole::Agent, None)
+        } else {
+            let user_id = reply.user.clone().unwrap_or_default();
+            let display_name = if !user_id.is_empty() {
+                resolve_slack_user_name(&state.user_name_cache, bot_token, &user_id).await
+            } else {
+                None
+            };
+            let actor = if !user_id.is_empty() {
+                Some(everruns_core::ExternalActor {
+                    actor_id: user_id,
+                    actor_name: display_name,
+                    source: "slack".to_string(),
+                    metadata: None,
+                })
+            } else {
+                None
+            };
+            (everruns_core::MessageRole::User, actor)
+        };
+
+        let message = everruns_core::Message {
+            id: everruns_core::typed_id::MessageId::new(),
+            role,
+            content: vec![everruns_core::ContentPart::text(text)],
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: reply.ts.as_ref().map(|ts| {
+                [(
+                    "slack_ts".to_string(),
+                    serde_json::Value::String(ts.clone()),
+                )]
+                .into_iter()
+                .collect()
+            }),
+            external_actor,
+            created_at: chrono::Utc::now(),
+        };
+
+        // Emit as input.message event directly (no workflow trigger)
+        state
+            .event_service
+            .emit(everruns_core::events::EventRequest::new(
+                session_id,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::InputMessageData::new(message),
+            ))
+            .await?;
+
+        injected += 1;
+    }
+
+    if injected > 0 {
+        tracing::info!(
+            session_id = %session_id,
+            thread_ts = thread_ts,
+            injected_count = injected,
+            "Injected thread context into new session"
+        );
+    }
+
+    Ok(())
 }
 
 /// Wait for the agent turn to complete and stream responses to Slack.
@@ -2063,5 +2293,128 @@ mod tests {
         assert_eq!(event.attachments.len(), 1);
         // Both empty text + has files/attachments = should not be skipped
         assert!(event.text.as_deref().unwrap().is_empty());
+    }
+
+    // ==========================================
+    // Thread context — SlackReplyMessage parsing
+    // ==========================================
+
+    #[test]
+    fn test_slack_reply_message_deserialization() {
+        let json = r#"[
+            {"user": "U123", "text": "Hello", "ts": "1234.0000"},
+            {"bot_id": "B123", "text": "Hi there", "ts": "1234.0001"},
+            {"user": "U456", "text": "Nice", "ts": "1234.0002", "subtype": "thread_broadcast"}
+        ]"#;
+        let replies: Vec<SlackReplyMessage> = serde_json::from_str(json).unwrap();
+        assert_eq!(replies.len(), 3);
+        assert_eq!(replies[0].user.as_deref(), Some("U123"));
+        assert!(replies[0].bot_id.is_none());
+        assert!(replies[1].bot_id.is_some());
+        assert_eq!(replies[2].subtype.as_deref(), Some("thread_broadcast"));
+    }
+
+    #[test]
+    fn test_slack_reply_message_minimal() {
+        let json = r#"{"ts": "1234.0000"}"#;
+        let reply: SlackReplyMessage = serde_json::from_str(json).unwrap();
+        assert!(reply.user.is_none());
+        assert!(reply.text.is_none());
+        assert!(reply.bot_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_inject_thread_context_empty_replies() {
+        // When fetch returns empty, inject_thread_context should succeed as no-op
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let state = SlackState::new(db, runner, None);
+        let session_id = setup_test_session(&state.db).await;
+
+        // inject with no network (fetch will fail gracefully → empty replies → Ok)
+        let result = inject_thread_context(
+            &state,
+            "xoxb-fake",
+            "C123",
+            "1234.0000",
+            session_id,
+            Some("1234.9999"),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_thread_context_triggers_only_for_per_thread_with_thread_ts() {
+        // PerThread + thread_ts present → should trigger context injection
+        let config = test_config(SessionStrategy::PerThread);
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(config.session_strategy == SessionStrategy::PerThread && event.thread_ts.is_some());
+
+        // PerThread + no thread_ts → should NOT trigger (new thread, no prior context)
+        let event_no_thread = test_event("C123", Some("1234.5678"), None);
+        assert!(event_no_thread.thread_ts.is_none());
+
+        // PerChannel → should NOT trigger
+        let config_channel = test_config(SessionStrategy::PerChannel);
+        assert!(config_channel.session_strategy != SessionStrategy::PerThread);
+
+        // PerUser → should NOT trigger
+        let config_user = test_config(SessionStrategy::PerUser);
+        assert!(config_user.session_strategy != SessionStrategy::PerThread);
+    }
+
+    #[test]
+    fn test_manifest_includes_history_scopes_for_thread_context() {
+        // conversations.replies requires channels:history / groups:history / im:history / mpim:history
+        let yaml = build_manifest_yaml("Bot", "Bot");
+        assert!(
+            yaml.contains("channels:history"),
+            "Manifest must include channels:history for conversations.replies"
+        );
+        assert!(
+            yaml.contains("groups:history"),
+            "Manifest must include groups:history for private channel thread context"
+        );
+        assert!(
+            yaml.contains("im:history"),
+            "Manifest must include im:history for DM thread context"
+        );
+        assert!(
+            yaml.contains("mpim:history"),
+            "Manifest must include mpim:history for group DM thread context"
+        );
+    }
+
+    /// Noop runner for tests that need SlackState without a real worker.
+    struct NoopRunner;
+
+    #[async_trait::async_trait]
+    impl AgentRunner for NoopRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: everruns_core::typed_id::SessionId,
+            _harness_id: everruns_core::typed_id::HarnessId,
+            _agent_id: Option<everruns_core::typed_id::AgentId>,
+            _input_message_id: everruns_core::typed_id::MessageId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(
+            &self,
+            _run_id: everruns_core::typed_id::SessionId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _run_id: everruns_core::typed_id::SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            0
+        }
     }
 }
