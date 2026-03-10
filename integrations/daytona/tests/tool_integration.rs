@@ -10,7 +10,9 @@
 use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
+use everruns_core::traits::{
+    KeyInfo, SecretInfo, SessionStorageStore, ToolContext, UserConnectionResolver,
+};
 use everruns_core::typed_id::SessionId;
 use serde_json::json;
 use std::collections::HashMap;
@@ -89,28 +91,41 @@ impl SessionStorageStore for MockStorageStore {
 }
 
 // ============================================================================
+// Mock ConnectionResolver
+// ============================================================================
+
+struct MockConnectionResolver {
+    token: Option<String>,
+}
+
+#[async_trait]
+impl UserConnectionResolver for MockConnectionResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(self.token.clone())
+    }
+}
+
+/// Create a mock connection resolver that returns a fixed Daytona API key.
+fn daytona_resolver() -> Arc<dyn UserConnectionResolver> {
+    Arc::new(MockConnectionResolver {
+        token: Some("test_api_key".to_string()),
+    })
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
-/// Seed a mock store with API key and sandbox state, returning the context.
-/// The `api_key_url` should be the wiremock server URI — but since tools use
-/// DaytonaClient::new() (hardcoded URLs), we need a different approach.
-///
-/// We seed the API key and sandbox state, then the test must override the
-/// client URL via environment or use a direct DaytonaClient test instead.
-/// For tools that construct DaytonaClient::new(api_key), the tests that need
-/// real HTTP go through the client module tests in src/client.rs.
-///
-/// These integration tests verify the tool orchestration layer: parameter
-/// validation, state lookups, and result formatting — against a real storage mock.
+/// Seed sandbox state into the store. API key comes via connection resolver.
 async fn setup_context_with_sandbox(
     session_id: SessionId,
     store: &Arc<MockStorageStore>,
     sandbox_id: &str,
 ) {
-    store
-        .seed_secret(session_id, "DAYTONA_API_KEY", "test_api_key")
-        .await;
     let state = SandboxState {
         sandbox_id: sandbox_id.to_string(),
         workspace_path: "/home/daytona".to_string(),
@@ -314,7 +329,10 @@ async fn test_exec_tool_missing_api_key() {
 
     match result {
         ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("DAYTONA_API_KEY"), "Got: {msg}");
+            assert!(
+                msg.contains("not configured") || msg.contains("Settings > Connections"),
+                "Got: {msg}"
+            );
         }
         other => panic!("Expected ToolError, got: {other:?}"),
     }
@@ -325,10 +343,8 @@ async fn test_exec_tool_missing_sandbox_state() {
     let tool = get_tool("daytona_exec");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    store
-        .seed_secret(session_id, "DAYTONA_API_KEY", "test_key")
-        .await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
 
     let result = tool
         .execute_with_context(
@@ -411,7 +427,8 @@ async fn test_manage_sandbox_invalid_action() {
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
     setup_context_with_sandbox(session_id, &store, "sb_test").await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
 
     // Tool will pass validation, get API key, verify sandbox exists,
     // then reject invalid action before making HTTP call

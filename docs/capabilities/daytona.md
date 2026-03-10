@@ -95,10 +95,7 @@ Configure git credentials for push/pull/fetch.
 
 ## Authentication
 
-Daytona API key is resolved automatically:
-
-1. Session secret `DAYTONA_API_KEY` (highest priority)
-2. User connection (Settings > Connections > Daytona)
+Daytona API key is resolved automatically from **Settings > Connections > Daytona**.
 
 ## Use Cases
 

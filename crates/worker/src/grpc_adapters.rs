@@ -1370,6 +1370,37 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
 }
 
 // ============================================================================
+// GrpcSessionMutator - SessionMutator over gRPC
+// ============================================================================
+
+/// gRPC-backed session mutator.
+///
+/// Proxies session mutation calls to the control-plane.
+pub struct GrpcSessionMutator {
+    client: GrpcClient,
+    org_id: i64,
+}
+
+impl GrpcSessionMutator {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionMutator for GrpcSessionMutator {
+    async fn update_session_title(
+        &self,
+        session_id: everruns_core::SessionId,
+        title: String,
+    ) -> Result<everruns_core::session::Session> {
+        self.client
+            .set_session_title(self.org_id, session_id, &title)
+            .await
+    }
+}
+
+// ============================================================================
 // GrpcScheduleStore - SessionScheduleStore over gRPC
 // ============================================================================
 

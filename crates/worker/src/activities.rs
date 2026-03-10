@@ -23,8 +23,9 @@ use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcPlatformStore, GrpcSessionFileStore,
+    GrpcAgentStore, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter, GrpcHarnessStore,
+    GrpcImageResolver, GrpcLlmProviderStore, GrpcMessageRetriever, GrpcPlatformStore,
+    GrpcScheduleStore, GrpcSessionFileStore, GrpcSessionMutator, GrpcSessionSqlDbStore,
     GrpcSessionStorageStore, GrpcSessionStore,
 };
 
@@ -357,11 +358,29 @@ pub async fn act_activity(
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
     let storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
         Arc::new(GrpcSessionStorageStore::new(grpc_client.clone()));
+    let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
+        Arc::new(GrpcConnectionResolver::new(grpc_client.clone()));
+    let session_store: Arc<dyn everruns_core::traits::SessionStore> =
+        Arc::new(GrpcSessionStore::new(grpc_client.clone(), org_id));
+    let session_mutator: Arc<dyn everruns_core::traits::SessionMutator> =
+        Arc::new(GrpcSessionMutator::new(grpc_client.clone(), org_id));
+    let agent_store: Arc<dyn everruns_core::traits::AgentStore> =
+        Arc::new(GrpcAgentStore::new(grpc_client.clone(), org_id));
+    let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef =
+        Arc::new(GrpcSessionSqlDbStore::new(grpc_client.clone()));
+    let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
+        Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
     let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
         Arc::new(GrpcPlatformStore::new(grpc_client, org_id));
 
     let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store)
         .with_storage_store(storage_store)
+        .with_connection_resolver(connection_resolver)
+        .with_session_store(session_store)
+        .with_session_mutator(session_mutator)
+        .with_agent_store(agent_store)
+        .with_sqldb_store(sqldb_store)
+        .with_schedule_store(schedule_store)
         .with_platform_store(platform_store);
 
     atom.execute(input)

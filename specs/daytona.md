@@ -12,8 +12,8 @@ The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based
 
 Daytona exposes two API layers:
 
-1. **Management API** (`https://app.daytona.io/api`) — sandbox lifecycle (create, start, stop, delete). Auth: `Bearer <DAYTONA_API_KEY>`.
-2. **Toolbox API** (`https://proxy.app.daytona.io/toolbox/{sandboxId}`) — in-sandbox operations (exec, files). Auth: `Bearer <DAYTONA_API_KEY>`.
+1. **Management API** (`https://app.daytona.io/api`) — sandbox lifecycle (create, start, stop, delete). Auth: `Bearer <api_key>`.
+2. **Toolbox API** (`https://proxy.app.daytona.io/toolbox/{sandboxId}`) — in-sandbox operations (exec, files). Auth: `Bearer <api_key>`.
 
 ```
 ┌────────────────────────────────────────────┐
@@ -41,11 +41,8 @@ Per-sandbox state is stored in session **secrets** (encrypted at rest via AES-25
 
 ### API Key Resolution
 
-The Daytona API key is resolved with fallback chain:
-
-1. **Session secret** `DAYTONA_API_KEY` — highest priority, local to session
-2. **User connection** for `daytona` provider — persistent, set up via Settings > Connections
-3. **Error** — guides user to Settings > Connections
+The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > Connections).
+If not configured, a `ToolError` guides the user to set up in Settings.
 
 ### User Connection
 
@@ -197,7 +194,7 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
 
 ## Security
 
-- **API Key**: Stored in user connections (preferred) or session secrets (`DAYTONA_API_KEY`), encrypted at rest (TM-DAYTONA-004)
+- **API Key**: Stored in user connections (Settings > Connections > Daytona), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
 - **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
@@ -212,7 +209,7 @@ See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for f
 |----------|-------------|---------|
 | Missing required param | `ToolError` | "Missing required parameter: {name}" |
 | Sandbox not found | `ToolError` | "Sandbox '{id}' not found. Create one first with daytona_create_sandbox." |
-| API key not configured | `ToolError` | "DAYTONA_API_KEY not set." |
+| API key not configured | `ToolError` | "Daytona API key not configured." |
 | HTTP 4xx | `ToolError` | "Daytona API error ({status}): {body}" |
 | No context | `ToolError` | "{tool_name} requires context." |
 
