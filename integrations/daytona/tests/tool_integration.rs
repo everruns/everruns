@@ -285,13 +285,18 @@ async fn test_sandbox_lifecycle_via_client() {
     client.delete_sandbox("sb_lifecycle").await.unwrap();
 }
 
+/// Git clone now uses exec instead of the toolbox /git/clone endpoint.
+/// This test verifies that git clone works via the process/execute endpoint.
 #[tokio::test]
-async fn test_git_clone_via_client() {
+async fn test_git_clone_via_exec() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path("/sb_git/git/clone"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .and(path("/sb_git/process/execute"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "Cloning into '/home/daytona/user/repo'...\n",
+            "exitCode": 0
+        })))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -299,17 +304,16 @@ async fn test_git_clone_via_client() {
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
-    client
-        .git_clone(
+    let result = client
+        .exec(
             "sb_git",
-            "https://github.com/user/repo.git",
-            "/sandbox/user/repo",
-            Some("main"),
-            Some("oauth2"),
-            Some("ghp_token"),
+            "git clone --depth 1 https://github.com/user/repo.git /home/daytona/user/repo",
+            None,
+            None,
         )
         .await
         .unwrap();
+    assert_eq!(result.exit_code, 0);
 }
 
 // ============================================================================

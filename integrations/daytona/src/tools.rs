@@ -877,37 +877,46 @@ impl Tool for DaytonaGitCloneTool {
 
         let client = DaytonaClient::new(api_key);
 
-        // Use Daytona's native git clone API (POST /git/clone).
-        // Passes credentials directly via API body — no credential helper scripts needed.
-        let (username, password) = if let Some(ref token) = github_token {
-            (Some("oauth2"), Some(token.as_str()))
+        // Build the clone URL — embed token for authenticated cloning
+        let clone_url = if let Some(ref token) = github_token {
+            // Inject token into HTTPS URL: https://oauth2:<token>@github.com/...
+            if let Some(rest) = repo_url.strip_prefix("https://") {
+                format!("https://oauth2:{token}@{rest}")
+            } else {
+                repo_url.clone()
+            }
         } else {
-            (None, None)
+            repo_url.clone()
         };
 
-        debug!("Cloning repository via Daytona git API: {repo_url} → {target_path}");
-        if let Err(e) = client
-            .git_clone(
-                sandbox_id,
-                &repo_url,
-                target_path,
-                branch,
-                username,
-                password,
-            )
-            .await
-        {
-            let hint = if github_token.is_none()
-                && (e.contains("Authentication")
-                    || e.contains("not found")
-                    || e.contains("401")
-                    || e.contains("403"))
-            {
-                "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
-            } else {
-                ""
-            };
-            return ToolExecutionResult::tool_error(format!("Git clone failed: {e}{hint}"));
+        // Build git clone command
+        let mut cmd = format!("git clone --depth 1 {clone_url} {target_path}");
+        if let Some(b) = branch {
+            cmd = format!("git clone --depth 1 --branch {b} {clone_url} {target_path}");
+        }
+
+        debug!("Cloning repository via exec: {repo_url} → {target_path}");
+        match client.exec(sandbox_id, &cmd, None, None).await {
+            Ok(r) if r.exit_code != 0 => {
+                let hint = if github_token.is_none()
+                    && (r.result.contains("Authentication")
+                        || r.result.contains("not found")
+                        || r.result.contains("could not read Username")
+                        || r.result.contains("403"))
+                {
+                    "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
+                } else {
+                    ""
+                };
+                return ToolExecutionResult::tool_error(format!(
+                    "Git clone failed (exit {}): {}{hint}",
+                    r.exit_code, r.result
+                ));
+            }
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!("Git clone failed: {e}"));
+            }
+            Ok(_) => {} // success
         }
 
         // Get the HEAD commit SHA
