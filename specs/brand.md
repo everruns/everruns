@@ -190,6 +190,15 @@ background-size: 24px 24px;
 - Left/right border accents for active navigation and messages
 - Muted gray for hover states (not accent colors)
 
+#### Transcript Surfaces
+
+Chat transcript styling stays **inline and single-surface**:
+
+- Tool activity rows (`read_file`, `write_file`, `list_files`, search, bash, client tools) should render as lightweight transcript lines, not nested cards inside message cards.
+- Todo/progress state should render as one inline block with a thin progress indicator and rows beneath it, not a card containing more boxed rows.
+- Avoid **double-wrapped boxes** in the transcript. If a message already establishes a surface, tool and todo content inside that area should not introduce another bordered card unless the content truly needs an isolated canvas (for example, a full image preview or modal).
+- Prefer status glyphs, border accents, spacing, and muted text over stacked borders/background panels.
+
 #### Primary Action Buttons
 
 Primary "create new" actions (New Session, New Agent, etc.) use consistent styling:

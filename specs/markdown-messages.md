@@ -81,6 +81,11 @@ components/
    - Migrate from `Markdown` to `StreamdownMessage`
    - Unified component for all markdown rendering
 
+4. **Transcript tool/todo surfaces**
+   - Message markdown, tool activity, and todo progress must read as one transcript system
+   - Tool rows should stay inline with the surrounding message rhythm
+   - Do not nest bordered tool/todo cards inside another transcript card unless the content requires a dedicated viewport
+
 ## Usage
 
 ### Basic Streaming Message
@@ -121,6 +126,7 @@ Must integrate with existing design system:
 - Links: Navy color (`--primary`)
 - Syntax highlighting: Theme compatible with light/dark mode
 - Tailwind integration via `@source` directive in globals.css
+- Message-adjacent tool/todo UI should avoid double-wrapped boxes and favor spacing, dividers, and accent borders
 
 ### Tailwind Setup
 

@@ -42,11 +42,12 @@ describe("ToolActivityGroup", () => {
 
     render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
 
-    expect(screen.getByText("Exploring 2 reads, 2 searches")).toBeInTheDocument();
     expect(screen.getByText("List files in current directory")).toBeInTheDocument();
     expect(screen.getByText("Read README.md")).toBeInTheDocument();
     expect(screen.getByText("Find **/README*")).toBeInTheDocument();
     expect(screen.getByText("Search web for project architecture")).toBeInTheDocument();
+    expect(screen.getByText("Exploring 2 searches")).toBeInTheDocument();
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Tool activity info")).not.toBeInTheDocument();
   });
 
@@ -143,6 +144,188 @@ describe("ToolActivityGroup", () => {
     expect(shellCard.className).not.toContain("bg-card/95");
     expect(shellCard.className).not.toContain("border-red");
     expect(shellCard.className).not.toContain("bg-red");
+  });
+
+  it("renders read_file as a standalone row and shows parsed file content", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-read",
+        name: "read_file",
+        arguments: { path: "/workspace/AGENTS.md" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-read",
+        {
+          tool_call_id: "tool-read",
+          tool_name: "read_file",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                path: "/workspace/AGENTS.md",
+                content: "# Coding-agent guidance\n\nUse Doppler.",
+                encoding: "text",
+                size_bytes: 38,
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const { container } = render(
+      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />,
+    );
+
+    const root = container.firstElementChild as HTMLElement;
+    const readFileRow = root.firstElementChild as HTMLElement;
+
+    expect(screen.getByText("Read AGENTS.md")).toBeInTheDocument();
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
+    expect(readFileRow).not.toHaveClass("border");
+
+    fireEvent.click(screen.getByLabelText("Expand file output"));
+
+    expect(screen.getByText(/# Coding-agent guidance/)).toBeInTheDocument();
+    expect(screen.getByText(/Use Doppler\./)).toBeInTheDocument();
+    expect(screen.queryByText(/"content":/)).not.toBeInTheDocument();
+  });
+
+  it("renders read_file image outputs inline", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-image",
+        name: "read_file",
+        arguments: { path: "/workspace/diagram.png" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-image",
+        {
+          tool_call_id: "tool-image",
+          tool_name: "read_file",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                path: "/workspace/diagram.png",
+                media_type: "image/png",
+                size_bytes: 68,
+              }),
+            },
+            {
+              type: "image",
+              base64:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2pQwAAAABJRU5ErkJggg==",
+              media_type: "image/png",
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    const image = screen.getByRole("img", { name: "diagram.png" });
+    expect(image).toHaveAttribute("src", expect.stringContaining("data:image/png;base64,"));
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
+  });
+
+  it("renders write_file as a standalone row with compact metadata", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-write",
+        name: "write_file",
+        arguments: { path: "/workspace/README.md", content: "hello" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-write",
+        {
+          tool_call_id: "tool-write",
+          tool_name: "write_file",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                path: "/workspace/README.md",
+                size_bytes: 1584,
+                created: true,
+              }),
+            },
+          ],
+          duration_ms: 95,
+        },
+      ],
+    ]);
+
+    const { container } = render(
+      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />,
+    );
+
+    const root = container.firstElementChild as HTMLElement;
+    const writeRow = root.firstElementChild as HTMLElement;
+
+    expect(screen.getByText("Write README.md")).toBeInTheDocument();
+    expect(screen.getByText("created · 1.5 KB")).toBeInTheDocument();
+    expect(screen.getByText("95ms")).toBeInTheDocument();
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
+    expect(screen.queryByText(/"size_bytes":/)).not.toBeInTheDocument();
+    expect(writeRow).not.toHaveClass("border");
+  });
+
+  it("simplifies generic secret_store rendering", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-secret",
+        name: "secret_store",
+        arguments: { operation: "get", name: "DAYTONA_API_KEY" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-secret",
+        {
+          tool_call_id: "tool-secret",
+          tool_name: "secret_store",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                operation: "get",
+                name: "DAYTONA_API_KEY",
+                value: null,
+                found: false,
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    expect(screen.getByText("Get DAYTONA_API_KEY")).toBeInTheDocument();
+    expect(screen.getByText("DAYTONA_API_KEY not found")).toBeInTheDocument();
+    expect(screen.queryByText("Secret Store")).not.toBeInTheDocument();
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
+    expect(screen.queryByText(/"found":false/)).not.toBeInTheDocument();
   });
 
   it("keeps bash rows inline while grouping neighboring non-shell activity", () => {
