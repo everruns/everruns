@@ -1230,14 +1230,13 @@ where
         } else {
             Message::assistant(&text)
         };
-        // Set execution phase: "in_progress" for intermediate iterations (with tool calls),
-        // "completed" for the final response. This helps GPT-5.x models distinguish
-        // working commentary from completed answers when the history is replayed.
-        assistant_message.phase = Some(if has_tool_calls {
-            "in_progress".to_string()
-        } else {
-            "completed".to_string()
-        });
+        // Derive execution phase from state: Commentary for intermediate iterations
+        // (with tool calls), FinalAnswer for the completed response. For drivers with
+        // native phase support (OpenAI), this is sent to the API. For others
+        // (Anthropic, Gemini), it's tracked internally but not sent to the provider.
+        assistant_message.phase = Some(crate::message::ExecutionPhase::from_has_tool_calls(
+            has_tool_calls,
+        ));
         assistant_message.metadata = Some(metadata);
         // Store thinking content and signature for extended thinking models
         // Both are required for subsequent API calls when thinking is enabled

@@ -14,6 +14,82 @@ use crate::typed_id::{ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+// ============================================
+// Execution Phase
+// ============================================
+
+/// Execution phase for assistant messages in multi-step tool-calling flows.
+///
+/// Providers that natively support phases (OpenAI GPT-5.x) send the phase value
+/// directly in the API request. For providers without native support (Anthropic,
+/// Gemini), the phase is still tracked internally and derived from state in the
+/// ReasonAtom, but is not sent to the provider API.
+///
+/// Serialized as lowercase strings for backward compatibility with existing
+/// persisted messages: `"commentary"` and `"final_answer"`.
+///
+/// Legacy values `"in_progress"` and `"completed"` are accepted during
+/// deserialization for backward compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum ExecutionPhase {
+    /// Intermediate update — preamble or commentary before/between tool calls.
+    /// The model is still working and may issue more tool calls.
+    Commentary,
+    /// Final completed response — no more tool calls expected.
+    FinalAnswer,
+}
+
+impl ExecutionPhase {
+    /// Derive phase from whether the response contains tool calls.
+    pub fn from_has_tool_calls(has_tool_calls: bool) -> Self {
+        if has_tool_calls {
+            Self::Commentary
+        } else {
+            Self::FinalAnswer
+        }
+    }
+
+    /// Wire value used by providers that support native phases (OpenAI).
+    pub fn as_provider_str(&self) -> &'static str {
+        match self {
+            Self::Commentary => "commentary",
+            Self::FinalAnswer => "final_answer",
+        }
+    }
+}
+
+impl std::fmt::Display for ExecutionPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_provider_str())
+    }
+}
+
+impl Serialize for ExecutionPhase {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_provider_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionPhase {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "commentary" | "in_progress" => Ok(Self::Commentary),
+            "final_answer" | "completed" => Ok(Self::FinalAnswer),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["commentary", "final_answer", "in_progress", "completed"],
+            )),
+        }
+    }
+}
+
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -129,13 +205,12 @@ pub struct Message {
 
     /// Execution phase for this message.
     ///
-    /// Helps LLMs (especially GPT-5.x) distinguish between intermediate working
-    /// commentary and completed answers in multi-step tool-calling flows.
-    /// Values: `"in_progress"` (intermediate, has tool calls) or `"completed"` (final answer).
-    /// Only set on agent (assistant) messages. Must be preserved when replaying history.
-    /// See: specs/execution-phases.md
+    /// Helps LLMs distinguish between intermediate working commentary and completed
+    /// answers in multi-step tool-calling flows. Only set on agent (assistant) messages.
+    /// Providers with native phase support (OpenAI GPT-5.x) send this value in the API
+    /// request; others derive it from state but don't send it to the provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phase: Option<String>,
+    pub phase: Option<ExecutionPhase>,
 
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// This is the model's chain-of-thought reasoning before producing the response.
@@ -670,10 +745,8 @@ impl Message {
     }
 
     /// Set the execution phase on this message and return self.
-    ///
-    /// Phase values: `"in_progress"` (intermediate, has tool calls) or `"completed"` (final answer).
-    pub fn with_phase(mut self, phase: impl Into<String>) -> Self {
-        self.phase = Some(phase.into());
+    pub fn with_phase(mut self, phase: ExecutionPhase) -> Self {
+        self.phase = Some(phase);
         self
     }
 

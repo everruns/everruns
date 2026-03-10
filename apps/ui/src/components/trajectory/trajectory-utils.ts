@@ -147,7 +147,13 @@ export interface TurnAccumulator {
   inputMessageId?: string;
   userMessage?: { eventId: string; text: string; ts: string; messageId?: string };
   iterations: IterationAccumulator[];
-  agentMessage?: { eventId: string; text: string; ts: string; hasToolCalls: boolean; phase?: string };
+  agentMessage?: {
+    eventId: string;
+    text: string;
+    ts: string;
+    hasToolCalls: boolean;
+    phase?: string;
+  };
   completed: boolean;
   failed: boolean;
   errorMessage?: string;

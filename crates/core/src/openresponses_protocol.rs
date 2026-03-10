@@ -200,9 +200,10 @@ impl OpenResponsesProtocolLlmDriver {
             }
         };
 
-        // Only include phase on assistant messages (never on user/system/tool)
+        // Only include phase on assistant messages (never on user/system/tool).
+        // Map ExecutionPhase enum to the provider's wire format string.
         let phase = if msg.role == LlmMessageRole::Assistant {
-            msg.phase.clone()
+            msg.phase.map(|p| p.as_provider_str().to_string())
         } else {
             None
         };
@@ -947,6 +948,11 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         }));
 
         Ok(converted_stream)
+    }
+
+    fn supports_phases(&self) -> bool {
+        // OpenAI Responses API supports native execution phases (GPT-5.x)
+        true
     }
 
     fn supports_compact(&self) -> bool {

@@ -163,6 +163,18 @@ pub trait LlmDriver: Send + Sync {
         Ok(None)
     }
 
+    /// Check if this driver supports native execution phases.
+    ///
+    /// When `true`, the driver sends `ExecutionPhase` values (e.g., `"commentary"`,
+    /// `"final_answer"`) to the provider API. When `false`, phases are still tracked
+    /// internally but are not sent to the provider.
+    ///
+    /// Currently supported by OpenAI Responses API (GPT-5.x models).
+    fn supports_phases(&self) -> bool {
+        // Default: not supported. Providers override if their API accepts phases.
+        false
+    }
+
     /// Check if this driver supports the compact endpoint
     ///
     /// The compact endpoint compresses conversation history by replacing
@@ -224,6 +236,10 @@ impl LlmDriver for Box<dyn LlmDriver> {
         (**self).list_models().await
     }
 
+    fn supports_phases(&self) -> bool {
+        (**self).supports_phases()
+    }
+
     fn supports_compact(&self) -> bool {
         (**self).supports_compact()
     }
@@ -245,10 +261,10 @@ pub struct LlmMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
     /// Execution phase for assistant messages.
-    /// Helps models distinguish between intermediate working commentary (`"in_progress"`)
-    /// and completed answers (`"completed"`) in multi-step tool-calling flows.
+    /// Helps models distinguish between intermediate working commentary (`Commentary`)
+    /// and completed answers (`FinalAnswer`) in multi-step tool-calling flows.
     /// Only set on assistant messages. Must be preserved when replaying conversation history.
-    pub phase: Option<String>,
+    pub phase: Option<crate::message::ExecutionPhase>,
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// Must be included in subsequent API calls when thinking is enabled
     pub thinking: Option<String>,
@@ -598,7 +614,7 @@ impl From<&crate::message::Message> for LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
-            phase: msg.phase.clone(),
+            phase: msg.phase,
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
@@ -726,7 +742,7 @@ impl LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
-            phase: msg.phase.clone(),
+            phase: msg.phase,
             thinking: msg.thinking.clone(),
             thinking_signature: msg.thinking_signature.clone(),
         }
