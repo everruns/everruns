@@ -3011,7 +3011,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harnesses = self
             .harness_service
-            .list(req.org_id)
+            .list(req.org_id, None)
             .await
             .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
 
@@ -3142,7 +3142,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agents = self
             .agent_service
-            .list(req.org_id)
+            .list(req.org_id, None)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
 
@@ -3263,7 +3263,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let (sessions, _total) = self
             .session_service
-            .list(req.org_id, &org_public_id, agent_id, None, pagination)
+            .list(req.org_id, &org_public_id, agent_id, None, None, pagination)
             .await
             .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
 

@@ -518,11 +518,25 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
         let agents = self.agents.read();
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let mut result: Vec<_> = agents
             .values()
             .filter(|a| a.org_id == org_id && a.status == "active")
+            .filter(|a| match &pattern {
+                Some(p) => {
+                    a.name.to_lowercase().contains(p)
+                        || a.description
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(p)
+                }
+                None => true,
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -726,11 +740,29 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
+    pub async fn list_harnesses(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<HarnessRow>> {
         let harnesses = self.harnesses.read();
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let mut result: Vec<_> = harnesses
             .values()
             .filter(|h| h.org_id == org_id && h.status == "active")
+            .filter(|h| match &pattern {
+                Some(p) => {
+                    h.name.to_lowercase().contains(p)
+                        || h.description
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(p)
+                }
+                None => true,
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -841,6 +873,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         // If agent_id is provided, validate it belongs to the org
@@ -855,6 +888,9 @@ impl InMemoryDatabase {
             }
         }
 
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
@@ -863,6 +899,10 @@ impl InMemoryDatabase {
                 s.org_id == org_id
                     // Optionally filter by agent_id
                     && agent_id.is_none_or(|aid| s.agent_id == Some(aid))
+            })
+            .filter(|s| match &pattern {
+                Some(p) => s.title.as_deref().unwrap_or("").to_lowercase().contains(p),
+                None => true,
             })
             .cloned()
             .collect();
@@ -2431,12 +2471,27 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
+    pub async fn list_mcp_servers(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<McpServerRow>> {
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let mut servers: Vec<_> = self
             .mcp_servers
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| {
+                pattern.as_ref().is_none_or(|p| {
+                    s.name.to_lowercase().contains(p)
+                        || s.description
+                            .as_deref()
+                            .is_some_and(|d| d.to_lowercase().contains(p))
+                })
+            })
             .cloned()
             .collect();
         servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -2749,12 +2804,21 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
+    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let mut skills: Vec<_> = self
             .skills
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| match &pattern {
+                Some(p) => {
+                    s.name.to_lowercase().contains(p) || s.description.to_lowercase().contains(p)
+                }
+                None => true,
+            })
             .cloned()
             .collect();
         skills.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -3787,11 +3851,25 @@ impl InMemoryDatabase {
         Ok(apps.values().find(|a| a.public_id == public_id).cloned())
     }
 
-    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
+    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
         let apps = self.apps.read();
+        let pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| q.trim().to_lowercase());
         let mut result: Vec<AppRow> = apps
             .values()
             .filter(|a| a.org_id == org_id && a.status != "archived")
+            .filter(|a| match &pattern {
+                Some(p) => {
+                    a.name.to_lowercase().contains(p)
+                        || a.description
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(p)
+                }
+                None => true,
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -3921,7 +3999,7 @@ mod tests {
 
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(sessions.len(), 1);
@@ -4375,7 +4453,7 @@ mod tests {
         // Test default pagination (all sessions fit within limit)
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4384,7 +4462,7 @@ mod tests {
         // Test with limit=5
         let pagination = crate::api::common::Pagination::new(0, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4393,7 +4471,7 @@ mod tests {
         // Test with offset=5, limit=5
         let pagination = crate::api::common::Pagination::new(5, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4402,7 +4480,7 @@ mod tests {
         // Test last partial page (offset=10, limit=10 should return 5)
         let pagination = crate::api::common::Pagination::new(10, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4411,7 +4489,7 @@ mod tests {
         // Test beyond range (offset=20)
         let pagination = crate::api::common::Pagination::new(20, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4459,7 +4537,7 @@ mod tests {
         // Sessions should be ordered by created_at DESC (newest first)
         let pagination = crate::api::common::Pagination::new(0, 10);
         let (sessions, _) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
 

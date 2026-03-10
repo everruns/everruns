@@ -7,10 +7,11 @@
  * 3. Sessions (client-side filter over first page)
  * 4. Harnesses (client-side filter over cached list)
  * 5. Skills (client-side filter over cached list)
- * 6. ID-based lookup (detects prefixed IDs and provides direct navigation)
+ * 6. MCP Servers (client-side filter over cached list)
+ * 7. ID-based lookup (detects prefixed IDs and provides direct navigation)
  *
  * All entity searches are client-side over already-fetched React Query data.
- * Backend search endpoints will be added incrementally.
+ * Backend search endpoints are available for server-side filtering when needed.
  */
 "use client";
 
@@ -37,8 +38,16 @@ import { useAgents } from "@/hooks/use-agents";
 import { useSessions } from "@/hooks/use-sessions";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { useSkills } from "@/hooks/use-skills";
+import { useMcpServers } from "@/hooks/use-mcp-servers";
 
-export type SearchResultCategory = "navigation" | "agent" | "session" | "harness" | "skill" | "id";
+export type SearchResultCategory =
+  | "navigation"
+  | "agent"
+  | "session"
+  | "harness"
+  | "skill"
+  | "mcp_server"
+  | "id";
 
 export interface SearchResult {
   id: string;
@@ -119,6 +128,7 @@ const ID_PREFIX_MAP: Record<
   session_: { category: "session", label: "Session", path: "/sessions" },
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
   skill_: { category: "skill", label: "Skill", path: "/skills" },
+  mcp_: { category: "mcp_server", label: "MCP Server", path: "/settings/mcp-servers" },
 };
 
 function matchesQuery(text: string, query: string): boolean {
@@ -132,11 +142,13 @@ export function useGlobalSearch(query: string) {
   const { data: sessionsData } = useSessions(undefined, { limit: 100 });
   const { data: harnessesData } = useHarnesses();
   const { data: skillsData } = useSkills();
+  const { data: mcpServersData } = useMcpServers();
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
   const harnesses = harnessesData ?? EMPTY_ARRAY;
   const skills = skillsData ?? EMPTY_ARRAY;
+  const mcpServers = mcpServersData ?? EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -156,16 +168,32 @@ export function useGlobalSearch(query: string) {
     const results: SearchResult[] = [];
     const MAX_PER_CATEGORY = 5;
 
-    // 1. ID-based lookup
+    // 1. ID-based lookup — resolve entity name from cached data when possible
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
       if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
         // Normalize: allow "session3242" or "session_3242"
         const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
+
+        // Try to resolve a friendly name from cached data
+        let resolvedName: string | undefined;
+        if (prefix === "agent_") {
+          resolvedName = agents.find((a) => a.id === idValue)?.name;
+        } else if (prefix === "session_") {
+          const s = sessions.find((s) => s.id === idValue);
+          resolvedName = s?.title || s?.preview;
+        } else if (prefix === "harness_") {
+          resolvedName = harnesses.find((h) => h.id === idValue)?.name;
+        } else if (prefix === "skill_") {
+          resolvedName = skills.find((s) => s.id === idValue)?.name;
+        } else if (prefix === "mcp_") {
+          resolvedName = mcpServers.find((m) => m.id === idValue)?.name;
+        }
+
         results.push({
           id: `id:${idValue}`,
           category: "id",
           icon: Boxes,
-          title: `Go to ${meta.label}`,
+          title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
           subtitle: idValue,
           href: `${meta.path}/${idValue}`,
         });
@@ -275,6 +303,27 @@ export function useGlobalSearch(query: string) {
       }
     }
 
+    // 7. MCP Servers
+    let mcpCount = 0;
+    for (const server of mcpServers) {
+      if (mcpCount >= MAX_PER_CATEGORY) break;
+      if (
+        matchesQuery(server.name, q) ||
+        (server.description && matchesQuery(server.description, q)) ||
+        matchesQuery(server.id, q)
+      ) {
+        results.push({
+          id: `mcp:${server.id}`,
+          category: "mcp_server",
+          icon: Server,
+          title: server.name,
+          subtitle: `MCP Servers > ${server.name}`,
+          href: `/settings/mcp-servers/${server.id}`,
+        });
+        mcpCount++;
+      }
+    }
+
     return results;
-  }, [query, agents, sessions, harnesses, skills]);
+  }, [query, agents, sessions, harnesses, skills, mcpServers]);
 }

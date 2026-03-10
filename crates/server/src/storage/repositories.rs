@@ -603,19 +603,40 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
-        let rows = sqlx::query_as::<_, AgentRow>(
-            r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-            FROM agents
-            WHERE org_id = $1 AND status = 'active'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
+        let rows = match search {
+            Some(q) if !q.trim().is_empty() => {
+                let pattern = format!("%{}%", q.trim().to_lowercase());
+                sqlx::query_as::<_, AgentRow>(
+                    r#"
+                    SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+                           total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                    FROM agents
+                    WHERE org_id = $1 AND status = 'active'
+                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, AgentRow>(
+                    r#"
+                    SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+                           total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                    FROM agents
+                    WHERE org_id = $1 AND status = 'active'
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         Ok(rows)
     }
@@ -828,18 +849,42 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
-        let rows = sqlx::query_as::<_, HarnessRow>(
-            r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-            FROM harnesses
-            WHERE org_id = $1 AND status = 'active'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn list_harnesses(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<HarnessRow>> {
+        let rows = match search {
+            Some(q) if !q.trim().is_empty() => {
+                let pattern = format!("%{}%", q.trim().to_lowercase());
+                sqlx::query_as::<_, HarnessRow>(
+                    r#"
+                    SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+                    FROM harnesses
+                    WHERE org_id = $1 AND status = 'active'
+                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, HarnessRow>(
+                    r#"
+                    SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+                    FROM harnesses
+                    WHERE org_id = $1 AND status = 'active'
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         Ok(rows)
     }
@@ -958,75 +1003,77 @@ impl Database {
         Ok(row)
     }
 
-    /// List sessions for an organization with optional agent filter.
+    /// List sessions for an organization with optional agent and search filters.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // Get total count
-        let total: (i64,) = if let Some(aid) = agent_id {
-            sqlx::query_as(
-                r#"
-                SELECT COUNT(*) as count
-                FROM sessions
-                WHERE org_id = $1 AND agent_id = $2
-                "#,
-            )
-            .bind(org_id)
-            .bind(aid)
-            .fetch_one(&self.pool)
-            .await?
+        let search_pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| format!("%{}%", q.trim().to_lowercase()));
+
+        // Build WHERE clause dynamically
+        let mut where_clause = "WHERE org_id = $1".to_string();
+        let mut param_idx = 2;
+
+        let agent_param_idx = if agent_id.is_some() {
+            let idx = param_idx;
+            where_clause.push_str(&format!(" AND agent_id = ${idx}"));
+            param_idx += 1;
+            Some(idx)
         } else {
-            sqlx::query_as(
-                r#"
-                SELECT COUNT(*) as count
-                FROM sessions
-                WHERE org_id = $1
-                "#,
-            )
-            .bind(org_id)
-            .fetch_one(&self.pool)
-            .await?
+            None
         };
 
-        // Get paginated results
-        let rows = if let Some(aid) = agent_id {
-            sqlx::query_as::<_, SessionRow>(
-                r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
-                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                FROM sessions
-                WHERE org_id = $1 AND agent_id = $2
-                ORDER BY created_at DESC
-                LIMIT $3 OFFSET $4
-                "#,
-            )
-            .bind(org_id)
-            .bind(aid)
-            .bind(pagination.limit as i64)
-            .bind(pagination.offset as i64)
-            .fetch_all(&self.pool)
-            .await?
+        let search_param_idx = if search_pattern.is_some() {
+            let idx = param_idx;
+            where_clause.push_str(&format!(" AND (LOWER(COALESCE(title, '')) LIKE ${idx})"));
+            param_idx += 1;
+            Some(idx)
         } else {
-            sqlx::query_as::<_, SessionRow>(
-                r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
-                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                FROM sessions
-                WHERE org_id = $1
-                ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
-                "#,
-            )
-            .bind(org_id)
+            None
+        };
+
+        // Get total count
+        let count_sql = format!("SELECT COUNT(*) as count FROM sessions {where_clause}");
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql).bind(org_id);
+        if let Some(aid) = agent_id {
+            count_query = count_query.bind(aid);
+        }
+        if let Some(ref pat) = search_pattern {
+            count_query = count_query.bind(pat);
+        }
+        let total: (i64,) = count_query.fetch_one(&self.pool).await?;
+
+        // Get paginated results
+        let limit_idx = param_idx;
+        let offset_idx = param_idx + 1;
+        let select_sql = format!(
+            r#"SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
+        );
+        let mut data_query = sqlx::query_as::<_, SessionRow>(&select_sql).bind(org_id);
+        if let Some(aid) = agent_id {
+            data_query = data_query.bind(aid);
+        }
+        if let Some(ref pat) = search_pattern {
+            data_query = data_query.bind(pat);
+        }
+        let rows: Vec<SessionRow> = data_query
             .bind(pagination.limit as i64)
             .bind(pagination.offset as i64)
             .fetch_all(&self.pool)
-            .await?
-        };
+            .await?;
+
+        // Suppress unused variable warnings for the param index tracking
+        let _ = (agent_param_idx, search_param_idx);
 
         Ok((rows, total.0 as u32))
     }
@@ -2768,18 +2815,44 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        let rows = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn list_mcp_servers(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<McpServerRow>> {
+        let search_pattern = search
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| format!("%{}%", q.trim().to_lowercase()));
+
+        let rows = match &search_pattern {
+            Some(pattern) => {
+                sqlx::query_as::<_, McpServerRow>(
+                    r#"
+                    SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+                    FROM mcp_servers
+                    WHERE org_id = $1 AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            None => {
+                sqlx::query_as::<_, McpServerRow>(
+                    r#"
+                    SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+                    FROM mcp_servers
+                    WHERE org_id = $1
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         Ok(rows)
     }
@@ -2942,18 +3015,38 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
-        let rows = sqlx::query_as::<_, SkillRow>(
-            r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
-            FROM skills
-            WHERE org_id = $1
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+        let rows = match search {
+            Some(q) if !q.trim().is_empty() => {
+                let pattern = format!("%{}%", q.trim().to_lowercase());
+                sqlx::query_as::<_, SkillRow>(
+                    r#"
+                    SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+                    FROM skills
+                    WHERE org_id = $1
+                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, SkillRow>(
+                    r#"
+                    SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+                    FROM skills
+                    WHERE org_id = $1
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         Ok(rows)
     }
@@ -4254,18 +4347,38 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
-        let rows = sqlx::query_as::<_, AppRow>(
-            r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
-            FROM apps
-            WHERE org_id = $1 AND status != 'archived'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
+        let rows = match search {
+            Some(q) if !q.trim().is_empty() => {
+                let pattern = format!("%{}%", q.trim().to_lowercase());
+                sqlx::query_as::<_, AppRow>(
+                    r#"
+                    SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+                    FROM apps
+                    WHERE org_id = $1 AND status != 'archived'
+                      AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(description, '')) LIKE $2)
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, AppRow>(
+                    r#"
+                    SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+                    FROM apps
+                    WHERE org_id = $1 AND status != 'archived'
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         Ok(rows)
     }

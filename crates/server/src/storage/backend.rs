@@ -204,8 +204,8 @@ impl StorageBackend {
         dispatch!(self, get_agent_by_public_id, org_id, public_id)
     }
 
-    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
-        dispatch!(self, list_agents, org_id)
+    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
+        dispatch!(self, list_agents, org_id, search)
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
@@ -258,8 +258,12 @@ impl StorageBackend {
         dispatch!(self, get_harness, org_id, id)
     }
 
-    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
-        dispatch!(self, list_harnesses, org_id)
+    pub async fn list_harnesses(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<HarnessRow>> {
+        dispatch!(self, list_harnesses, org_id, search)
     }
 
     pub async fn update_harness(
@@ -298,9 +302,10 @@ impl StorageBackend {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        dispatch!(self, list_sessions, org_id, agent_id, pagination)
+        dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
     }
 
     /// Count sessions grouped by status for an organization.
@@ -781,8 +786,12 @@ impl StorageBackend {
         dispatch!(self, get_mcp_server_by_name, org_id, name)
     }
 
-    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        dispatch!(self, list_mcp_servers, org_id)
+    pub async fn list_mcp_servers(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<McpServerRow>> {
+        dispatch!(self, list_mcp_servers, org_id, search)
     }
 
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
@@ -827,8 +836,8 @@ impl StorageBackend {
         dispatch!(self, get_skill_by_name, org_id, name)
     }
 
-    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
-        dispatch!(self, list_skills, org_id)
+    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+        dispatch!(self, list_skills, org_id, search)
     }
 
     pub async fn update_skill(
@@ -1289,8 +1298,8 @@ impl StorageBackend {
         dispatch!(self, get_app_by_public_id_unscoped, public_id)
     }
 
-    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
-        dispatch!(self, list_apps, org_id)
+    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
+        dispatch!(self, list_apps, org_id, search)
     }
 
     pub async fn update_app(

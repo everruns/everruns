@@ -71,8 +71,8 @@ impl HarnessService {
         }
     }
 
-    pub async fn list(&self, org_id: i64) -> Result<Vec<Harness>> {
-        let rows = self.db.list_harnesses(org_id).await?;
+    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<Harness>> {
+        let rows = self.db.list_harnesses(org_id, search).await?;
 
         let mut harnesses = Vec::with_capacity(rows.len());
         for row in rows {

@@ -11,7 +11,7 @@ use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -19,7 +19,7 @@ use axum_extra::extract::Multipart;
 use everruns_core::{Skill, SkillContent, SkillId, SkillStatus, SkillValidationResult};
 use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 // ============================================
 // Constants
@@ -63,6 +63,13 @@ pub struct ValidateSkillRequest {
 // ============================================
 // App State
 // ============================================
+
+/// Query parameters for listing skills.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListSkillsQuery {
+    /// Search by name or description (case-insensitive substring match).
+    pub search: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -210,15 +217,17 @@ pub async fn upload_skill(
     responses(
         (status = 200, description = "List of skills", body = ListResponse<Skill>),
     ),
+    params(ListSkillsQuery),
     tag = "skills"
 )]
 pub async fn list_skills(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ListSkillsQuery>,
 ) -> Result<Json<ListResponse<Skill>>, StatusCode> {
     let skills = state
         .service
-        .list(org.org_id)
+        .list(org.org_id, query.search.as_deref())
         .await
         .log_internal_error("list skills")?;
 

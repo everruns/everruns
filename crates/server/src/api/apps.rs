@@ -6,7 +6,7 @@ use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -16,7 +16,7 @@ use everruns_core::{App, AppStatus, ChannelType};
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::services::AppService;
 
@@ -69,6 +69,13 @@ pub struct UpdateAppRequest {
     /// Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<AppStatus>,
+}
+
+/// Query parameters for listing apps.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListAppsQuery {
+    /// Search by name or description (case-insensitive substring match).
+    pub search: Option<String>,
 }
 
 /// App state for routes
@@ -143,15 +150,17 @@ pub async fn create_app(
         (status = 200, description = "List of apps", body = ListResponse<App>),
         (status = 500, description = "Internal server error")
     ),
+    params(ListAppsQuery),
     tag = "apps"
 )]
 pub async fn list_apps(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ListAppsQuery>,
 ) -> Result<Json<ListResponse<App>>, StatusCode> {
     let apps = state
         .service
-        .list(org.org_id)
+        .list(org.org_id, query.search.as_deref())
         .await
         .log_internal_error("list apps")?;
 

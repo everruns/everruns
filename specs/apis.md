@@ -553,6 +553,23 @@ GET /v1/agents/{id}/sessions?offset=20&limit=20
 GET /v1/agents/{id}/sessions?limit=10
 ```
 
+### Search
+
+All entity list endpoints support an optional `?search=` query parameter for case-insensitive substring matching on name and description fields.
+
+**Supported endpoints:**
+
+| Endpoint | Fields searched |
+|----------|---------------|
+| `GET /v1/agents?search=` | `name`, `description` |
+| `GET /v1/sessions?search=` | `title`, `preview` |
+| `GET /v1/harnesses?search=` | `name`, `description` |
+| `GET /v1/skills?search=` | `name`, `description` |
+| `GET /v1/apps?search=` | `name`, `description` |
+| `GET /v1/mcp-servers?search=` | `name`, `description` |
+
+**Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive substring). Empty or whitespace-only search values are treated as no filter.
+
 ### Error Responses
 
 ```json
