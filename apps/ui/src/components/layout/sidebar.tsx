@@ -56,6 +56,7 @@ import {
   Key,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   FlaskConical,
   Calendar,
   MessageCircle,
@@ -96,6 +97,8 @@ export type NavigationSection = {
   items: NavigationItem[];
   /** Only show in development mode */
   devOnly?: boolean;
+  /** Start collapsed. Requires a label. */
+  defaultCollapsed?: boolean;
 };
 
 export interface SidebarConfig {
@@ -146,7 +149,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { items: defaultTopNavigation },
   { label: "Building Blocks", items: defaultBuildingBlocksNavigation },
   { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation },
+  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
@@ -206,19 +209,39 @@ function NavSection({
   featureFlags: FeatureFlags;
   isFirst: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(section.defaultCollapsed ?? false);
+  const toggle = () => setCollapsed((c) => !c);
+
   if (section.devOnly && !isDev) return null;
+
+  const isCollapsible = section.defaultCollapsed !== undefined && section.label;
 
   return (
     <>
       {!isFirst && <div className="my-3 border-t" />}
-      {section.label && (
-        <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-          {section.label}
-        </p>
-      )}
-      {section.items.map((item) => (
-        <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
-      ))}
+      {section.label &&
+        (isCollapsible ? (
+          <button
+            type="button"
+            onClick={toggle}
+            className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {section.label}
+            {collapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+        ) : (
+          <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            {section.label}
+          </p>
+        ))}
+      {!collapsed &&
+        section.items.map((item) => (
+          <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
+        ))}
     </>
   );
 }
