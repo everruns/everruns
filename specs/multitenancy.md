@@ -650,7 +650,6 @@ The settings sidebar (`/settings/*`) is organized into two labeled sections:
 **Organisation** (org-scoped settings):
 - **General** (`/settings/organisation`) — Org name, ID, "Your Organisations" list
 - **LLM Providers** (`/settings/providers`) — Provider configs and API keys
-- **MCP Servers** (`/settings/mcp-servers`) — MCP server connections
 - **Members** (`/settings/members`) — Team member list
 
 **Personal** (user-scoped settings):

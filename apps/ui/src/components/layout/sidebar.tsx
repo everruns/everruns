@@ -68,6 +68,7 @@ import {
   Shield,
   BookOpen,
   Plus,
+  Plug,
   Rocket,
   ListTodo,
 } from "lucide-react";
@@ -126,6 +127,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
+  { name: "MCP Servers", href: "/mcp-servers", icon: Plug },
   { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
 ];
 

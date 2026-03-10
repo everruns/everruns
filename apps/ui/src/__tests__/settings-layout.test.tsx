@@ -31,7 +31,6 @@ describe("SettingsLayout", () => {
 
     expect(screen.getByText("General")).toBeInTheDocument();
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
-    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
     expect(screen.getByText("Profile")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
@@ -58,7 +57,6 @@ describe("SettingsLayout", () => {
 
     const generalLink = screen.getByRole("link", { name: /General/i });
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
-    const mcpServersLink = screen.getByRole("link", { name: /MCP Servers/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
     const profileLink = screen.getByRole("link", { name: /Profile/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
@@ -66,7 +64,6 @@ describe("SettingsLayout", () => {
 
     expect(generalLink).toHaveAttribute("href", "/settings/organisation");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
-    expect(mcpServersLink).toHaveAttribute("href", "/settings/mcp-servers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
@@ -120,7 +117,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 7 navigation items", () => {
+  it("has exactly 6 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -128,7 +125,7 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(7);
+    expect(navLinks).toHaveLength(6);
   });
 
   it("groups items under correct sections", () => {
@@ -145,7 +142,6 @@ describe("SettingsLayout", () => {
     const orgSection = orgLabel.closest("div[class]")!.parentElement!;
     expect(orgSection).toHaveTextContent("General");
     expect(orgSection).toHaveTextContent("LLM Providers");
-    expect(orgSection).toHaveTextContent("MCP Servers");
     expect(orgSection).toHaveTextContent("Members");
     expect(orgSection).not.toHaveTextContent("Connections");
     expect(orgSection).not.toHaveTextContent("API Keys");
@@ -206,18 +202,6 @@ describe("SettingsLayout", () => {
 
     const generalLink = screen.getByRole("link", { name: /General/i });
     expect(generalLink).toHaveClass("border-accent");
-  });
-
-  it("highlights active item for MCP Servers page", () => {
-    mockPathname.mockReturnValue("/settings/mcp-servers");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const mcpLink = screen.getByRole("link", { name: /MCP Servers/i });
-    expect(mcpLink).toHaveClass("border-accent");
   });
 
   it("highlights active item for Profile page", () => {
