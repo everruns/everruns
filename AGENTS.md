@@ -77,7 +77,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
-- `specs/events.md` - Event types and SSE streaming
+- `specs/events.md` - Event types, SSE streaming, execution phases
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
@@ -105,7 +105,6 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/events-contract.md` - SSE event format contract
-- `specs/execution-phases.md` - Execution phases (in_progress/completed) for multi-step agent flows
 - `specs/maintenance.md` - Pre-release maintenance checklist
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
