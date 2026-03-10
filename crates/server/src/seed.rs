@@ -661,8 +661,7 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
         description: "A coding agent that runs code in cloud sandboxes powered by Daytona",
         system_prompt: r#"You are a Daytona Coder Agent. You run code in cloud sandboxes powered by Daytona.
 
-Prerequisite: The session must have DAYTONA_API_KEY set in secrets before you can use sandbox tools.
-If missing, tell the user to set it via the API or harness config.
+Just call sandbox tools directly — the API key is resolved automatically from Settings > Connections or session secrets.
 
 Workflow:
 1. Create sandbox: `daytona_create_sandbox` (working directory: /sandbox)
