@@ -113,7 +113,7 @@ async fn setup_context_with_sandbox(
         .await;
     let state = SandboxState {
         sandbox_id: sandbox_id.to_string(),
-        workspace_path: "/sandbox".to_string(),
+        workspace_path: "/home/daytona".to_string(),
         started_at: "2026-02-18T10:00:00Z".to_string(),
     };
     store
@@ -460,7 +460,7 @@ async fn test_list_sandboxes_with_entries() {
     setup_context_with_sandbox(session_id, &store, "sb_one").await;
     let state2 = SandboxState {
         sandbox_id: "sb_two".to_string(),
-        workspace_path: "/sandbox".to_string(),
+        workspace_path: "/home/daytona".to_string(),
         started_at: "2026-02-18T11:00:00Z".to_string(),
     };
     store
@@ -659,7 +659,7 @@ async fn test_sandbox_state_persistence_roundtrip() {
             assert_eq!(val["count"], 1);
             let sandbox = &val["sandboxes"][0];
             assert_eq!(sandbox["sandbox_id"], "sb_persist");
-            assert_eq!(sandbox["workspace_path"], "/sandbox");
+            assert_eq!(sandbox["workspace_path"], "/home/daytona");
         }
         other => panic!("Expected Success, got: {other:?}"),
     }

@@ -170,7 +170,7 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
   - `sandbox_id`: string (required)
   - `repo_url`: string (required) — supports `https://`, `git@`, or `user/repo` shorthand
   - `branch`: string (optional) — branch to clone (defaults to default branch)
-  - `path`: string (optional) — destination inside sandbox (defaults to `/sandbox/<owner>/<repo>`)
+  - `path`: string (optional) — destination inside sandbox (defaults to `/home/daytona/<owner>/<repo>`)
 - **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
 
 **Implementation:** Uses Daytona's native `POST /git/clone` Toolbox API endpoint. Credentials are passed directly in the request body (`username`/`password` fields) — no credential helper scripts needed.

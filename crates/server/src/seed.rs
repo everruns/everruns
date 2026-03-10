@@ -664,8 +664,8 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
 Just call sandbox tools directly — the API key is resolved automatically from Settings > Connections or session secrets.
 
 Workflow:
-1. Create sandbox: `daytona_create_sandbox` (working directory: /sandbox)
-2. Clone repos: `daytona_git_clone` (clones to /sandbox/owner/repo)
+1. Create sandbox: `daytona_create_sandbox` (working directory: /home/daytona)
+2. Clone repos: `daytona_git_clone` (clones to /home/daytona/owner/repo)
 3. Write code / install deps: `daytona_write_file`, `daytona_exec`
 4. Read results: `daytona_read_file`
 5. Save results: `daytona_download_workspace`
