@@ -108,12 +108,15 @@ Display name resolution uses an in-memory cache with:
 - Permanent API errors (`missing_scope`, `invalid_auth`, etc.) cached as `None` to avoid repeated calls
 - Transient network errors not cached (allow retry)
 
+The API `Message` response includes `external_actor` (optional) so clients can display user identity for externally-originated messages.
+
 This is channel-agnostic — any future channel adapter (Discord, Teams) populates the same `ExternalActor` struct and gets the same LLM prefix behavior.
 
 ## Files
 
 - `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` types
 - `crates/core/src/message.rs` - `ExternalActor` struct
+- `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`
 - `crates/server/src/api/slack_events.rs` - Webhook endpoint, manifest generation, signing verification, session routing, user name resolution
 - `crates/server/src/slack_delivery.rs` - Event-driven Slack delivery dispatcher with retry and startup recovery
 - `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
