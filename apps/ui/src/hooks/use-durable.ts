@@ -15,6 +15,8 @@ import {
   signalWorkflow,
   listTasks,
   getTaskStats,
+  enqueueTask,
+  type EnqueueTaskRequest,
   listDlq,
   requeueDlqEntry,
   deleteDlqEntry,
@@ -413,6 +415,18 @@ export function useTaskStats() {
     queryKey: ["durable", "tasks", "stats"],
     queryFn: getTaskStats,
     staleTime: Infinity,
+  });
+}
+
+export function useEnqueueTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: EnqueueTaskRequest) => enqueueTask(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "health"] });
+    },
   });
 }
 
