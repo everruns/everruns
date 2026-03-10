@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Loader2 } from "lucide-react";
 
 interface MainLayoutProps {
@@ -20,6 +21,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
   const { isLoading: orgLoading } = useOrg();
+  const globalSearchEnabled = useFeatureFlag("global_search");
   const commandPalette = useCommandPaletteState();
 
   // Combined loading state - wait for both auth and org to initialize
@@ -61,15 +63,19 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     return null;
   }
 
-  return (
-    <CommandPaletteContext value={commandPalette}>
-      <div className="flex h-screen">
-        <Sidebar />
-        <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-        <CommandPalette />
-      </div>
-    </CommandPaletteContext>
+  const content = (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+      {globalSearchEnabled && <CommandPalette />}
+    </div>
   );
+
+  if (globalSearchEnabled) {
+    return <CommandPaletteContext value={commandPalette}>{content}</CommandPaletteContext>;
+  }
+
+  return content;
 }
 
 export default function MainLayout({ children }: MainLayoutProps) {

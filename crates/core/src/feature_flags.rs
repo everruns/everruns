@@ -21,6 +21,8 @@ pub struct FeatureFlags {
     pub global_chat: bool,
     /// Apps (agent deployment to distribution channels). Experimental.
     pub apps: bool,
+    /// Global search / command palette (Cmd+K). Experimental.
+    pub global_search: bool,
 }
 
 impl FeatureFlags {
@@ -29,6 +31,7 @@ impl FeatureFlags {
         Self {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             apps: experimental_flag("FEATURE_APPS", grade),
+            global_search: experimental_flag("FEATURE_GLOBAL_SEARCH", grade),
         }
     }
 
@@ -37,6 +40,7 @@ impl FeatureFlags {
         match flag {
             "global_chat" => self.global_chat,
             "apps" => self.apps,
+            "global_search" => self.global_search,
             _ => false,
         }
     }
@@ -47,6 +51,7 @@ impl FeatureFlags {
         Self {
             global_chat: true,
             apps: true,
+            global_search: true,
         }
     }
 }
@@ -80,6 +85,7 @@ mod tests {
         let flags = FeatureFlags::default();
         assert!(!flags.global_chat);
         assert!(!flags.apps);
+        assert!(!flags.global_search);
     }
 
     // SAFETY: env var tests must run single-threaded (--test-threads=1).
@@ -89,18 +95,22 @@ mod tests {
     fn test_experimental_enabled_in_dev() {
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
+        unsafe { std::env::remove_var("FEATURE_GLOBAL_SEARCH") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
         assert!(flags.global_chat);
         assert!(flags.apps);
+        assert!(flags.global_search);
     }
 
     #[test]
     fn test_experimental_disabled_in_prod() {
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
+        unsafe { std::env::remove_var("FEATURE_GLOBAL_SEARCH") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.global_chat);
         assert!(!flags.apps);
+        assert!(!flags.global_search);
     }
 
     #[test]
@@ -124,9 +134,11 @@ mod tests {
         let flags = FeatureFlags {
             global_chat: true,
             apps: true,
+            global_search: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
+        assert!(flags.is_enabled("global_search"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -135,9 +147,11 @@ mod tests {
         let flags = FeatureFlags {
             global_chat: true,
             apps: true,
+            global_search: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
+        assert!(json.contains("\"global_search\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
