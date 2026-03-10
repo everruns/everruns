@@ -6690,6 +6690,17 @@
                   "type": "string",
                   "format": "date-time"
                 },
+                "external_actor": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExternalActor",
+                      "description": "External actor identity (for messages from external channels like Slack)"
+                    }
+                  ]
+                },
                 "id": {
                   "type": "string",
                   "description": "Unique message ID (format: message_{32-hex})",
