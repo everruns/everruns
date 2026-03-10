@@ -2556,6 +2556,52 @@ mod tests {
         assert_eq!(r2["encrypted_content"], "encrypted_2");
     }
 
+    #[test]
+    fn test_build_input_with_phases_enabled() {
+        use crate::message::ExecutionPhase;
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Working on it...".to_string()),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".to_string(),
+                    name: "search".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: Some(ExecutionPhase::Commentary),
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        // With supports_phases=true, assistant message should include phase
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, true);
+        let assistant_json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(assistant_json["phase"], "commentary");
+
+        // With supports_phases=false, phase should be absent
+        let (_, input_no_phases) =
+            OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
+        assert!(
+            assistant_json_no.get("phase").is_none()
+                || assistant_json_no["phase"].is_null()
+        );
+    }
+
     // ========================================================================
     // tool_search / convert_tools_with_search tests
     // ========================================================================

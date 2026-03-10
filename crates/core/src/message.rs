@@ -1235,4 +1235,90 @@ mod tests {
         let part = ContentPart::tool_result("call_1", Some(serde_json::json!({})), None);
         assert!(part.to_openai_format().is_none());
     }
+
+    #[test]
+    fn test_execution_phase_from_has_tool_calls() {
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(true),
+            ExecutionPhase::Commentary
+        );
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(false),
+            ExecutionPhase::FinalAnswer
+        );
+    }
+
+    #[test]
+    fn test_execution_phase_from_provider_str() {
+        assert_eq!(
+            ExecutionPhase::from_provider_str("commentary"),
+            Some(ExecutionPhase::Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::from_provider_str("final_answer"),
+            Some(ExecutionPhase::FinalAnswer)
+        );
+        // Legacy values
+        assert_eq!(
+            ExecutionPhase::from_provider_str("in_progress"),
+            Some(ExecutionPhase::Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::from_provider_str("completed"),
+            Some(ExecutionPhase::FinalAnswer)
+        );
+        assert_eq!(ExecutionPhase::from_provider_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_execution_phase_serde_roundtrip() {
+        let commentary = ExecutionPhase::Commentary;
+        let json = serde_json::to_string(&commentary).unwrap();
+        assert_eq!(json, "\"commentary\"");
+        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ExecutionPhase::Commentary);
+
+        let final_answer = ExecutionPhase::FinalAnswer;
+        let json = serde_json::to_string(&final_answer).unwrap();
+        assert_eq!(json, "\"final_answer\"");
+        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ExecutionPhase::FinalAnswer);
+    }
+
+    #[test]
+    fn test_execution_phase_deserialize_legacy() {
+        let legacy_in_progress: ExecutionPhase =
+            serde_json::from_str("\"in_progress\"").unwrap();
+        assert_eq!(legacy_in_progress, ExecutionPhase::Commentary);
+
+        let legacy_completed: ExecutionPhase =
+            serde_json::from_str("\"completed\"").unwrap();
+        assert_eq!(legacy_completed, ExecutionPhase::FinalAnswer);
+    }
+
+    #[test]
+    fn test_execution_phase_deserialize_unknown_fails() {
+        let result = serde_json::from_str::<ExecutionPhase>("\"bogus\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_message_with_phase() {
+        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::Commentary);
+        assert_eq!(msg.phase, Some(ExecutionPhase::Commentary));
+    }
+
+    #[test]
+    fn test_message_phase_skipped_when_none() {
+        let msg = Message::assistant("Hello");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json.get("phase").is_none());
+    }
+
+    #[test]
+    fn test_message_phase_included_when_set() {
+        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::FinalAnswer);
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json.get("phase").unwrap(), "final_answer");
+    }
 }
