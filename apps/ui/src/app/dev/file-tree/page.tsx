@@ -134,15 +134,20 @@ export default function FileTreeDevPage() {
                     </FileTreeActions>
                   </FileTreeFile>
                 </FileTreeFolder>
-                <FileTreeFolder path="/project/assets" name="assets">
-                  <FileTreeActions>
-                    <Button variant="ghost" size="icon" className="size-5">
-                      <Plus className="size-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="size-5">
-                      <FolderPlus className="size-3" />
-                    </Button>
-                  </FileTreeActions>
+                <FileTreeFolder
+                  path="/project/assets"
+                  name="assets"
+                  actions={
+                    <FileTreeActions>
+                      <Button variant="ghost" size="icon" className="size-5">
+                        <Plus className="size-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="size-5">
+                        <FolderPlus className="size-3" />
+                      </Button>
+                    </FileTreeActions>
+                  }
+                >
                   <FileTreeFile
                     path="/project/assets/logo.png"
                     name="logo.png"
