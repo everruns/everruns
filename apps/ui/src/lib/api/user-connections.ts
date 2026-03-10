@@ -2,7 +2,7 @@
 // User-scoped (not org-scoped) — connections represent user's identity
 
 import { api } from "./client";
-import type { UserConnection, ConnectionProvider } from "./types";
+import type { UserConnection, ConnectionProvider, VerifyConnectionResponse } from "./types";
 
 export async function getUserConnections(): Promise<UserConnection[]> {
   const response = await api.get<UserConnection[]>("/v1/user/connections");
@@ -26,4 +26,11 @@ export async function createApiKeyConnection(
 
 export async function deleteUserConnection(provider: string): Promise<void> {
   await api.delete(`/v1/user/connections/${provider}`);
+}
+
+export async function verifyConnection(provider: string): Promise<VerifyConnectionResponse> {
+  const response = await api.post<VerifyConnectionResponse>(
+    `/v1/user/connections/${provider}/verify`,
+  );
+  return response.data;
 }
