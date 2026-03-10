@@ -91,6 +91,9 @@ pub struct Message {
     /// Message-level metadata (locale, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// External actor identity (for messages from external channels like Slack)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_actor: Option<everruns_core::ExternalActor>,
     pub created_at: DateTime<Utc>,
 }
 

@@ -510,4 +510,64 @@ mod tests {
         assert_eq!(parsed.tool_calls().len(), 1);
         assert_eq!(parsed.tool_calls()[0].name, "search");
     }
+
+    #[test]
+    fn test_parse_input_message_preserves_external_actor() {
+        let session_id = SessionId::new();
+        let mut message = Message::user("Hello from Slack!");
+        message.external_actor = Some(everruns_core::ExternalActor {
+            actor_id: "U0123456789".to_string(),
+            actor_name: Some("Alice".to_string()),
+            source: "slack".to_string(),
+            metadata: None,
+        });
+
+        let event = Event::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(message),
+        );
+
+        let stored = serde_json::to_value(&event).unwrap();
+        let result = event_to_message(&stored, "input.message");
+
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.role, MessageRole::User);
+        assert_eq!(parsed.text(), Some("Hello from Slack!"));
+
+        let actor = parsed
+            .external_actor
+            .expect("external_actor should be preserved");
+        assert_eq!(actor.actor_id, "U0123456789");
+        assert_eq!(actor.actor_name.as_deref(), Some("Alice"));
+        assert_eq!(actor.source, "slack");
+        assert_eq!(actor.display_label(), "Alice");
+    }
+
+    #[test]
+    fn test_parse_input_message_external_actor_fallback_to_id() {
+        let session_id = SessionId::new();
+        let mut message = Message::user("Hello!");
+        message.external_actor = Some(everruns_core::ExternalActor {
+            actor_id: "U0123456789".to_string(),
+            actor_name: None,
+            source: "slack".to_string(),
+            metadata: None,
+        });
+
+        let event = Event::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(message),
+        );
+
+        let stored = serde_json::to_value(&event).unwrap();
+        let parsed = event_to_message(&stored, "input.message").unwrap();
+
+        let actor = parsed
+            .external_actor
+            .expect("external_actor should be preserved");
+        assert_eq!(actor.display_label(), "U0123456789");
+    }
 }

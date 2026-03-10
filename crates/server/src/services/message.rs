@@ -106,6 +106,7 @@ impl MessageService {
             content,
             controls: req.controls,
             metadata: req.metadata,
+            external_actor: req.external_actor,
             created_at: now,
         };
 
@@ -234,6 +235,7 @@ impl MessageService {
                             content: msg.content,
                             controls: None,
                             metadata: None,
+                            external_actor: None,
                             created_at: msg.created_at,
                         });
                     }
@@ -248,6 +250,7 @@ impl MessageService {
                     content: core_message.content.clone(),
                     controls: core_message.controls.clone(),
                     metadata: core_message.metadata.clone(),
+                    external_actor: core_message.external_actor.clone(),
                     created_at: core_message.created_at,
                 })
             };
