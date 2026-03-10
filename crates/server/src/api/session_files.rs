@@ -460,13 +460,13 @@ pub async fn create_path(
             )
             .await
             .map_err(|e| {
-                tracing::error!("Failed to create file: {}", e);
                 let msg = e.to_string();
                 if msg.contains("already exists") {
                     (StatusCode::CONFLICT, msg)
                 } else if msg.contains("Invalid") || msg.contains("cannot") {
                     (StatusCode::BAD_REQUEST, msg)
                 } else {
+                    tracing::error!("Failed to create file: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "Internal server error".to_string(),

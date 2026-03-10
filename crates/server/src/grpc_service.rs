@@ -1519,8 +1519,13 @@ impl WorkerService for WorkerServiceImpl {
                 .create_file(session_id, create)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to create file: {}", e);
-                    Status::internal("Failed to create file")
+                    let msg = e.to_string();
+                    if msg.contains("already exists") {
+                        Status::already_exists(msg)
+                    } else {
+                        tracing::error!("Failed to create file: {}", e);
+                        Status::internal("Failed to create file")
+                    }
                 })?
         };
 
