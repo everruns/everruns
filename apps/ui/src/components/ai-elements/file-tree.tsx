@@ -94,11 +94,14 @@ const FileTreeFolderContext = createContext<FileTreeFolderContextType>({
 export type FileTreeFolderProps = HTMLAttributes<HTMLDivElement> & {
   path: string;
   name: string;
+  /** Actions rendered inline with the folder name (e.g. FileTreeActions) */
+  actions?: ReactNode;
 };
 
 export const FileTreeFolder = ({
   path,
   name,
+  actions,
   className,
   children,
   ...props
@@ -143,6 +146,7 @@ export const FileTreeFolder = ({
                 )}
               </FileTreeIcon>
               <FileTreeName className="font-medium">{name}</FileTreeName>
+              {actions}
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>

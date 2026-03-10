@@ -300,45 +300,51 @@ export function FileBrowser({
     return sortedFiles.map((file) => {
       if (file.is_directory) {
         return (
-          <FileTreeFolder key={file.id} path={file.path} name={file.name}>
-            <FileTreeActions>
-              {file.is_readonly && <Lock className="size-3 text-muted-foreground" />}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openCreateFileDialog(file.path);
-                }}
-                title="New file"
-              >
-                <Plus className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openCreateDirDialog(file.path);
-                }}
-                title="New folder"
-              >
-                <FolderPlus className="size-3" />
-              </Button>
-              {!file.is_readonly && (
+          <FileTreeFolder
+            key={file.id}
+            path={file.path}
+            name={file.name}
+            actions={
+              <FileTreeActions>
+                {file.is_readonly && <Lock className="size-3 text-muted-foreground" />}
                 <Button
                   variant="ghost"
                   size="icon"
                   className="size-5"
-                  onClick={(e) => handleDelete(file, e)}
-                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openCreateFileDialog(file.path);
+                  }}
+                  title="New file"
                 >
-                  <Trash2 className="size-3 text-destructive" />
+                  <Plus className="size-3" />
                 </Button>
-              )}
-            </FileTreeActions>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openCreateDirDialog(file.path);
+                  }}
+                  title="New folder"
+                >
+                  <FolderPlus className="size-3" />
+                </Button>
+                {!file.is_readonly && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5"
+                    onClick={(e) => handleDelete(file, e)}
+                    title="Delete"
+                  >
+                    <Trash2 className="size-3 text-destructive" />
+                  </Button>
+                )}
+              </FileTreeActions>
+            }
+          >
             {renderDirectoryContents(file.path, depth + 1)}
           </FileTreeFolder>
         );
