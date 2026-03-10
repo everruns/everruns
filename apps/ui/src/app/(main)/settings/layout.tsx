@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Server, Key, Users, Plug, Building2, Cable, User } from "lucide-react";
+import { Server, Key, Users, Building2, Cable, User } from "lucide-react";
 
 interface NavItem {
   name: string;
@@ -32,12 +32,6 @@ const settingsSections: NavSection[] = [
         href: "/settings/providers",
         icon: Server,
         description: "Manage LLM providers and models",
-      },
-      {
-        name: "MCP Servers",
-        href: "/settings/mcp-servers",
-        icon: Plug,
-        description: "Manage MCP server connections",
       },
       {
         name: "Members",

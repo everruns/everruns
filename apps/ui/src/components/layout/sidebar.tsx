@@ -71,6 +71,7 @@ import {
   Rocket,
   ListTodo,
 } from "lucide-react";
+import { capabilityIconMap } from "@/lib/capability-icons";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import type { FeatureFlags } from "@/lib/api/types";
 
@@ -126,6 +127,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
+  { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
   { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
 ];
 
