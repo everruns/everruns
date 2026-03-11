@@ -45,7 +45,7 @@ The CDP session uses Browserless's `Browserless.reconnect` command to keep the b
 2. **Use**: Reconnect via stored endpoint → do work → call `Browserless.reconnect` → disconnect
 3. **Close**: Reconnect → disconnect without calling reconnect → browser destroyed → clean up state
 
-Session state (`ws_endpoint`, `api_token`, timestamps) stored as encrypted secret in `session_storage`.
+Session state (`ws_endpoint`, timestamps) stored as plain key-value in `session_storage` (not encrypted secrets). API token is always resolved from user connection at call time — never stored in session state.
 
 ### API Token Resolution
 
@@ -177,7 +177,7 @@ No long-lived WebSocket connections from our side — we connect/disconnect for 
 ## Security
 
 - **API Token**: Stored in user connections (Settings > Connections > Browserless), encrypted at rest
-- **CDP session state**: Stored as encrypted secret in `session_storage`, per-session scoped
+- **CDP session state**: Stored as plain key-value in `session_storage` (only WS endpoint, no secrets), per-session scoped
 - **No secrets in chat**: Token resolved via connection provider, never exposed in conversation
 - **Ephemeral by default**: REST mode has no cross-request data leakage
 - **Content truncation**: Large DOM responses truncated to 100KB to prevent context flooding
@@ -197,7 +197,7 @@ No long-lived WebSocket connections from our side — we connect/disconnect for 
 - `tool_integration.rs`: full tool execution flow via wiremock, parameter validation, auth, error handling, resource cleanup
 
 ### Live API Tests
-Tests against the real Browserless API require `BROWSERLESS_API_KEY` in Doppler. Gated behind `browserless-live-tests` feature flag:
+Tests against the real Browserless API require `BROWSERLESS_KEY` in Doppler. Gated behind `browserless-live-tests` feature flag:
 
 ```bash
 doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests

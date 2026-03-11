@@ -1,4 +1,7 @@
 //! Browserless API key resolution, browser session state, and parameter helpers.
+//!
+//! Decision: API token ONLY comes from user connection (Settings > Connections > Browserless).
+//!   Never stored in session secrets. Session state only tracks the WS endpoint.
 
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::ToolContext;
@@ -11,7 +14,7 @@ use tracing::{debug, error};
 // Constants
 // ============================================================================
 
-/// Session storage key prefix for browser session state.
+/// Session storage key for browser session state.
 const BROWSER_SESSION_KEY: &str = "browserless_browser_session";
 
 // ============================================================================
@@ -45,12 +48,12 @@ pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutio
 // ============================================================================
 
 /// State for an active CDP browser session.
+/// Only stores the WS endpoint — the API token is always resolved from the
+/// connection provider, never stored in session state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserSessionState {
     /// The WebSocket endpoint to reconnect to.
     pub ws_endpoint: String,
-    /// The API token (needed to append to reconnect URL).
-    pub api_token: String,
     /// When this session was created.
     pub created_at: String,
     /// Last reconnect time.
@@ -58,28 +61,28 @@ pub struct BrowserSessionState {
 }
 
 impl BrowserSessionState {
-    pub fn new(ws_endpoint: String, api_token: String) -> Self {
+    pub fn new(ws_endpoint: String) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
             ws_endpoint,
-            api_token,
             created_at: now.clone(),
             last_active_at: now,
         }
     }
 
     /// Build the full reconnect URL (endpoint + token query param).
-    pub fn reconnect_url(&self) -> String {
+    /// Token is passed in — never stored in session state.
+    pub fn reconnect_url(&self, api_token: &str) -> String {
         let sep = if self.ws_endpoint.contains('?') {
             "&"
         } else {
             "?"
         };
-        format!("{}{}token={}", self.ws_endpoint, sep, self.api_token)
+        format!("{}{}token={}", self.ws_endpoint, sep, api_token)
     }
 }
 
-/// Save browser session state to session storage.
+/// Save browser session state to session storage (plain key-value, not secret).
 pub async fn save_browser_session(
     context: &ToolContext,
     state: &BrowserSessionState,
@@ -95,7 +98,7 @@ pub async fn save_browser_session(
     })?;
 
     storage
-        .set_secret(context.session_id, BROWSER_SESSION_KEY, &json_str)
+        .set_value(context.session_id, BROWSER_SESSION_KEY, &json_str)
         .await
         .map_err(|e| {
             ToolExecutionResult::tool_error(format!("Failed to save browser session: {e}"))
@@ -115,7 +118,7 @@ pub async fn get_browser_session(
     };
 
     let json_str = storage
-        .get_secret(context.session_id, BROWSER_SESSION_KEY)
+        .get_value(context.session_id, BROWSER_SESSION_KEY)
         .await
         .map_err(|e| {
             ToolExecutionResult::tool_error(format!("Failed to load browser session: {e}"))
@@ -142,7 +145,7 @@ pub async fn delete_browser_session(context: &ToolContext) -> Result<(), ToolExe
     };
 
     storage
-        .delete_secret(context.session_id, BROWSER_SESSION_KEY)
+        .delete_value(context.session_id, BROWSER_SESSION_KEY)
         .await
         .map_err(|e| {
             ToolExecutionResult::tool_error(format!("Failed to delete browser session: {e}"))
@@ -202,50 +205,39 @@ mod tests {
 
     #[test]
     fn test_browser_session_state_new() {
-        let state = BrowserSessionState::new(
-            "wss://example.com/browser/abc123".to_string(),
-            "my_token".to_string(),
-        );
+        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
         assert_eq!(state.ws_endpoint, "wss://example.com/browser/abc123");
-        assert_eq!(state.api_token, "my_token");
         assert!(!state.created_at.is_empty());
         assert!(!state.last_active_at.is_empty());
     }
 
     #[test]
     fn test_browser_session_reconnect_url_no_query() {
-        let state = BrowserSessionState::new(
-            "wss://example.com/browser/abc123".to_string(),
-            "my_token".to_string(),
-        );
+        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
         assert_eq!(
-            state.reconnect_url(),
+            state.reconnect_url("my_token"),
             "wss://example.com/browser/abc123?token=my_token"
         );
     }
 
     #[test]
     fn test_browser_session_reconnect_url_with_query() {
-        let state = BrowserSessionState::new(
-            "wss://example.com/browser/abc123?param=1".to_string(),
-            "my_token".to_string(),
-        );
+        let state =
+            BrowserSessionState::new("wss://example.com/browser/abc123?param=1".to_string());
         assert_eq!(
-            state.reconnect_url(),
+            state.reconnect_url("my_token"),
             "wss://example.com/browser/abc123?param=1&token=my_token"
         );
     }
 
     #[test]
     fn test_browser_session_serialization_roundtrip() {
-        let state = BrowserSessionState::new(
-            "wss://example.com/browser/abc123".to_string(),
-            "my_token".to_string(),
-        );
+        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: BrowserSessionState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.ws_endpoint, state.ws_endpoint);
-        assert_eq!(deserialized.api_token, state.api_token);
         assert_eq!(deserialized.created_at, state.created_at);
+        // No api_token in serialized state
+        assert!(!json.contains("api_token"));
     }
 }

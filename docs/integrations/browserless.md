@@ -77,7 +77,7 @@ Use `browserless_open_browser` to create a persistent browser via Chrome DevTool
 
 - API tokens are encrypted at rest (AES-256-GCM envelope encryption)
 - Browser sessions are fully isolated on Browserless servers
-- CDP session state is stored as encrypted secrets, scoped per session
+- CDP session state stores only the WebSocket endpoint (no secrets), scoped per session
 - Large DOM responses are truncated to 100KB to prevent context flooding
 
 ## Links

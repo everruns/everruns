@@ -1,7 +1,8 @@
 //! CDP session management tools: open_browser and close_browser.
 //!
 //! Decision: Persistent browser sessions via CDP WebSocket + Browserless.reconnect.
-//! Decision: Session state stored in session_storage (encrypted at rest).
+//! Decision: Session state stores only WS endpoint (no secrets). API token always
+//!   resolved from user connection at call time.
 //! Decision: Each tool call reconnects → does work → calls reconnect → disconnects.
 //!   No long-lived WebSocket connections. The browser stays alive on Browserless servers.
 
@@ -69,14 +70,12 @@ impl Tool for BrowserlessOpenBrowserTool {
 
         // Check if there's already an active session
         if let Ok(Some(existing)) = get_browser_session(context).await {
-            // Try to reconnect to verify it's still alive
-            let url = existing.reconnect_url();
+            let url = existing.reconnect_url(&api_token);
             match CdpSession::connect(&url).await {
                 Ok(mut session) => {
                     let title = session.get_title().await.unwrap_or_default();
                     let current_url = session.get_url().await.unwrap_or_default();
 
-                    // Keep it alive
                     let timeout_ms = arguments
                         .get("timeout_ms")
                         .and_then(|v| v.as_u64())
@@ -100,14 +99,12 @@ impl Tool for BrowserlessOpenBrowserTool {
                             }));
                         }
                         Err(_) => {
-                            // Session died, clean up and open a new one
                             session.disconnect().await;
                             let _ = delete_browser_session(context).await;
                         }
                     }
                 }
                 Err(_) => {
-                    // Can't connect — session expired, clean up
                     let _ = delete_browser_session(context).await;
                 }
             }
@@ -129,11 +126,9 @@ impl Tool for BrowserlessOpenBrowserTool {
             return ToolExecutionResult::tool_error(format!("Failed to navigate to {url}: {e}"));
         }
 
-        // Get page info
         let title = session.get_title().await.unwrap_or_default();
         let current_url = session.get_url().await.unwrap_or_default();
 
-        // Call reconnect to keep browser alive after we disconnect
         let timeout_ms = arguments
             .get("timeout_ms")
             .and_then(|v| v.as_u64())
@@ -149,8 +144,8 @@ impl Tool for BrowserlessOpenBrowserTool {
             }
         };
 
-        // Save state and disconnect
-        let state = BrowserSessionState::new(ws_endpoint, api_token);
+        // Save state (only WS endpoint, no token)
+        let state = BrowserSessionState::new(ws_endpoint);
         if let Err(e) = save_browser_session(context, &state).await {
             session.disconnect().await;
             return e;
@@ -218,21 +213,28 @@ impl Tool for BrowserlessCloseBrowserTool {
             Err(e) => return e,
         };
 
+        // Resolve token from connection to build reconnect URL
+        let api_token = match get_api_token(context).await {
+            Ok(v) => v,
+            Err(e) => {
+                // Can't resolve token — just clean up state, browser will expire on its own
+                let _ = delete_browser_session(context).await;
+                return e;
+            }
+        };
+
         // Reconnect and close (don't call reconnect — browser will be destroyed)
-        let url = session_state.reconnect_url();
+        let url = session_state.reconnect_url(&api_token);
         match CdpSession::connect(&url).await {
             Ok(session) => {
-                // Just disconnect without calling reconnect — browser will be destroyed
                 session.disconnect().await;
                 debug!("Browser session closed (disconnected without reconnect)");
             }
             Err(e) => {
-                // Connection failed — session already expired, which is fine
                 debug!("Browser session already expired: {e}");
             }
         }
 
-        // Clean up state
         if let Err(e) = delete_browser_session(context).await {
             return e;
         }
@@ -253,16 +255,19 @@ impl Tool for BrowserlessCloseBrowserTool {
 // ============================================================================
 
 /// Try to get an active CDP session for the current context.
-/// Returns None if no session exists or if reconnection fails.
+/// Resolves API token from connection provider. Returns None if no session exists
+/// or if reconnection fails.
 pub async fn try_get_cdp_session(context: &ToolContext) -> Option<CdpSession> {
     let state = get_browser_session(context).await.ok()??;
-    let url = state.reconnect_url();
+
+    // Resolve token from connection — never from session state
+    let api_token = get_api_token(context).await.ok()?;
+    let url = state.reconnect_url(&api_token);
 
     match CdpSession::connect(&url).await {
         Ok(session) => Some(session),
         Err(e) => {
             debug!("CDP reconnect failed (session may have expired): {e}");
-            // Clean up stale state
             let _ = delete_browser_session(context).await;
             None
         }
