@@ -38,7 +38,7 @@ impl CdpSession {
     ///   `wss://production-sfo.browserless.io?token=TOKEN`
     ///   or a reconnect endpoint returned by `Browserless.reconnect`.
     pub async fn connect(ws_url: &str) -> Result<Self, String> {
-        // Redact token from log output to avoid leaking credentials
+        // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
         let redacted = if let Some(idx) = ws_url.find("token=") {
             format!("{}token=<REDACTED>", &ws_url[..idx])
         } else {

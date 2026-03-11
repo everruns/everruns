@@ -179,8 +179,11 @@ No long-lived WebSocket connections from our side — we connect/disconnect for 
 - **API Token**: Stored in user connections (Settings > Connections > Browserless), encrypted at rest
 - **CDP session state**: Stored as plain key-value in `session_storage` (only WS endpoint, no secrets), per-session scoped
 - **No secrets in chat**: Token resolved via connection provider, never exposed in conversation
+- **No secrets in logs**: CDP debug logging redacts API tokens from WebSocket URLs
+- **URL validation**: Only `http://` and `https://` URLs allowed (blocks `file://`, `javascript:`, etc.)
+- **Timeout caps**: All wait/timeout values capped at 120s to prevent unbounded resource consumption
 - **Ephemeral by default**: REST mode has no cross-request data leakage
-- **Content truncation**: Large DOM responses truncated to 100KB to prevent context flooding
+- **Content truncation**: Large DOM responses truncated to 100KB (UTF-8 safe boundary) to prevent context flooding
 
 ## Testing
 

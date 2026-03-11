@@ -45,7 +45,7 @@ fn truncate_html(html: String) -> (String, bool) {
     }
 }
 
-/// Validate that a URL uses http or https scheme.
+/// Validate that a URL uses http or https scheme. // THREAT[TM-TOOL-015]
 fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
     if url.starts_with("http://") || url.starts_with("https://") {
         Ok(())
@@ -56,7 +56,7 @@ fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
     }
 }
 
-/// Cap a wait/timeout value to MAX_WAIT_MS.
+/// Cap a wait/timeout value to MAX_WAIT_MS. // THREAT[TM-TOOL-016]
 fn cap_wait_ms(ms: u64) -> u64 {
     ms.min(MAX_WAIT_MS)
 }
