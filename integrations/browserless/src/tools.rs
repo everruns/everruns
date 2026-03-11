@@ -23,20 +23,42 @@ use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{get_api_token, required_str};
 
 const MAX_HTML_BYTES: usize = 100_000;
+const MAX_WAIT_MS: u64 = 120_000;
 
-/// Truncate HTML content if it exceeds MAX_HTML_BYTES.
+/// Truncate HTML content if it exceeds MAX_HTML_BYTES. Safe for multi-byte UTF-8.
 fn truncate_html(html: String) -> (String, bool) {
     let len = html.len();
     if len > MAX_HTML_BYTES {
+        // Find a valid UTF-8 char boundary at or before MAX_HTML_BYTES
+        let mut boundary = MAX_HTML_BYTES;
+        while boundary > 0 && !html.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
         let truncated = format!(
             "{}...\n\n[Truncated: {} total bytes]",
-            &html[..MAX_HTML_BYTES],
+            &html[..boundary],
             len
         );
         (truncated, true)
     } else {
         (html, false)
     }
+}
+
+/// Validate that a URL uses http or https scheme.
+fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Ok(())
+    } else {
+        Err(ToolExecutionResult::tool_error(
+            "Invalid URL scheme. Only http:// and https:// URLs are allowed.",
+        ))
+    }
+}
+
+/// Cap a wait/timeout value to MAX_WAIT_MS.
+fn cap_wait_ms(ms: u64) -> u64 {
+    ms.min(MAX_WAIT_MS)
 }
 
 // ============================================================================
@@ -98,6 +120,9 @@ impl Tool for BrowserlessScreenshotTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+        if let Err(e) = validate_url(url) {
+            return e;
+        }
 
         let full_page = arguments
             .get("full_page")
@@ -118,7 +143,7 @@ impl Tool for BrowserlessScreenshotTool {
                 let _ = session.wait_for_selector(sel, 30000).await;
             }
             if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
             }
 
             let result = session.screenshot(full_page).await;
@@ -238,6 +263,9 @@ impl Tool for BrowserlessContentTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+        if let Err(e) = validate_url(url) {
+            return e;
+        }
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
@@ -252,7 +280,7 @@ impl Tool for BrowserlessContentTool {
                 let _ = session.wait_for_selector(sel, 30000).await;
             }
             if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
             }
 
             let result = session.get_content().await;
@@ -377,6 +405,9 @@ impl Tool for BrowserlessScrapeTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+        if let Err(e) = validate_url(url) {
+            return e;
+        }
 
         let elements = match arguments.get("elements").and_then(|v| v.as_array()) {
             Some(arr) => arr.clone(),
@@ -492,12 +523,12 @@ fn build_interaction_code(url: &str, steps: &[Value], return_screenshot: bool) -
                 ));
             }
             "wait" => {
-                let ms = wait_ms.unwrap_or(1000);
+                let ms = cap_wait_ms(wait_ms.unwrap_or(1000));
                 code.push_str(&format!("  await new Promise(r => setTimeout(r, {ms}));\n"));
             }
             "wait_for_selector" => {
                 if let Some(sel) = selector {
-                    let timeout = wait_ms.unwrap_or(10000);
+                    let timeout = cap_wait_ms(wait_ms.unwrap_or(10000));
                     code.push_str(&format!(
                         "  await page.waitForSelector({sel_js}, {{ timeout: {timeout} }});\n",
                         sel_js = serde_json::to_string(sel).unwrap()
@@ -521,7 +552,10 @@ fn build_interaction_code(url: &str, steps: &[Value], return_screenshot: bool) -
         if action != "wait"
             && let Some(ms) = wait_ms
         {
-            code.push_str(&format!("  await new Promise(r => setTimeout(r, {ms}));\n"));
+            let capped = cap_wait_ms(ms);
+            code.push_str(&format!(
+                "  await new Promise(r => setTimeout(r, {capped}));\n"
+            ));
         }
     }
 
@@ -629,6 +663,9 @@ impl Tool for BrowserlessInteractTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+        if let Err(e) = validate_url(url) {
+            return e;
+        }
 
         let steps = match arguments.get("steps").and_then(|v| v.as_array()) {
             Some(arr) => arr.clone(),
@@ -710,7 +747,8 @@ impl Tool for BrowserlessInteractTool {
                     }
                     "wait" => {
                         let ms = wait_ms.unwrap_or(1000);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms)))
+                            .await;
                         Ok(())
                     }
                     "wait_for_selector" => {
@@ -743,7 +781,7 @@ impl Tool for BrowserlessInteractTool {
                 if action != "wait"
                     && let Some(ms) = wait_ms
                 {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
                 }
             }
 
@@ -871,6 +909,9 @@ impl Tool for BrowserlessNavigateTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+        if let Err(e) = validate_url(url) {
+            return e;
+        }
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
@@ -885,7 +926,7 @@ impl Tool for BrowserlessNavigateTool {
                 let _ = session.wait_for_selector(sel, 30000).await;
             }
             if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
             }
 
             let result = session.get_page_info().await;
@@ -924,8 +965,9 @@ impl Tool for BrowserlessNavigateTool {
             ));
         }
         if let Some(timeout) = wait_for_timeout {
+            let capped = cap_wait_ms(timeout);
             code.push_str(&format!(
-                "  await new Promise(r => setTimeout(r, {timeout}));\n"
+                "  await new Promise(r => setTimeout(r, {capped}));\n"
             ));
         }
 

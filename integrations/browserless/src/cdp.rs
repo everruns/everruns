@@ -38,7 +38,13 @@ impl CdpSession {
     ///   `wss://production-sfo.browserless.io?token=TOKEN`
     ///   or a reconnect endpoint returned by `Browserless.reconnect`.
     pub async fn connect(ws_url: &str) -> Result<Self, String> {
-        debug!("CDP connecting to {ws_url}");
+        // Redact token from log output to avoid leaking credentials
+        let redacted = if let Some(idx) = ws_url.find("token=") {
+            format!("{}token=<REDACTED>", &ws_url[..idx])
+        } else {
+            ws_url.to_string()
+        };
+        debug!("CDP connecting to {redacted}");
         let (ws_stream, _response) = connect_async(ws_url)
             .await
             .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;

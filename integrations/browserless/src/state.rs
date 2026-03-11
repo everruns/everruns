@@ -258,8 +258,11 @@ mod tests {
         // No field should contain secret-like names
         for key in obj.keys() {
             assert!(
-                !key.contains("token") && !key.contains("secret") && !key.contains("password")
-                    && !key.contains("credential") && !key.contains("key"),
+                !key.contains("token")
+                    && !key.contains("secret")
+                    && !key.contains("password")
+                    && !key.contains("credential")
+                    && !key.contains("key"),
                 "Session state must not contain secret-like field: {key}"
             );
         }
