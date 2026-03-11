@@ -4,6 +4,9 @@ import DefaultHeader from "@astrojs/starlight/components/Header.astro";
 const sidebarTopics = Astro.locals.starlightSidebarTopics;
 const topics = sidebarTopics?.topics ?? [];
 const hasTopics = topics.length > 0;
+const currentPath = Astro.url.pathname;
+const isTopicActive = (topic: any) =>
+  topic.isCurrent || (topic.link === "/api/" && currentPath.startsWith("/api/"));
 ---
 
 <DefaultHeader {...Astro.props} />
@@ -16,8 +19,8 @@ const hasTopics = topics.length > 0;
           <li>
             <a
               href={topic.link}
-              class:list={{ active: topic.isCurrent }}
-              aria-current={topic.isCurrent ? "true" : undefined}
+              class:list={{ active: isTopicActive(topic) }}
+              aria-current={isTopicActive(topic) ? "true" : undefined}
             >
               {topic.label}
             </a>
