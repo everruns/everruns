@@ -240,4 +240,28 @@ mod tests {
         // No api_token in serialized state
         assert!(!json.contains("api_token"));
     }
+
+    /// Structural verification: session state must contain exactly 3 fields
+    /// and never include any secret/token/credential data.
+    #[test]
+    fn test_browser_session_state_no_secrets_structural() {
+        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
+        let json: serde_json::Value = serde_json::to_value(&state).unwrap();
+        let obj = json.as_object().unwrap();
+
+        // Exactly 3 fields: ws_endpoint, created_at, last_active_at
+        assert_eq!(obj.len(), 3, "Session state must have exactly 3 fields");
+        assert!(obj.contains_key("ws_endpoint"));
+        assert!(obj.contains_key("created_at"));
+        assert!(obj.contains_key("last_active_at"));
+
+        // No field should contain secret-like names
+        for key in obj.keys() {
+            assert!(
+                !key.contains("token") && !key.contains("secret") && !key.contains("password")
+                    && !key.contains("credential") && !key.contains("key"),
+                "Session state must not contain secret-like field: {key}"
+            );
+        }
+    }
 }
