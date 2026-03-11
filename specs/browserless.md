@@ -2,43 +2,54 @@
 
 ## Abstract
 
-The Browserless capability integrates [Browserless](https://www.browserless.io/) cloud browser automation as an agent tool set. Agents can take screenshots, read rendered DOM, scrape structured data, and perform multi-step browser interactions (click, type, keyboard, mouse, touch) via the Browserless REST API.
+The Browserless capability integrates [Browserless](https://www.browserless.io/) cloud browser automation as an agent tool set. Agents can take screenshots, read rendered DOM, scrape structured data, and perform multi-step browser interactions (click, type, keyboard, mouse, touch).
+
+Two operating modes:
+- **REST** (default): Each tool call uses a fresh ephemeral browser. No state, no cleanup.
+- **CDP** (persistent sessions): `browserless_open_browser` opens a persistent browser via Chrome DevTools Protocol WebSocket. Subsequent tools reuse it, preserving login state and cookies. `browserless_close_browser` releases the browser.
 
 **Status**: Available (All environments)
 
 ## Architecture
 
-### Stateless REST API
-
-Browserless REST API is inherently stateless: each request launches a fresh browser, performs one task, and destroys the session. No persistent browser instances to manage or clean up.
+### Dual-Mode Architecture
 
 ```
-┌──────────────────────────────────────────┐
-│              Agent Session                │
-│                                           │
-│  Tool Call (browserless_screenshot, etc.) │
-│         ↓                                 │
-│  Resolve API token from Connections       │
-│         ↓                                 │
-│  ┌───────────────────────────────────┐   │
-│  │ BrowserlessClient                 │   │
-│  │  - /screenshot                    │   │
-│  │  - /content                       │   │
-│  │  - /scrape                        │   │
-│  │  - /function (interactions)       │   │
-│  └───────────────────────────────────┘   │
-│         ↓                                 │
-│  Return result to agent                  │
-└──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      Agent Session                            │
+│                                                               │
+│  Tool Call (browserless_screenshot, etc.)                     │
+│         ↓                                                     │
+│  Resolve API token from User Connections                     │
+│         ↓                                                     │
+│  ┌─────────────────┐     ┌──────────────────────────────┐   │
+│  │ CDP session      │     │ REST Client                  │   │
+│  │ active?          │──no─│  - /screenshot               │   │
+│  │  ↓ yes           │     │  - /content                  │   │
+│  │ Reconnect via WS │     │  - /scrape                   │   │
+│  │ Do work via CDP  │     │  - /function (interactions)  │   │
+│  │ Call reconnect   │     └──────────────────────────────┘   │
+│  │ Disconnect       │                                         │
+│  │ Store endpoint   │                                         │
+│  └─────────────────┘                                         │
+│         ↓                                                     │
+│  Return result to agent                                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### No State Management
+### CDP Session Lifecycle
 
-Unlike Daytona (which tracks sandbox lifecycle), Browserless needs no per-session state. Each tool call is self-contained. The API token is the only credential needed.
+The CDP session uses Browserless's `Browserless.reconnect` command to keep the browser alive between tool calls without maintaining a persistent WebSocket connection:
+
+1. **Open**: Connect via WebSocket → call `Browserless.reconnect(timeout)` → store endpoint → disconnect
+2. **Use**: Reconnect via stored endpoint → do work → call `Browserless.reconnect` → disconnect
+3. **Close**: Reconnect → disconnect without calling reconnect → browser destroyed → clean up state
+
+Session state (`ws_endpoint`, `api_token`, timestamps) stored as encrypted secret in `session_storage`.
 
 ### API Token Resolution
 
-The Browserless API token is resolved via **user connection** for the `browserless` provider (Settings > Connections). If not configured, a `ToolError` guides the user to set up in Settings.
+The Browserless API token is resolved via **user connection** for the `browserless` provider (Settings > Connections). See `src/connection.rs` for the `ConnectionProviderPlugin`.
 
 ### User Connection
 
@@ -50,7 +61,7 @@ Browserless registers as a `ConnectionProviderPlugin` (API-key type). Users conf
 
 ## API Integration
 
-### Browserless REST Endpoints
+### REST Endpoints
 
 Base URL: `https://production-sfo.browserless.io`
 
@@ -63,7 +74,39 @@ Auth: `?token=<api_token>` query parameter on all requests.
 | POST | `/scrape` | Structured data | `{ url, elements, waitFor* }` | `application/json` |
 | POST | `/function` | Custom Puppeteer | `{ code, context? }` | Variable |
 
+### CDP (WebSocket) Protocol
+
+Base URL: `wss://production-sfo.browserless.io`
+
+Auth: `?token=<api_token>` query parameter on WebSocket URL.
+
+CDP commands used:
+- `Page.enable` — Enable page events
+- `Page.navigate` — Navigate to URL
+- `Page.captureScreenshot` — Take screenshot (returns base64 PNG)
+- `Runtime.evaluate` — Execute JavaScript (DOM access, page info, wait logic)
+- `Input.dispatchMouseEvent` — Click, mouse move
+- `Input.dispatchKeyEvent` — Keyboard input
+- `Input.dispatchTouchEvent` — Touch/tap simulation
+- `Browserless.reconnect` — Keep browser alive after disconnect (returns new WS endpoint)
+
 ## Tools
+
+### browserless_open_browser
+
+Open a persistent browser session via CDP WebSocket.
+
+- **Parameters**: `url` (optional, initial URL), `timeout_ms` (optional, default 60000)
+- **Returns**: `{ status, message, title, url, timeout_ms }`
+- **Behavior**: If a session already exists and is alive, returns `already_open`. Otherwise opens a new browser.
+
+### browserless_close_browser
+
+Close the persistent browser session.
+
+- **Parameters**: none
+- **Returns**: `{ status, message }`
+- **Behavior**: Reconnects and disconnects without calling `Browserless.reconnect` — browser is destroyed.
 
 ### browserless_navigate
 
@@ -71,7 +114,7 @@ Open a URL and return page metadata.
 
 - **Parameters**: `url` (required), `wait_for_selector` (optional), `wait_for_timeout` (optional)
 - **Returns**: `{ title, url, status, links[], headings[], meta[] }`
-- **Implementation**: Uses `/function` endpoint to extract rich metadata
+- **Session-aware**: Uses CDP if active session exists, REST `/function` otherwise.
 
 ### browserless_screenshot
 
@@ -79,7 +122,7 @@ Take a PNG screenshot of a page.
 
 - **Parameters**: `url` (required), `full_page` (optional, default true), `selector` (optional), `wait_for_selector` (optional), `wait_for_timeout` (optional)
 - **Returns**: `{ url, format, size_bytes, image_base64 }`
-- **Implementation**: Uses `/screenshot` endpoint
+- **Session-aware**: Uses CDP `Page.captureScreenshot` if session exists, REST `/screenshot` otherwise.
 
 ### browserless_content
 
@@ -87,28 +130,24 @@ Get fully rendered HTML/DOM content.
 
 - **Parameters**: `url` (required), `wait_for_selector` (optional), `wait_for_timeout` (optional), `best_attempt` (optional)
 - **Returns**: `{ url, content, size_bytes, truncated }`
-- **Implementation**: Uses `/content` endpoint. Truncates at 100KB to avoid overwhelming LLM context.
+- **Session-aware**: Uses CDP `Runtime.evaluate` if session exists, REST `/content` otherwise. Truncates at 100KB.
 
 ### browserless_scrape
 
-Extract structured data using CSS selectors.
+Extract structured data using CSS selectors. REST-only (no CDP equivalent).
 
 - **Parameters**: `url` (required), `elements` (required, array of `{selector}`), `wait_for_selector` (optional), `wait_for_timeout` (optional)
 - **Returns**: `{ url, data }`
-- **Implementation**: Uses `/scrape` endpoint
 
 ### browserless_interact
 
-Multi-step browser interactions. Navigate to a URL, then execute a sequence of actions.
+Multi-step browser interactions.
 
-- **Parameters**:
-  - `url` (required) — initial URL
-  - `steps` (required) — array of interaction steps
-  - `return_screenshot` (optional, default false) — return screenshot vs DOM after steps
+- **Parameters**: `url` (required), `steps` (required), `return_screenshot` (optional, default false)
 - **Returns**: `{ title, url, screenshot? | content? }`
-- **Implementation**: Generates Puppeteer code and executes via `/function` endpoint
+- **Session-aware**: Uses CDP session (click, type, keyboard, mouse, touch via CDP commands) if active, generates Puppeteer code for REST `/function` otherwise.
 
-**Supported step actions**:
+**Supported step actions**: See `src/tools.rs:build_interaction_code()` for REST and `execute_with_context()` for CDP.
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
@@ -124,45 +163,45 @@ Multi-step browser interactions. Navigate to a URL, then execute a sequence of a
 
 ## Resource Management
 
-**No resources to clean up.** Each Browserless REST call launches an ephemeral browser that is automatically destroyed after the response is returned. There are no persistent sessions, containers, or sandboxes to track or delete.
+### REST Mode
+No resources to clean up. Each call launches an ephemeral browser that is automatically destroyed.
+
+### CDP Mode
+Browser stays alive on Browserless servers between tool calls via `Browserless.reconnect` with a configurable timeout (default 60s). Resources are released when:
+1. Agent calls `browserless_close_browser`
+2. Reconnect timeout expires (browser auto-destroyed by Browserless)
+3. Session ends (stored state becomes stale, browser auto-destroyed by timeout)
+
+No long-lived WebSocket connections from our side — we connect/disconnect for each tool call.
 
 ## Security
 
 - **API Token**: Stored in user connections (Settings > Connections > Browserless), encrypted at rest
+- **CDP session state**: Stored as encrypted secret in `session_storage`, per-session scoped
 - **No secrets in chat**: Token resolved via connection provider, never exposed in conversation
-- **Ephemeral browsers**: Each request gets a fresh browser — no cross-request data leakage
+- **Ephemeral by default**: REST mode has no cross-request data leakage
 - **Content truncation**: Large DOM responses truncated to 100KB to prevent context flooding
 
-## Error Handling
+## Testing
 
-| Scenario | Result Type | Message |
-|----------|-------------|---------|
-| Missing required param | `ToolError` | "Missing required parameter: {name}" |
-| API token not configured | `ToolError` | "Browserless API token not configured." |
-| HTTP 4xx/5xx | `ToolError` | "Browserless API error ({status}): {body}" |
-| No context | `ToolError` | "{tool_name} requires context." |
+### Unit Tests (in crate)
+- Client: wiremock-based HTTP tests for all REST endpoints (success + error paths)
+- Tools: metadata validation, schema validation, context-required checks
+- Interaction code generation: all action types, multi-step, screenshot vs content
+- CDP: key-to-code mapping
+- State: serialization roundtrip, reconnect URL construction
+- Session tools: metadata, context-required checks
 
-## Design Decisions
+### Integration Tests (`tests/`)
+- `plugin_registration.rs`: inventory submission, dev/prod registry, capability metadata
+- `tool_integration.rs`: full tool execution flow via wiremock, parameter validation, auth, error handling, resource cleanup
 
-### REST-only, no WebSocket sessions
+### Live API Tests
+Tests against the real Browserless API require `BROWSERLESS_API_KEY` in Doppler. Gated behind `browserless-live-tests` feature flag:
 
-Browserless supports WebSocket connections for persistent Puppeteer/Playwright sessions. We chose REST-only because:
-- No persistent state to manage or leak
-- Each call is atomic and self-cleaning
-- Simpler error handling (no session reconnection)
-- The `/function` endpoint covers multi-step interactions
-
-### /function for interactions
-
-The Browserless REST API doesn't expose standalone click/type endpoints. The `/function` endpoint accepts custom Puppeteer code, which we generate from the structured `steps` array. This gives full flexibility while keeping the tool interface simple.
-
-### No state management
-
-Unlike Daytona sandboxes (which need lifecycle tracking), Browserless browsers are ephemeral. No `session_storage` dependency, no state persistence, no cleanup needed.
-
-### Content truncation
-
-DOM content can be very large. We truncate at 100KB to prevent flooding the LLM context window while still providing enough content for analysis.
+```bash
+doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests
+```
 
 ## Crate Structure
 
@@ -171,10 +210,12 @@ DOM content can be very large. We truncate at 100KB to prevent flooding the LLM 
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | Plugin registration, constants, `BrowserlessCapability` impl |
-| `src/client.rs` | `BrowserlessClient` HTTP client (screenshot, content, scrape, function) |
+| `src/cdp.rs` | `CdpSession` — minimal CDP client over WebSocket |
+| `src/client.rs` | `BrowserlessClient` — REST HTTP client |
 | `src/connection.rs` | `BrowserlessConnectionProvider` — API-token connection plugin |
-| `src/state.rs` | API token resolution, parameter helpers |
-| `src/tools.rs` | 5 tool implementations + interaction code generator |
+| `src/state.rs` | API token resolution, browser session state, parameter helpers |
+| `src/session_tools.rs` | `browserless_open_browser` / `browserless_close_browser` tools |
+| `src/tools.rs` | 5 session-aware tool implementations + interaction code generator |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock |
 
@@ -186,11 +227,35 @@ DOM content can be very large. We truncate at 100KB to prevent flooding the LLM 
 - **Icon**: `browserless`
 - **Category**: `Browser`
 - **Risk Level**: Medium
-- **Dependencies**: none
+- **Dependencies**: none (session_storage used opportunistically for CDP state)
 
 ## Seeded Agent: Browser Tester
 
 A pre-configured seed agent (`Browser Tester`) demonstrates the capability:
+- **ID**: `0x10c`
 - **Capabilities**: `browserless`
 - **Dev-only**: false
-- **Use cases**: Accessibility testing, regression testing, web automation
+- **Tags**: browser, testing, automation, a11y, regression, demo, seed
+- **Use cases**: Accessibility testing, regression testing, web automation, login flows
+- **System prompt**: Guides the agent through navigate → screenshot → content → scrape → interact workflows
+
+## Design Decisions
+
+### Dual-mode: REST + CDP
+
+REST for simple one-shot operations, CDP for persistent sessions. CDP sessions preserve login state, cookies, and navigation history across tool calls — essential for testing login-protected pages.
+
+### Minimal CDP client
+
+Custom implementation in `cdp.rs` using `tokio-tungstenite`. No external CDP crate dependency. Implements only the CDP commands we need (Page, Runtime, Input, Browserless.reconnect). Keeps the dependency footprint small.
+
+### Reconnect pattern (not persistent WebSocket)
+
+We don't keep long-lived WebSocket connections. Each tool call: reconnect → work → reconnect → disconnect. The browser stays alive on Browserless servers. This avoids:
+- Managing WebSocket lifecycle across async tool calls
+- Dealing with connection drops during LLM thinking time
+- Complexity of multiplexing WebSocket messages
+
+### Content truncation
+
+DOM content can be very large. We truncate at 100KB to prevent flooding the LLM context window while still providing enough content for analysis.

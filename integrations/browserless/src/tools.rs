@@ -1,17 +1,15 @@
 //! Tool implementations for Browserless browser automation.
 //!
-//! Decision: 5 tools covering the user's requirements:
-//!   1. browserless_screenshot - Take screenshot of a page
-//!   2. browserless_content   - Read rendered DOM/HTML of a page
-//!   3. browserless_scrape    - Extract structured data via CSS selectors
-//!   4. browserless_interact  - Click, type, navigate with keyboard/mouse/touch
-//!   5. browserless_navigate  - Open a URL and get page info (title, URL, status)
+//! Decision: 5 REST tools + session-aware behavior:
+//!   1. browserless_screenshot - Take screenshot (CDP if session active, REST otherwise)
+//!   2. browserless_content   - Read DOM/HTML (CDP if session active, REST otherwise)
+//!   3. browserless_scrape    - Extract structured data via CSS selectors (REST only)
+//!   4. browserless_interact  - Click, type, navigate (CDP if session active, REST otherwise)
+//!   5. browserless_navigate  - Open URL and get page info (CDP if session active, REST otherwise)
 //!
-//! Decision: No persistent browser sessions. Each tool call is a fresh browser.
-//!   This means no resources are left behind — the browser is destroyed after each call.
-//! Decision: browserless_interact uses the /function endpoint for multi-step Puppeteer code.
-//!   Supports click, type, keyboard shortcuts, mouse events, touch, and can return
-//!   a screenshot or DOM content after the interaction.
+//! When a CDP session is active (via browserless_open_browser), tools navigate within
+//! the persistent browser, preserving login state and cookies across tool calls.
+//! When no session exists, each tool call uses a fresh browser via REST API.
 
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -21,6 +19,7 @@ use serde_json::{Value, json};
 use tracing::debug;
 
 use crate::client::BrowserlessClient;
+use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{get_api_token, required_str};
 
 // ============================================================================
@@ -83,15 +82,56 @@ impl Tool for BrowserlessScreenshotTool {
             Err(e) => return e,
         };
 
+        let full_page = arguments
+            .get("full_page")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // Try CDP session first
+        if let Some(mut session) = try_get_cdp_session(context).await {
+            debug!("Using CDP session for screenshot");
+            if let Err(e) = session.navigate(url).await {
+                keep_session_alive(context, &mut session).await;
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+            }
+
+            // Wait for selector if specified
+            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                let _ = session.wait_for_selector(sel, 30000).await;
+            }
+            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+            }
+
+            let result = session.screenshot(full_page).await;
+            keep_session_alive(context, &mut session).await;
+            session.disconnect().await;
+
+            return match result {
+                Ok(b64) => {
+                    use base64::Engine;
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(&b64)
+                        .unwrap_or_default();
+                    ToolExecutionResult::Success(json!({
+                        "url": url,
+                        "format": "png",
+                        "size_bytes": bytes.len(),
+                        "image_base64": b64,
+                        "session": "cdp"
+                    }))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("CDP screenshot failed: {e}")),
+            };
+        }
+
+        // Fallback: REST API
         let api_token = match get_api_token(context).await {
             Ok(v) => v,
             Err(e) => return e,
         };
 
-        let full_page = arguments
-            .get("full_page")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
         let selector = arguments.get("selector").and_then(|v| v.as_str());
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
@@ -182,6 +222,51 @@ impl Tool for BrowserlessContentTool {
             Err(e) => return e,
         };
 
+        // Try CDP session first
+        if let Some(mut session) = try_get_cdp_session(context).await {
+            debug!("Using CDP session for content");
+            if let Err(e) = session.navigate(url).await {
+                keep_session_alive(context, &mut session).await;
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+            }
+
+            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                let _ = session.wait_for_selector(sel, 30000).await;
+            }
+            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+            }
+
+            let result = session.get_content().await;
+            keep_session_alive(context, &mut session).await;
+            session.disconnect().await;
+
+            return match result {
+                Ok(html) => {
+                    let len = html.len();
+                    let truncated = if len > 100_000 {
+                        format!(
+                            "{}...\n\n[Truncated: {} total bytes]",
+                            &html[..100_000],
+                            len
+                        )
+                    } else {
+                        html
+                    };
+                    ToolExecutionResult::Success(json!({
+                        "url": url,
+                        "content": truncated,
+                        "size_bytes": len,
+                        "truncated": len > 100_000,
+                        "session": "cdp"
+                    }))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("CDP content failed: {e}")),
+            };
+        }
+
+        // Fallback: REST API
         let api_token = match get_api_token(context).await {
             Ok(v) => v,
             Err(e) => return e,
@@ -201,7 +286,6 @@ impl Tool for BrowserlessContentTool {
         {
             Ok(html) => {
                 let len = html.len();
-                // Truncate very large pages to avoid overwhelming the LLM context
                 let truncated = if len > 100_000 {
                     format!(
                         "{}...\n\n[Truncated: {} total bytes]",
@@ -554,15 +638,159 @@ impl Tool for BrowserlessInteractTool {
             }
         };
 
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-
         let return_screenshot = arguments
             .get("return_screenshot")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+
+        // Try CDP session first
+        if let Some(mut session) = try_get_cdp_session(context).await {
+            debug!("Using CDP session for interact");
+            if let Err(e) = session.navigate(url).await {
+                keep_session_alive(context, &mut session).await;
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+            }
+
+            // Execute each step via CDP
+            for step in &steps {
+                let action = step
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let selector = step.get("selector").and_then(|v| v.as_str());
+                let value = step.get("value").and_then(|v| v.as_str());
+                let key = step.get("key").and_then(|v| v.as_str());
+                let x = step.get("x").and_then(|v| v.as_f64());
+                let y = step.get("y").and_then(|v| v.as_f64());
+                let wait_ms = step.get("wait_ms").and_then(|v| v.as_u64());
+
+                let step_result = match action {
+                    "click" => {
+                        if let Some(sel) = selector {
+                            session.click_selector(sel).await
+                        } else if let (Some(cx), Some(cy)) = (x, y) {
+                            session.click_at(cx, cy).await
+                        } else {
+                            Err("click requires selector or x,y coordinates".to_string())
+                        }
+                    }
+                    "type" => {
+                        if let (Some(sel), Some(text)) = (selector, value) {
+                            session.type_into_selector(sel, text).await
+                        } else {
+                            Err("type requires selector and value".to_string())
+                        }
+                    }
+                    "keyboard" => {
+                        if let Some(k) = key {
+                            session.press_key(k).await
+                        } else {
+                            Err("keyboard requires key".to_string())
+                        }
+                    }
+                    "mouse_move" => {
+                        if let (Some(mx), Some(my)) = (x, y) {
+                            session.mouse_move(mx, my).await
+                        } else {
+                            Err("mouse_move requires x and y".to_string())
+                        }
+                    }
+                    "touch" => {
+                        if let Some(sel) = selector {
+                            session.tap_selector(sel).await
+                        } else {
+                            Err("touch requires selector".to_string())
+                        }
+                    }
+                    "scroll" => {
+                        let dy = step.get("value").and_then(|v| v.as_i64()).unwrap_or(500);
+                        session.scroll(dy).await
+                    }
+                    "wait" => {
+                        let ms = wait_ms.unwrap_or(1000);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                        Ok(())
+                    }
+                    "wait_for_selector" => {
+                        if let Some(sel) = selector {
+                            let timeout = wait_ms.unwrap_or(10000);
+                            session.wait_for_selector(sel, timeout).await
+                        } else {
+                            Err("wait_for_selector requires selector".to_string())
+                        }
+                    }
+                    "navigate" => {
+                        if let Some(nav_url) = value {
+                            session.navigate(nav_url).await.map(|_| ())
+                        } else {
+                            Err("navigate requires value (URL)".to_string())
+                        }
+                    }
+                    other => Err(format!("Unknown action: {other}")),
+                };
+
+                if let Err(e) = step_result {
+                    keep_session_alive(context, &mut session).await;
+                    session.disconnect().await;
+                    return ToolExecutionResult::tool_error(format!(
+                        "Interaction step '{action}' failed: {e}"
+                    ));
+                }
+
+                // Per-step wait
+                if action != "wait"
+                    && let Some(ms) = wait_ms
+                {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+                }
+            }
+
+            // Capture result
+            let title = session.get_title().await.unwrap_or_default();
+            let final_url = session.get_url().await.unwrap_or_default();
+            let result = if return_screenshot {
+                match session.screenshot(true).await {
+                    Ok(b64) => json!({
+                        "title": title,
+                        "url": final_url,
+                        "screenshot": b64,
+                        "session": "cdp"
+                    }),
+                    Err(e) => {
+                        keep_session_alive(context, &mut session).await;
+                        session.disconnect().await;
+                        return ToolExecutionResult::tool_error(format!(
+                            "CDP screenshot failed: {e}"
+                        ));
+                    }
+                }
+            } else {
+                match session.get_content().await {
+                    Ok(content) => json!({
+                        "title": title,
+                        "url": final_url,
+                        "content": content,
+                        "session": "cdp"
+                    }),
+                    Err(e) => {
+                        keep_session_alive(context, &mut session).await;
+                        session.disconnect().await;
+                        return ToolExecutionResult::tool_error(format!("CDP content failed: {e}"));
+                    }
+                }
+            };
+
+            keep_session_alive(context, &mut session).await;
+            session.disconnect().await;
+            return ToolExecutionResult::Success(result);
+        }
+
+        // Fallback: REST API
+        let api_token = match get_api_token(context).await {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
 
         let code = build_interaction_code(url, &steps, return_screenshot);
         debug!("Generated interaction code ({} bytes)", code.len());
@@ -570,7 +798,6 @@ impl Tool for BrowserlessInteractTool {
         let client = BrowserlessClient::new(api_token);
         match client.function(&code, None).await {
             Ok(result) => {
-                // The function returns JSON-stringified data in the "data" field
                 if let Some(data_str) = result.get("data").and_then(|v| v.as_str()) {
                     match serde_json::from_str::<Value>(data_str) {
                         Ok(data) => ToolExecutionResult::Success(data),
@@ -644,6 +871,36 @@ impl Tool for BrowserlessNavigateTool {
             Err(e) => return e,
         };
 
+        // Try CDP session first
+        if let Some(mut session) = try_get_cdp_session(context).await {
+            debug!("Using CDP session for navigate");
+            if let Err(e) = session.navigate(url).await {
+                keep_session_alive(context, &mut session).await;
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+            }
+
+            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                let _ = session.wait_for_selector(sel, 30000).await;
+            }
+            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+            }
+
+            let result = session.get_page_info().await;
+            keep_session_alive(context, &mut session).await;
+            session.disconnect().await;
+
+            return match result {
+                Ok(mut info) => {
+                    info["session"] = json!("cdp");
+                    ToolExecutionResult::Success(info)
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("CDP get_page_info failed: {e}")),
+            };
+        }
+
+        // Fallback: REST API
         let api_token = match get_api_token(context).await {
             Ok(v) => v,
             Err(e) => return e,
@@ -652,7 +909,6 @@ impl Tool for BrowserlessNavigateTool {
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
 
-        // Use the /function endpoint to get rich metadata
         let mut code = String::new();
         code.push_str("export default async ({ page }) => {\n");
         code.push_str(&format!(

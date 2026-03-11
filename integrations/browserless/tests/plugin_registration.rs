@@ -65,5 +65,5 @@ fn test_browserless_capability_metadata() {
     assert_eq!(cap.icon(), Some("browserless"));
     assert_eq!(cap.category(), Some("Browser"));
     assert!(cap.dependencies().is_empty());
-    assert_eq!(cap.tools().len(), 5);
+    assert_eq!(cap.tools().len(), 7);
 }

@@ -1,6 +1,6 @@
 # Browserless Integration
 # Decision: External integration crate, auto-registered via inventory plugin system
-# Decision: REST API only (no WebSocket/Puppeteer), each request is a fresh browser session
+# Decision: REST API for one-shot operations, CDP (WebSocket) for persistent browser sessions
 # Decision: /function endpoint for multi-step interactions (click, type, navigate)
 
 [package]
@@ -15,8 +15,12 @@ description = "Browserless browser automation integration for Everruns"
 everruns-core = { path = "../../crates/core" }
 inventory.workspace = true
 
-# HTTP client for Browserless API
+# HTTP client for Browserless REST API
 reqwest.workspace = true
+
+# WebSocket client for CDP sessions
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 
 # Serialization
 serde.workspace = true
