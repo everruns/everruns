@@ -53,8 +53,7 @@ mod seed_ids {
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
-    pub const BROWSER_TESTER_AGENT: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010c);
+    pub const BROWSER_TESTER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010c);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -915,7 +914,15 @@ Set `return_screenshot: true` to get a screenshot after interactions.
 
 Browserless API token must be configured in Settings > Connections.
 Get a token at https://cloud.browserless.io/"#,
-        tags: &["browser", "testing", "automation", "a11y", "regression", "demo", "seed"],
+        tags: &[
+            "browser",
+            "testing",
+            "automation",
+            "a11y",
+            "regression",
+            "demo",
+            "seed",
+        ],
         capabilities: &["browserless"],
         dev_only: false,
     },
