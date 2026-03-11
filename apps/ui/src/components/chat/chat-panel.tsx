@@ -31,6 +31,10 @@ import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
+import {
+  formatWorkedDuration,
+  getCompletedTurnDurationsByEvent,
+} from "@/components/chat/turn-delimiter";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useLlmModels, useImageAttachments, useSessionCommands } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -40,6 +44,7 @@ import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 export function ChatPanel() {
   const {
     agentId,
+    events,
     sessionId,
     llmModel,
     chatEvents,
@@ -100,6 +105,11 @@ export function ChatPanel() {
     }
     return ids;
   }, [chatEvents]);
+
+  const turnDurationByEventId = useMemo(
+    () => getCompletedTurnDurationsByEvent(events ?? []),
+    [events],
+  );
 
   const handleCommandSelect = useCallback(
     (cmd: CommandDescriptor) => {
@@ -283,6 +293,22 @@ export function ChatPanel() {
     }));
   };
 
+  const renderTurnDivider = (eventId: string) => {
+    const durationMs = turnDurationByEventId.get(eventId);
+
+    if (durationMs == null) {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center gap-4 pt-3 text-xs font-medium text-muted-foreground sm:text-sm">
+        <div className="h-px flex-1 bg-border" />
+        <span className="whitespace-nowrap">{`Worked for ${formatWorkedDuration(durationMs)}`}</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6">
@@ -311,12 +337,15 @@ export function ChatPanel() {
                 const reqData = event.data as ToolCallRequestedData;
                 if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
                 return (
-                  <div key={event.id} className="ml-9 space-y-1">
-                    <ToolActivityGroup
-                      toolCalls={reqData.tool_calls}
-                      toolResultsMap={toolResultsMap}
-                      mode="client"
-                    />
+                  <div key={event.id} className="space-y-3">
+                    <div className="ml-9 space-y-1">
+                      <ToolActivityGroup
+                        toolCalls={reqData.tool_calls}
+                        toolResultsMap={toolResultsMap}
+                        mode="client"
+                      />
+                    </div>
+                    {renderTurnDivider(event.id)}
                   </div>
                 );
               }
@@ -336,8 +365,11 @@ export function ChatPanel() {
 
               if (isToolOnlyMessage) {
                 return (
-                  <div key={event.id} className="ml-9 space-y-1">
-                    <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                  <div key={event.id} className="space-y-3">
+                    <div className="ml-9 space-y-1">
+                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                    </div>
+                    {renderTurnDivider(event.id)}
                   </div>
                 );
               }
@@ -408,6 +440,8 @@ export function ChatPanel() {
                       <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
                     </div>
                   )}
+
+                  {renderTurnDivider(event.id)}
                 </div>
               );
             })}
