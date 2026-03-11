@@ -1,6 +1,6 @@
 ---
 title: Daytona
-description: Cloud-based sandboxed code execution via Daytona
+description: Run code in isolated cloud sandboxes with Daytona, including command execution, file access, and session-scoped environments.
 ---
 
 | | |

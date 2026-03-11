@@ -58,6 +58,9 @@ rendered as horizontal tabs below the header on desktop:
 Custom `Header.astro` override renders topics as a fixed tab bar below the
 main header. Sidebar topic list is hidden on desktop (visible on mobile).
 
+The Reference tab must remain active for all `/api/` pages, including nested
+OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
+
 ### Content Requirements
 
 Each markdown file must include YAML frontmatter:
@@ -106,7 +109,7 @@ Cloudflare Pages dashboard configuration:
 - Set root directory: `apps/docs`
 - Set build command: `npm run build`
 - Set output directory: `dist`
-- Node.js version: 20
+- Node.js version: `20.19.1+` (or `22.12+`) to satisfy Astro 6 toolchain requirements
 
 ### Development
 
@@ -134,6 +137,7 @@ API reference documentation is auto-generated from the OpenAPI specification usi
 2. **Export Binary**: `export-openapi` binary generates spec without running full server
 3. **Build-time Generation**: `starlight-openapi` plugin generates static HTML at build time
 4. **Static Output**: No runtime dependencies - works on any static hosting (Cloudflare Pages)
+5. **Topic Navigation**: OpenAPI pages are excluded from `starlight-sidebar-topics` sidebar ownership, while the custom header still marks the Reference tab active for `/api/**`
 
 #### Workflow
 
@@ -187,6 +191,7 @@ Every page must have a `<meta name="description">` tag.
 - **Content pages**: Set `description` in YAML frontmatter (required for all `docs/*.md` files)
 - **API pages**: Auto-generated via route middleware (`apps/docs/src/routeData.ts`)
 - **Fallback**: Starlight `description` config provides a site-level fallback
+- **Target length**: Aim for roughly 50-160 characters for hand-authored content page descriptions
 
 #### Page Titles
 
@@ -219,6 +224,25 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
 1. Strips `METHOD /path - ` prefix from API operation titles for shorter `<title>` tags
 2. Generates per-page meta descriptions for API reference pages that lack frontmatter descriptions
 3. Updates `og:title` and `og:description` to match
+
+### Sitemap Requirements
+
+The docs site must ship a single `sitemap.xml` file at the site root.
+
+1. `robots.txt` must reference `https://docs.everruns.com/sitemap.xml`
+2. `sitemap.xml` must include both hand-authored docs pages and OpenAPI-generated API reference pages
+3. Every `<url>` entry must include a `<lastmod>` value
+4. `apps/docs/integrations/sitemap-enhance.mjs` is responsible for post-processing Astro's generated sitemap into the final `sitemap.xml`
+5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on Cloudflare Pages shallow clones
+
+### Diagram Rendering
+
+Mermaid diagrams are used in hand-authored docs content and must render on the client in both local builds and deployed static output.
+
+1. Mermaid source lives in markdown fenced code blocks using the `mermaid` language
+2. Astro/Starlight may emit Mermaid blocks as `pre[data-language="mermaid"]` via Expressive Code, so rendering must not depend on `code.language-mermaid` alone
+3. The docs app uses a custom `Head.astro` override to bundle Mermaid and render diagrams client-side
+4. Mermaid rendering must support theme changes by re-rendering when the site theme toggles between light and dark
 
 ### Future Enhancements
 

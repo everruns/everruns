@@ -1,7 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
-import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
 import starlightSidebarTopics from "starlight-sidebar-topics";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
@@ -58,6 +57,7 @@ export default defineConfig({
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
       components: {
+        Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
       },
       customCss: ["./src/styles/custom.css"],
@@ -69,7 +69,6 @@ export default defineConfig({
             schema: "../../docs/api/openapi.json",
           },
         ]),
-        starlightClientMermaid(),
         starlightSidebarTopics(
           [
             {
@@ -165,10 +164,7 @@ export default defineConfig({
             },
           ],
           {
-            exclude: ["/index.mdx"],
-            topics: {
-              reference: ["/api/**"],
-            },
+            exclude: ["/", "/api/**"],
           },
         ),
       ],
