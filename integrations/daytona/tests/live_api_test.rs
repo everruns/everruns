@@ -242,15 +242,19 @@ async fn test_live_stop_and_start() {
     let (client, guard) = create_test_sandbox(api_key, "stop-start").await;
     let id = &guard.sandbox_id;
 
-    // Stop
+    // Stop and wait for it to fully stop
     client.stop_sandbox(id).await.expect("stop failed");
 
+    for _ in 0..30 {
+        let info = client.get_sandbox(id).await.expect("get after stop failed");
+        if info.state == "stopped" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+
     let info = client.get_sandbox(id).await.expect("get after stop failed");
-    assert!(
-        info.state == "stopped" || info.state == "stopping",
-        "Expected stopped/stopping, got: {}",
-        info.state
-    );
+    assert_eq!(info.state, "stopped", "Sandbox did not stop in time");
 
     // Start again
     client.start_sandbox(id).await.expect("start failed");
