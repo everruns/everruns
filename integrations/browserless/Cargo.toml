@@ -1,0 +1,39 @@
+# Browserless Integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: REST API only (no WebSocket/Puppeteer), each request is a fresh browser session
+# Decision: /function endpoint for multi-step interactions (click, type, navigate)
+
+[package]
+name = "everruns-integrations-browserless"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Browserless browser automation integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+
+# HTTP client for Browserless API
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+# Base64 encoding for screenshot data
+base64.workspace = true
+
+[features]
+browserless-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
