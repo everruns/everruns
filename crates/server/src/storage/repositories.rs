@@ -57,6 +57,71 @@ impl DatabasePoolConfig {
     }
 }
 
+/// Max search tokens to prevent oversized queries from long inputs (e.g. a poem).
+const MAX_SEARCH_TOKENS: usize = 8;
+
+/// Escape SQL LIKE special characters (`%`, `_`, `\`) so user input is treated
+/// as literal text.
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Build multi-word search SQL conditions. Each whitespace-separated token must
+/// match somewhere in the concatenated fields (case-insensitive).
+///
+/// Returns `(sql_fragment, patterns)` where `sql_fragment` looks like
+/// ` AND (lower_expr LIKE $2 ESCAPE '\') AND (lower_expr LIKE $3 ESCAPE '\')`
+/// and `patterns` is `["%token1%", "%token2%"]`.
+///
+/// `lower_expr` should be a SQL expression like
+/// `LOWER(name || ' ' || COALESCE(description, ''))`.
+///
+/// Tokens are capped at [`MAX_SEARCH_TOKENS`] to prevent performance
+/// degradation from excessively long queries.
+fn build_search_sql(
+    search: Option<&str>,
+    lower_expr: &str,
+    start_param: usize,
+) -> (String, Vec<String>) {
+    let tokens: Vec<String> = search
+        .filter(|q| !q.trim().is_empty())
+        .map(|q| {
+            q.trim()
+                .to_lowercase()
+                .split_whitespace()
+                .take(MAX_SEARCH_TOKENS)
+                .map(|t| format!("%{}%", escape_like(t)))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if tokens.is_empty() {
+        return (String::new(), Vec::new());
+    }
+
+    let mut sql = String::new();
+    for (i, _) in tokens.iter().enumerate() {
+        use std::fmt::Write;
+        write!(
+            sql,
+            " AND ({lower_expr} LIKE ${idx} ESCAPE '\\')",
+            idx = start_param + i
+        )
+        .unwrap();
+    }
+    (sql, tokens)
+}
+
 #[derive(Clone)]
 pub struct Database {
     pool: PgPool,
@@ -603,21 +668,21 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
-        let rows = sqlx::query_as::<_, AgentRow>(
-            r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-            FROM agents
-            WHERE org_id = $1 AND status = 'active'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                FROM agents
+                WHERE org_id = $1 AND status = 'active'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, AgentRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
@@ -828,20 +893,24 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
-        let rows = sqlx::query_as::<_, HarnessRow>(
-            r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-            FROM harnesses
-            WHERE org_id = $1 AND status = 'active'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_harnesses(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<HarnessRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+                FROM harnesses
+                WHERE org_id = $1 AND status = 'active'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, HarnessRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_harness(
@@ -958,75 +1027,64 @@ impl Database {
         Ok(row)
     }
 
-    /// List sessions for an organization with optional agent filter.
+    /// List sessions for an organization with optional agent and search filters.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
+        // Build WHERE clause dynamically
+        let mut where_clause = "WHERE org_id = $1".to_string();
+        let mut param_idx = 2;
+
+        if agent_id.is_some() {
+            where_clause.push_str(&format!(" AND agent_id = ${param_idx}"));
+            param_idx += 1;
+        }
+
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(COALESCE(title, ''))", param_idx);
+        where_clause.push_str(&search_sql);
+        param_idx += patterns.len();
+
+        // Helper: bind org_id, agent_id, and search patterns to a query
+        macro_rules! bind_params {
+            ($q:expr) => {{
+                let mut q = $q.bind(org_id);
+                if let Some(aid) = agent_id {
+                    q = q.bind(aid);
+                }
+                for pat in &patterns {
+                    q = q.bind(pat);
+                }
+                q
+            }};
+        }
+
         // Get total count
-        let total: (i64,) = if let Some(aid) = agent_id {
-            sqlx::query_as(
-                r#"
-                SELECT COUNT(*) as count
-                FROM sessions
-                WHERE org_id = $1 AND agent_id = $2
-                "#,
-            )
-            .bind(org_id)
-            .bind(aid)
-            .fetch_one(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
-                SELECT COUNT(*) as count
-                FROM sessions
-                WHERE org_id = $1
-                "#,
-            )
-            .bind(org_id)
-            .fetch_one(&self.pool)
-            .await?
-        };
+        let count_sql = format!("SELECT COUNT(*) as count FROM sessions {where_clause}");
+        let count_query = bind_params!(sqlx::query_as::<_, (i64,)>(&count_sql));
+        let total: (i64,) = count_query.fetch_one(&self.pool).await?;
 
         // Get paginated results
-        let rows = if let Some(aid) = agent_id {
-            sqlx::query_as::<_, SessionRow>(
-                r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
-                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                FROM sessions
-                WHERE org_id = $1 AND agent_id = $2
-                ORDER BY created_at DESC
-                LIMIT $3 OFFSET $4
-                "#,
-            )
-            .bind(org_id)
-            .bind(aid)
+        let limit_idx = param_idx;
+        let offset_idx = param_idx + 1;
+        let select_sql = format!(
+            r#"SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
+        );
+        let data_query = bind_params!(sqlx::query_as::<_, SessionRow>(&select_sql));
+        let rows: Vec<SessionRow> = data_query
             .bind(pagination.limit as i64)
             .bind(pagination.offset as i64)
             .fetch_all(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as::<_, SessionRow>(
-                r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
-                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-                FROM sessions
-                WHERE org_id = $1
-                ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
-                "#,
-            )
-            .bind(org_id)
-            .bind(pagination.limit as i64)
-            .bind(pagination.offset as i64)
-            .fetch_all(&self.pool)
-            .await?
-        };
+            .await?;
 
         Ok((rows, total.0 as u32))
     }
@@ -2768,20 +2826,24 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        let rows = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_mcp_servers(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<McpServerRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+                FROM mcp_servers
+                WHERE org_id = $1{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, McpServerRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     /// List only active MCP servers (for capability listing)
@@ -2942,20 +3004,20 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
-        let rows = sqlx::query_as::<_, SkillRow>(
-            r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
-            FROM skills
-            WHERE org_id = $1
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+                FROM skills
+                WHERE org_id = $1{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, SkillRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_skill(
@@ -4254,20 +4316,20 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
-        let rows = sqlx::query_as::<_, AppRow>(
-            r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
-            FROM apps
-            WHERE org_id = $1 AND status != 'archived'
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let sql = format!(
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+                FROM apps
+                WHERE org_id = $1 AND status != 'archived'{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, AppRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
     }
 
     pub async fn update_app(
@@ -4377,5 +4439,132 @@ mod tests {
         unsafe {
             std::env::remove_var("DATABASE_POOL_MAX");
         }
+    }
+
+    // ─── build_search_sql / escape_like tests ───
+
+    #[test]
+    fn escape_like_leaves_normal_text_unchanged() {
+        assert_eq!(escape_like("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_like_escapes_percent() {
+        assert_eq!(escape_like("100%"), "100\\%");
+    }
+
+    #[test]
+    fn escape_like_escapes_underscore() {
+        assert_eq!(escape_like("a_b"), "a\\_b");
+    }
+
+    #[test]
+    fn escape_like_escapes_backslash() {
+        assert_eq!(escape_like("c:\\path"), "c:\\\\path");
+    }
+
+    #[test]
+    fn escape_like_handles_all_special_chars_together() {
+        assert_eq!(escape_like("%_\\"), "\\%\\_\\\\");
+    }
+
+    #[test]
+    fn build_search_sql_none_returns_empty() {
+        let (sql, patterns) = build_search_sql(None, "LOWER(name)", 2);
+        assert!(sql.is_empty());
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn build_search_sql_empty_string_returns_empty() {
+        let (sql, patterns) = build_search_sql(Some(""), "LOWER(name)", 2);
+        assert!(sql.is_empty());
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn build_search_sql_whitespace_only_returns_empty() {
+        let (sql, patterns) = build_search_sql(Some("   "), "LOWER(name)", 2);
+        assert!(sql.is_empty());
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn build_search_sql_single_word() {
+        let (sql, patterns) = build_search_sql(Some("hello"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%hello%"]);
+        assert!(sql.contains("LIKE $2 ESCAPE"));
+        assert!(!sql.contains("$3"));
+    }
+
+    #[test]
+    fn build_search_sql_multi_word() {
+        let (sql, patterns) = build_search_sql(Some("hello world"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%hello%", "%world%"]);
+        assert!(sql.contains("LIKE $2 ESCAPE"));
+        assert!(sql.contains("LIKE $3 ESCAPE"));
+    }
+
+    #[test]
+    fn build_search_sql_escapes_like_wildcards() {
+        let (_, patterns) = build_search_sql(Some("100% done"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%100\\%%", "%done%"]);
+    }
+
+    #[test]
+    fn build_search_sql_escapes_underscore() {
+        let (_, patterns) = build_search_sql(Some("my_var"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%my\\_var%"]);
+    }
+
+    #[test]
+    fn build_search_sql_caps_tokens_at_max() {
+        // A poem or long query should be capped
+        let poem = "roses are red violets are blue sugar is sweet and so are you extra words here";
+        let (_, patterns) = build_search_sql(Some(poem), "LOWER(name)", 2);
+        assert_eq!(patterns.len(), MAX_SEARCH_TOKENS);
+    }
+
+    #[test]
+    fn build_search_sql_unicode_tokens() {
+        let (_, patterns) = build_search_sql(Some("日本語 テスト"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%日本語%", "%テスト%"]);
+    }
+
+    #[test]
+    fn build_search_sql_emoji_input() {
+        let (_, patterns) = build_search_sql(Some("🤖 bot"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%🤖%", "%bot%"]);
+    }
+
+    #[test]
+    fn build_search_sql_sql_injection_attempt() {
+        // SQL injection via search should be harmless — values are parameterized
+        let (sql, patterns) = build_search_sql(Some("'; DROP TABLE agents; --"), "LOWER(name)", 2);
+        // The tokens are just words, bound as parameters
+        assert_eq!(patterns.len(), 5); // "';", "drop", "table", "agents;", "--"
+        // SQL structure is safe — only LIKE clauses
+        assert!(sql.contains("LIKE $2"));
+        assert!(!sql.contains("DROP"));
+    }
+
+    #[test]
+    fn build_search_sql_param_offset() {
+        // When starting at param 4 (e.g. after org_id, agent_id, other filters)
+        let (sql, _) = build_search_sql(Some("test query"), "LOWER(name)", 4);
+        assert!(sql.contains("$4"));
+        assert!(sql.contains("$5"));
+    }
+
+    #[test]
+    fn build_search_sql_case_insensitive() {
+        let (_, patterns) = build_search_sql(Some("HeLLo WoRLd"), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%hello%", "%world%"]);
+    }
+
+    #[test]
+    fn build_search_sql_extra_whitespace_collapsed() {
+        let (_, patterns) = build_search_sql(Some("  hello    world  "), "LOWER(name)", 2);
+        assert_eq!(patterns, vec!["%hello%", "%world%"]);
     }
 }

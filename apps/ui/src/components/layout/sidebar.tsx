@@ -70,9 +70,11 @@ import {
   Plus,
   Rocket,
   ListTodo,
+  Search,
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
+import { useCommandPalette } from "@/hooks/use-command-palette";
 import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -328,6 +330,8 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const sections = config?.navigation ?? defaultNavigationSections;
   const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
 
+  const { setOpen: openCommandPalette } = useCommandPalette();
+
   const handleCreateOrg =
     config?.orgActions?.createOrg ?? createOrgOverride ?? (() => setCreateOrgOpen(true));
   const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
@@ -386,6 +390,23 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
               </DropdownMenuContent>
             </DropdownMenuPositioner>
           </DropdownMenu>
+        </div>
+      )}
+
+      {/* Search trigger (gated by global_search feature flag) */}
+      {featureFlags.global_search && (
+        <div className="px-3 py-2">
+          <button
+            type="button"
+            onClick={() => openCommandPalette(true)}
+            className="flex w-full items-center gap-3 border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left">Search...</span>
+            <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium">
+              <span className="text-xs">⌘</span>K
+            </kbd>
+          </button>
         </div>
       )}
 

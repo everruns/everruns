@@ -236,10 +236,14 @@ impl SessionService {
         org_public_id: &str,
         agent_id: Option<Uuid>,
         user_id: Option<Uuid>,
+        search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
         let agent_id = agent_id.map(AgentId::from_uuid);
-        let (rows, total) = self.db.list_sessions(org_id, agent_id, pagination).await?;
+        let (rows, total) = self
+            .db
+            .list_sessions(org_id, agent_id, search, pagination)
+            .await?;
         let mut sessions: Vec<Session> = rows
             .into_iter()
             .map(|r| Self::row_to_session(r, org_public_id))

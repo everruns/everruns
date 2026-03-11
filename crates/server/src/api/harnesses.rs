@@ -6,7 +6,7 @@ use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -17,7 +17,7 @@ use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{validate_create_agent_input, validate_update_agent_input};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::services::{CapabilityService, HarnessService};
 
@@ -84,6 +84,13 @@ pub struct HarnessPreviewResponse {
     pub system_prompt: String,
     #[schema(value_type = Vec<Object>)]
     pub tools: Vec<ToolDefinition>,
+}
+
+/// Query parameters for listing harnesses.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListHarnessesQuery {
+    /// Search by name or description (case-insensitive substring match).
+    pub search: Option<String>,
 }
 
 /// App state for harness routes
@@ -171,15 +178,17 @@ pub async fn create_harness(
         (status = 200, description = "List of harnesses", body = ListResponse<Harness>),
         (status = 500, description = "Internal server error")
     ),
+    params(ListHarnessesQuery),
     tag = "harnesses"
 )]
 pub async fn list_harnesses(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ListHarnessesQuery>,
 ) -> Result<Json<ListResponse<Harness>>, StatusCode> {
     let harnesses = state
         .service
-        .list(org.org_id)
+        .list(org.org_id, query.search.as_deref())
         .await
         .log_internal_error("list harnesses")?;
 

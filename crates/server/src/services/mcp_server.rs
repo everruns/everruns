@@ -88,8 +88,8 @@ impl McpServerService {
             .collect())
     }
 
-    pub async fn list(&self, org_id: i64) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_mcp_servers(org_id).await?;
+    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_mcp_servers(org_id, search).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
@@ -261,7 +261,7 @@ impl McpServerService {
         org_id: i64,
         server_prefix: &str,
     ) -> Result<Option<McpServerResolved>> {
-        let servers = self.list(org_id).await?;
+        let servers = self.list(org_id, None).await?;
         let server_prefix_lower = server_prefix.to_lowercase();
 
         let server = servers.into_iter().find(|s| {

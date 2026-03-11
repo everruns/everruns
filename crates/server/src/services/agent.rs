@@ -114,8 +114,8 @@ impl AgentService {
         }
     }
 
-    pub async fn list(&self, org_id: i64) -> Result<Vec<Agent>> {
-        let rows = self.db.list_agents(org_id).await?;
+    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<Agent>> {
+        let rows = self.db.list_agents(org_id, search).await?;
 
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());

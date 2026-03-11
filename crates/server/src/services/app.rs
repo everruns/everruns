@@ -73,8 +73,8 @@ impl AppService {
         }
     }
 
-    pub async fn list(&self, org_id: i64) -> Result<Vec<App>> {
-        let rows = self.db.list_apps(org_id).await?;
+    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<App>> {
+        let rows = self.db.list_apps(org_id, search).await?;
         let mut apps = Vec::with_capacity(rows.len());
         for row in rows {
             apps.push(self.row_to_app(row, org_id).await);

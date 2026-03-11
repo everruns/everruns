@@ -7,7 +7,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -18,7 +18,14 @@ use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
+
+/// Query parameters for listing MCP servers.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListMcpServersQuery {
+    /// Search by name or description (case-insensitive substring match).
+    pub search: Option<String>,
+}
 
 /// Request to create a new MCP server
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -186,15 +193,17 @@ pub async fn create_mcp_server(
         (status = 200, description = "List of MCP servers", body = ListResponse<McpServer>),
         (status = 500, description = "Internal server error")
     ),
+    params(ListMcpServersQuery),
     tag = "mcp-servers"
 )]
 pub async fn list_mcp_servers(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ListMcpServersQuery>,
 ) -> Result<Json<ListResponse<McpServer>>, StatusCode> {
     let servers = state
         .service
-        .list(org.org_id)
+        .list(org.org_id, query.search.as_deref())
         .await
         .log_internal_error("list MCP servers")?;
 

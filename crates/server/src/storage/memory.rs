@@ -18,6 +18,28 @@ use uuid::Uuid;
 
 use super::models::*;
 
+/// Max search tokens to prevent performance degradation from long inputs.
+const MAX_SEARCH_TOKENS: usize = 8;
+
+/// Multi-word tokenized search. Each whitespace-separated token must match
+/// somewhere in the combined text (case-insensitive). Tokens beyond
+/// [`MAX_SEARCH_TOKENS`] are ignored.
+fn matches_search_tokens(search: Option<&str>, texts: &[&str]) -> bool {
+    let Some(q) = search.filter(|q| !q.trim().is_empty()) else {
+        return true;
+    };
+    let combined: String = texts
+        .iter()
+        .map(|t| t.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    q.trim()
+        .to_lowercase()
+        .split_whitespace()
+        .take(MAX_SEARCH_TOKENS)
+        .all(|token| combined.contains(token))
+}
+
 /// Stored data for a pinned session: (org_id, pinned_at)
 type PinnedSessionData = (i64, DateTime<Utc>);
 
@@ -518,11 +540,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
         let agents = self.agents.read();
         let mut result: Vec<_> = agents
             .values()
             .filter(|a| a.org_id == org_id && a.status == "active")
+            .filter(|a| {
+                matches_search_tokens(search, &[&a.name, a.description.as_deref().unwrap_or("")])
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -726,11 +751,18 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_harnesses(&self, org_id: i64) -> Result<Vec<HarnessRow>> {
+    pub async fn list_harnesses(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<HarnessRow>> {
         let harnesses = self.harnesses.read();
         let mut result: Vec<_> = harnesses
             .values()
             .filter(|h| h.org_id == org_id && h.status == "active")
+            .filter(|h| {
+                matches_search_tokens(search, &[&h.name, h.description.as_deref().unwrap_or("")])
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -841,6 +873,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         // If agent_id is provided, validate it belongs to the org
@@ -858,12 +891,8 @@ impl InMemoryDatabase {
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
-            .filter(|s| {
-                // Filter by org_id
-                s.org_id == org_id
-                    // Optionally filter by agent_id
-                    && agent_id.is_none_or(|aid| s.agent_id == Some(aid))
-            })
+            .filter(|s| s.org_id == org_id && agent_id.is_none_or(|aid| s.agent_id == Some(aid)))
+            .filter(|s| matches_search_tokens(search, &[s.title.as_deref().unwrap_or("")]))
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -2431,12 +2460,19 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
+    pub async fn list_mcp_servers(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<McpServerRow>> {
         let mut servers: Vec<_> = self
             .mcp_servers
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| {
+                matches_search_tokens(search, &[&s.name, s.description.as_deref().unwrap_or("")])
+            })
             .cloned()
             .collect();
         servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -2749,12 +2785,13 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_skills(&self, org_id: i64) -> Result<Vec<SkillRow>> {
+    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
         let mut skills: Vec<_> = self
             .skills
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| matches_search_tokens(search, &[&s.name, &s.description]))
             .cloned()
             .collect();
         skills.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -3787,11 +3824,14 @@ impl InMemoryDatabase {
         Ok(apps.values().find(|a| a.public_id == public_id).cloned())
     }
 
-    pub async fn list_apps(&self, org_id: i64) -> Result<Vec<AppRow>> {
+    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
         let apps = self.apps.read();
         let mut result: Vec<AppRow> = apps
             .values()
             .filter(|a| a.org_id == org_id && a.status != "archived")
+            .filter(|a| {
+                matches_search_tokens(search, &[&a.name, a.description.as_deref().unwrap_or("")])
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -3921,7 +3961,7 @@ mod tests {
 
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(sessions.len(), 1);
@@ -4375,7 +4415,7 @@ mod tests {
         // Test default pagination (all sessions fit within limit)
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4384,7 +4424,7 @@ mod tests {
         // Test with limit=5
         let pagination = crate::api::common::Pagination::new(0, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4393,7 +4433,7 @@ mod tests {
         // Test with offset=5, limit=5
         let pagination = crate::api::common::Pagination::new(5, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4402,7 +4442,7 @@ mod tests {
         // Test last partial page (offset=10, limit=10 should return 5)
         let pagination = crate::api::common::Pagination::new(10, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4411,7 +4451,7 @@ mod tests {
         // Test beyond range (offset=20)
         let pagination = crate::api::common::Pagination::new(20, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -4459,7 +4499,7 @@ mod tests {
         // Sessions should be ordered by created_at DESC (newest first)
         let pagination = crate::api::common::Pagination::new(0, 10);
         let (sessions, _) = db
-            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
             .await
             .unwrap();
 
@@ -4711,5 +4751,441 @@ mod tests {
             .await
             .unwrap();
         assert!(logs.is_empty());
+    }
+
+    // ─── Search / command-palette tests ───
+
+    /// Helper: create an agent with given name + description
+    async fn create_test_agent(
+        db: &InMemoryDatabase,
+        name: &str,
+        description: Option<&str>,
+    ) -> AgentRow {
+        db.create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: AgentId::new().to_string(),
+                name: name.to_string(),
+                description: description.map(|d| d.to_string()),
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+                tools: serde_json::json!([]),
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_no_filter_returns_all() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Alpha", None).await;
+        create_test_agent(&db, "Beta", None).await;
+
+        let results = db.list_agents(DEFAULT_ORG_ID, None).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_empty_string_returns_all() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Alpha", None).await;
+
+        let results = db.list_agents(DEFAULT_ORG_ID, Some("")).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_single_word_match() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Customer Support Bot", None).await;
+        create_test_agent(&db, "Code Reviewer", None).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("customer"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Customer Support Bot");
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_case_insensitive() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Customer Support Bot", None).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_multi_word_all_must_match() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Customer Support Bot", None).await;
+        create_test_agent(&db, "Customer Feedback Analyzer", None).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("customer bot"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Customer Support Bot");
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_matches_description() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Helper", Some("Handles billing inquiries")).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("billing"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Helper");
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_cross_field_match() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Daytona Coder", Some("cloud sandbox agent")).await;
+
+        // "daytona" in name, "sandbox" in description → both must match
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("daytona sandbox"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_no_match() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Customer Support Bot", None).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("zzz_nonexistent"))
+            .await
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_poem_does_not_crash() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Alpha", None).await;
+
+        // A full poem pasted into search — should not crash or hang
+        let poem = "Roses are red, violets are blue, \
+                    sugar is sweet, and so are you. \
+                    The sky is wide, the ocean deep, \
+                    these memories I shall forever keep. \
+                    Through winding roads and starlit nights, \
+                    we chase our dreams to greater heights.";
+        let results = db.list_agents(DEFAULT_ORG_ID, Some(poem)).await.unwrap();
+        // No agent should match a poem
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_poem_token_cap() {
+        let db = InMemoryDatabase::new();
+        // Agent whose name contains many words from the poem
+        create_test_agent(&db, "roses are red violets are blue sugar is sweet", None).await;
+
+        // Query with >MAX_SEARCH_TOKENS words — only first 8 tokens used
+        let long_query = "roses are red violets are blue sugar is sweet and so are you forever";
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some(long_query))
+            .await
+            .unwrap();
+        // First 8 tokens: "roses are red violets are blue sugar is"
+        // All present in agent name → should match
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_special_characters() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Agent v2.0 (beta)", None).await;
+        create_test_agent(&db, "my-agent_v1", None).await;
+
+        let results = db.list_agents(DEFAULT_ORG_ID, Some("v2.0")).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Agent v2.0 (beta)");
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_unicode() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "日本語エージェント", Some("テスト用")).await;
+        create_test_agent(&db, "English Agent", None).await;
+
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("日本語"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "日本語エージェント");
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_emoji() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "🤖 Robot Helper", None).await;
+        create_test_agent(&db, "Normal Agent", None).await;
+
+        let results = db.list_agents(DEFAULT_ORG_ID, Some("🤖")).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_agents_whitespace_normalization() {
+        let db = InMemoryDatabase::new();
+        create_test_agent(&db, "Customer Support Bot", None).await;
+
+        // Extra spaces, tabs, etc.
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("  customer   bot  "))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_sessions_by_title() {
+        let db = InMemoryDatabase::new();
+        let agent = create_test_agent(&db, "Agent", None).await;
+
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            title: Some("Debug production memory leak".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .unwrap();
+
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            title: Some("Refactor auth module".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .unwrap();
+
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        let (results, total) = db
+            .list_sessions(DEFAULT_ORG_ID, None, Some("memory leak"), pagination)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].title.as_ref().unwrap().contains("memory leak"));
+    }
+
+    #[tokio::test]
+    async fn test_search_sessions_with_agent_filter() {
+        let db = InMemoryDatabase::new();
+        let agent1 = create_test_agent(&db, "Agent1", None).await;
+        let agent2 = create_test_agent(&db, "Agent2", None).await;
+
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: Some(agent1.id),
+            title: Some("Shared keyword session".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .unwrap();
+
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: Some(agent2.id),
+            title: Some("Shared keyword session".to_string()),
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+        })
+        .await
+        .unwrap();
+
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        // Search + agent filter combined
+        let (results, total) = db
+            .list_sessions(
+                DEFAULT_ORG_ID,
+                Some(agent1.id),
+                Some("shared keyword"),
+                pagination,
+            )
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_sessions_poem_input() {
+        let db = InMemoryDatabase::new();
+
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        let poem = "Shall I compare thee to a summer's day? \
+                    Thou art more lovely and more temperate. \
+                    Rough winds do shake the darling buds of May, \
+                    And summer's lease hath all too short a date.";
+        let (results, total) = db
+            .list_sessions(DEFAULT_ORG_ID, None, Some(poem), pagination)
+            .await
+            .unwrap();
+        assert_eq!(total, 0);
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_matches_search_tokens_unit() {
+        // Direct unit tests on the helper function
+        assert!(matches_search_tokens(None, &["anything"]));
+        assert!(matches_search_tokens(Some(""), &["anything"]));
+        assert!(matches_search_tokens(Some("  "), &["anything"]));
+        assert!(matches_search_tokens(Some("hello"), &["hello world"]));
+        assert!(matches_search_tokens(
+            Some("hello world"),
+            &["hello", "world"]
+        ));
+        assert!(!matches_search_tokens(Some("missing"), &["hello world"]));
+        // Multi-word: all tokens must match
+        assert!(!matches_search_tokens(
+            Some("hello missing"),
+            &["hello world"]
+        ));
+        // Case insensitive
+        assert!(matches_search_tokens(Some("HELLO"), &["hello"]));
+    }
+
+    #[tokio::test]
+    async fn test_search_skills() {
+        let db = InMemoryDatabase::new();
+
+        db.create_skill(
+            DEFAULT_ORG_ID,
+            CreateSkillRow {
+                public_id: SkillId::new().to_string(),
+                name: "Web Scraper".to_string(),
+                description: "Scrapes web pages for data".to_string(),
+                license: Some("MIT".to_string()),
+                compatibility: Some("*".to_string()),
+                metadata: serde_json::json!({}),
+                allowed_tools: None,
+                instructions: "scrape it".to_string(),
+                source_type: "inline".to_string(),
+                archive_data: None,
+                version: "1.0.0".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        db.create_skill(
+            DEFAULT_ORG_ID,
+            CreateSkillRow {
+                public_id: SkillId::new().to_string(),
+                name: "Code Formatter".to_string(),
+                description: "Formats code using prettier".to_string(),
+                license: Some("MIT".to_string()),
+                compatibility: Some("*".to_string()),
+                metadata: serde_json::json!({}),
+                allowed_tools: None,
+                instructions: "format it".to_string(),
+                source_type: "inline".to_string(),
+                archive_data: None,
+                version: "1.0.0".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let results = db
+            .list_skills(DEFAULT_ORG_ID, Some("scraper"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Web Scraper");
+
+        // Cross-field: "code prettier"
+        let results = db
+            .list_skills(DEFAULT_ORG_ID, Some("code prettier"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Code Formatter");
+    }
+
+    #[tokio::test]
+    async fn test_search_apps() {
+        let db = InMemoryDatabase::new();
+        let agent = create_test_agent(&db, "Agent", None).await;
+        let harness_id = Uuid::now_v7();
+
+        db.create_app(
+            DEFAULT_ORG_ID,
+            CreateAppRow {
+                public_id: "app_test1".to_string(),
+                name: "Slack Bot".to_string(),
+                description: Some("Slack integration for support".to_string()),
+                harness_id,
+                agent_id: agent.id.into(),
+                channel_type: "slack".to_string(),
+                channel_config: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+        db.create_app(
+            DEFAULT_ORG_ID,
+            CreateAppRow {
+                public_id: "app_test2".to_string(),
+                name: "Web Widget".to_string(),
+                description: Some("Embeddable chat widget".to_string()),
+                harness_id,
+                agent_id: agent.id.into(),
+                channel_type: "web".to_string(),
+                channel_config: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+        let results = db.list_apps(DEFAULT_ORG_ID, Some("slack")).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Slack Bot");
+
+        // Multi-word across name + description
+        let results = db
+            .list_apps(DEFAULT_ORG_ID, Some("widget chat"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Web Widget");
     }
 }

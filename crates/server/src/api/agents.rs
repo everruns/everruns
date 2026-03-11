@@ -7,7 +7,7 @@ use axum::extract::FromRef;
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::Response,
     routing::{get, post},
@@ -22,7 +22,7 @@ use super::validation::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -170,6 +170,13 @@ struct AgentFile {
 
 use crate::services::{AgentService, CapabilityService};
 
+/// Query parameters for listing agents.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListAgentsQuery {
+    /// Search by name or description (case-insensitive substring match).
+    pub search: Option<String>,
+}
+
 /// App state for agents routes
 #[derive(Clone)]
 pub struct AppState {
@@ -290,6 +297,7 @@ pub async fn create_agent(
 #[utoipa::path(
     get,
     path = "/v1/agents",
+    params(ListAgentsQuery),
     responses(
         (status = 200, description = "List of agents", body = ListResponse<Agent>),
         (status = 500, description = "Internal server error")
@@ -299,10 +307,11 @@ pub async fn create_agent(
 pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ListAgentsQuery>,
 ) -> Result<Json<ListResponse<Agent>>, StatusCode> {
     let agents = state
         .service
-        .list(org.org_id)
+        .list(org.org_id, query.search.as_deref())
         .await
         .log_internal_error("list agents")?;
 

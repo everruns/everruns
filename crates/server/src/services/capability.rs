@@ -86,7 +86,7 @@ impl CapabilityService {
         }
 
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
-        let skills = self.skill_service.list(org_id).await?;
+        let skills = self.skill_service.list(org_id, None).await?;
         for skill in &skills {
             if skill.status != everruns_core::SkillStatus::Active {
                 continue;
@@ -257,7 +257,7 @@ impl CapabilityService {
         &self,
         org_id: i64,
     ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
-        let skills = self.skill_service.list(org_id).await?;
+        let skills = self.skill_service.list(org_id, None).await?;
         let commands = skills
             .into_iter()
             .filter(|s| s.status == everruns_core::SkillStatus::Active && s.user_invocable)

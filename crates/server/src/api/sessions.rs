@@ -95,6 +95,8 @@ pub struct ListSessionsQuery {
     /// Filter sessions by agent ID.
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Search by title (case-insensitive substring match).
+    pub search: Option<String>,
     /// Number of items to skip (for pagination).
     #[param(minimum = 0, default = 0)]
     pub offset: Option<u32>,
@@ -302,6 +304,7 @@ pub async fn list_sessions(
             &org.public_id,
             agent_internal_id,
             org.user_id,
+            query.search.as_deref(),
             pagination,
         )
         .await

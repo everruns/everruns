@@ -1198,7 +1198,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_harnesses(&self) -> everruns_core::error::Result<Vec<Harness>> {
         let rows = self
             .db
-            .list_harnesses(self.org_id)
+            .list_harnesses(self.org_id, None)
             .await
             .map_err(|e| store_error(format!("Failed to list harnesses: {e}")))?;
 
@@ -1360,7 +1360,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
         let rows = self
             .db
-            .list_agents(self.org_id)
+            .list_agents(self.org_id, None)
             .await
             .map_err(|e| store_error(format!("Failed to list agents: {e}")))?;
 
@@ -1505,7 +1505,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         };
         let (rows, _total) = self
             .db
-            .list_sessions(self.org_id, agent_id, pagination)
+            .list_sessions(self.org_id, agent_id, None, pagination)
             .await
             .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
 
