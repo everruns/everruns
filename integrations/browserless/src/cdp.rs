@@ -200,64 +200,45 @@ impl CdpSession {
             .ok_or_else(|| "CDP screenshot returned no data".to_string())
     }
 
-    /// Get the page's rendered HTML content (outerHTML of document element).
-    pub async fn get_content(&mut self) -> Result<String, String> {
+    /// Evaluate a JS expression and return the string result.
+    async fn eval_string(&mut self, expression: &str) -> Result<String, String> {
         let result = self
             .send_command(
                 "Runtime.evaluate",
                 json!({
-                    "expression": "document.documentElement.outerHTML",
+                    "expression": expression,
                     "returnByValue": true
                 }),
             )
             .await?;
 
-        result
+        Ok(result
             .get("result")
             .and_then(|r| r.get("value"))
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "CDP getContent returned no data".to_string())
+            .unwrap_or("")
+            .to_string())
+    }
+
+    /// Get the page's rendered HTML content (outerHTML of document element).
+    pub async fn get_content(&mut self) -> Result<String, String> {
+        let html = self
+            .eval_string("document.documentElement.outerHTML")
+            .await?;
+        if html.is_empty() {
+            return Err("CDP getContent returned no data".to_string());
+        }
+        Ok(html)
     }
 
     /// Get the page title.
     pub async fn get_title(&mut self) -> Result<String, String> {
-        let result = self
-            .send_command(
-                "Runtime.evaluate",
-                json!({
-                    "expression": "document.title",
-                    "returnByValue": true
-                }),
-            )
-            .await?;
-
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string())
+        self.eval_string("document.title").await
     }
 
     /// Get the current page URL.
     pub async fn get_url(&mut self) -> Result<String, String> {
-        let result = self
-            .send_command(
-                "Runtime.evaluate",
-                json!({
-                    "expression": "window.location.href",
-                    "returnByValue": true
-                }),
-            )
-            .await?;
-
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string())
+        self.eval_string("window.location.href").await
     }
 
     /// Evaluate a JavaScript expression and return the result.
@@ -289,28 +270,20 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Click an element by CSS selector. Finds center coordinates via JS, then dispatches mouse events.
-    pub async fn click_selector(&mut self, selector: &str) -> Result<(), String> {
+    /// Find the center coordinates of an element by CSS selector.
+    async fn get_element_center(&mut self, selector: &str) -> Result<(f64, f64), String> {
         let selector_js = serde_json::to_string(selector).unwrap();
-        let coords = self
-            .send_command(
-                "Runtime.evaluate",
-                json!({
-                    "expression": format!(
-                        "(() => {{ const el = document.querySelector({selector_js}); if (!el) throw new Error('Element not found: ' + {selector_js}); const r = el.getBoundingClientRect(); return JSON.stringify({{ x: r.x + r.width/2, y: r.y + r.height/2 }}); }})()"
-                    ),
-                    "returnByValue": true
-                }),
-            )
+        let coord_str = self
+            .eval_string(&format!(
+                "(() => {{ const el = document.querySelector({selector_js}); if (!el) throw new Error('Element not found: ' + {selector_js}); const r = el.getBoundingClientRect(); return JSON.stringify({{ x: r.x + r.width/2, y: r.y + r.height/2 }}); }})()"
+            ))
             .await?;
 
-        let coord_str = coords
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("Element not found: {selector}"))?;
+        if coord_str.is_empty() {
+            return Err(format!("Element not found: {selector}"));
+        }
 
-        let coord_val: Value = serde_json::from_str(coord_str)
+        let coord_val: Value = serde_json::from_str(&coord_str)
             .map_err(|e| format!("Failed to parse coordinates: {e}"))?;
 
         let x = coord_val
@@ -322,6 +295,12 @@ impl CdpSession {
             .and_then(|v| v.as_f64())
             .ok_or("No y coordinate")?;
 
+        Ok((x, y))
+    }
+
+    /// Click an element by CSS selector. Finds center coordinates via JS, then dispatches mouse events.
+    pub async fn click_selector(&mut self, selector: &str) -> Result<(), String> {
+        let (x, y) = self.get_element_center(selector).await?;
         self.click_at(x, y).await
     }
 
@@ -402,36 +381,7 @@ impl CdpSession {
 
     /// Tap an element (touch simulation).
     pub async fn tap_selector(&mut self, selector: &str) -> Result<(), String> {
-        let selector_js = serde_json::to_string(selector).unwrap();
-        let coords = self
-            .send_command(
-                "Runtime.evaluate",
-                json!({
-                    "expression": format!(
-                        "(() => {{ const el = document.querySelector({selector_js}); if (!el) throw new Error('Element not found: ' + {selector_js}); const r = el.getBoundingClientRect(); return JSON.stringify({{ x: r.x + r.width/2, y: r.y + r.height/2 }}); }})()"
-                    ),
-                    "returnByValue": true
-                }),
-            )
-            .await?;
-
-        let coord_str = coords
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("Element not found: {selector}"))?;
-
-        let coord_val: Value = serde_json::from_str(coord_str)
-            .map_err(|e| format!("Failed to parse coordinates: {e}"))?;
-
-        let x = coord_val
-            .get("x")
-            .and_then(|v| v.as_f64())
-            .ok_or("No x coordinate")?;
-        let y = coord_val
-            .get("y")
-            .and_then(|v| v.as_f64())
-            .ok_or("No y coordinate")?;
+        let (x, y) = self.get_element_center(selector).await?;
 
         self.send_command(
             "Input.dispatchTouchEvent",
@@ -550,25 +500,9 @@ impl CdpSession {
 // Helpers
 // ============================================================================
 
-/// Map common key names to their key codes for CDP Input.dispatchKeyEvent.
+/// Map key names to CDP key codes. Most keys map to themselves; only " " needs special handling.
 fn key_to_code(key: &str) -> &str {
-    match key {
-        "Enter" => "Enter",
-        "Tab" => "Tab",
-        "Escape" => "Escape",
-        "Backspace" => "Backspace",
-        "Delete" => "Delete",
-        "ArrowUp" => "ArrowUp",
-        "ArrowDown" => "ArrowDown",
-        "ArrowLeft" => "ArrowLeft",
-        "ArrowRight" => "ArrowRight",
-        "Home" => "Home",
-        "End" => "End",
-        "PageUp" => "PageUp",
-        "PageDown" => "PageDown",
-        "Space" | " " => "Space",
-        other => other,
-    }
+    if key == " " { "Space" } else { key }
 }
 
 // ============================================================================

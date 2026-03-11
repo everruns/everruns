@@ -22,6 +22,23 @@ use crate::client::BrowserlessClient;
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{get_api_token, required_str};
 
+const MAX_HTML_BYTES: usize = 100_000;
+
+/// Truncate HTML content if it exceeds MAX_HTML_BYTES.
+fn truncate_html(html: String) -> (String, bool) {
+    let len = html.len();
+    if len > MAX_HTML_BYTES {
+        let truncated = format!(
+            "{}...\n\n[Truncated: {} total bytes]",
+            &html[..MAX_HTML_BYTES],
+            len
+        );
+        (truncated, true)
+    } else {
+        (html, false)
+    }
+}
+
 // ============================================================================
 // BrowserlessScreenshotTool
 // ============================================================================
@@ -245,20 +262,12 @@ impl Tool for BrowserlessContentTool {
             return match result {
                 Ok(html) => {
                     let len = html.len();
-                    let truncated = if len > 100_000 {
-                        format!(
-                            "{}...\n\n[Truncated: {} total bytes]",
-                            &html[..100_000],
-                            len
-                        )
-                    } else {
-                        html
-                    };
+                    let (content, was_truncated) = truncate_html(html);
                     ToolExecutionResult::Success(json!({
                         "url": url,
-                        "content": truncated,
+                        "content": content,
                         "size_bytes": len,
-                        "truncated": len > 100_000,
+                        "truncated": was_truncated,
                         "session": "cdp"
                     }))
                 }
@@ -286,20 +295,12 @@ impl Tool for BrowserlessContentTool {
         {
             Ok(html) => {
                 let len = html.len();
-                let truncated = if len > 100_000 {
-                    format!(
-                        "{}...\n\n[Truncated: {} total bytes]",
-                        &html[..100_000],
-                        len
-                    )
-                } else {
-                    html
-                };
+                let (content, was_truncated) = truncate_html(html);
                 ToolExecutionResult::Success(json!({
                     "url": url,
-                    "content": truncated,
+                    "content": content,
                     "size_bytes": len,
-                    "truncated": len > 100_000
+                    "truncated": was_truncated
                 }))
             }
             Err(e) => ToolExecutionResult::tool_error(e),
