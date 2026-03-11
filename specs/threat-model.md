@@ -372,6 +372,9 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-012 | Skill archive zip bomb | High | Decompressed size capped at 10 MB; file count capped at 100; individual file size capped at 1 MB | MITIGATED |
 | TM-TOOL-013 | Skill name collision across orgs | Medium | Skill names are unique per organization; capability IDs include UUID for global uniqueness | MITIGATED |
 | TM-TOOL-014 | Disabled skill still activatable | Medium | `CapabilityService.list_all()` filters out disabled skills; disabled skills not included in `<available_skills>` | MITIGATED |
+| TM-TOOL-015 | Browserless SSRF via tool URL | Medium | URL scheme validation: only `http://` and `https://` allowed; `file://`, `javascript:`, internal IPs blocked at URL level | MITIGATED |
+| TM-TOOL-016 | Browserless timeout DoS | Medium | All wait/timeout values capped at 120s; prevents unbounded resource consumption | MITIGATED |
+| TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
 
 ### Mitigation Details
 

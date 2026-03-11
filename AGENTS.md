@@ -124,6 +124,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)
 - `specs/sccache.md` - Shared compile cache (sccache with S3 backend)
+- `specs/browserless.md` - Browserless browser automation integration
 
 ### Skills
 

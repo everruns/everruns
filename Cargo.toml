@@ -16,6 +16,7 @@ members = [
     "integrations/daytona",
     "integrations/brave-search",
     "integrations/duckduckgo",
+    "integrations/browserless",
 ]
 
 exclude = [
@@ -100,6 +101,10 @@ eventsource-stream = "0.2"
 regex = "1.11"
 time = "0.3"
 parking_lot = "0.12"
+
+# WebSocket (CDP sessions)
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = { git = "https://github.com/everruns/sdk", tag = "v0.1.3" }
