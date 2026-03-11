@@ -23,6 +23,20 @@
         ],
         "summary": "GET /v1/agents - List all active agents",
         "operationId": "list_agents",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or description (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of agents",
@@ -1907,6 +1921,20 @@
         ],
         "summary": "GET /v1/mcp-servers - List all MCP servers",
         "operationId": "list_mcp_servers",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or description (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of MCP servers",
@@ -2320,6 +2348,18 @@
               ]
             },
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by title (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           },
           {
             "name": "offset",
@@ -3713,6 +3753,20 @@
         ],
         "summary": "GET /v1/skills - List all skills",
         "operationId": "list_skills",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or description (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of skills",
