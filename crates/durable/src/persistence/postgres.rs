@@ -274,6 +274,122 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         Ok(events)
     }
 
+    #[instrument(skip(self))]
+    async fn load_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT sequence_num, event_data
+            FROM durable_workflow_events
+            WHERE workflow_id = $1 AND sequence_num > $2
+            ORDER BY sequence_num
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(after_sequence)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load events after sequence {}: {}",
+                after_sequence, e
+            );
+            StoreError::Database(e.to_string())
+        })?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let seq: i32 = row.get::<i32, _>("sequence_num");
+            let data: serde_json::Value = row.get("event_data");
+            let event: WorkflowEvent = serde_json::from_value(data)
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            events.push((seq, event));
+        }
+
+        Ok(events)
+    }
+
+    #[instrument(skip(self, snapshot_data))]
+    async fn save_snapshot(
+        &self,
+        workflow_id: Uuid,
+        sequence_num: i32,
+        snapshot_data: Vec<u8>,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_snapshots (workflow_id, sequence_num, snapshot_data)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (workflow_id, sequence_num)
+            DO UPDATE SET snapshot_data = EXCLUDED.snapshot_data, created_at = NOW()
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(sequence_num)
+        .bind(&snapshot_data)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to save snapshot: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        debug!(%workflow_id, sequence_num, "saved workflow snapshot");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn load_latest_snapshot(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Option<super::store::WorkflowSnapshot>, StoreError> {
+        let row = sqlx::query(
+            r#"
+            SELECT sequence_num, snapshot_data, created_at
+            FROM durable_workflow_snapshots
+            WHERE workflow_id = $1
+            ORDER BY sequence_num DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to load latest snapshot: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        Ok(row.map(|r| super::store::WorkflowSnapshot {
+            workflow_id,
+            sequence_num: r.get("sequence_num"),
+            snapshot_data: r.get("snapshot_data"),
+            created_at: r.get("created_at"),
+        }))
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_snapshots(&self, workflow_id: Uuid) -> Result<(), StoreError> {
+        sqlx::query(
+            r#"
+            DELETE FROM durable_workflow_snapshots WHERE workflow_id = $1
+            "#,
+        )
+        .bind(workflow_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to delete snapshots: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        debug!(%workflow_id, "deleted workflow snapshots");
+        Ok(())
+    }
+
     #[instrument(skip(self, result, error))]
     async fn update_workflow_status(
         &self,

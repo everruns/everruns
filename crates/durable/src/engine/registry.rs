@@ -46,6 +46,14 @@ pub trait AnyWorkflow: Send + Sync {
 
     /// Get the error (if failed)
     fn error(&self) -> Option<WorkflowError>;
+
+    /// Serialize workflow state for snapshotting.
+    ///
+    /// Returns `None` if the workflow type doesn't support snapshots.
+    /// Default implementation delegates to `Workflow::snapshot_state`.
+    fn serialize_state(&self) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// Wrapper to implement AnyWorkflow for any Workflow
@@ -95,11 +103,19 @@ impl<W: Workflow> AnyWorkflow for WorkflowWrapper<W> {
     fn error(&self) -> Option<WorkflowError> {
         self.inner.error()
     }
+
+    fn serialize_state(&self) -> Option<Vec<u8>> {
+        self.inner.snapshot_state()
+    }
 }
 
 /// Factory function type for creating workflows from JSON input
 pub type WorkflowFactory =
     Box<dyn Fn(Value) -> Result<Box<dyn AnyWorkflow>, serde_json::Error> + Send + Sync>;
+
+/// Factory function type for restoring workflows from snapshot data
+pub type SnapshotRestoreFactory =
+    Box<dyn Fn(Value, &[u8]) -> Option<Box<dyn AnyWorkflow>> + Send + Sync>;
 
 /// Registry of workflow factories
 ///
@@ -107,6 +123,7 @@ pub type WorkflowFactory =
 /// workflow instances from JSON input.
 pub struct WorkflowRegistry {
     factories: HashMap<String, WorkflowFactory>,
+    snapshot_factories: HashMap<String, SnapshotRestoreFactory>,
 }
 
 impl Default for WorkflowRegistry {
@@ -120,6 +137,7 @@ impl WorkflowRegistry {
     pub fn new() -> Self {
         Self {
             factories: HashMap::new(),
+            snapshot_factories: HashMap::new(),
         }
     }
 
@@ -138,7 +156,15 @@ impl WorkflowRegistry {
             Ok(Box::new(WorkflowWrapper { inner: workflow }) as Box<dyn AnyWorkflow>)
         });
 
+        let snapshot_factory: SnapshotRestoreFactory = Box::new(|input: Value, data: &[u8]| {
+            let typed_input: W::Input = serde_json::from_value(input).ok()?;
+            let workflow = W::restore_state(typed_input, data)?;
+            Some(Box::new(WorkflowWrapper { inner: workflow }) as Box<dyn AnyWorkflow>)
+        });
+
         self.factories.insert(W::TYPE.to_string(), factory);
+        self.snapshot_factories
+            .insert(W::TYPE.to_string(), snapshot_factory);
     }
 
     /// Check if a workflow type is registered
@@ -158,6 +184,21 @@ impl WorkflowRegistry {
             .ok_or_else(|| RegistryError::UnknownWorkflowType(workflow_type.to_string()))?;
 
         factory(input).map_err(RegistryError::Deserialization)
+    }
+
+    /// Restore a workflow from snapshot data.
+    ///
+    /// Returns `None` if the workflow type doesn't support snapshots
+    /// or if deserialization fails. The caller should fall back to
+    /// full event replay in that case.
+    pub fn restore_from_snapshot(
+        &self,
+        workflow_type: &str,
+        input: Value,
+        snapshot_data: &[u8],
+    ) -> Option<Box<dyn AnyWorkflow>> {
+        let factory = self.snapshot_factories.get(workflow_type)?;
+        factory(input, snapshot_data)
     }
 
     /// Get the number of registered workflow types
