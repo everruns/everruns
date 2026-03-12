@@ -1483,6 +1483,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-macros"
+version = "0.8.5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.8.5"
 dependencies = [
@@ -1547,6 +1557,7 @@ dependencies = [
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-internal-protocol",
+ "everruns-macros",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-worker",

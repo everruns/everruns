@@ -57,6 +57,9 @@ pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 
+// Permissions model (policies, rules, caller context)
+pub mod permissions;
+
 // URL validation for SSRF prevention (shared utility)
 pub mod url_validation;
 
@@ -240,6 +243,12 @@ pub use skill::{
 pub use typed_id::{
     AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId,
     MessageId, ModelId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+};
+
+// Permissions re-exports
+pub use permissions::{
+    Caller, Permission, Policy, PolicyConfigResponse, PolicyError, Rule, evaluate_policies,
+    role_has_permission, role_permissions,
 };
 
 // URL validation re-exports

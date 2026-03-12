@@ -1,7 +1,9 @@
 // Harness CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
+// Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -11,9 +13,12 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::{HarnessId, ModelId};
-use everruns_core::{AgentCapabilityConfig, Harness, HarnessStatus, ToolDefinition};
+use everruns_core::{
+    AgentCapabilityConfig, Caller, Harness, HarnessStatus, PolicyConfigResponse, ToolDefinition,
+    evaluate_policies,
+};
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use super::validation::{validate_create_agent_input, validate_update_agent_input};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -121,10 +126,21 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+/// Create Caller from ResolvedOrg
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+    }
+}
+
 /// Create harness routes (no import/export)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/harnesses", post(create_harness).get(list_harnesses))
+        .route("/v1/harnesses/config", get(harness_config))
         .route("/v1/harnesses/preview", post(preview_harness))
         .route(
             "/v1/harnesses/{harness_id}",
@@ -136,6 +152,24 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// GET /v1/harnesses/config
+///
+/// Returns which harness policies the caller satisfies.
+/// UI uses this to show/hide controls (e.g. delete button).
+#[utoipa::path(
+    get,
+    path = "/v1/harnesses/config",
+    responses(
+        (status = 200, description = "Policy config for harnesses", body = PolicyConfigResponse),
+    ),
+    tag = "harnesses"
+)]
+pub async fn harness_config(org: ResolvedOrg) -> Json<PolicyConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&HARNESS_MANAGE, &HARNESS_DANGEROUS]);
+    Json(PolicyConfigResponse { policies })
+}
+
 /// POST /v1/harnesses
 #[utoipa::path(
     post,
@@ -144,6 +178,7 @@ pub fn routes(state: AppState) -> Router {
     responses(
         (status = 201, description = "Harness created", body = Harness),
         (status = 400, description = "Invalid input", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "harnesses"
@@ -161,11 +196,12 @@ pub async fn create_harness(
         req.capabilities.len(),
     )?;
 
+    let caller = caller_from_org(&org);
     let harness = state
         .service
-        .create(org.org_id, req)
+        .create(&caller, req)
         .await
-        .log_internal_error_json("create harness")?;
+        .map_policy_or_internal("create harness")?;
 
     Ok((StatusCode::CREATED, Json(harness)))
 }
@@ -176,6 +212,7 @@ pub async fn create_harness(
     path = "/v1/harnesses",
     responses(
         (status = 200, description = "List of harnesses", body = ListResponse<Harness>),
+        (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error")
     ),
     params(ListHarnessesQuery),
@@ -185,12 +222,13 @@ pub async fn list_harnesses(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
-) -> Result<Json<ListResponse<Harness>>, StatusCode> {
+) -> Result<Json<ListResponse<Harness>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = caller_from_org(&org);
     let harnesses = state
         .service
-        .list(org.org_id, query.search.as_deref())
+        .list(&caller, query.search.as_deref())
         .await
-        .log_internal_error("list harnesses")?;
+        .map_policy_or_internal("list harnesses")?;
 
     Ok(Json(ListResponse::new(harnesses)))
 }
@@ -205,6 +243,7 @@ pub async fn list_harnesses(
     responses(
         (status = 200, description = "Harness found", body = Harness),
         (status = 400, description = "Invalid harness ID"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Harness not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -224,11 +263,12 @@ pub async fn get_harness(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let harness = state
         .service
-        .get(org.org_id, harness_id.uuid())
+        .get(&caller, harness_id.uuid())
         .await
-        .log_internal_error_json("get harness")?
+        .map_policy_or_internal("get harness")?
         .ok_or_not_found_json("Harness")?;
 
     Ok(Json(harness))
@@ -245,6 +285,7 @@ pub async fn get_harness(
     responses(
         (status = 200, description = "Harness updated", body = Harness),
         (status = 400, description = "Invalid input", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Harness not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -273,11 +314,12 @@ pub async fn update_harness(
         req.capabilities.as_ref().map(|c| c.len()),
     )?;
 
+    let caller = caller_from_org(&org);
     let harness = state
         .service
-        .update(org.org_id, harness_id.uuid(), req)
+        .update(&caller, harness_id.uuid(), req)
         .await
-        .log_internal_error_json("update harness")?
+        .map_policy_or_internal("update harness")?
         .ok_or_not_found_json("Harness")?;
 
     Ok(Json(harness))
@@ -293,6 +335,7 @@ pub async fn update_harness(
     responses(
         (status = 204, description = "Harness archived"),
         (status = 400, description = "Invalid harness ID"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Harness not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -312,11 +355,12 @@ pub async fn delete_harness(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let deleted = state
         .service
-        .delete(org.org_id, harness_id.uuid())
+        .delete(&caller, harness_id.uuid())
         .await
-        .log_internal_error_json("delete harness")?;
+        .map_policy_or_internal("delete harness")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -343,6 +387,7 @@ pub async fn delete_harness(
     responses(
         (status = 201, description = "Harness copied successfully", body = Harness),
         (status = 400, description = "Invalid harness ID", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Source harness not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -362,11 +407,12 @@ pub async fn copy_harness(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let harness = state
         .service
-        .copy(org.org_id, harness_id.uuid())
+        .copy(&caller, harness_id.uuid())
         .await
-        .log_internal_error_json("copy harness")?
+        .map_policy_or_internal("copy harness")?
         .ok_or_not_found_json("Harness")?;
 
     Ok((StatusCode::CREATED, Json(harness)))

@@ -50,6 +50,36 @@ impl ErrorResponse {
 // Error handling extension traits
 // ============================================================================
 
+/// Extension trait for anyhow::Result to handle PolicyError as 403.
+///
+/// If the error is a `PolicyError`, returns 403 Forbidden.
+/// Otherwise logs and returns 500 Internal Server Error.
+pub trait ApiPolicyResultExt<T> {
+    fn map_policy_or_internal(
+        self,
+        operation: &str,
+    ) -> Result<T, (StatusCode, Json<ErrorResponse>)>;
+}
+
+impl<T> ApiPolicyResultExt<T> for Result<T, anyhow::Error> {
+    fn map_policy_or_internal(
+        self,
+        operation: &str,
+    ) -> Result<T, (StatusCode, Json<ErrorResponse>)> {
+        self.map_err(|e| {
+            if let Some(policy_err) = e.downcast_ref::<everruns_core::PolicyError>() {
+                (
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse::new(&policy_err.message)),
+                )
+            } else {
+                tracing::error!("Failed to {}: {}", operation, e);
+                ErrorResponse::internal_error()
+            }
+        })
+    }
+}
+
 /// Extension trait for Result to simplify API error handling.
 ///
 /// Provides methods to log errors and convert to appropriate HTTP responses.
