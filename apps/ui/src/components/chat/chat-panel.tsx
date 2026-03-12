@@ -11,7 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle, CalendarClock } from "lucide-react";
+import {
+  Send,
+  Bot,
+  Loader2,
+  Brain,
+  ImagePlus,
+  StopCircle,
+  CalendarClock,
+  ArrowDown,
+} from "lucide-react";
 import type {
   Controls,
   InputMessageData,
@@ -68,9 +77,14 @@ export function ChatPanel() {
   const [inputValue, setInputValue] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isNearBottomRef = useRef(true);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  const prevChatEventsLengthRef = useRef(0);
+  const initialScrollDoneRef = useRef(false);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
@@ -185,10 +199,70 @@ export function ChatPanel() {
     }
   }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
 
-  // Auto-scroll to bottom when new events arrive or streaming text updates
+  // Track whether user is near the bottom of the scroll container
+  const NEAR_BOTTOM_THRESHOLD = 100;
+
+  const checkIsNearBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight <= NEAR_BOTTOM_THRESHOLD;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
+
+  // Listen for scroll events to track near-bottom state
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatEvents, streamingText, isThinking]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const nearBottom = checkIsNearBottom();
+      isNearBottomRef.current = nearBottom;
+      // Clear "new messages" indicator when user scrolls back to bottom
+      if (nearBottom) {
+        setHasNewMessages(false);
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [checkIsNearBottom]);
+
+  // Scroll to bottom immediately on initial load (once events are ready)
+  useEffect(() => {
+    if (!eventsLoading && chatEvents.length > 0 && !initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      // Use requestAnimationFrame to ensure DOM is painted
+      requestAnimationFrame(() => {
+        scrollToBottom("instant");
+      });
+    }
+  }, [eventsLoading, chatEvents.length, scrollToBottom]);
+
+  // Reset initial scroll flag when session changes
+  useEffect(() => {
+    initialScrollDoneRef.current = false;
+    isNearBottomRef.current = true;
+    setHasNewMessages(false);
+    prevChatEventsLengthRef.current = 0;
+  }, [sessionId]);
+
+  // Auto-scroll on new events or streaming updates (only when near bottom)
+  useEffect(() => {
+    if (!initialScrollDoneRef.current) return;
+
+    const hasNewChatEvents = chatEvents.length > prevChatEventsLengthRef.current;
+    prevChatEventsLengthRef.current = chatEvents.length;
+
+    if (isNearBottomRef.current) {
+      scrollToBottom("smooth");
+    } else if (hasNewChatEvents) {
+      setHasNewMessages(true);
+    }
+  }, [chatEvents, streamingText, isThinking, scrollToBottom]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -311,7 +385,10 @@ export function ChatPanel() {
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6">
+      <div
+        ref={scrollContainerRef}
+        className="relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6"
+      >
         {eventsLoading ? (
           <div className="space-y-4">
             <Skeleton className="ml-auto h-20 w-3/4" />
@@ -471,6 +548,20 @@ export function ChatPanel() {
         )}
 
         <div ref={messagesEndRef} />
+
+        {hasNewMessages && (
+          <button
+            type="button"
+            onClick={() => {
+              scrollToBottom("smooth");
+              setHasNewMessages(false);
+            }}
+            className="sticky bottom-3 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition-colors hover:bg-accent"
+          >
+            <ArrowDown className="h-3 w-3" />
+            New messages
+          </button>
+        )}
       </div>
 
       <div className="border-t border-border bg-muted/30 p-4 sm:p-5">
