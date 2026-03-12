@@ -3,6 +3,7 @@
 // Decision: Builder pattern lets downstream crates compose custom server setups
 //   by adding routes, event listeners, migrations, and auth backends.
 // Decision: The old `run()` function is kept as a thin wrapper for backward compat.
+// Note: Migrations are embedded at compile time via sqlx::migrate!("./migrations").
 // Decision: ServerContext exposes shared infrastructure for background tasks.
 // Decision: Uses hyper_util auto builder instead of axum::serve to configure
 //   HTTP/2 flow control windows. Default 65KB per-stream window exhausts under
