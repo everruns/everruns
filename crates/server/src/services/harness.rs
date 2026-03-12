@@ -1,6 +1,7 @@
 // Harness service for business logic
 //
 // Manages harness CRUD operations, capability lifecycle.
+// Policy enforcement via #[policy] macro — see specs/permissions.md.
 
 use crate::api::harnesses::{CreateHarnessRequest, UpdateHarnessRequest};
 use crate::storage::{
@@ -8,9 +9,27 @@ use crate::storage::{
     models::{CreateHarnessRow, UpdateHarness},
 };
 use anyhow::Result;
-use everruns_core::{AgentCapabilityConfig, Harness, HarnessId, HarnessStatus};
+use everruns_core::{
+    AgentCapabilityConfig, Caller, Harness, HarnessId, HarnessStatus, Permission, Policy, Rule,
+};
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Policy: CRUD on harnesses (create, read, update, copy).
+pub const HARNESS_MANAGE: Policy = Policy {
+    id: "harness.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgHarnessesManage)],
+};
+
+/// Policy: Dangerous harness operations (delete).
+pub const HARNESS_DANGEROUS: Policy = Policy {
+    id: "harness.dangerous",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgHarnessesManage),
+        Rule::UserHasPermission(Permission::OrgHarnessesDangerous),
+    ],
+};
 
 pub struct HarnessService {
     db: Arc<StorageBackend>,
@@ -21,7 +40,8 @@ impl HarnessService {
         Self { db }
     }
 
-    pub async fn create(&self, org_id: i64, req: CreateHarnessRequest) -> Result<Harness> {
+    #[policy(HARNESS_MANAGE)]
+    pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
         let input = CreateHarnessRow {
             name: req.name,
             description: req.description,
@@ -29,7 +49,7 @@ impl HarnessService {
             default_model_id: req.default_model_id,
             tags: req.tags,
         };
-        let row = self.db.create_harness(org_id, input).await?;
+        let row = self.db.create_harness(caller.org_id, input).await?;
         let harness_id = row.id;
 
         // Set capabilities if provided
@@ -57,10 +77,11 @@ impl HarnessService {
         Ok(Self::row_to_harness(row, capabilities))
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Harness>> {
+    #[policy(HARNESS_MANAGE)]
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Harness>> {
         let row = self
             .db
-            .get_harness(org_id, HarnessId::from_uuid(id))
+            .get_harness(caller.org_id, HarnessId::from_uuid(id))
             .await?;
         match row {
             Some(row) => {
@@ -71,8 +92,9 @@ impl HarnessService {
         }
     }
 
-    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<Harness>> {
-        let rows = self.db.list_harnesses(org_id, search).await?;
+    #[policy(HARNESS_MANAGE)]
+    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Harness>> {
+        let rows = self.db.list_harnesses(caller.org_id, search).await?;
 
         let mut harnesses = Vec::with_capacity(rows.len());
         for row in rows {
@@ -83,9 +105,10 @@ impl HarnessService {
         Ok(harnesses)
     }
 
+    #[policy(HARNESS_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         req: UpdateHarnessRequest,
     ) -> Result<Option<Harness>> {
@@ -99,7 +122,7 @@ impl HarnessService {
         };
         let row = self
             .db
-            .update_harness(org_id, HarnessId::from_uuid(id), input)
+            .update_harness(caller.org_id, HarnessId::from_uuid(id), input)
             .await?;
 
         match row {
@@ -130,8 +153,9 @@ impl HarnessService {
 
     /// Copy a harness by UUID. Creates a new harness with "{name} (copy)" and
     /// duplicates description, system_prompt, default_model_id, tags, capabilities.
-    pub async fn copy(&self, org_id: i64, id: Uuid) -> Result<Option<Harness>> {
-        let source = self.get(org_id, id).await?;
+    #[policy(HARNESS_MANAGE)]
+    pub async fn copy(&self, caller: &Caller, id: Uuid) -> Result<Option<Harness>> {
+        let source = self.get(caller, id).await?;
         let Some(source) = source else {
             return Ok(None);
         };
@@ -145,13 +169,14 @@ impl HarnessService {
             capabilities: source.capabilities,
         };
 
-        let harness = self.create(org_id, req).await?;
+        let harness = self.create(caller, req).await?;
         Ok(Some(harness))
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    #[policy(HARNESS_DANGEROUS)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         self.db
-            .delete_harness(org_id, HarnessId::from_uuid(id))
+            .delete_harness(caller.org_id, HarnessId::from_uuid(id))
             .await
     }
 

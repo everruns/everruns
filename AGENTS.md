@@ -97,6 +97,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/brand.md` - Brand identity, colors, typography
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 - `specs/multitenancy.md` - Organization-based multitenancy
+- `specs/permissions.md` - Fine-grained permissions model (policies, rules, `#[policy]` macro)
 - `specs/release-process.md` - Release workflow with CHANGELOG.md
 - `specs/id-schema.md` - Standardized prefixed ID format
 - `specs/braintrust-integration.md` - Braintrust observability

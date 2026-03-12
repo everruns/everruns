@@ -751,9 +751,10 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         // Load harness
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .get(req.org_id, session.harness_id.uuid())
+            .get(&internal_caller, session.harness_id.uuid())
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get harness: {}", e);
@@ -980,9 +981,10 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .get(req.org_id, harness_id)
+            .get(&internal_caller, harness_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
 
@@ -3009,9 +3011,10 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListHarnessesRequest>,
     ) -> Result<Response<PlatformListHarnessesResponse>, Status> {
         let req = request.into_inner();
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harnesses = self
             .harness_service
-            .list(req.org_id, None)
+            .list(&internal_caller, None)
             .await
             .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
 
@@ -3041,9 +3044,10 @@ impl WorkerService for WorkerServiceImpl {
             capabilities,
         };
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .create(req.org_id, create_req)
+            .create(&internal_caller, create_req)
             .await
             .map_err(|e| Status::internal(format!("Failed to create harness: {}", e)))?;
 
@@ -3069,9 +3073,10 @@ impl WorkerService for WorkerServiceImpl {
             status: None,
         };
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .update(req.org_id, harness_id, update_req)
+            .update(&internal_caller, harness_id, update_req)
             .await
             .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?
             .ok_or_else(|| Status::not_found("Harness not found"))?;
@@ -3088,8 +3093,9 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         self.harness_service
-            .delete(req.org_id, harness_id)
+            .delete(&internal_caller, harness_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
 
@@ -3103,9 +3109,10 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .copy(req.org_id, harness_id)
+            .copy(&internal_caller, harness_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?
             .ok_or_else(|| Status::not_found("Harness not found"))?;
@@ -3122,7 +3129,7 @@ impl WorkerService for WorkerServiceImpl {
                 status: None,
             };
             self.harness_service
-                .update(req.org_id, harness.id.uuid(), update_req)
+                .update(&internal_caller, harness.id.uuid(), update_req)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))?
                 .unwrap_or(harness)
