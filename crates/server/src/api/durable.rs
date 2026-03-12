@@ -2094,23 +2094,26 @@ pub async fn stream_workflow_sse(
                     }
                 };
 
-                // Fetch events
-                let events: Vec<WorkflowEventResponse> = fetch_or_disconnect!(
-                    store.get_workflow_events(stream_state.workflow_id).await,
-                    "Failed to fetch workflow events"
-                )
-                .into_iter()
-                .map(WorkflowEventResponse::from)
-                .collect();
-
-                // Detect changes
+                // Detect changes using COUNT(*) — avoids materializing all events
+                let event_count = fetch_or_disconnect!(
+                    store.count_workflow_events(stream_state.workflow_id).await,
+                    "Failed to count workflow events"
+                ) as usize;
                 let status_changed = stream_state.last_status.as_ref() != Some(&workflow.status);
-                let events_changed = events.len() != stream_state.last_event_count;
+                let events_changed = event_count != stream_state.last_event_count;
                 let has_changes = status_changed || events_changed;
 
                 if has_changes {
+                    // Only fetch full events when changes detected
+                    let events: Vec<WorkflowEventResponse> = fetch_or_disconnect!(
+                        store.get_workflow_events(stream_state.workflow_id).await,
+                        "Failed to fetch workflow events"
+                    )
+                    .into_iter()
+                    .map(WorkflowEventResponse::from)
+                    .collect();
+
                     let new_status = workflow.status.clone();
-                    let event_count = events.len();
                     let new_backoff = stream_state.config.min_backoff_ms;
                     let snapshot = WorkflowSnapshot { workflow, events };
                     let json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());

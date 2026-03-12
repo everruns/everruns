@@ -302,6 +302,43 @@ async fn test_get_workflow_events() {
     cleanup_workflow(&store, workflow_id).await;
 }
 
+#[tokio::test]
+async fn test_count_workflow_events() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "count_test", json!({"input": "data"}), None)
+        .await
+        .unwrap();
+
+    // Empty workflow should have 0 events
+    let count = store.count_workflow_events(workflow_id).await.unwrap();
+    assert_eq!(count, 0);
+
+    // Append some events
+    use everruns_durable::workflow::WorkflowEvent;
+    let events = vec![
+        WorkflowEvent::ActivityScheduled {
+            activity_id: "act1".to_string(),
+            activity_type: "test_activity".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        },
+        WorkflowEvent::ActivityCompleted {
+            activity_id: "act1".to_string(),
+            result: json!({"done": true}),
+        },
+    ];
+    store.append_events(workflow_id, 0, events).await.unwrap();
+
+    // Count should match without materializing events
+    let count = store.count_workflow_events(workflow_id).await.unwrap();
+    assert_eq!(count, 2);
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
 // ============================================
 // Task Query Tests
 // ============================================

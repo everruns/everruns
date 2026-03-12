@@ -1398,6 +1398,29 @@ impl Database {
         Ok(rows)
     }
 
+    /// Count events for a session using SELECT COUNT(*) — no row materialization.
+    /// When `exclude_types` is non-empty, excludes matching event types from the count.
+    pub async fn count_events(
+        &self,
+        session_id: SessionId,
+        exclude_types: &[String],
+    ) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM events
+            WHERE session_id = $1
+              AND (cardinality($2::text[]) = 0 OR event_type <> ALL($2))
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(exclude_types)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count)
+    }
+
     /// List only message events for a session (for MessageStore implementation)
     ///
     /// Returns events with types: input.message, output.message.completed, tool.completed

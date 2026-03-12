@@ -402,6 +402,15 @@ impl StorageBackend {
         )
     }
 
+    /// Count events for a session using SELECT COUNT(*) — no row materialization.
+    pub async fn count_events(
+        &self,
+        session_id: SessionId,
+        exclude_types: &[String],
+    ) -> Result<i64> {
+        dispatch!(self, count_events, session_id, exclude_types)
+    }
+
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         dispatch!(self, list_message_events, session_id)
     }

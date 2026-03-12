@@ -723,6 +723,13 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             .collect())
     }
 
+    /// Count workflow events without materializing them.
+    /// Uses SELECT COUNT(*) in PostgreSQL; falls back to load_events().len() by default.
+    async fn count_workflow_events(&self, workflow_id: Uuid) -> Result<i64, StoreError> {
+        let events = self.load_events(workflow_id).await?;
+        Ok(events.len() as i64)
+    }
+
     // =========================================================================
     // Schedule Operations (optional, default no-op)
     // =========================================================================
