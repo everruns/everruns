@@ -1191,9 +1191,10 @@ mod tests {
         assert!(registry.has("platform_management"));
         assert!(registry.has("system_commands"));
         assert!(registry.has("openai_tool_search"));
+        assert!(registry.has("openui"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 23);
+        assert_eq!(registry.len(), 24);
     }
 
     #[test]
