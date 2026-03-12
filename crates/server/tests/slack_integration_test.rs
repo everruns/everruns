@@ -847,10 +847,7 @@ async fn test_real_slack_users_info() {
 
     // Now test users.info
     let resp = client
-        .get(format!(
-            "https://slack.com/api/users.info?user={}",
-            user_id
-        ))
+        .get(format!("https://slack.com/api/users.info?user={}", user_id))
         .header("Authorization", format!("Bearer {}", bot_token))
         .send()
         .await
