@@ -338,19 +338,28 @@ impl ServerAppBuilder {
             }
         };
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());
+        let feature_flags =
+            everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
+        let notifications_enabled = feature_flags.notifications;
+        tracing::info!(?feature_flags, "Feature flags computed");
 
         // =====================================================================
         // Phase 4: Event listeners & services
         // =====================================================================
-        let notification_service = Arc::new(services::NotificationService::new(db.clone()));
         let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
         let usage_listener: Arc<dyn EventListener> =
             Arc::new(services::UsageTrackingListener::new(db.clone()));
-        let notification_listener: Arc<dyn EventListener> = Arc::new(
-            services::NotificationEventListener::new(notification_service.clone()),
-        );
-        let mut event_listeners: Vec<Arc<dyn EventListener>> =
-            vec![otel_listener, usage_listener, notification_listener];
+        let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![otel_listener, usage_listener];
+        let notification_service = if notifications_enabled {
+            let service = Arc::new(services::NotificationService::new(db.clone()));
+            let notification_listener: Arc<dyn EventListener> =
+                Arc::new(services::NotificationEventListener::new(service.clone()));
+            event_listeners.push(notification_listener);
+            Some(service)
+        } else {
+            tracing::info!("Notifications disabled via feature flag");
+            None
+        };
 
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
@@ -380,18 +389,23 @@ impl ServerAppBuilder {
             );
             None
         };
-        let notification_broadcaster = if let Some(pool) = db.pool() {
-            let broadcaster =
-                crate::notification_notifications::NotificationNotificationBroadcaster::new(
-                    pool.clone(),
-                )
-                .await;
-            tracing::info!("Notification broadcaster initialized for push-based SSE");
-            Some(Arc::new(broadcaster))
+        let notification_broadcaster = if notifications_enabled {
+            if let Some(pool) = db.pool() {
+                let broadcaster =
+                    crate::notification_notifications::NotificationNotificationBroadcaster::new(
+                        pool.clone(),
+                    )
+                    .await;
+                tracing::info!("Notification broadcaster initialized for push-based SSE");
+                Some(Arc::new(broadcaster))
+            } else {
+                tracing::info!(
+                    "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
+                );
+                None
+            }
         } else {
-            tracing::info!(
-                "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
-            );
+            tracing::info!("Notification broadcaster disabled via feature flag");
             None
         };
 
@@ -400,8 +414,12 @@ impl ServerAppBuilder {
         // =====================================================================
         let sessions_state =
             api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
-        let messages_state =
-            api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let messages_state = api::messages::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            notifications_enabled,
+        );
         let tool_results_state =
             api::tool_results::AppState::new(db.clone(), runner.clone(), auth_state.clone());
         // Slack delivery dispatcher: event-driven message posting (replaces 120s polling).
@@ -425,12 +443,14 @@ impl ServerAppBuilder {
             event_broadcaster,
             auth: auth_state.clone(),
         };
-        let notifications_state = api::notifications::AppState {
-            notification_service: notification_service.clone(),
-            sse_tracker,
-            notification_broadcaster,
-            auth: auth_state.clone(),
-        };
+        let notifications_state = notification_service.as_ref().map(|notification_service| {
+            api::notifications::AppState {
+                notification_service: notification_service.clone(),
+                sse_tracker,
+                notification_broadcaster,
+                auth: auth_state.clone(),
+            }
+        });
         let driver_registry = Arc::new(create_driver_registry());
         let llm_resolver = Arc::new(services::LlmResolverService::new(
             db.clone(),
@@ -470,6 +490,7 @@ impl ServerAppBuilder {
             db.clone(),
             runner.clone(),
             slack_dispatcher.clone(),
+            notifications_enabled,
         );
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
@@ -522,12 +543,8 @@ impl ServerAppBuilder {
             auth_mode: format!("{:?}", auth_config.mode),
         };
 
-        // Feature flags (computed from env vars + deployment grade)
-        let feature_flags =
-            everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
-        tracing::info!(?feature_flags, "Feature flags computed");
         let feature_flags_state = api::feature_flags::AppState {
-            flags: feature_flags,
+            flags: feature_flags.clone(),
         };
 
         if !self.config.api_prefix.is_empty() {
@@ -554,7 +571,6 @@ impl ServerAppBuilder {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
-            .merge(api::notifications::routes(notifications_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::llm_models::routes(llm_models_state))
@@ -576,6 +592,10 @@ impl ServerAppBuilder {
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::feature_flags::routes(feature_flags_state));
+
+        if let Some(notifications_state) = notifications_state {
+            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
+        }
 
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {

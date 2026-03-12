@@ -68,6 +68,15 @@ Long-running turn notifications resolve the recipient from the input message tha
 - Only for newly-arrived notifications while the app is visible/focused
 - Never the source of truth
 
+## Feature Flag
+
+- Gated by standard flag `FEATURE_NOTIFICATIONS`
+- Default: off in all environments
+- When disabled:
+  - Notification API routes are not mounted
+  - Turn-completed notification creation is disabled
+  - UI bell, toast, and notification SSE are not mounted
+
 ## Active Chat Suppression
 
 V1 suppression is client-side:

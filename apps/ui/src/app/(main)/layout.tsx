@@ -23,6 +23,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
   const { isLoading: orgLoading } = useOrg();
   const globalSearchEnabled = useFeatureFlag("global_search");
+  const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
 
   // Combined loading state - wait for both auth and org to initialize
@@ -64,14 +65,18 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     return null;
   }
 
-  const content = (
-    <NotificationsProvider>
-      <div className="flex h-screen">
-        <Sidebar />
-        <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-        {globalSearchEnabled && <CommandPalette />}
-      </div>
-    </NotificationsProvider>
+  const appChrome = (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+      {globalSearchEnabled && <CommandPalette />}
+    </div>
+  );
+
+  const content = notificationsEnabled ? (
+    <NotificationsProvider>{appChrome}</NotificationsProvider>
+  ) : (
+    appChrome
   );
 
   if (globalSearchEnabled) {

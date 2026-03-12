@@ -23,6 +23,8 @@ pub struct FeatureFlags {
     pub apps: bool,
     /// Global search / command palette (Cmd+K). Experimental.
     pub global_search: bool,
+    /// In-app notifications (bell, toasts, notification SSE). Standard.
+    pub notifications: bool,
 }
 
 impl FeatureFlags {
@@ -32,6 +34,7 @@ impl FeatureFlags {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             apps: experimental_flag("FEATURE_APPS", grade),
             global_search: experimental_flag("FEATURE_GLOBAL_SEARCH", grade),
+            notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
         }
     }
 
@@ -41,6 +44,7 @@ impl FeatureFlags {
             "global_chat" => self.global_chat,
             "apps" => self.apps,
             "global_search" => self.global_search,
+            "notifications" => self.notifications,
             _ => false,
         }
     }
@@ -52,6 +56,7 @@ impl FeatureFlags {
             global_chat: true,
             apps: true,
             global_search: true,
+            notifications: true,
         }
     }
 }
@@ -80,12 +85,20 @@ fn standard_flag(env_var: &str, default: bool) -> bool {
 mod tests {
     use super::*;
 
+    // Env-var-mutating tests must not run in parallel.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn test_default_flags() {
         let flags = FeatureFlags::default();
         assert!(!flags.global_chat);
         assert!(!flags.apps);
         assert!(!flags.global_search);
+        assert!(!flags.notifications);
     }
 
     // SAFETY: env var tests must run single-threaded (--test-threads=1).
@@ -93,6 +106,7 @@ mod tests {
 
     #[test]
     fn test_experimental_enabled_in_dev() {
+        let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
         unsafe { std::env::remove_var("FEATURE_GLOBAL_SEARCH") };
@@ -104,6 +118,7 @@ mod tests {
 
     #[test]
     fn test_experimental_disabled_in_prod() {
+        let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
         unsafe { std::env::remove_var("FEATURE_GLOBAL_SEARCH") };
@@ -115,6 +130,7 @@ mod tests {
 
     #[test]
     fn test_env_override_enables_in_prod() {
+        let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_GLOBAL_CHAT", "true") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(flags.global_chat);
@@ -123,6 +139,7 @@ mod tests {
 
     #[test]
     fn test_env_override_disables_in_dev() {
+        let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_GLOBAL_CHAT", "false") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
         assert!(!flags.global_chat);
@@ -135,10 +152,12 @@ mod tests {
             global_chat: true,
             apps: true,
             global_search: true,
+            notifications: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("global_search"));
+        assert!(flags.is_enabled("notifications"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -148,10 +167,12 @@ mod tests {
             global_chat: true,
             apps: true,
             global_search: true,
+            notifications: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"global_search\":true"));
+        assert!(json.contains("\"notifications\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
@@ -159,6 +180,7 @@ mod tests {
 
     #[test]
     fn test_standard_flag() {
+        let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_TEST_STD") };
         assert!(!standard_flag("FEATURE_TEST_STD", false));
         assert!(standard_flag("FEATURE_TEST_STD", true));
@@ -166,5 +188,22 @@ mod tests {
         unsafe { std::env::set_var("FEATURE_TEST_STD", "1") };
         assert!(standard_flag("FEATURE_TEST_STD", false));
         unsafe { std::env::remove_var("FEATURE_TEST_STD") };
+    }
+
+    #[test]
+    fn test_standard_notifications_flag_defaults_off() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(!flags.notifications);
+    }
+
+    #[test]
+    fn test_standard_notifications_flag_respects_env_override() {
+        let _lock = lock_env();
+        unsafe { std::env::set_var("FEATURE_NOTIFICATIONS", "true") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(flags.notifications);
+        unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
     }
 }

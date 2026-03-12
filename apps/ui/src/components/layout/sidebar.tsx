@@ -353,7 +353,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
           <span className="text-xl font-bold">Everruns</span>
         </Link>
-        <NotificationBell />
+        {featureFlags.notifications && <NotificationBell />}
       </div>
 
       {/* Organization Selector */}

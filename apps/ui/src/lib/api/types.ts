@@ -740,6 +740,7 @@ export interface FeatureFlags {
   global_chat: boolean;
   apps: boolean;
   global_search: boolean;
+  notifications: boolean;
 }
 
 export interface AuthConfigResponse {

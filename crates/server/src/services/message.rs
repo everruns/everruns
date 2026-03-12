@@ -24,17 +24,23 @@ pub struct MessageService {
     db: Arc<StorageBackend>,
     event_service: EventService,
     notification_service: NotificationService,
+    notifications_enabled: bool,
     runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        notifications_enabled: bool,
+    ) -> Self {
         let event_service = EventService::new(db.clone());
         let notification_service = NotificationService::new(db.clone());
         Self {
             db,
             event_service,
             notification_service,
+            notifications_enabled,
             runner,
         }
     }
@@ -115,7 +121,9 @@ impl MessageService {
             created_at: now,
         };
 
-        if let Some(user_id) = user_id {
+        if self.notifications_enabled
+            && let Some(user_id) = user_id
+        {
             self.notification_service
                 .create_turn_request(org_id, user_id, session_id_typed, message_id_typed)
                 .await?;
