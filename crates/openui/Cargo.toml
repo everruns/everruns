@@ -1,0 +1,18 @@
+# OpenUI Component Definitions and Prompt Generator
+#
+# Decision: Separate crate from core — reusable, matches crates/openai/ pattern.
+# Decision: Static component definitions (no Zod runtime) — we only need prompt text generation.
+# Decision: Component schemas mirror @openuidev/react-ui exactly for compatibility.
+# Ref: https://github.com/thesysdev/openui (packages/react-ui/src/genui-lib/)
+
+[package]
+name = "everruns-openui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenUI component definitions and prompt generator for Everruns"
+
+[dependencies]
+
+[dev-dependencies]

@@ -8,7 +8,7 @@
  */
 
 import { cn } from "@/lib/utils";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MessageContent } from "@/components/chat/message-content";
 
 interface StreamingMessageProps {
   text: string;
@@ -27,11 +27,9 @@ export function StreamingMessage({ text, className }: StreamingMessageProps) {
         Generating
       </div>
 
-      {/* Streaming text content with markdown rendering */}
+      {/* Streaming text content with markdown + OpenUI rendering */}
       <div className="pt-4">
-        <StreamdownMessage variant="inline" isAnimating={true}>
-          {text}
-        </StreamdownMessage>
+        <MessageContent text={text} isStreaming={true} />
         {/* Blinking cursor to indicate more content coming */}
         <span className="inline-block w-0.5 h-4 ml-0.5 bg-primary/70 animate-pulse align-text-bottom" />
       </div>

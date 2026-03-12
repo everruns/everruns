@@ -38,7 +38,7 @@ import {
 } from "@/components/chat/command-autocomplete";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MessageContent } from "@/components/chat/message-content";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import {
   formatWorkedDuration,
@@ -530,11 +530,7 @@ export function ChatPanel() {
                           </div>
                           <div className="flex flex-1 items-start gap-2">
                             <div className="flex-1 space-y-2 border-l-2 border-l-primary bg-card px-4 py-3">
-                              {textContent && (
-                                <StreamdownMessage variant="inline" className="text-foreground">
-                                  {textContent}
-                                </StreamdownMessage>
-                              )}
+                              {textContent && <MessageContent text={textContent} />}
                               {images.length > 0 && (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   {images.map((img) => (
