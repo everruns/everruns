@@ -63,11 +63,7 @@ pub fn policy(attr: TokenStream, item: TokenStream) -> TokenStream {
         let Type::Path(tp) = elem.as_ref() else {
             return None;
         };
-        let is_caller = tp
-            .path
-            .segments
-            .last()
-            .is_some_and(|s| s.ident == "Caller");
+        let is_caller = tp.path.segments.last().is_some_and(|s| s.ident == "Caller");
         if is_caller && let syn::Pat::Ident(pi) = pat.as_ref() {
             return Some(pi.ident.clone());
         }

@@ -1484,7 +1484,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "proc-macro2",
  "quote",
