@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useContext, useState, useMemo, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useAgent, useSession, useEvents, useLlmModel } from "@/hooks";
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
@@ -376,43 +384,61 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     return map;
   }, [events]);
 
-  // Compute live usage with real-time updates during turns
+  // Incremental token usage accumulation — O(1) per new event instead of O(n).
+  // Tracks how many events have been processed so only new events are scanned.
+  const usageRef = useRef({
+    processed: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    hasLlmEvents: false,
+  });
+
+  // Reset accumulator when events array shrinks (session change or trimming)
+  if (events.length < usageRef.current.processed) {
+    usageRef.current = {
+      processed: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      hasLlmEvents: false,
+    };
+  }
+
   const liveUsage = useMemo((): TokenUsage | undefined => {
     if (!events || events.length === 0) {
       return session?.usage;
     }
 
-    // Sum ALL llm.generation events to get cumulative usage
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheReadTokens = 0;
-    let cacheCreationTokens = 0;
-    let hasLlmEvents = false;
+    const acc = usageRef.current;
 
-    for (const event of events) {
+    // Only scan events we haven't processed yet
+    for (let i = acc.processed; i < events.length; i++) {
+      const event = events[i];
       if (event.type === "llm.generation") {
         const data = event.data as LlmGenerationData;
         if (data.metadata?.usage) {
-          hasLlmEvents = true;
-          inputTokens += data.metadata.usage.input_tokens;
-          outputTokens += data.metadata.usage.output_tokens;
-          cacheReadTokens += data.metadata.usage.cache_read_tokens ?? 0;
-          cacheCreationTokens += data.metadata.usage.cache_creation_tokens ?? 0;
+          acc.hasLlmEvents = true;
+          acc.inputTokens += data.metadata.usage.input_tokens;
+          acc.outputTokens += data.metadata.usage.output_tokens;
+          acc.cacheReadTokens += data.metadata.usage.cache_read_tokens ?? 0;
+          acc.cacheCreationTokens += data.metadata.usage.cache_creation_tokens ?? 0;
         }
       }
     }
+    acc.processed = events.length;
 
-    // If we have llm.generation events, use their sum as the source of truth
-    if (hasLlmEvents) {
+    if (acc.hasLlmEvents) {
       return {
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_read_tokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
-        cache_creation_tokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
+        input_tokens: acc.inputTokens,
+        output_tokens: acc.outputTokens,
+        cache_read_tokens: acc.cacheReadTokens > 0 ? acc.cacheReadTokens : undefined,
+        cache_creation_tokens: acc.cacheCreationTokens > 0 ? acc.cacheCreationTokens : undefined,
       };
     }
 
-    // Fall back to session usage
     return session?.usage;
   }, [events, session?.usage]);
 

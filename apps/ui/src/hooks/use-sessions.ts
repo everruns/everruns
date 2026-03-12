@@ -218,6 +218,13 @@ const SSE_EVENT_TYPES = [
 const EVENT_PAGE_SIZE = 200;
 
 /**
+ * Maximum number of events kept in memory. When exceeded, oldest events are
+ * trimmed to stay within budget. This prevents unbounded memory growth during
+ * long-running SSE sessions.
+ */
+const MAX_EVENTS_IN_MEMORY = 5_000;
+
+/**
  * Fetch events for a session using paginated REST + SSE.
  *
  * Strategy: REST first (last N events), SSE second.
@@ -420,7 +427,17 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
 
             eventIdsRef.current.add(event.id);
             lastEventIdRef.current = event.id;
-            setEvents((prev) => [...prev, event]);
+            setEvents((prev) => {
+              const next = [...prev, event];
+              if (next.length > MAX_EVENTS_IN_MEMORY) {
+                // Trim oldest events and their IDs from the dedup set
+                const trimmed = next.slice(next.length - MAX_EVENTS_IN_MEMORY);
+                const keptIds = new Set(trimmed.map((e) => e.id));
+                eventIdsRef.current = keptIds;
+                return trimmed;
+              }
+              return next;
+            });
           } catch (e) {
             console.error("Failed to parse SSE event:", e);
           }
