@@ -383,6 +383,7 @@ impl StorageBackend {
         dispatch!(self, has_event_with_slack_ts, session_id, slack_ts)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,
         session_id: SessionId,
@@ -390,6 +391,8 @@ impl StorageBackend {
         since_id: Option<EventId>,
         filter_types: &[String],
         exclude_types: &[String],
+        before_sequence: Option<i32>,
+        limit: Option<i32>,
     ) -> Result<Vec<EventRow>> {
         dispatch!(
             self,
@@ -398,7 +401,9 @@ impl StorageBackend {
             since_sequence,
             since_id,
             filter_types,
-            exclude_types
+            exclude_types,
+            before_sequence,
+            limit
         )
     }
 
@@ -409,6 +414,15 @@ impl StorageBackend {
         exclude_types: &[String],
     ) -> Result<i64> {
         dispatch!(self, count_events, session_id, exclude_types)
+    }
+
+    /// Find the nearest turn.started sequence at or before the given sequence.
+    pub async fn find_turn_boundary(
+        &self,
+        session_id: SessionId,
+        before_sequence: i32,
+    ) -> Result<Option<i32>> {
+        dispatch!(self, find_turn_boundary, session_id, before_sequence)
     }
 
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {

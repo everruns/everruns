@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,6 +68,9 @@ export function ChatPanel() {
     streamingIteration,
     sendMessage,
     cancelCurrentTurn,
+    hasMoreEvents,
+    loadingOlderEvents,
+    loadOlderEvents,
     getMessageText,
     getToolCalls,
   } = useSessionContext();
@@ -85,6 +88,9 @@ export function ChatPanel() {
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const prevChatEventsLengthRef = useRef(0);
   const initialScrollDoneRef = useRef(false);
+
+  // Track scroll height before prepending older events for position preservation
+  const prevScrollHeightRef = useRef<number | null>(null);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
@@ -213,7 +219,7 @@ export function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  // Listen for scroll events to track near-bottom state
+  // Listen for scroll events to track near-bottom state and trigger older event loading
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -251,8 +257,10 @@ export function ChatPanel() {
   }, [sessionId]);
 
   // Auto-scroll on new events or streaming updates (only when near bottom)
+  // Skip if older events were prepended (prevScrollHeightRef is set)
   useEffect(() => {
     if (!initialScrollDoneRef.current) return;
+    if (prevScrollHeightRef.current !== null) return;
 
     const hasNewChatEvents = chatEvents.length > prevChatEventsLengthRef.current;
     prevChatEventsLengthRef.current = chatEvents.length;
@@ -263,6 +271,31 @@ export function ChatPanel() {
       setHasNewMessages(true);
     }
   }, [chatEvents, streamingText, isThinking, scrollToBottom]);
+
+  // Scroll position preservation: when older events are prepended,
+  // adjust scrollTop so the viewport stays in the same visual position
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    const prevHeight = prevScrollHeightRef.current;
+    if (container && prevHeight !== null) {
+      const newHeight = container.scrollHeight;
+      container.scrollTop += newHeight - prevHeight;
+      prevScrollHeightRef.current = null;
+    }
+  }, [chatEvents]);
+
+  // Scroll-up detection: trigger loading older events
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !hasMoreEvents || loadingOlderEvents) return;
+
+    // Trigger when user scrolls within 200px of the top
+    if (container.scrollTop < 200) {
+      // Save scroll height before prepend for position preservation
+      prevScrollHeightRef.current = container.scrollHeight;
+      loadOlderEvents();
+    }
+  }, [hasMoreEvents, loadingOlderEvents, loadOlderEvents]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -387,6 +420,7 @@ export function ChatPanel() {
     <>
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6"
       >
         {eventsLoading ? (
@@ -405,6 +439,14 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="space-y-6">
+            {loadingOlderEvents && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">
+                  Loading older messages...
+                </span>
+              </div>
+            )}
             {chatEvents.map((event) => {
               if (event.type === "tool.completed") {
                 return null;

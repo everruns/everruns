@@ -14,7 +14,7 @@ import {
   pinSession,
   unpinSession,
 } from "@/lib/api/sessions";
-import { getSseUrl, listEvents } from "@/lib/api/events";
+import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
 import type {
   CreateSessionRequest,
@@ -214,15 +214,18 @@ const SSE_EVENT_TYPES = [
   "reason.thinking.completed",
 ];
 
+/** Default page size for paginated event loading */
+const EVENT_PAGE_SIZE = 200;
+
 /**
- * Fetch events for a session using REST + SSE.
+ * Fetch events for a session using paginated REST + SSE.
  *
- * Strategy: REST first, SSE second.
- * 1. Fetch all existing events via REST (single HTTP response → single setState)
+ * Strategy: REST first (last N events), SSE second.
+ * 1. Fetch last 200 non-delta events via REST (single HTTP response → single setState)
  * 2. Connect SSE with since_id from last REST event for live incremental updates
+ * 3. When user scrolls up, load older events via REST with before_sequence cursor
  *
- * This is critical for large sessions (1000+ turns, 30k+ events) where
- * SSE-only would trigger one state update per event on initial load.
+ * Pagination uses X-Total-Count header for scroll estimation.
  */
 export function useEvents(sessionId: string | undefined, options?: { enabled?: boolean }) {
   const { currentOrg } = useOrg();
@@ -243,6 +246,12 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Track whether initial REST fetch has completed
   const [restLoaded, setRestLoaded] = useState(false);
 
+  // Pagination state
+  const [totalNonDeltaCount, setTotalNonDeltaCount] = useState<number | undefined>();
+  const oldestLoadedSequenceRef = useRef<number | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
   // Cleanup SSE connection
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
@@ -261,10 +270,14 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     eventIdsRef.current.clear();
     reconnectRef.current = createReconnectTracker();
     setRestLoaded(false);
+    setTotalNonDeltaCount(undefined);
+    oldestLoadedSequenceRef.current = undefined;
+    setHasMore(false);
+    setLoadingOlder(false);
     cleanup();
   }, [org, sessionId, cleanup]);
 
-  // Step 1: REST batch load existing events
+  // Step 1: REST batch load last N events (excluding deltas for old messages)
   useEffect(() => {
     if (!org || !sessionId || !isEnabled) return;
 
@@ -272,16 +285,31 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
 
     async function fetchInitialEvents() {
       try {
-        const batch = await listEvents(sessionId!);
+        const result = await listEventsPaginated(sessionId!, {
+          limit: EVENT_PAGE_SIZE,
+          exclude: DEFAULT_EXCLUDED_EVENTS,
+        });
         if (cancelled) return;
 
+        const batch = result.events;
         if (batch.length > 0) {
           for (const e of batch) {
             eventIdsRef.current.add(e.id);
           }
           lastEventIdRef.current = batch[batch.length - 1].id;
+          // Track oldest loaded sequence for backward pagination
+          const firstSeq = batch[0].sequence;
+          if (firstSeq !== undefined) {
+            oldestLoadedSequenceRef.current = firstSeq;
+          }
           // Single state update for entire batch
           setEvents(batch);
+        }
+
+        if (result.totalNonDeltaCount !== undefined) {
+          setTotalNonDeltaCount(result.totalNonDeltaCount);
+          // There are more events if we loaded fewer than total
+          setHasMore(batch.length < result.totalNonDeltaCount);
         }
       } catch (e) {
         if (cancelled) return;
@@ -300,7 +328,51 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     };
   }, [org, sessionId, isEnabled]);
 
+  // Load older events (triggered by scrolling up)
+  const loadOlderEvents = useCallback(async () => {
+    if (!sessionId || loadingOlder || !hasMore || oldestLoadedSequenceRef.current === undefined) {
+      return;
+    }
+
+    setLoadingOlder(true);
+    try {
+      const result = await listEventsPaginated(sessionId, {
+        limit: EVENT_PAGE_SIZE,
+        before_sequence: oldestLoadedSequenceRef.current,
+        exclude: DEFAULT_EXCLUDED_EVENTS,
+      });
+
+      const older = result.events;
+      if (older.length > 0) {
+        for (const e of older) {
+          eventIdsRef.current.add(e.id);
+        }
+        const firstSeq = older[0].sequence;
+        if (firstSeq !== undefined) {
+          oldestLoadedSequenceRef.current = firstSeq;
+        }
+        // Prepend older events
+        setEvents((prev) => [...older, ...prev]);
+        // Check if there are still more
+        if (result.totalNonDeltaCount !== undefined) {
+          setTotalNonDeltaCount(result.totalNonDeltaCount);
+        }
+        // No more if we got fewer than requested
+        if (older.length < EVENT_PAGE_SIZE) {
+          setHasMore(false);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (e) {
+      console.error("Failed to load older events:", e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [sessionId, loadingOlder, hasMore]);
+
   // Step 2: SSE for live updates (starts after REST completes)
+  // SSE is unfiltered — picks up deltas for in-flight streaming messages naturally
   useEffect(() => {
     if (!org || !sessionId || !isEnabled || !restLoaded) {
       return;
@@ -381,5 +453,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     isLoading,
     isReconnecting,
     error,
+    // Pagination
+    hasMore,
+    loadingOlder,
+    loadOlderEvents,
+    totalNonDeltaCount,
   };
 }

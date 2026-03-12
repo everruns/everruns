@@ -193,7 +193,15 @@ impl SlackDeliveryDispatcher {
             // Fetch events since last processed
             let events = match self
                 .db
-                .list_events(session_id_typed, None, ctx.since_event_id, &empty, &empty)
+                .list_events(
+                    session_id_typed,
+                    None,
+                    ctx.since_event_id,
+                    &empty,
+                    &empty,
+                    None,
+                    None,
+                )
                 .await
             {
                 Ok(events) => events,
@@ -347,7 +355,7 @@ impl SlackDeliveryDispatcher {
             let filter_types = vec!["input.message".to_string()];
             let events = match self
                 .db
-                .list_events(session.id, None, None, &filter_types, &empty)
+                .list_events(session.id, None, None, &filter_types, &empty, None, None)
                 .await
             {
                 Ok(events) => events,
@@ -401,7 +409,15 @@ impl SlackDeliveryDispatcher {
             let turn_events = vec!["turn.completed".to_string(), "turn.failed".to_string()];
             let completion_events = self
                 .db
-                .list_events(session.id, None, Some(last_input.id), &turn_events, &empty)
+                .list_events(
+                    session.id,
+                    None,
+                    Some(last_input.id),
+                    &turn_events,
+                    &empty,
+                    None,
+                    None,
+                )
                 .await
                 .unwrap_or_default();
 

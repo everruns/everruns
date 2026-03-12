@@ -1324,6 +1324,7 @@ impl Database {
         Ok(row.0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,
         session_id: SessionId,
@@ -1331,6 +1332,8 @@ impl Database {
         since_id: Option<EventId>,
         filter_types: &[String],
         exclude_types: &[String],
+        before_sequence: Option<i32>,
+        limit: Option<i32>,
     ) -> Result<Vec<EventRow>> {
         // UUID v7 is NOT guaranteed monotonically increasing across concurrent inserts,
         // so we always filter and order by the dedicated sequence column.
@@ -1338,6 +1341,62 @@ impl Database {
         // filter_types: positive filter — when non-empty, only return matching event types.
         // exclude_types: negative filter — remove matching event types from results.
         // When both are provided, filter_types narrows first, then exclude_types removes.
+        //
+        // Backward pagination: when `limit` is provided (with optional `before_sequence`),
+        // fetch the last N events by using ORDER BY sequence DESC LIMIT N, then reverse
+        // so results are returned oldest→newest.
+        if let Some(limit) = limit {
+            // Backward pagination: fetch last N events before a cursor
+            let rows = if let Some(before_seq) = before_sequence {
+                sqlx::query_as::<_, EventRow>(
+                    r#"
+                    SELECT * FROM (
+                        SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                        FROM events
+                        WHERE session_id = $1
+                          AND sequence < $2
+                          AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
+                          AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
+                        ORDER BY sequence DESC
+                        LIMIT $5
+                    ) batch
+                    ORDER BY sequence ASC
+                    "#,
+                )
+                .bind(session_id.uuid())
+                .bind(before_seq)
+                .bind(filter_types)
+                .bind(exclude_types)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await?
+            } else {
+                // No cursor: fetch the last N events
+                sqlx::query_as::<_, EventRow>(
+                    r#"
+                    SELECT * FROM (
+                        SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                        FROM events
+                        WHERE session_id = $1
+                          AND (cardinality($2::text[]) = 0 OR event_type = ANY($2))
+                          AND (cardinality($3::text[]) = 0 OR event_type <> ALL($3))
+                        ORDER BY sequence DESC
+                        LIMIT $4
+                    ) batch
+                    ORDER BY sequence ASC
+                    "#,
+                )
+                .bind(session_id.uuid())
+                .bind(filter_types)
+                .bind(exclude_types)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await?
+            };
+            return Ok(rows);
+        }
+
+        // Original unbounded query (backward compat when no limit param)
         let rows = match (since_id, since_sequence) {
             (Some(id), _) => {
                 sqlx::query_as::<_, EventRow>(
@@ -1419,6 +1478,31 @@ impl Database {
         .await?;
 
         Ok(count)
+    }
+
+    /// Find the nearest turn.started sequence at or before the given sequence.
+    /// Used for turn boundary snapping in pagination.
+    pub async fn find_turn_boundary(
+        &self,
+        session_id: SessionId,
+        before_sequence: i32,
+    ) -> Result<Option<i32>> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT sequence
+            FROM events
+            WHERE session_id = $1
+              AND sequence <= $2
+              AND event_type = 'turn.started'
+            ORDER BY sequence DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(before_sequence)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| r.0))
     }
 
     /// List only message events for a session (for MessageStore implementation)

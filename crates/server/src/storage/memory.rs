@@ -1062,6 +1062,7 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,
         session_id: SessionId,
@@ -1069,6 +1070,8 @@ impl InMemoryDatabase {
         since_id: Option<EventId>,
         filter_types: &[String],
         exclude_types: &[String],
+        before_sequence: Option<i32>,
+        limit: Option<i32>,
     ) -> Result<Vec<EventRow>> {
         let events = self.events.read();
         let mut result: Vec<_> = events
@@ -1083,6 +1086,12 @@ impl InMemoryDatabase {
                 }
                 // Negative type filter: exclude matching types
                 if !exclude_types.is_empty() && exclude_types.contains(&e.event_type) {
+                    return false;
+                }
+                // before_sequence cursor for backward pagination
+                if let Some(before_seq) = before_sequence
+                    && e.sequence >= before_seq
+                {
                     return false;
                 }
                 // Resolve since_id to its sequence number for reliable ordering.
@@ -1107,7 +1116,35 @@ impl InMemoryDatabase {
             .collect();
 
         result.sort_by_key(|e| e.sequence);
+
+        // Apply limit: take last N events (backward pagination)
+        if let Some(limit) = limit {
+            let limit = limit as usize;
+            if result.len() > limit {
+                result = result.split_off(result.len() - limit);
+            }
+        }
+
         Ok(result)
+    }
+
+    /// Find the nearest turn.started sequence at or before the given sequence.
+    pub async fn find_turn_boundary(
+        &self,
+        session_id: SessionId,
+        before_sequence: i32,
+    ) -> Result<Option<i32>> {
+        let events = self.events.read();
+        let seq = events
+            .values()
+            .filter(|e| {
+                e.session_id == session_id
+                    && e.sequence <= before_sequence
+                    && e.event_type == "turn.started"
+            })
+            .map(|e| e.sequence)
+            .max();
+        Ok(seq)
     }
 
     /// Check if an input.message event with a given slack_ts already exists in a session.
@@ -4102,7 +4139,7 @@ mod tests {
         }
 
         let events = db
-            .list_events(session.id, None, None, &[], &[])
+            .list_events(session.id, None, None, &[], &[], None, None)
             .await
             .unwrap();
         assert_eq!(events.len(), 3);
@@ -4209,6 +4246,8 @@ mod tests {
                 None,
                 &["turn.started".to_string(), "turn.completed".to_string()],
                 &[],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4224,7 +4263,15 @@ mod tests {
 
         // Positive filter: single type
         let events = db
-            .list_events(session_id, None, None, &["input.message".to_string()], &[])
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["input.message".to_string()],
+                &[],
+                None,
+                None,
+            )
             .await
             .unwrap();
 
@@ -4239,7 +4286,7 @@ mod tests {
 
         // Empty types = return all (6 events created)
         let events = db
-            .list_events(session_id, None, None, &[], &[])
+            .list_events(session_id, None, None, &[], &[], None, None)
             .await
             .unwrap();
 
@@ -4259,6 +4306,8 @@ mod tests {
                 None,
                 &["nonexistent.type".to_string()],
                 &[],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4282,6 +4331,8 @@ mod tests {
                     "output.message.delta".to_string(),
                     "reason.thinking.delta".to_string(),
                 ],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4308,6 +4359,8 @@ mod tests {
                     "input.message".to_string(),
                 ],
                 &["turn.completed".to_string()],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4332,6 +4385,8 @@ mod tests {
                 None,
                 &["input.message".to_string()],
                 &["input.message".to_string()],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4346,7 +4401,7 @@ mod tests {
 
         // Get all events to find the ID of the second event
         let all_events = db
-            .list_events(session_id, None, None, &[], &[])
+            .list_events(session_id, None, None, &[], &[], None, None)
             .await
             .unwrap();
         assert_eq!(all_events.len(), 6);
@@ -4356,13 +4411,29 @@ mod tests {
 
         // Using since_id should return events after that event's sequence
         let events_after_id = db
-            .list_events(session_id, None, Some(second_event_id), &[], &[])
+            .list_events(
+                session_id,
+                None,
+                Some(second_event_id),
+                &[],
+                &[],
+                None,
+                None,
+            )
             .await
             .unwrap();
 
         // Using since_sequence with the same sequence should return the same events
         let events_after_seq = db
-            .list_events(session_id, Some(second_event_seq), None, &[], &[])
+            .list_events(
+                session_id,
+                Some(second_event_seq),
+                None,
+                &[],
+                &[],
+                None,
+                None,
+            )
             .await
             .unwrap();
 
@@ -4390,7 +4461,7 @@ mod tests {
         // Using a since_id that doesn't exist should return no events
         let unknown_id = EventId::new();
         let events = db
-            .list_events(session_id, None, Some(unknown_id), &[], &[])
+            .list_events(session_id, None, Some(unknown_id), &[], &[], None, None)
             .await
             .unwrap();
 
@@ -4403,7 +4474,7 @@ mod tests {
         let session_id = create_session_with_events(&db).await;
 
         let all_events = db
-            .list_events(session_id, None, None, &[], &[])
+            .list_events(session_id, None, None, &[], &[], None, None)
             .await
             .unwrap();
 
@@ -4417,6 +4488,8 @@ mod tests {
                 Some(fourth_event_id),
                 &[],
                 &[],
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -4424,6 +4497,167 @@ mod tests {
         assert_eq!(events.len(), 2); // events 5 and 6
         assert_eq!(events[0].sequence, all_events[4].sequence);
         assert_eq!(events[1].sequence, all_events[5].sequence);
+    }
+
+    #[tokio::test]
+    async fn test_list_events_with_limit() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // 6 events total. limit=3 should return last 3.
+        let events = db
+            .list_events(session_id, None, None, &[], &[], None, Some(3))
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 3);
+        // Should be the last 3 events in sequence order
+        assert!(events[0].sequence < events[1].sequence);
+        assert!(events[1].sequence < events[2].sequence);
+    }
+
+    #[tokio::test]
+    async fn test_list_events_with_limit_and_before_sequence() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        let all = db
+            .list_events(session_id, None, None, &[], &[], None, None)
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 6);
+
+        // Get last 2 events before the 5th event's sequence
+        let fifth_seq = all[4].sequence;
+        let events = db
+            .list_events(session_id, None, None, &[], &[], Some(fifth_seq), Some(2))
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2);
+        // Should be events 3 and 4 (0-indexed)
+        assert_eq!(events[0].id, all[2].id);
+        assert_eq!(events[1].id, all[3].id);
+    }
+
+    #[tokio::test]
+    async fn test_list_events_limit_greater_than_total() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // limit=1000 but only 6 events exist — returns all 6
+        let events = db
+            .list_events(session_id, None, None, &[], &[], None, Some(1000))
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_list_events_limit_with_exclude() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // 6 events, 2 are deltas. Exclude deltas + limit=2 → last 2 non-delta events
+        let events = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &[],
+                &[
+                    "output.message.delta".to_string(),
+                    "reason.thinking.delta".to_string(),
+                ],
+                None,
+                Some(2),
+            )
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| !e.event_type.contains("delta")));
+    }
+
+    #[tokio::test]
+    async fn test_count_non_delta_events() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // 6 events total, 2 are deltas → 4 non-delta
+        let delta_types = vec![
+            "output.message.delta".to_string(),
+            "reason.thinking.delta".to_string(),
+        ];
+        let count = db.count_events(session_id, &delta_types).await.unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[tokio::test]
+    async fn test_find_turn_boundary() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        let all = db
+            .list_events(session_id, None, None, &[], &[], None, None)
+            .await
+            .unwrap();
+
+        // Find the turn.started event
+        let turn_started = all.iter().find(|e| e.event_type == "turn.started").unwrap();
+
+        // Searching at or after the turn.started sequence should find it
+        let boundary = db
+            .find_turn_boundary(session_id, turn_started.sequence + 1)
+            .await
+            .unwrap();
+        assert_eq!(boundary, Some(turn_started.sequence));
+
+        // Searching before the turn.started sequence should find nothing
+        // (if turn.started is the first turn event)
+        let boundary = db
+            .find_turn_boundary(session_id, turn_started.sequence - 1)
+            .await
+            .unwrap();
+        assert!(boundary.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_list_events_empty_session_with_limit() {
+        let db = InMemoryDatabase::new();
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
+                    name: "Empty Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                    tools: serde_json::json!([]),
+                },
+            )
+            .await
+            .unwrap();
+
+        let session = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: Some(agent.id),
+                title: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        // Empty session with limit should return empty
+        let events = db
+            .list_events(session.id, None, None, &[], &[], None, Some(200))
+            .await
+            .unwrap();
+        assert!(events.is_empty());
     }
 
     #[tokio::test]

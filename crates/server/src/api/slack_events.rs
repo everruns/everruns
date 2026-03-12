@@ -981,7 +981,7 @@ async fn wait_and_post_response(
         }
 
         let events = db
-            .list_events(session_id_typed, None, since_id, &empty, &empty)
+            .list_events(session_id_typed, None, since_id, &empty, &empty, None, None)
             .await?;
 
         for event_row in &events {

@@ -300,7 +300,7 @@ async fn test_event_crud() {
 
     // List events
     let events = backend
-        .list_events(session.id, None, None, &[], &[])
+        .list_events(session.id, None, None, &[], &[], None, None)
         .await
         .expect("Failed to list events");
     assert_eq!(events.len(), 1);
@@ -308,7 +308,7 @@ async fn test_event_crud() {
 
     // List with since_id filter
     let events_since = backend
-        .list_events(session.id, None, Some(event.id), &[], &[])
+        .list_events(session.id, None, Some(event.id), &[], &[], None, None)
         .await
         .expect("Failed to list events with since_id");
     assert!(
@@ -389,6 +389,8 @@ async fn test_event_exclude_types() {
             None,
             &[],
             &["output.message.delta".to_string()],
+            None,
+            None,
         )
         .await
         .expect("Failed to list events");
@@ -462,6 +464,8 @@ async fn test_event_filter_types() {
             None,
             &["turn.started".to_string(), "turn.completed".to_string()],
             &[],
+            None,
+            None,
         )
         .await
         .expect("Failed to list events with types filter");
@@ -470,7 +474,7 @@ async fn test_event_filter_types() {
 
     // Empty types = all events
     let events = backend
-        .list_events(session.id, None, None, &[], &[])
+        .list_events(session.id, None, None, &[], &[], None, None)
         .await
         .expect("Failed to list all events");
     assert_eq!(events.len(), 5);
@@ -487,6 +491,8 @@ async fn test_event_filter_types() {
                 "turn.completed".to_string(),
             ],
             &["turn.completed".to_string()],
+            None,
+            None,
         )
         .await
         .expect("Failed to list events with types+exclude");
@@ -504,6 +510,8 @@ async fn test_event_filter_types() {
             None,
             &["nonexistent.type".to_string()],
             &[],
+            None,
+            None,
         )
         .await
         .expect("Failed to list events with unmatched types");

@@ -279,6 +279,19 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 When both `types` and `exclude` are provided, `types` narrows first, then `exclude` removes from that set. Both accept only known event types (max 25 per parameter). See [events.md](events.md) for full filtering semantics.
 
+**Pagination Parameters** (list endpoint only):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | integer (1-1000) | Max events to return. Enables backward pagination (last N events). |
+| `before_sequence` | integer | Cursor: only return events with sequence < this value. Requires `limit`. |
+
+When `limit` is provided:
+- Returns the last N events (oldest→newest within batch)
+- Response includes `X-Total-Count` header with count of non-delta events
+- Turn boundary snapping: batch start snaps to nearest `turn.started` event
+- Without `limit`, all events are returned (backward compatible)
+
 ### LLM Provider Configuration
 
 | Method | Path | Description |
@@ -526,7 +539,7 @@ Endpoints that return lists support pagination via query parameters:
 These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/agents` - Returns all agents
 - `GET /v1/sessions/{session_id}/messages` - Returns all messages
-- `GET /v1/sessions/{session_id}/events` - Returns all events
+- `GET /v1/sessions/{session_id}/events` - Returns all events (supports optional `limit`/`before_sequence` pagination)
 - `GET /v1/llm-providers` - Returns all providers
 - `GET /v1/llm-models` - Returns all models
 - `GET /v1/durable/workers` - Returns all workers
