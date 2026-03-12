@@ -1,15 +1,10 @@
-//! WebFetch Capability - provides tools to fetch web content
-//!
-//! This capability uses the fetchkit library to fetch content from URLs and convert
-//! HTML responses to markdown or plain text for easier processing.
+//! WebFetch Capability — fetches web content via fetchkit
 //!
 //! Design decisions:
-//! - Uses fetchkit library for HTTP operations, HTML conversion, and tool metadata
-//! - Binary content is not supported for inline responses but accepted for file downloads
-//! - Timeout for first byte: 1 second (connect + time to first response byte)
-//! - Timeout for body: 30 seconds total, partial content returned if exceeded
-//! - File download via `save_to_file` saves through session filesystem (SessionFileStore)
-//! - See specs/fetchkit-file-download.md for design details
+//! - All metadata (description, schema, llmtxt) comes from fetchkit::ToolBuilder
+//! - File download (`save_to_file`) auto-enabled when `session_file_system` is a sibling
+//! - Binary content accepted for file downloads, rejected for inline responses
+//! - See specs/fetchkit.md for design details
 
 use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::tools::{Tool, ToolExecutionResult};
@@ -22,15 +17,14 @@ use fetchkit::{FetchError, FetchRequest};
 use serde_json::Value;
 use std::sync::Arc;
 
-/// WebFetch capability - provides tools to fetch web content
+/// WebFetch capability — fetches web content, optionally saves to session filesystem.
+///
+/// File download is enabled via per-capability config: `{"enable_file_download": true}`.
+/// Description, schema, and system prompt all come from fetchkit's ToolBuilder,
+/// adapting to whether file download is on.
 pub struct WebFetchCapability;
 
-/// Lazily-built fetchkit Tool instance with save_to_file enabled.
-/// Used for schema, description, and llmtxt generation.
-fn fetchkit_tool() -> fetchkit::Tool {
-    fetchkit::Tool::builder().enable_save_to_file(true).build()
-}
-
+#[async_trait]
 impl Capability for WebFetchCapability {
     fn id(&self) -> &str {
         "web_fetch"
@@ -61,12 +55,50 @@ impl Capability for WebFetchCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        // Use the LLM-optimized documentation from fetchkit (static with all features)
-        Some(fetchkit::TOOL_LLMTXT.as_ref())
+        None
+    }
+
+    fn system_prompt_preview(&self) -> Option<String> {
+        // Preview with all features for UI display
+        Some(
+            fetchkit::Tool::builder()
+                .enable_save_to_file(true)
+                .build()
+                .llmtxt(),
+        )
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        _ctx: &super::SystemPromptContext,
+        config: &serde_json::Value,
+    ) -> Option<String> {
+        let enable_file_download = config
+            .get("enable_file_download")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let llmtxt = fetchkit::Tool::builder()
+            .enable_save_to_file(enable_file_download)
+            .build()
+            .llmtxt();
+        Some(format!(
+            "<capability id=\"{}\">\n{}\n</capability>",
+            self.id(),
+            llmtxt
+        ))
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(WebFetchTool::default())]
+        // Default: no file download
+        vec![Box::new(WebFetchTool::new(false))]
+    }
+
+    fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
+        let enable_file_download = config
+            .get("enable_file_download")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        vec![Box::new(WebFetchTool::new(enable_file_download))]
     }
 }
 
@@ -125,13 +157,27 @@ impl FileSaver for SessionFileSaver {
 /// the session filesystem (SessionFileStore) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
     fetchkit_tool: fetchkit::Tool,
+    /// Cached description from ToolBuilder (Tool trait returns &str, fetchkit returns String)
+    description: String,
+}
+
+impl WebFetchTool {
+    /// Create a new WebFetchTool with file download support controlled by `enable_save_to_file`.
+    pub fn new(enable_save_to_file: bool) -> Self {
+        let fetchkit_tool = fetchkit::Tool::builder()
+            .enable_save_to_file(enable_save_to_file)
+            .build();
+        let description = fetchkit_tool.description();
+        Self {
+            fetchkit_tool,
+            description,
+        }
+    }
 }
 
 impl Default for WebFetchTool {
     fn default() -> Self {
-        Self {
-            fetchkit_tool: fetchkit_tool(),
-        }
+        Self::new(false)
     }
 }
 
@@ -224,7 +270,7 @@ impl Tool for WebFetchTool {
     }
 
     fn description(&self) -> &str {
-        fetchkit::TOOL_DESCRIPTION
+        &self.description
     }
 
     fn parameters_schema(&self) -> Value {
@@ -318,11 +364,14 @@ mod tests {
     /// Create a WebFetchTool with permissive DNS policy for wiremock tests
     /// (wiremock binds to 127.0.0.1 which is blocked by default).
     fn tool_for_wiremock() -> WebFetchTool {
+        let fetchkit_tool = fetchkit::Tool::builder()
+            .enable_save_to_file(true)
+            .block_private_ips(false)
+            .build();
+        let description = fetchkit_tool.description();
         WebFetchTool {
-            fetchkit_tool: fetchkit::Tool::builder()
-                .enable_save_to_file(true)
-                .block_private_ips(false)
-                .build(),
+            fetchkit_tool,
+            description,
         }
     }
 
@@ -348,9 +397,11 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("globe"));
         assert_eq!(cap.category(), Some("Network"));
-        // System prompt comes from fetchkit's TOOL_LLMTXT
-        assert!(cap.system_prompt_addition().is_some());
-        assert!(cap.system_prompt_addition().unwrap().contains("FetchKit"));
+        // System prompt comes from fetchkit ToolBuilder via system_prompt_contribution_with_config
+        assert!(cap.system_prompt_addition().is_none());
+        // Preview shows full features for UI
+        let preview = cap.system_prompt_preview().unwrap();
+        assert!(preview.contains("FetchKit"));
     }
 
     #[test]
@@ -1416,13 +1467,21 @@ mod tests {
     }
 
     #[test]
-    fn test_web_fetch_tool_schema_includes_save_to_file() {
-        let tool = WebFetchTool::default();
+    fn test_web_fetch_tool_schema_save_to_file_gated_by_config() {
+        // Default (no file download): save_to_file NOT in schema
+        let tool = WebFetchTool::new(false);
         let schema = tool.parameters_schema();
+        assert!(
+            !schema["properties"]["save_to_file"].is_object(),
+            "Schema should NOT include save_to_file when disabled"
+        );
 
+        // With file download enabled: save_to_file in schema
+        let tool = WebFetchTool::new(true);
+        let schema = tool.parameters_schema();
         assert!(
             schema["properties"]["save_to_file"].is_object(),
-            "Schema should include save_to_file parameter"
+            "Schema should include save_to_file when enabled"
         );
     }
 
@@ -1430,6 +1489,46 @@ mod tests {
     fn test_web_fetch_tool_requires_context() {
         let tool = WebFetchTool::default();
         assert!(tool.requires_context());
+    }
+
+    #[test]
+    fn test_web_fetch_tools_with_config_enables_file_download() {
+        let cap = WebFetchCapability;
+
+        // Without config: no save_to_file in schema
+        let tools = cap.tools_with_config(&serde_json::json!({}));
+        assert_eq!(tools.len(), 1);
+        let schema = tools[0].parameters_schema();
+        assert!(!schema["properties"]["save_to_file"].is_object());
+
+        // With enable_file_download: save_to_file in schema
+        let tools = cap.tools_with_config(&serde_json::json!({"enable_file_download": true}));
+        assert_eq!(tools.len(), 1);
+        let schema = tools[0].parameters_schema();
+        assert!(schema["properties"]["save_to_file"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_system_prompt_adapts_to_config() {
+        let cap = WebFetchCapability;
+        let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
+
+        // Without file download: no save_to_file mention in prompt
+        let prompt = cap
+            .system_prompt_contribution_with_config(&ctx, &serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(!prompt.contains("save_to_file"));
+
+        // With file download: save_to_file documented in prompt
+        let prompt = cap
+            .system_prompt_contribution_with_config(
+                &ctx,
+                &serde_json::json!({"enable_file_download": true}),
+            )
+            .await
+            .unwrap();
+        assert!(prompt.contains("save_to_file"));
     }
 
     #[tokio::test]

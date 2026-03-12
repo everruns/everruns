@@ -309,6 +309,31 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns tool implementations configured by per-capability config.
+    ///
+    /// Called during capability collection with the per-agent config for this
+    /// capability (from `AgentCapabilityConfig.config`). Capabilities that adapt
+    /// their tools based on config override this method.
+    ///
+    /// Default delegates to `tools()`.
+    fn tools_with_config(&self, _config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
+        self.tools()
+    }
+
+    /// Returns system prompt contribution adapted to per-capability config.
+    ///
+    /// Called during capability collection. Capabilities whose system prompt
+    /// content depends on config override this method.
+    ///
+    /// Default delegates to `system_prompt_contribution(ctx)`.
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        _config: &serde_json::Value,
+    ) -> Option<String> {
+        self.system_prompt_contribution(ctx).await
+    }
+
     /// Returns tool definitions for the agent config
     /// By default, converts tools() to definitions
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
@@ -957,13 +982,16 @@ pub async fn collect_capabilities_with_configs(
                 continue;
             }
 
-            // Collect dynamic system prompt contribution (may read from filesystem)
-            if let Some(contribution) = capability.system_prompt_contribution(ctx).await {
+            // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
+            if let Some(contribution) = capability
+                .system_prompt_contribution_with_config(ctx, &cap_config.config)
+                .await
+            {
                 system_prompt_parts.push(contribution);
             }
 
-            // Collect tools
-            tools.extend(capability.tools());
+            // Collect tools (config-aware: capabilities can adapt based on per-agent config)
+            tools.extend(capability.tools_with_config(&cap_config.config));
 
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = capability.category();
