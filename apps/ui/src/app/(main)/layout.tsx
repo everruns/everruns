@@ -22,7 +22,6 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading: authLoading, requiresAuth } = useAuth();
   const { isLoading: orgLoading } = useOrg();
-  const globalSearchEnabled = useFeatureFlag("global_search");
   const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
 
@@ -69,7 +68,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     <div className="flex h-screen">
       <Sidebar />
       <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-      {globalSearchEnabled && <CommandPalette />}
+      <CommandPalette />
     </div>
   );
 
@@ -79,11 +78,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     appChrome
   );
 
-  if (globalSearchEnabled) {
-    return <CommandPaletteContext value={commandPalette}>{content}</CommandPaletteContext>;
-  }
-
-  return content;
+  return <CommandPaletteContext value={commandPalette}>{content}</CommandPaletteContext>;
 }
 
 export default function MainLayout({ children }: MainLayoutProps) {
