@@ -750,7 +750,7 @@ Capabilities can contribute message filters that modify how messages are retriev
 | `TimeRange { from, to }` | Filter by timestamp range | `WHERE created_at >= $from AND created_at <= $to` |
 | `EventTypes(Vec<String>)` | Whitelist event types | `WHERE event_type = ANY($types)` |
 | `ToolName(String)` | Filter tool results by name | `WHERE event_type = 'tool.completed' AND data->>'tool_name' = $name` |
-| `Search(String)` | Full-text search in content | `WHERE data::text ILIKE '%' || $query || '%'` |
+| `Search(String)` | Full-text search in content | `WHERE search_vector @@ plainto_tsquery('english', $query)` |
 | `ExcludeIds(Vec<Uuid>)` | Exclude specific message IDs | `WHERE id != ALL($ids)` |
 | `IncludeIds(Vec<Uuid>)` | Include only specific IDs | `WHERE id = ANY($ids)` |
 | `Custom(Arc<dyn Fn(&Message) -> bool>)` | In-memory predicate | Applied after DB query |

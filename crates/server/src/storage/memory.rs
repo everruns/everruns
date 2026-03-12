@@ -1255,8 +1255,13 @@ impl InMemoryDatabase {
                             }
                         }
                         MessageFilter::Search(search_query) => {
-                            let data_str = e.data.to_string().to_lowercase();
-                            if !data_str.contains(&search_query.to_lowercase()) {
+                            // Match PostgreSQL tsvector behavior: search data->>'content'
+                            let content =
+                                e.data.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                            if !content
+                                .to_lowercase()
+                                .contains(&search_query.to_lowercase())
+                            {
                                 return false;
                             }
                         }
@@ -5232,5 +5237,183 @@ mod tests {
             .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Web Widget");
+    }
+
+    // ─── MessageFilter::Search tests (EVE-87) ───
+
+    /// Helper: create a session with events containing specific content.
+    async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId {
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
+                    name: "Search Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                    tools: serde_json::json!([]),
+                },
+            )
+            .await
+            .unwrap();
+
+        let session = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: Some(agent.id),
+                title: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        // Create events with different content
+        let events_data = vec![
+            (
+                "input.message",
+                serde_json::json!({"content": "Hello, how are you?"}),
+            ),
+            (
+                "output.message.completed",
+                serde_json::json!({"content": "I am doing great, thank you!"}),
+            ),
+            (
+                "input.message",
+                serde_json::json!({"content": "Tell me about Rust programming"}),
+            ),
+            (
+                "tool.completed",
+                serde_json::json!({"tool_name": "search", "content": "Rust is a systems language"}),
+            ),
+            (
+                "output.message.completed",
+                serde_json::json!({"content": "Here is information about Rust"}),
+            ),
+            // Event with no content field
+            ("turn.started", serde_json::json!({"turn_id": "abc123"})),
+        ];
+
+        for (event_type, data) in events_data {
+            db.create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: Utc::now(),
+                context: serde_json::json!({}),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        session.id
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_matches_content_field() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        let query =
+            MessageQuery::new(session_id).with_filter(MessageFilter::Search("Rust".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        // Should match: "Tell me about Rust programming", "Rust is a systems language",
+        // "Here is information about Rust"
+        assert_eq!(events.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_case_insensitive() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        let query =
+            MessageQuery::new(session_id).with_filter(MessageFilter::Search("rust".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert_eq!(events.len(), 3);
+
+        // Also uppercase
+        let query =
+            MessageQuery::new(session_id).with_filter(MessageFilter::Search("RUST".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert_eq!(events.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_no_match() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        let query = MessageQuery::new(session_id)
+            .with_filter(MessageFilter::Search("nonexistent_xyz".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_skips_events_without_content() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        // "abc123" is in turn_id, not content — should not match
+        let query =
+            MessageQuery::new(session_id).with_filter(MessageFilter::Search("abc123".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_partial_match() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        let query =
+            MessageQuery::new(session_id).with_filter(MessageFilter::Search("great".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "output.message.completed");
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_combined_with_event_type() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        // Search for "Rust" but only in input.message events
+        let query = MessageQuery::new(session_id)
+            .with_filter(MessageFilter::EventTypes(vec!["input.message".to_string()]))
+            .with_filter(MessageFilter::Search("Rust".to_string()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "input.message");
+    }
+
+    #[tokio::test]
+    async fn test_search_filter_empty_string_matches_all() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_content_events(&db).await;
+
+        // Empty search string should match events that have content field
+        // (empty string is contained in any string)
+        let query = MessageQuery::new(session_id).with_filter(MessageFilter::Search(String::new()));
+
+        let events = db.list_message_events_filtered(&query).await.unwrap();
+        // All default message-type events have content, so all should match
+        // Default types: input.message, output.message.completed, tool.completed
+        assert_eq!(events.len(), 5);
     }
 }
