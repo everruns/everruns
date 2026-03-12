@@ -340,6 +340,15 @@ pub struct SessionRow {
     /// Cumulative cache creation tokens for all LLM calls in this session
     #[sqlx(default)]
     pub total_cache_creation_tokens: i64,
+    // -- Subagent fields --
+    #[sqlx(default)]
+    pub parent_session_id: Option<SessionId>,
+    #[sqlx(default)]
+    pub subagent_name: Option<String>,
+    #[sqlx(default)]
+    pub subagent_task: Option<String>,
+    #[sqlx(default)]
+    pub subagent_status: Option<String>,
 }
 
 #[derive(Debug, Clone)]
