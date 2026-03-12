@@ -564,6 +564,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
+| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
 
 ### Mitigation Details
 
@@ -630,6 +631,19 @@ Agents with the `platform_management` capability can create, update, and delete 
 - **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
+
+**TM-AGENT-018 — No Outbound URL Filtering on web_fetch (OPEN):**
+An agent influenced by prompt injection (via tool results or user messages) could chain data access tools with `web_fetch` to exfiltrate sensitive session data. While TM-AGENT-013 accepts this risk for legitimate use by trusted org members, prompt injection (TM-AGENT-001, TM-AGENT-002) can cause the agent to act against the user's intent.
+
+- **Attack chain:** Injected instruction in tool result → agent reads sensitive file → agent calls `web_fetch` with file contents to attacker-controlled URL
+- **Impact:** Data exfiltration of session files, environment variables, or conversation history
+- **Recommendation:** Add configurable URL allowlist/blocklist to `web_fetch` capability. Options:
+  1. Per-agent allowlist of permitted outbound domains (strictest)
+  2. Global blocklist of known-bad patterns (e.g., webhook.site, requestbin)
+  3. Block outbound POST/PUT by default; require explicit opt-in
+  4. Log all outbound `web_fetch` calls with URL + payload size for audit
+- **Complements:** fetchkit's DnsPolicy already blocks private IPs (TM-API-008). This adds application-layer URL policy on top.
+- **Priority:** Medium
 
 ## 14. Bash Sandbox (TM-BASH)
 
@@ -814,6 +828,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |
+| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Add URL allowlist/blocklist to web_fetch capability; audit outbound calls |
 
 ### Accepted Risks
 
