@@ -717,10 +717,17 @@ async fn test_slack_manifest_endpoint() {
 // ============================================
 
 /// Get real Slack credentials from environment. Returns None if not set.
+/// Checks TEST_-prefixed vars first (Doppler convention), then unprefixed.
 fn real_slack_credentials() -> Option<(String, String, String)> {
-    let token = std::env::var("SLACK_BOT_TOKEN").ok()?;
-    let secret = std::env::var("SLACK_SIGNING_SECRET").ok()?;
-    let channel = std::env::var("SLACK_TEST_CHANNEL").ok()?;
+    let token = std::env::var("TEST_SLACK_BOT_TOKEN")
+        .or_else(|_| std::env::var("SLACK_BOT_TOKEN"))
+        .ok()?;
+    let secret = std::env::var("TEST_SLACK_SIGNING_SECRET")
+        .or_else(|_| std::env::var("SLACK_SIGNING_SECRET"))
+        .ok()?;
+    let channel = std::env::var("TEST_SLACK_TEST_CHANNEL")
+        .or_else(|_| std::env::var("SLACK_TEST_CHANNEL"))
+        .ok()?;
     Some((token, secret, channel))
 }
 

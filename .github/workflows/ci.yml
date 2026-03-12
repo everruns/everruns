@@ -160,6 +160,93 @@ jobs:
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-integrations-daytona --all-features
 
+  # TEMPORARY: Slack live API tests — remove after validating on claude/slack-integration-tests-qlg50
+  slack-live-test:
+    name: Slack Live API Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event_name == 'push'
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Doppler token
+        id: check-key
+        run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "⏭️ DOPPLER_TOKEN not configured, skipping Slack live tests"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Doppler CLI
+        if: steps.check-key.outputs.skip != 'true'
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install Rust toolchain
+        if: steps.check-key.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        if: steps.check-key.outputs.skip != 'true'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        if: steps.check-key.outputs.skip != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: steps.check-key.outputs.skip != 'true' && env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        if: steps.check-key.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
+      - name: Cache sqlx-cli
+        if: steps.check-key.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
+
+      - name: Install sqlx-cli
+        if: steps.check-key.outputs.skip != 'true'
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
+
+      - name: Run migrations
+        if: steps.check-key.outputs.skip != 'true'
+        run: sqlx migrate run --source crates/server/migrations
+
+      - name: Run Slack live integration tests
+        if: steps.check-key.outputs.skip != 'true'
+        run: doppler run -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
+
   # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
   daytona-live-test:
     name: Daytona Live API Tests
