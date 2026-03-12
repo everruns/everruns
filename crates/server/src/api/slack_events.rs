@@ -1236,8 +1236,7 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
-    let manifest_yaml =
-        build_manifest_yaml(&app.name, &display_name, app.description.as_deref());
+    let manifest_yaml = build_manifest_yaml(&app.name, &display_name, app.description.as_deref());
 
     // URL-encode the manifest for the Slack "create from manifest" URL
     let encoded = urlencoding_encode(&manifest_yaml);
