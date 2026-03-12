@@ -1885,6 +1885,21 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         Ok(events)
     }
 
+    #[instrument(skip(self))]
+    async fn count_workflow_events(&self, workflow_id: Uuid) -> Result<i64, StoreError> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM durable_workflow_events WHERE workflow_id = $1")
+                .bind(workflow_id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!("Failed to count workflow events: {}", e);
+                    StoreError::Database(e.to_string())
+                })?;
+
+        Ok(count)
+    }
+
     // =========================================================================
     // Schedule Operations
     // =========================================================================

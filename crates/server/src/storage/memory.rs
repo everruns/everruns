@@ -1128,6 +1128,23 @@ impl InMemoryDatabase {
         Ok(found)
     }
 
+    /// Count events for a session without materializing rows.
+    pub async fn count_events(
+        &self,
+        session_id: SessionId,
+        exclude_types: &[String],
+    ) -> Result<i64> {
+        let events = self.events.read();
+        let count = events
+            .values()
+            .filter(|e| {
+                e.session_id == session_id
+                    && (exclude_types.is_empty() || !exclude_types.contains(&e.event_type))
+            })
+            .count();
+        Ok(count as i64)
+    }
+
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         self.list_message_events_limited(session_id, None).await
     }
@@ -4144,6 +4161,34 @@ mod tests {
         }
 
         session.id
+    }
+
+    #[tokio::test]
+    async fn test_count_events_no_materialization() {
+        let db = InMemoryDatabase::new();
+        let session_id = create_session_with_events(&db).await;
+
+        // Total count (6 events created by helper)
+        let count = db.count_events(session_id, &[]).await.unwrap();
+        assert_eq!(count, 6);
+
+        // Count excluding delta types
+        let count = db
+            .count_events(
+                session_id,
+                &[
+                    "output.message.delta".to_string(),
+                    "reason.thinking.delta".to_string(),
+                ],
+            )
+            .await
+            .unwrap();
+        assert_eq!(count, 4); // 6 - 2 delta types
+
+        // Count for non-existent session
+        let other_session = SessionId::new();
+        let count = db.count_events(other_session, &[]).await.unwrap();
+        assert_eq!(count, 0);
     }
 
     #[tokio::test]
