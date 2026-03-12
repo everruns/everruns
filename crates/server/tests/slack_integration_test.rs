@@ -19,6 +19,8 @@
 
 mod test_harness;
 
+use std::sync::Once;
+
 use axum::http::{Method, StatusCode};
 use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
@@ -28,6 +30,20 @@ use test_harness::TestServer;
 use everruns_core::App;
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Initialize tracing for tests (only once). Reads RUST_LOG from env.
+static INIT_TRACING: Once = Once::new();
+fn init_tracing() {
+    INIT_TRACING.call_once(|| {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+            )
+            .with_test_writer()
+            .try_init();
+    });
+}
 
 /// Generate a unique timestamp-like string for test isolation across runs.
 fn unique_ts() -> String {
@@ -116,6 +132,7 @@ fn sign_slack_request(signing_secret: &str, timestamp: &str, body: &[u8]) -> Str
 
 /// Helper: create a published Slack app via API, return the app.
 async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -> App {
+    init_tracing();
     // First, get a seed agent
     let agents_resp = server.get("/v1/agents").await.assert_success();
     let agents: Value = agents_resp.json();
