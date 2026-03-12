@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
+- **Browserless Integration** — Browser automation for agents via Browserless ([#776](https://github.com/everruns/everruns/pull/776))
 - **Slack Thread Context** — Bot receives full thread context when first mentioned mid-thread ([#768](https://github.com/everruns/everruns/pull/768))
 - **Preview of OpenUI Generative UI** — Dynamic generative UI capability for agents ([#790](https://github.com/everruns/everruns/pull/790))
 - **Global Search & Command Palette** — Cmd+K to search sessions, navigate, and run commands ([#767](https://github.com/everruns/everruns/pull/767))
