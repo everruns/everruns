@@ -722,7 +722,7 @@ async fn test_slack_manifest_endpoint() {
 /// **In CI** (`CI=true`), panics if any variable is missing — credentials
 /// must always be available via Doppler so real-API tests never silently skip.
 fn real_slack_credentials() -> Option<(String, String, String)> {
-    let in_ci = std::env::var("CI").map_or(false, |v| v == "true");
+    let in_ci = std::env::var("CI").is_ok_and(|v| v == "true");
 
     let token = std::env::var("TEST_SLACK_BOT_TOKEN")
         .or_else(|_| std::env::var("SLACK_BOT_TOKEN"))
@@ -847,7 +847,7 @@ async fn test_real_slack_users_info() {
 
     // Now test users.info
     let resp = client
-        .get(&format!(
+        .get(format!(
             "https://slack.com/api/users.info?user={}",
             user_id
         ))
