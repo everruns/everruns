@@ -130,15 +130,26 @@ fn sign_slack_request(signing_secret: &str, timestamp: &str, body: &[u8]) -> Str
     format!("v0={}", hex::encode(result.into_bytes()))
 }
 
+/// Helper: create a fresh agent via API (avoids FK issues with soft-deleted seed agents).
+async fn create_test_agent(server: &TestServer) -> String {
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("Slack Test Agent {}", unique_ts()),
+                "system_prompt": "You are a test agent."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    agent["id"].as_str().unwrap().to_string()
+}
+
 /// Helper: create a published Slack app via API, return the app.
 async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -> App {
     init_tracing();
-    // First, get a seed agent
-    let agents_resp = server.get("/v1/agents").await.assert_success();
-    let agents: Value = agents_resp.json();
-    let agent_id = agents["data"][0]["id"]
-        .as_str()
-        .expect("need at least one seed agent");
+    let agent_id = create_test_agent(server).await;
 
     // Create app with Slack channel config
     let app: App = server
@@ -395,9 +406,7 @@ async fn test_slack_bot_message_ignored() {
 async fn test_slack_unpublished_app_rejected() {
     let server = TestServer::new().await;
 
-    // Get a seed agent
-    let agents: Value = server.get("/v1/agents").await.assert_success().json();
-    let agent_id = agents["data"][0]["id"].as_str().unwrap();
+    let agent_id = create_test_agent(&server).await;
 
     // Create app but don't publish
     let app: App = server
@@ -477,10 +486,7 @@ async fn test_slack_app_mention_creates_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_per_channel_strategy() {
     let server = TestServer::new().await;
-
-    // Get a seed agent
-    let agents: Value = server.get("/v1/agents").await.assert_success().json();
-    let agent_id = agents["data"][0]["id"].as_str().unwrap();
+    let agent_id = create_test_agent(&server).await;
 
     // Create app with per_channel strategy
     let app: App = server
@@ -561,9 +567,7 @@ async fn test_slack_per_channel_strategy() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_per_user_strategy() {
     let server = TestServer::new().await;
-
-    let agents: Value = server.get("/v1/agents").await.assert_success().json();
-    let agent_id = agents["data"][0]["id"].as_str().unwrap();
+    let agent_id = create_test_agent(&server).await;
 
     let app: App = server
         .post(
@@ -854,8 +858,7 @@ async fn test_real_slack_webhook_to_session() {
 
     let server = TestServer::new().await;
 
-    let agents: Value = server.get("/v1/agents").await.assert_success().json();
-    let agent_id = agents["data"][0]["id"].as_str().unwrap();
+    let agent_id = create_test_agent(&server).await;
 
     // Create app with real signing secret
     let app: App = server
