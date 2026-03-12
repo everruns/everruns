@@ -9,6 +9,18 @@ use uuid::Uuid;
 
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 
+/// Default snapshot interval: save a snapshot every N events.
+/// Configurable via `DURABLE_SNAPSHOT_INTERVAL` env var.
+pub const DEFAULT_SNAPSHOT_INTERVAL: i32 = 1000;
+
+/// Read snapshot interval from env, falling back to default.
+pub fn snapshot_interval_from_env() -> i32 {
+    std::env::var("DURABLE_SNAPSHOT_INTERVAL")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_SNAPSHOT_INTERVAL)
+}
+
 /// Default max pending (unclaimed) tasks per workflow.
 /// Prevents a single workflow from flooding the queue.
 pub const DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW: u32 = 100;
@@ -405,6 +417,26 @@ pub struct WorkflowInfo {
     pub error: Option<crate::workflow::WorkflowError>,
 }
 
+/// A snapshot of serialized workflow state at a specific event sequence.
+///
+/// Used to checkpoint replay: instead of replaying all events from sequence 0,
+/// the engine loads the latest snapshot and replays only events after it.
+#[derive(Debug, Clone)]
+pub struct WorkflowSnapshot {
+    /// The workflow this snapshot belongs to
+    pub workflow_id: Uuid,
+
+    /// The event sequence number at which this snapshot was taken.
+    /// When restoring, events with sequence_num > this value are replayed.
+    pub sequence_num: i32,
+
+    /// Serialized workflow state (opaque bytes, typically JSON)
+    pub snapshot_data: Vec<u8>,
+
+    /// When the snapshot was created
+    pub created_at: DateTime<Utc>,
+}
+
 /// Store for workflow events and task queue
 ///
 /// This trait defines the interface for persisting workflow state.
@@ -443,6 +475,54 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Load all events for a workflow (for replay)
     async fn load_events(&self, workflow_id: Uuid)
     -> Result<Vec<(i32, WorkflowEvent)>, StoreError>;
+
+    /// Load events for a workflow starting after a given sequence number.
+    ///
+    /// Used for snapshot-based replay: load only events after the snapshot point.
+    async fn load_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError> {
+        // Default: filter from load_events (implementations should override for efficiency)
+        let all = self.load_events(workflow_id).await?;
+        Ok(all
+            .into_iter()
+            .filter(|(seq, _)| *seq > after_sequence)
+            .collect())
+    }
+
+    // =========================================================================
+    // Snapshot Operations (for replay checkpointing)
+    // =========================================================================
+
+    /// Save a workflow state snapshot at the given sequence number.
+    ///
+    /// The snapshot_data is opaque bytes (typically JSON-serialized workflow state).
+    /// Implementations should use UPSERT semantics for idempotency.
+    async fn save_snapshot(
+        &self,
+        _workflow_id: Uuid,
+        _sequence_num: i32,
+        _snapshot_data: Vec<u8>,
+    ) -> Result<(), StoreError> {
+        Ok(()) // Default no-op for stores that don't support snapshots
+    }
+
+    /// Load the latest snapshot for a workflow, if any.
+    ///
+    /// Returns None if no snapshots exist for this workflow.
+    async fn load_latest_snapshot(
+        &self,
+        _workflow_id: Uuid,
+    ) -> Result<Option<WorkflowSnapshot>, StoreError> {
+        Ok(None) // Default: no snapshots
+    }
+
+    /// Delete all snapshots for a workflow (cleanup on workflow deletion).
+    async fn delete_snapshots(&self, _workflow_id: Uuid) -> Result<(), StoreError> {
+        Ok(()) // Default no-op
+    }
 
     /// Update workflow status
     async fn update_workflow_status(
