@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +38,10 @@ import type {
 } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
+import {
+  ImageAttachments,
+  MessageImage,
+} from "@/components/chat/image-attachments";
 import {
   CommandAutocomplete,
   shouldShowCommandAutocomplete,
@@ -68,6 +78,9 @@ export function ChatPanel() {
     streamingIteration,
     sendMessage,
     cancelCurrentTurn,
+    hasMoreEvents,
+    loadingOlderEvents,
+    loadOlderEvents,
     getMessageText,
     getToolCalls,
   } = useSessionContext();
@@ -85,6 +98,9 @@ export function ChatPanel() {
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const prevChatEventsLengthRef = useRef(0);
   const initialScrollDoneRef = useRef(false);
+
+  // Track scroll height before prepending older events for position preservation
+  const prevScrollHeightRef = useRef<number | null>(null);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
@@ -154,7 +170,9 @@ export function ChatPanel() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const storedSelection = window.localStorage.getItem(modelSelectionStorageKey);
+    const storedSelection = window.localStorage.getItem(
+      modelSelectionStorageKey,
+    );
     if (storedSelection !== null && !hasUserSelectedModel.current) {
       setSelectedModelId(storedSelection);
     }
@@ -172,7 +190,9 @@ export function ChatPanel() {
   );
 
   const getReasoningEffortName = (value: string): string => {
-    const effort = reasoningEffortConfig?.values.find((item) => item.value === value);
+    const effort = reasoningEffortConfig?.values.find(
+      (item) => item.value === value,
+    );
     return effort?.name ?? value;
   };
 
@@ -193,11 +213,18 @@ export function ChatPanel() {
     if (
       reasoningEffortConfig &&
       reasoningEffort &&
-      !reasoningEffortConfig.values.some((effort) => effort.value === reasoningEffort)
+      !reasoningEffortConfig.values.some(
+        (effort) => effort.value === reasoningEffort,
+      )
     ) {
       setReasoningEffort("");
     }
-  }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
+  }, [
+    supportsReasoning,
+    reasoningEffortConfig,
+    reasoningEffort,
+    setReasoningEffort,
+  ]);
 
   // Track whether user is near the bottom of the scroll container
   const NEAR_BOTTOM_THRESHOLD = 100;
@@ -213,7 +240,7 @@ export function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  // Listen for scroll events to track near-bottom state
+  // Listen for scroll events to track near-bottom state and trigger older event loading
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -233,7 +260,11 @@ export function ChatPanel() {
 
   // Scroll to bottom immediately on initial load (once events are ready)
   useEffect(() => {
-    if (!eventsLoading && chatEvents.length > 0 && !initialScrollDoneRef.current) {
+    if (
+      !eventsLoading &&
+      chatEvents.length > 0 &&
+      !initialScrollDoneRef.current
+    ) {
       initialScrollDoneRef.current = true;
       // Use requestAnimationFrame to ensure DOM is painted
       requestAnimationFrame(() => {
@@ -251,10 +282,13 @@ export function ChatPanel() {
   }, [sessionId]);
 
   // Auto-scroll on new events or streaming updates (only when near bottom)
+  // Skip if older events were prepended (prevScrollHeightRef is set)
   useEffect(() => {
     if (!initialScrollDoneRef.current) return;
+    if (prevScrollHeightRef.current !== null) return;
 
-    const hasNewChatEvents = chatEvents.length > prevChatEventsLengthRef.current;
+    const hasNewChatEvents =
+      chatEvents.length > prevChatEventsLengthRef.current;
     prevChatEventsLengthRef.current = chatEvents.length;
 
     if (isNearBottomRef.current) {
@@ -263,6 +297,31 @@ export function ChatPanel() {
       setHasNewMessages(true);
     }
   }, [chatEvents, streamingText, isThinking, scrollToBottom]);
+
+  // Scroll position preservation: when older events are prepended,
+  // adjust scrollTop so the viewport stays in the same visual position
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    const prevHeight = prevScrollHeightRef.current;
+    if (container && prevHeight !== null) {
+      const newHeight = container.scrollHeight;
+      container.scrollTop += newHeight - prevHeight;
+      prevScrollHeightRef.current = null;
+    }
+  }, [chatEvents]);
+
+  // Scroll-up detection: trigger loading older events
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !hasMoreEvents || loadingOlderEvents) return;
+
+    // Trigger when user scrolls within 200px of the top
+    if (container.scrollTop < 200) {
+      // Save scroll height before prepend for position preservation
+      prevScrollHeightRef.current = container.scrollHeight;
+      loadOlderEvents();
+    }
+  }, [hasMoreEvents, loadingOlderEvents, loadOlderEvents]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -289,7 +348,10 @@ export function ChatPanel() {
   // Check if can submit (has content and all images uploaded)
   const hasContent = inputValue.trim() || hasImages;
   const canSubmit =
-    hasContent && allUploaded && !sendMessage.isPending && !sendMessageWithImages.isPending;
+    hasContent &&
+    allUploaded &&
+    !sendMessage.isPending &&
+    !sendMessageWithImages.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -387,6 +449,7 @@ export function ChatPanel() {
     <>
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6"
       >
         {eventsLoading ? (
@@ -399,12 +462,24 @@ export function ChatPanel() {
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
             <div className="border border-border bg-card px-10 py-10">
               <Bot className="mx-auto mb-4 h-10 w-10 opacity-50" />
-              <p className="text-lg font-medium text-foreground">No messages yet</p>
-              <p className="mt-1 text-sm">Send a message to start the conversation</p>
+              <p className="text-lg font-medium text-foreground">
+                No messages yet
+              </p>
+              <p className="mt-1 text-sm">
+                Send a message to start the conversation
+              </p>
             </div>
           </div>
         ) : (
           <div className="space-y-6">
+            {loadingOlderEvents && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">
+                  Loading older messages...
+                </span>
+              </div>
+            )}
             {chatEvents.map((event) => {
               if (event.type === "tool.completed") {
                 return null;
@@ -412,7 +487,8 @@ export function ChatPanel() {
 
               if (event.type === "tool.call_requested") {
                 const reqData = event.data as ToolCallRequestedData;
-                if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
+                if (!reqData.tool_calls || reqData.tool_calls.length === 0)
+                  return null;
                 return (
                   <div key={event.id} className="space-y-3">
                     <div className="ml-9 space-y-1">
@@ -428,23 +504,34 @@ export function ChatPanel() {
               }
 
               const isUser = event.type === "input.message";
-              const data = event.data as InputMessageData | OutputMessageCompletedData;
+              const data = event.data as
+                | InputMessageData
+                | OutputMessageCompletedData;
               const textContent = getMessageText(data);
               const toolCalls = isUser
                 ? []
                 : getToolCalls(data as OutputMessageCompletedData).filter(
                     (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
                   );
-              const images = data.message?.content ? getMessageImages(data.message.content) : [];
-              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+              const images = data.message?.content
+                ? getMessageImages(data.message.content)
+                : [];
+              const isScheduleTriggered =
+                isUser && data.message?.metadata?.source === "schedule";
               const isToolOnlyMessage =
-                !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
+                !isUser &&
+                toolCalls.length > 0 &&
+                !textContent &&
+                images.length === 0;
 
               if (isToolOnlyMessage) {
                 return (
                   <div key={event.id} className="space-y-3">
                     <div className="ml-9 space-y-1">
-                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                      <ToolActivityGroup
+                        toolCalls={toolCalls}
+                        toolResultsMap={toolResultsMap}
+                      />
                     </div>
                     {renderTurnDivider(event.id)}
                   </div>
@@ -454,7 +541,9 @@ export function ChatPanel() {
               return (
                 <div key={event.id} className="space-y-2">
                   {(textContent || images.length > 0) && (
-                    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                    >
                       {isUser ? (
                         <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
                           {isScheduleTriggered && (
@@ -465,7 +554,11 @@ export function ChatPanel() {
                           )}
                           <div className="flex items-start gap-2">
                             <div className="flex-1 space-y-2">
-                              {textContent && <p className="whitespace-pre-wrap">{textContent}</p>}
+                              {textContent && (
+                                <p className="whitespace-pre-wrap">
+                                  {textContent}
+                                </p>
+                              )}
                               {images.length > 0 && (
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   {images.map((img) => (
@@ -489,7 +582,10 @@ export function ChatPanel() {
                           <div className="flex flex-1 items-start gap-2">
                             <div className="flex-1 space-y-2 border-l-2 border-l-primary bg-card px-4 py-3">
                               {textContent && (
-                                <StreamdownMessage variant="inline" className="text-foreground">
+                                <StreamdownMessage
+                                  variant="inline"
+                                  className="text-foreground"
+                                >
                                   {textContent}
                                 </StreamdownMessage>
                               )}
@@ -514,7 +610,10 @@ export function ChatPanel() {
 
                   {toolCalls.length > 0 && (
                     <div className="ml-9 space-y-1">
-                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                      <ToolActivityGroup
+                        toolCalls={toolCalls}
+                        toolResultsMap={toolResultsMap}
+                      />
                     </div>
                   )}
 
@@ -575,11 +674,15 @@ export function ChatPanel() {
             onChange={handleFileChange}
           />
 
-          {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
+          {hasImages && (
+            <ImageAttachments images={pendingImages} onRemove={removeImage} />
+          )}
 
           <div
             className={`relative border border-border bg-background transition-colors ${
-              isDraggingOver ? "bg-[hsl(var(--accent)/0.08)] ring-1 ring-accent" : ""
+              isDraggingOver
+                ? "bg-[hsl(var(--accent)/0.08)] ring-1 ring-accent"
+                : ""
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -603,7 +706,9 @@ export function ChatPanel() {
               setIsDraggingOver(false);
               const files = e.dataTransfer?.files;
               if (files && files.length > 0) {
-                const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+                const imageFiles = Array.from(files).filter((f) =>
+                  f.type.startsWith("image/"),
+                );
                 if (imageFiles.length > 0) {
                   addFiles(imageFiles);
                 }
@@ -695,14 +800,18 @@ export function ChatPanel() {
                   </span>
                   <Select
                     value={reasoningEffort}
-                    onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+                    onValueChange={(value) =>
+                      setReasoningEffort(value as typeof reasoningEffort)
+                    }
                   >
                     <SelectTrigger
                       size="sm"
                       className="h-7 w-[116px] min-w-0 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
                     >
                       <SelectValue>
-                        {reasoningEffort ? getReasoningEffortName(reasoningEffort) : "Default"}
+                        {reasoningEffort
+                          ? getReasoningEffortName(reasoningEffort)
+                          : "Default"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>

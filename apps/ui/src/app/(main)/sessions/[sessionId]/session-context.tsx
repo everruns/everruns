@@ -69,6 +69,11 @@ interface SessionContextValue {
   >;
   // Turn cancellation
   cancelCurrentTurn: UseMutationResult<void, Error, void, unknown>;
+  // Pagination (load older events on scroll up)
+  hasMoreEvents: boolean;
+  loadingOlderEvents: boolean;
+  loadOlderEvents: () => Promise<void>;
+  totalNonDeltaCount: number | undefined;
   // Utility functions
   getMessageText: (data: InputMessageData | OutputMessageCompletedData) => string;
   getToolCalls: (
@@ -181,9 +186,15 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Fetch LLM model info if session has a model_id
   const { data: llmModel } = useLlmModel(session?.model_id ?? "");
 
-  // Fetch events using SSE - always enabled for real-time streaming
-  // SSE handles backoff automatically (100ms → 10s when no new events)
-  const { data: events, isLoading: eventsLoading } = useEvents(sessionId);
+  // Fetch events using paginated REST + SSE for real-time streaming
+  const {
+    data: events,
+    isLoading: eventsLoading,
+    hasMore: hasMoreEvents,
+    loadingOlder: loadingOlderEvents,
+    loadOlderEvents,
+    totalNonDeltaCount,
+  } = useEvents(sessionId);
 
   // Update local status from SSE events (session.activated, session.idled)
   useEffect(() => {
@@ -472,6 +483,10 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     streamingIteration,
     sendMessage,
     cancelCurrentTurn,
+    hasMoreEvents,
+    loadingOlderEvents,
+    loadOlderEvents,
+    totalNonDeltaCount,
     getMessageText,
     getToolCalls,
   };

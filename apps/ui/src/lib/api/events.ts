@@ -2,7 +2,7 @@
 // Events are SSE notifications for real-time updates
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api, getApiBaseUrl } from "./client";
+import { api, ApiError, getApiBaseUrl } from "./client";
 import type { Event, ListResponse } from "./types";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
@@ -37,13 +37,14 @@ export async function listEvents(
 
 // List events with pagination metadata (X-Total-Count header).
 // Use this when you need the total count for scroll estimation.
+// Uses fetch directly (instead of api.get) to access response headers.
 export async function listEventsPaginated(
   sessionId: string,
   excludeOrOptions?: string[] | ListEventsOptions,
 ): Promise<ListEventsResult> {
   const options: ListEventsOptions = Array.isArray(excludeOrOptions)
     ? { exclude: excludeOrOptions }
-    : excludeOrOptions ?? {};
+    : (excludeOrOptions ?? {});
 
   const params = new URLSearchParams();
   if (options.exclude) {
@@ -58,15 +59,24 @@ export async function listEventsPaginated(
     params.set("before_sequence", String(options.before_sequence));
   }
   const queryString = params.toString();
-  const response = await api.get<ListResponse<Event>>(
-    `/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`,
-  );
+  const url = `${getApiBaseUrl()}/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`;
 
-  const totalHeader = response.headers?.["x-total-count"];
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, response.statusText);
+  }
+
+  const body: ListResponse<Event> = await response.json();
+  const totalHeader = response.headers.get("x-total-count");
   const totalNonDeltaCount = totalHeader ? Number(totalHeader) : undefined;
 
   return {
-    events: response.data.data,
+    events: body.data,
     totalNonDeltaCount,
   };
 }
