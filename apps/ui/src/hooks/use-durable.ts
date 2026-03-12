@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createReconnectTracker } from "@/lib/sse-reconnect";
 import {
   getDurableHealth,
   listWorkers,
@@ -73,6 +74,7 @@ interface WorkflowSnapshot {
 export function useDurableSSE(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectRef = useRef(createReconnectTracker());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const isEnabled = options?.enabled !== false;
@@ -91,6 +93,8 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
       return;
     }
 
+    reconnectRef.current = createReconnectTracker();
+
     const connectSSE = () => {
       cleanup();
 
@@ -99,6 +103,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {
+        reconnectRef.current.reset();
         setIsConnected(true);
         setError(null);
       });
@@ -107,7 +112,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
       eventSource.addEventListener("disconnecting", (event) => {
         try {
           const data = JSON.parse(event.data);
-          const retryMs = data.retry_ms ?? 1000;
+          const retryMs = reconnectRef.current.onGraceful(data.retry_ms ?? 1000);
           console.debug("Durable SSE disconnecting, reconnecting in", retryMs, "ms");
           cleanup();
           setTimeout(() => {
@@ -161,15 +166,19 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
       });
 
       eventSource.onerror = () => {
-        setError(new Error("Durable SSE connection error"));
         setIsConnected(false);
         cleanup();
-        // Reconnect after delay
+        const delayMs = reconnectRef.current.onError();
+        if (delayMs === null) {
+          setError(new Error("Durable SSE connection failed after max retries"));
+          return;
+        }
+        setError(new Error("Durable SSE connection error, reconnecting..."));
         setTimeout(() => {
           if (isEnabled) {
             connectSSE();
           }
-        }, 2000);
+        }, delayMs);
       };
     };
 
@@ -192,6 +201,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
 export function useWorkflowSSE(workflowId: string | undefined, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectRef = useRef(createReconnectTracker());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const isEnabled = options?.enabled !== false && !!workflowId;
@@ -207,6 +217,7 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
   useEffect(() => {
     setIsConnected(false);
     setError(null);
+    reconnectRef.current = createReconnectTracker();
   }, [workflowId]);
 
   useEffect(() => {
@@ -216,6 +227,8 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
       return;
     }
 
+    reconnectRef.current = createReconnectTracker();
+
     const connectSSE = () => {
       cleanup();
 
@@ -224,6 +237,7 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {
+        reconnectRef.current.reset();
         setIsConnected(true);
         setError(null);
       });
@@ -232,7 +246,7 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
       eventSource.addEventListener("disconnecting", (event) => {
         try {
           const data = JSON.parse(event.data);
-          const retryMs = data.retry_ms ?? 1000;
+          const retryMs = reconnectRef.current.onGraceful(data.retry_ms ?? 1000);
           console.debug("Workflow SSE disconnecting, reconnecting in", retryMs, "ms");
           cleanup();
           setTimeout(() => {
@@ -261,15 +275,19 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
       });
 
       eventSource.onerror = () => {
-        setError(new Error("Workflow SSE connection error"));
         setIsConnected(false);
         cleanup();
-        // Reconnect after delay
+        const delayMs = reconnectRef.current.onError();
+        if (delayMs === null) {
+          setError(new Error("Workflow SSE connection failed after max retries"));
+          return;
+        }
+        setError(new Error("Workflow SSE connection error, reconnecting..."));
         setTimeout(() => {
           if (isEnabled && workflowId) {
             connectSSE();
           }
-        }, 2000);
+        }, delayMs);
       };
     };
 
