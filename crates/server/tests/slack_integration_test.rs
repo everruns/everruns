@@ -697,46 +697,28 @@ async fn test_slack_manifest_endpoint() {
 // Real Slack API Tests (require credentials)
 // ============================================
 
-/// Get real Slack credentials from environment. Returns None if not set.
+/// Get real Slack credentials from environment.
 /// Checks TEST_-prefixed vars first (Doppler convention), then unprefixed.
 ///
-/// **In CI** (`CI=true`), panics if any variable is missing — credentials
-/// must always be available via Doppler so real-API tests never silently skip.
-fn real_slack_credentials() -> Option<(String, String, String)> {
-    let in_ci = std::env::var("CI").is_ok_and(|v| v == "true");
-
+/// Panics if any variable is missing — these tests require real credentials.
+fn real_slack_credentials() -> (String, String, String) {
     let token = std::env::var("TEST_SLACK_BOT_TOKEN")
         .or_else(|_| std::env::var("SLACK_BOT_TOKEN"))
-        .ok();
+        .expect("TEST_SLACK_BOT_TOKEN or SLACK_BOT_TOKEN must be set");
     let secret = std::env::var("TEST_SLACK_SIGNING_SECRET")
         .or_else(|_| std::env::var("SLACK_SIGNING_SECRET"))
-        .ok();
+        .expect("TEST_SLACK_SIGNING_SECRET or SLACK_SIGNING_SECRET must be set");
     let channel = std::env::var("TEST_SLACK_TEST_CHANNEL")
         .or_else(|_| std::env::var("SLACK_TEST_CHANNEL"))
-        .ok();
-
-    if in_ci {
-        let token = token.expect("CI requires TEST_SLACK_BOT_TOKEN or SLACK_BOT_TOKEN to be set");
-        let secret = secret
-            .expect("CI requires TEST_SLACK_SIGNING_SECRET or SLACK_SIGNING_SECRET to be set");
-        let channel =
-            channel.expect("CI requires TEST_SLACK_TEST_CHANNEL or SLACK_TEST_CHANNEL to be set");
-        return Some((token, secret, channel));
-    }
-
-    Some((token?, secret?, channel?))
+        .expect("TEST_SLACK_TEST_CHANNEL or SLACK_TEST_CHANNEL must be set");
+    (token, secret, channel)
 }
 
 /// Test posting a real message to Slack and verifying the response.
 /// Requires: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_TEST_CHANNEL
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_real_slack_post_message() {
-    let Some((bot_token, _signing_secret, channel)) = real_slack_credentials() else {
-        eprintln!(
-            "Skipping real Slack test: SLACK_BOT_TOKEN / SLACK_SIGNING_SECRET / SLACK_TEST_CHANNEL not set"
-        );
-        return;
-    };
+    let (bot_token, _signing_secret, channel) = real_slack_credentials();
 
     let client = reqwest::Client::new();
     let resp = client
@@ -789,10 +771,7 @@ async fn test_real_slack_post_message() {
 /// Requires: SLACK_BOT_TOKEN (and a real user in the workspace)
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_real_slack_users_info() {
-    let Some((bot_token, _, _)) = real_slack_credentials() else {
-        eprintln!("Skipping real Slack test: credentials not set");
-        return;
-    };
+    let (bot_token, _, _) = real_slack_credentials();
 
     // First, get a user from the workspace
     let client = reqwest::Client::new();
@@ -851,10 +830,7 @@ async fn test_real_slack_users_info() {
 /// Requires: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_TEST_CHANNEL
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_real_slack_webhook_to_session() {
-    let Some((bot_token, signing_secret, channel)) = real_slack_credentials() else {
-        eprintln!("Skipping real Slack webhook test: credentials not set");
-        return;
-    };
+    let (bot_token, signing_secret, channel) = real_slack_credentials();
 
     let server = TestServer::new().await;
 

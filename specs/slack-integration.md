@@ -119,7 +119,7 @@ Integration tests in `crates/server/tests/slack_integration_test.rs`:
 - **Webhook tests** (always run): URL verification, signature rejection, session creation/reuse, bot message filtering, session strategies, manifest endpoint, replay attack prevention
 - **Real Slack API tests** (require credentials): `chat.postMessage`, `users.info`, full webhook→session flow with real signing secret
 
-CI runs all tests via `doppler run` in the `integration-test` job (PostgreSQL required). `real_slack_credentials()` panics when `CI=true` and any `TEST_SLACK_*` env var is missing — real-API tests never silently skip in CI.
+CI runs all tests via `doppler run` in the `integration-test` job (PostgreSQL required). `real_slack_credentials()` always panics if any `TEST_SLACK_*` env var is missing — real-API tests never silently skip.
 
 Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_TEST_CHANNEL`.
 
