@@ -8,7 +8,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import {
@@ -16,7 +17,6 @@ import {
   type SearchResult,
   type SearchResultCategory,
 } from "@/hooks/use-global-search";
-import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { Search, CornerDownLeft, ArrowUp, ArrowDown } from "lucide-react";
 
 const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
@@ -60,6 +60,7 @@ function groupResults(
 export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +71,11 @@ export function CommandPalette() {
 
   // Flat list for keyboard navigation
   const flatResults = grouped.flatMap((g) => g.items);
+
+  // Close on route change
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, setOpen]);
 
   // Reset state when opening
   useEffect(() => {
@@ -134,11 +140,10 @@ export function CommandPalette() {
   let flatIndex = 0;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogPortal>
-        <DialogOverlay />
-        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-        <div
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:animation-duration-[200ms] fixed inset-0 z-50 bg-black/50" />
+        <DialogPrimitive.Popup
           className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
           onKeyDown={handleKeyDown}
         >
@@ -220,8 +225,8 @@ export function CommandPalette() {
               </span>
             </div>
           </div>
-        </div>
-      </DialogPortal>
-    </Dialog>
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
