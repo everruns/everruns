@@ -1304,6 +1304,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-gemini",
  "everruns-openai",
+ "everruns-openui",
  "fetchkit",
  "futures",
  "insta",
@@ -1499,6 +1500,10 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "everruns-openui"
+version = "0.8.4"
 
 [[package]]
 name = "everruns-sdk"

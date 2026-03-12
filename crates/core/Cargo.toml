@@ -76,6 +76,9 @@ inventory.workspace = true
 # LLM simulation for testing
 llmsim = "0.2.1"
 
+# OpenUI component definitions and prompt generator
+everruns-openui = { path = "../openui" }
+
 [features]
 default = ["llm-tests"]
 openapi = ["utoipa"]

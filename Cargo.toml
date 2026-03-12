@@ -11,6 +11,7 @@ members = [
     "crates/internal-protocol",
     "crates/cli",
     "crates/durable",
+    "crates/openui",
     "crates/session-sqldb",
     "integrations/docker",
     "integrations/daytona",

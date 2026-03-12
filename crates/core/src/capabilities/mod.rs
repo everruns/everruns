@@ -82,6 +82,7 @@ mod file_system;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
+mod openui;
 mod platform_management;
 mod research;
 mod sample_data;
@@ -142,6 +143,7 @@ pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
 };
+pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use platform_management::{
     ListCapabilitiesTool, ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool,
     PlatformManagementCapability, SessionInteractTool,
@@ -489,6 +491,9 @@ impl CapabilityRegistry {
 
         // System commands (/clear, /status, /compact, /model)
         registry.register(SystemCommandsCapability);
+
+        // OpenUI generative UI (all environments)
+        registry.register(OpenUiCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
