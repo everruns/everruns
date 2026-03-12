@@ -217,7 +217,6 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
   useEffect(() => {
     setIsConnected(false);
     setError(null);
-    reconnectRef.current = createReconnectTracker();
   }, [workflowId]);
 
   useEffect(() => {
