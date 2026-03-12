@@ -1236,7 +1236,7 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
-    let manifest_yaml = build_manifest_yaml(&app.name, &display_name);
+    let manifest_yaml = build_manifest_yaml(&app.name, &display_name, app.description.as_deref());
 
     // URL-encode the manifest for the Slack "create from manifest" URL
     let encoded = urlencoding_encode(&manifest_yaml);
@@ -1252,14 +1252,23 @@ async fn handle_slack_manifest(
 }
 
 /// Build the YAML manifest for a Slack app (no event_subscriptions — requires live URL).
-fn build_manifest_yaml(app_name: &str, display_name: &str) -> String {
+///
+/// Slack requires `long_description` to be 174–4000 chars. We build it from the
+/// app's description (if any) plus a standard suffix, padding if needed.
+fn build_manifest_yaml(
+    app_name: &str,
+    display_name: &str,
+    app_description: Option<&str>,
+) -> String {
     let name = yaml_escape(app_name);
     let display_name = yaml_escape(display_name);
+    let long_desc = build_long_description(app_name, app_description);
+    let long_desc = yaml_escape(&long_desc);
     format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
          \x20 description: \"{name} (Powered by Everruns)\"\n\
-         \x20 long_description: \"AI agent powered by Everruns — https://everruns.com\"\n\
+         \x20 long_description: \"{long_desc}\"\n\
          \x20 background_color: \"#1a1a2e\"\n\
          features:\n\
          \x20 bot_user:\n\
@@ -1300,6 +1309,41 @@ fn truncate_display_name(name: &str) -> String {
 /// Simple YAML string escaping: escape backslashes and double quotes.
 fn yaml_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Slack requires long_description to be 174–4000 characters.
+const SLACK_LONG_DESC_MIN: usize = 174;
+const SLACK_LONG_DESC_MAX: usize = 4000;
+
+/// Build a long_description that meets Slack's 174-char minimum.
+///
+/// Structure: "{app_name} — {description} | AI agent powered by Everruns — https://everruns.com"
+/// If the app has no description or the result is still short, pads with a
+/// generic blurb to reach the minimum.
+fn build_long_description(app_name: &str, app_description: Option<&str>) -> String {
+    let suffix = "AI agent powered by Everruns — https://everruns.com";
+
+    let mut desc = match app_description.filter(|d| !d.trim().is_empty()) {
+        Some(d) => format!("{app_name} — {d} | {suffix}"),
+        None => format!("{app_name} — {suffix}"),
+    };
+
+    // Pad to meet minimum if needed.
+    if desc.len() < SLACK_LONG_DESC_MIN {
+        let pad = " Everruns lets you build, deploy, and run AI agents with durable execution, tool use, and real-time streaming. Learn more at https://everruns.com.";
+        desc.push_str(pad);
+    }
+
+    // Truncate to max (UTF-8 safe).
+    if desc.len() > SLACK_LONG_DESC_MAX {
+        let mut end = SLACK_LONG_DESC_MAX;
+        while !desc.is_char_boundary(end) {
+            end -= 1;
+        }
+        desc.truncate(end);
+    }
+
+    desc
 }
 
 /// Percent-encode a string for URL query parameters.
@@ -1936,10 +1980,17 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_contains_description_and_long_description() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot");
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None);
         assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
-        assert!(yaml.contains(r#"long_description: "AI agent powered by Everruns"#));
+        assert!(yaml.contains("AI agent powered by Everruns"));
         assert!(yaml.contains("https://everruns.com"));
+    }
+
+    #[test]
+    fn test_manifest_yaml_with_app_description() {
+        let yaml = build_manifest_yaml("My Bot", "My Bot", Some("A helpful assistant"));
+        assert!(yaml.contains("A helpful assistant"));
+        assert!(yaml.contains("AI agent powered by Everruns"));
     }
 
     #[test]
@@ -1947,7 +1998,7 @@ mod tests {
         // Slack description limit is 140 chars. Worst case: 35-char app name
         // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
         let long_name = "a".repeat(35);
-        let yaml = build_manifest_yaml(&long_name, &long_name);
+        let yaml = build_manifest_yaml(&long_name, &long_name, None);
         // Extract the description value
         let desc_prefix = "description: \"";
         let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
@@ -1963,9 +2014,43 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_escapes_special_chars_in_name() {
-        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special");
+        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special", None);
         assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
         assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
+    }
+
+    #[test]
+    fn test_build_long_description_meets_minimum() {
+        // No description — should still be >= 174
+        let desc = build_long_description("Bot", None);
+        assert!(
+            desc.len() >= SLACK_LONG_DESC_MIN,
+            "Long description is {} chars, need at least {}",
+            desc.len(),
+            SLACK_LONG_DESC_MIN
+        );
+    }
+
+    #[test]
+    fn test_build_long_description_with_app_desc() {
+        let desc = build_long_description("Bot", Some("My awesome bot"));
+        assert!(desc.contains("My awesome bot"));
+        assert!(desc.len() >= SLACK_LONG_DESC_MIN);
+    }
+
+    #[test]
+    fn test_build_long_description_empty_desc_treated_as_none() {
+        let desc = build_long_description("Bot", Some("   "));
+        // Empty/whitespace description is ignored
+        assert!(!desc.contains("   |"));
+        assert!(desc.len() >= SLACK_LONG_DESC_MIN);
+    }
+
+    #[test]
+    fn test_build_long_description_truncates_at_max() {
+        let long = "x".repeat(5000);
+        let desc = build_long_description("Bot", Some(&long));
+        assert!(desc.len() <= SLACK_LONG_DESC_MAX);
     }
 
     #[test]
@@ -2422,7 +2507,7 @@ mod tests {
     #[test]
     fn test_manifest_includes_history_scopes_for_thread_context() {
         // conversations.replies requires channels:history / groups:history / im:history / mpim:history
-        let yaml = build_manifest_yaml("Bot", "Bot");
+        let yaml = build_manifest_yaml("Bot", "Bot", None);
         assert!(
             yaml.contains("channels:history"),
             "Manifest must include channels:history for conversations.replies"
