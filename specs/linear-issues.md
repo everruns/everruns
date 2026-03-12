@@ -24,7 +24,7 @@ This repository manages issues in the **OSS** project within the Everruns Linear
 
 ### Workflow Summary
 
-Each issue follows: pick up → analyze → branch → implement → ship → close. The `/process-issues` command orchestrates this, delegating implementation and shipping to `/ship`.
+Each issue follows: pick up → analyze → branch → implement → ship → close. The `/process-issues` command orchestrates this, delegating each issue's shipping to `/ship`. **Every PR must go through the full `/ship` flow** (test coverage, code simplification, security review, artifact updates, smoke testing, quality gates, CI green, merge). No shortcuts — partial quality checks or skipping `/ship` phases is not acceptable.
 
 **Concurrency:** process up to 5 issues in parallel.
 
