@@ -431,7 +431,9 @@ pub async fn stream_sse(
                         return Some((stream::iter(vec![]), new_state));
                     }
 
-                    // Fetch events since last ID
+                    // Fetch events since last ID.
+                    // Forward queries are safety-capped at 10k rows in the repository layer;
+                    // any remaining events are picked up on the next poll cycle.
                     tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
                     match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
                         Ok(events) if !events.is_empty() => {
