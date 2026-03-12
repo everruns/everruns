@@ -109,8 +109,6 @@ describe("splitOpenUIBlocks", () => {
   it("only returns openui block when there is no surrounding text", () => {
     const text = "```openui\nroot = Card([])\n```";
     const segments = splitOpenUIBlocks(text);
-    expect(segments).toEqual([
-      { type: "openui", content: "root = Card([])\n" },
-    ]);
+    expect(segments).toEqual([{ type: "openui", content: "root = Card([])\n" }]);
   });
 });
