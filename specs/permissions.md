@@ -132,7 +132,13 @@ impl Policy {
 }
 ```
 
-### Service Usage
+### Declarative Enforcement via `#[policy]` Macro
+
+New proc macro crate: `crates/macros` (`everruns-macros`).
+
+The `#[policy(...)]` attribute macro injects `POLICY.evaluate(caller)?;` at the top of the function body. It finds the `caller: &Caller` parameter by type automatically.
+
+#### Usage
 
 ```rust
 // Policies defined as constants
@@ -150,17 +156,106 @@ const HARNESS_DANGEROUS: Policy = Policy {
 };
 
 impl HarnessService {
+    #[policy(HARNESS_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
-        HARNESS_MANAGE.evaluate(caller)?;
-        // ... existing logic using caller.org_id ...
+        // just business logic — policy check injected by macro
     }
 
+    #[policy(HARNESS_DANGEROUS)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        HARNESS_DANGEROUS.evaluate(caller)?;
         // ...
     }
 }
 ```
+
+#### Macro Expansion
+
+```rust
+// #[policy(HARNESS_MANAGE)]
+// pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
+//     let row = self.db.create_harness(caller.org_id, input).await?;
+//     Ok(harness)
+// }
+//
+// expands to:
+//
+// pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
+//     HARNESS_MANAGE.evaluate(caller)?;
+//     let row = self.db.create_harness(caller.org_id, input).await?;
+//     Ok(harness)
+// }
+```
+
+#### Macro Implementation
+
+The proc macro:
+
+1. Parses the attribute argument as a path to a `Policy` constant (e.g. `HARNESS_MANAGE`)
+2. Scans the function signature for a parameter with type `&Caller` — extracts its name (usually `caller`)
+3. Prepends `#policy_path.evaluate(#caller_ident)?;` to the function body
+4. Compile error if no `&Caller` parameter found
+
+```rust
+// crates/macros/src/lib.rs
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, ItemFn, FnArg, PatType, Type, TypeReference, Path};
+
+#[proc_macro_attribute]
+pub fn policy(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let policy_path = parse_macro_input!(attr as Path);
+    let mut func = parse_macro_input!(item as ItemFn);
+
+    // Find the &Caller parameter
+    let caller_ident = func.sig.inputs.iter().find_map(|arg| {
+        if let FnArg::Typed(PatType { pat, ty, .. }) = arg {
+            if let Type::Reference(TypeReference { elem, .. }) = ty.as_ref() {
+                if let Type::Path(tp) = elem.as_ref() {
+                    if tp.path.segments.last().map(|s| s.ident == "Caller").unwrap_or(false) {
+                        if let syn::Pat::Ident(pi) = pat.as_ref() {
+                            return Some(pi.ident.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    });
+
+    let caller = caller_ident.expect("Expected a `caller: &Caller` parameter");
+
+    let original_body = &func.block;
+    func.block = syn::parse_quote!({
+        #policy_path.evaluate(#caller)?;
+        #original_body
+    });
+
+    quote!(#func).into()
+}
+```
+
+#### Multiple Policies
+
+Stack multiple attributes for methods needing several independent policy checks:
+
+```rust
+#[policy(HARNESS_MANAGE)]
+#[policy(SOME_OTHER_POLICY)]
+pub async fn special_operation(&self, caller: &Caller) -> Result<()> {
+    // both policies checked in order
+}
+```
+
+#### Crate Structure
+
+```
+crates/macros/
+├── Cargo.toml    # proc-macro = true, deps: syn, quote, proc-macro2
+└── src/
+    └── lib.rs    # #[policy] macro
+```
+
+Added to workspace `Cargo.toml` members. `crates/server` depends on `everruns-macros`.
 
 ### Error Mapping
 
@@ -234,6 +329,7 @@ pub async fn harness_config(org: ResolvedOrg) -> Json<ConfigResponse> {
 | File | Purpose |
 |------|---------|
 | `crates/core/src/permissions.rs` | Permission enum, Rule, Policy, Caller, evaluation logic |
-| `crates/server/src/services/*.rs` | Policy enforcement at method entry |
+| `crates/macros/src/lib.rs` | `#[policy]` proc macro |
+| `crates/server/src/services/*.rs` | `#[policy(..)]` on service methods |
 | `crates/server/src/api/*_config.rs` | Config endpoints returning policy results |
 | `crates/server/src/auth/middleware.rs` | Caller extraction from ResolvedOrg |
