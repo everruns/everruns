@@ -735,12 +735,11 @@ fn real_slack_credentials() -> Option<(String, String, String)> {
         .ok();
 
     if in_ci {
-        let token =
-            token.expect("CI requires TEST_SLACK_BOT_TOKEN or SLACK_BOT_TOKEN to be set");
+        let token = token.expect("CI requires TEST_SLACK_BOT_TOKEN or SLACK_BOT_TOKEN to be set");
         let secret = secret
             .expect("CI requires TEST_SLACK_SIGNING_SECRET or SLACK_SIGNING_SECRET to be set");
-        let channel = channel
-            .expect("CI requires TEST_SLACK_TEST_CHANNEL or SLACK_TEST_CHANNEL to be set");
+        let channel =
+            channel.expect("CI requires TEST_SLACK_TEST_CHANNEL or SLACK_TEST_CHANNEL to be set");
         return Some((token, secret, channel));
     }
 
