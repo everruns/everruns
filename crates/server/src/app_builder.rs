@@ -247,14 +247,23 @@ impl ServerAppBuilder {
             if !self.config.no_migrations {
                 tracing::info!("Running database migrations...");
                 let pool = backend.pool().expect("PostgreSQL backend should have pool");
-                sqlx::migrate!("./migrations").run(pool).await.context(
-                    "Database migration failed - check migration files and database state",
-                )?;
+                if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
+                    tracing::error!(
+                        error = %e,
+                        "Database migration failed - check migration files and database state"
+                    );
+                    return Err(e).context(
+                        "Database migration failed - check migration files and database state",
+                    );
+                }
                 tracing::info!("Database migrations complete");
 
                 // Run custom migrations
                 for migration_fn in self.migrations {
-                    migration_fn(pool.clone()).await?;
+                    if let Err(e) = migration_fn(pool.clone()).await {
+                        tracing::error!(error = %e, "Custom database migration failed");
+                        return Err(e);
+                    }
                 }
             } else {
                 tracing::info!("Skipping database migrations (--no-migrations)");
