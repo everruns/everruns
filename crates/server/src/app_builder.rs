@@ -342,10 +342,15 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & services
         // =====================================================================
+        let notification_service = Arc::new(services::NotificationService::new(db.clone()));
         let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
         let usage_listener: Arc<dyn EventListener> =
             Arc::new(services::UsageTrackingListener::new(db.clone()));
-        let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![otel_listener, usage_listener];
+        let notification_listener: Arc<dyn EventListener> = Arc::new(
+            services::NotificationEventListener::new(notification_service.clone()),
+        );
+        let mut event_listeners: Vec<Arc<dyn EventListener>> =
+            vec![otel_listener, usage_listener, notification_listener];
 
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
@@ -372,6 +377,20 @@ impl ServerAppBuilder {
         } else {
             tracing::info!(
                 "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
+            );
+            None
+        };
+        let notification_broadcaster = if let Some(pool) = db.pool() {
+            let broadcaster =
+                crate::notification_notifications::NotificationNotificationBroadcaster::new(
+                    pool.clone(),
+                )
+                .await;
+            tracing::info!("Notification broadcaster initialized for push-based SSE");
+            Some(Arc::new(broadcaster))
+        } else {
+            tracing::info!(
+                "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
             );
             None
         };
@@ -402,8 +421,14 @@ impl ServerAppBuilder {
         let events_state = api::events::AppState {
             session_service: Arc::new(services::SessionService::new(db.clone())),
             event_service: event_service.clone(),
-            sse_tracker,
+            sse_tracker: sse_tracker.clone(),
             event_broadcaster,
+            auth: auth_state.clone(),
+        };
+        let notifications_state = api::notifications::AppState {
+            notification_service: notification_service.clone(),
+            sse_tracker,
+            notification_broadcaster,
             auth: auth_state.clone(),
         };
         let driver_registry = Arc::new(create_driver_registry());
@@ -529,6 +554,7 @@ impl ServerAppBuilder {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
+            .merge(api::notifications::routes(notifications_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::llm_models::routes(llm_models_state))

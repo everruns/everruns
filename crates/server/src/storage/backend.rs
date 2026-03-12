@@ -7,7 +7,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::typed_id::{AgentId, EventId, HarnessId, ScheduleId, SessionId};
+use everruns_core::typed_id::{
+    AgentId, EventId, HarnessId, MessageId, NotificationId, ScheduleId, SessionId,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -363,6 +365,94 @@ impl StorageBackend {
         org_id: i64,
     ) -> Result<Vec<SessionId>> {
         dispatch!(self, list_pinned_session_ids, user_id, org_id)
+    }
+
+    // ============================================
+    // Notifications
+    // ============================================
+
+    pub async fn create_notification_turn_request(
+        &self,
+        input: CreateNotificationTurnRequestRow,
+    ) -> Result<()> {
+        dispatch!(self, create_notification_turn_request, input)
+    }
+
+    pub async fn get_notification_turn_request(
+        &self,
+        input_message_id: MessageId,
+    ) -> Result<Option<NotificationTurnRequestRow>> {
+        dispatch!(self, get_notification_turn_request, input_message_id)
+    }
+
+    pub async fn create_notification(
+        &self,
+        input: CreateNotificationRow,
+    ) -> Result<NotificationRow> {
+        dispatch!(self, create_notification, input)
+    }
+
+    pub async fn get_notification(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        id: NotificationId,
+    ) -> Result<Option<NotificationRow>> {
+        dispatch!(self, get_notification, org_id, user_id, id)
+    }
+
+    pub async fn list_notifications(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<NotificationRow>> {
+        dispatch!(self, list_notifications, org_id, user_id, limit)
+    }
+
+    pub async fn list_notifications_updated_since(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        updated_since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<NotificationRow>> {
+        dispatch!(
+            self,
+            list_notifications_updated_since,
+            org_id,
+            user_id,
+            updated_since,
+            limit
+        )
+    }
+
+    pub async fn count_unviewed_notifications(&self, org_id: i64, user_id: Uuid) -> Result<u32> {
+        dispatch!(self, count_unviewed_notifications, org_id, user_id)
+    }
+
+    pub async fn count_unviewed_notifications_by_kind(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        kind: &str,
+    ) -> Result<u32> {
+        dispatch!(
+            self,
+            count_unviewed_notifications_by_kind,
+            org_id,
+            user_id,
+            kind
+        )
+    }
+
+    pub async fn mark_notification_viewed(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        id: NotificationId,
+    ) -> Result<Option<NotificationRow>> {
+        dispatch!(self, mark_notification_viewed, org_id, user_id, id)
     }
 
     // ============================================

@@ -567,6 +567,7 @@ async fn process_slack_message(
         .message_service
         .create(
             org_id,
+            None,
             app.harness_id.uuid(),
             Some(app.agent_id.uuid()),
             session.id.uuid(),

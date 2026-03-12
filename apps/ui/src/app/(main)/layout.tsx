@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
+import { NotificationsProvider } from "@/providers/notifications-provider";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Loader2 } from "lucide-react";
 
@@ -64,11 +65,13 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   }
 
   const content = (
-    <div className="flex h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
-      {globalSearchEnabled && <CommandPalette />}
-    </div>
+    <NotificationsProvider>
+      <div className="flex h-screen">
+        <Sidebar />
+        <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+        {globalSearchEnabled && <CommandPalette />}
+      </div>
+    </NotificationsProvider>
   );
 
   if (globalSearchEnabled) {

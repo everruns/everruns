@@ -271,6 +271,7 @@ pub async fn create_message(
         .message_service
         .create(
             org.org_id,
+            org.user_id,
             session.harness_id.uuid(),
             session.agent_id.map(|a| a.uuid()),
             session_id.uuid(),

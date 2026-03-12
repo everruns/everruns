@@ -239,7 +239,8 @@ pub use skill::{
 };
 pub use typed_id::{
     AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId,
-    MessageId, ModelId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId,
+    TypedId,
 };
 
 // URL validation re-exports
