@@ -13,7 +13,7 @@ echo "🔒 Running pre-push checks..."
 echo ""
 
 # 1. Rust formatting
-echo "1/5 Rust formatting"
+echo "1/6 Rust formatting"
 if cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
@@ -21,7 +21,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/5 Rust linting"
+echo "2/6 Rust linting"
 if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
@@ -29,7 +29,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/5 Cargo.lock freshness"
+echo "3/6 Cargo.lock freshness"
 if cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
@@ -37,7 +37,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/5 UI formatting"
+echo "4/6 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && npm run format:check 2>/dev/null); then
     pass "UI format"
@@ -49,7 +49,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/5 UI linting"
+echo "5/6 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && npm run lint 2>/dev/null); then
     pass "UI lint"
@@ -58,6 +58,19 @@ if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   fi
 else
   echo "   ⏭️  skipped (no node_modules)"
+fi
+
+# 6. Commit author attribution check
+echo "6/6 Commit author attribution"
+AUTHOR_NAME=$(git config user.name 2>/dev/null || echo "")
+AUTHOR_EMAIL=$(git config user.email 2>/dev/null || echo "")
+BOT_PATTERN="(claude|cursor|copilot|github-actions|bot|ai-agent|openai|anthropic|gpt)"
+if echo "$AUTHOR_NAME" | grep -iEq "$BOT_PATTERN"; then
+  fail "git user.name looks like a bot: '$AUTHOR_NAME' — commits must use a real user"
+elif echo "$AUTHOR_EMAIL" | grep -iEq "$BOT_PATTERN"; then
+  fail "git user.email looks like a bot: '$AUTHOR_EMAIL' — commits must use a real user"
+else
+  pass "commit author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
 fi
 
 echo ""
