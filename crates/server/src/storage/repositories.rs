@@ -2051,6 +2051,11 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
+            WITH clear_default AS (
+                UPDATE llm_models
+                SET is_default = FALSE, updated_at = NOW()
+                WHERE is_default = TRUE AND org_id = $1 AND $6 = TRUE
+            )
             INSERT INTO llm_models (org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
@@ -2083,6 +2088,11 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
+            WITH clear_default AS (
+                UPDATE llm_models
+                SET is_default = FALSE, updated_at = NOW()
+                WHERE is_default = TRUE AND id != $1 AND $7 = TRUE
+            )
             INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO UPDATE SET
@@ -2203,6 +2213,11 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
+            WITH clear_default AS (
+                UPDATE llm_models
+                SET is_default = FALSE, updated_at = NOW()
+                WHERE is_default = TRUE AND org_id = $1 AND id != $2 AND $6 = TRUE
+            )
             UPDATE llm_models
             SET
                 model_id = COALESCE($3, model_id),

@@ -1683,7 +1683,16 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
-        self.llm_models.write().insert(id, row.clone());
+        let mut models = self.llm_models.write();
+        if input.is_default {
+            for m in models.values_mut() {
+                if m.org_id == org_id && m.is_default {
+                    m.is_default = false;
+                    m.updated_at = now;
+                }
+            }
+        }
+        models.insert(id, row.clone());
         Ok(row)
     }
 
@@ -1701,7 +1710,7 @@ impl InMemoryDatabase {
         let mut models = self.llm_models.write();
         let now = Self::now();
 
-        if let Some(existing) = models.get(&id) {
+        if let Some(existing) = models.get(&id).cloned() {
             // Check if seed-controlled fields differ
             if existing.display_name == input.display_name
                 && existing.is_default == input.is_default
@@ -1709,17 +1718,33 @@ impl InMemoryDatabase {
             {
                 return Ok(None); // Unchanged
             }
+            if input.is_default {
+                for m in models.values_mut() {
+                    if m.org_id == org_id && m.is_default && m.id != id {
+                        m.is_default = false;
+                        m.updated_at = now;
+                    }
+                }
+            }
             let row = LlmModelRow {
                 display_name: input.display_name,
                 is_default: input.is_default,
                 is_favorite: input.is_favorite,
                 updated_at: now,
-                ..existing.clone()
+                ..existing
             };
             models.insert(id, row.clone());
             return Ok(Some(row));
         }
 
+        if input.is_default {
+            for m in models.values_mut() {
+                if m.org_id == org_id && m.is_default {
+                    m.is_default = false;
+                    m.updated_at = now;
+                }
+            }
+        }
         let row = LlmModelRow {
             id,
             org_id,
@@ -1848,29 +1873,38 @@ impl InMemoryDatabase {
     ) -> Result<Option<LlmModelRow>> {
         let id = ModelId::from_uuid(id);
         let mut models = self.llm_models.write();
-        if let Some(model) = models.get_mut(&id) {
-            if model.org_id != org_id {
-                return Ok(None);
-            }
-            if let Some(display_name) = input.display_name {
-                model.display_name = display_name;
-            }
-            if let Some(capabilities) = input.capabilities {
-                model.capabilities = serde_json::to_value(&capabilities)?;
-            }
-            if let Some(is_default) = input.is_default {
-                model.is_default = is_default;
-            }
-            if let Some(is_favorite) = input.is_favorite {
-                model.is_favorite = is_favorite;
-            }
-            if let Some(status) = input.status {
-                model.status = status;
-            }
-            model.updated_at = Self::now();
-            return Ok(Some(model.clone()));
+        // Check existence and org ownership
+        if models.get(&id).is_none_or(|m| m.org_id != org_id) {
+            return Ok(None);
         }
-        Ok(None)
+        // Clear default on other models if setting this one as default
+        if input.is_default == Some(true) {
+            let now = Self::now();
+            for m in models.values_mut() {
+                if m.org_id == org_id && m.is_default && m.id != id {
+                    m.is_default = false;
+                    m.updated_at = now;
+                }
+            }
+        }
+        let model = models.get_mut(&id).unwrap();
+        if let Some(display_name) = input.display_name {
+            model.display_name = display_name;
+        }
+        if let Some(capabilities) = input.capabilities {
+            model.capabilities = serde_json::to_value(&capabilities)?;
+        }
+        if let Some(is_default) = input.is_default {
+            model.is_default = is_default;
+        }
+        if let Some(is_favorite) = input.is_favorite {
+            model.is_favorite = is_favorite;
+        }
+        if let Some(status) = input.status {
+            model.status = status;
+        }
+        model.updated_at = Self::now();
+        Ok(Some(model.clone()))
     }
 
     pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
