@@ -16,6 +16,7 @@ use fetchkit::{
     FetchError, FetchOptions, FetchRequest, TOOL_DESCRIPTION, TOOL_LLMTXT, fetch_with_options,
 };
 use serde_json::Value;
+use std::ops::Deref;
 
 /// WebFetch capability - provides tools to fetch web content
 pub struct WebFetchCapability;
@@ -52,7 +53,7 @@ impl Capability for WebFetchCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         // Use the LLM-optimized documentation from fetchkit
-        Some(TOOL_LLMTXT)
+        Some(TOOL_LLMTXT.deref())
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -140,6 +141,7 @@ impl Tool for WebFetchTool {
             method: Some(method),
             as_markdown: if as_markdown { Some(true) } else { None },
             as_text: if as_text { Some(true) } else { None },
+            ..Default::default()
         };
 
         // Execute the fetch using fetchkit with configured options (SSRF protection)
@@ -168,6 +170,8 @@ impl Tool for WebFetchTool {
                     FetchError::ConnectError(_) => "Failed to connect to server".to_string(),
                     FetchError::RequestError(msg) => format!("Request failed: {}", msg),
                     FetchError::FetcherError(msg) => format!("Fetch error: {}", msg),
+                    FetchError::SaveError(msg) => format!("Failed to save file: {}", msg),
+                    FetchError::SaverNotAvailable => "File saving not available".to_string(),
                 };
                 ToolExecutionResult::tool_error(error_message)
             }
