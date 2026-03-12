@@ -228,23 +228,22 @@ Implementation:
 **Host ↔ Subagent Communication Model:**
 
 ```
-Parent Session
+Parent Session — 3 tools only
   │
-  ├─ list_subagents() → [{id, status, task, created_at, model}]
-  │
-  ├─ spawn_subagent(task, config)
+  ├─ spawn_subagent(task, mode, config)
   │    → Creates child session
   │    → Returns subagent_id immediately (if background)
   │    → Or blocks until completion (if foreground)
   │
-  ├─ get_subagent_status(subagent_id)
-  │    → {status: running|completed|failed, progress, result}
+  ├─ get_subagents(subagent_id?)
+  │    → All children: [{id, task, status, created_at, model}]
+  │    → Single child:  {id, task, status, result, iterations, tools_used}
   │
-  ├─ cancel_subagent(subagent_id)
-  │    → Cancels running subagent
-  │
-  └─ resume_subagent(subagent_id, additional_context)
-       → Resumes completed/failed subagent with new instructions
+  └─ message_subagent(subagent_id, message, cancel?)
+       → Running:   inject message into next turn (steer)
+       → Running + cancel: deliver message, then gracefully stop
+       → Completed: resume with message as new input (full context preserved)
+       → Failed:    resume/retry with additional context
 ```
 
 **Subagent Status Lifecycle:**
@@ -267,7 +266,8 @@ Spawning → Running → Completed
 - Background subagents run via durable execution engine (PostgreSQL-backed, survives restarts)
 - Parent session stores `child_subagents: Vec<SubagentRef>` (id, status, task summary)
 - Subagent results stored in `subagent_results` table (session_id, subagent_id, result, status)
-- Parent LLM sees subagent status in system prompt or via `list_subagents` tool
+- Parent LLM sees subagent status via `get_subagents` tool
+- Parent steers/cancels/resumes subagents via `message_subagent` tool
 - On subagent completion, parent session receives notification (triggers new turn if idle)
 
 ### Parallel Subagent Execution
@@ -328,10 +328,8 @@ impl Capability for SubagentCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(SpawnSubagentTool),
-            Box::new(ListSubagentsTool),
-            Box::new(GetSubagentStatusTool),
-            Box::new(CancelSubagentTool),
-            Box::new(ResumeSubagentTool),
+            Box::new(GetSubagentsTool),
+            Box::new(MessageSubagentTool),
         ]
     }
 
@@ -358,7 +356,7 @@ impl Capability for SubagentCapability {
       "system_prompt": "string (optional) — custom system prompt",
       "agent_id": "string (optional) — reference persisted agent",
       "template": "string (optional) — reference workspace template name",
-      "allowed_tools": ["string"] ,
+      "allowed_tools": ["string"],
       "disallowed_tools": ["string"],
       "allowed_capabilities": ["string"],
       "model": "string (optional) — model override",
@@ -369,38 +367,33 @@ impl Capability for SubagentCapability {
 }
 
 {
-  "name": "list_subagents",
-  "description": "List all subagents spawned by this session",
+  "name": "get_subagents",
+  "description": "List all subagents or get detailed status of a specific one.",
   "parameters": {
-    "status_filter": "enum: all|running|completed|failed (optional)"
+    "subagent_id": "string (optional) — specific subagent for detailed view",
+    "status_filter": "enum: all|running|completed|failed (optional, only when listing all)"
   }
 }
 
 {
-  "name": "get_subagent_status",
-  "description": "Get detailed status and result of a specific subagent",
-  "parameters": {
-    "subagent_id": "string (required)"
-  }
-}
-
-{
-  "name": "cancel_subagent",
-  "description": "Cancel a running background subagent",
-  "parameters": {
-    "subagent_id": "string (required)"
-  }
-}
-
-{
-  "name": "resume_subagent",
-  "description": "Resume a completed/failed subagent with additional context",
+  "name": "message_subagent",
+  "description": "Send a message to a subagent. Steers running subagents, resumes completed/failed ones, cancels with cancel flag.",
   "parameters": {
     "subagent_id": "string (required)",
-    "additional_context": "string (required)"
+    "message": "string (required) — instruction or context for the subagent",
+    "cancel": "boolean (optional, default: false) — deliver message then gracefully stop"
   }
 }
 ```
+
+**`message_subagent` behavior by subagent state:**
+
+| Subagent State | `cancel: false` | `cancel: true` |
+|---|---|---|
+| **Running** | Inject message into subagent's next turn (steering) | Deliver message, then gracefully stop |
+| **Completed** | Resume — starts new turn with message as input | No-op (already done) |
+| **Failed** | Resume — retry with additional context | No-op |
+| **Cancelled** | Resume from where it stopped | No-op |
 
 ### Execution Flow
 
@@ -435,23 +428,32 @@ Parent Session Turn
 
 Later turn (parent checks on background subagent):
   │
-  ├─ ReasonAtom → LLM calls list_subagents() or get_subagent_status()
+  ├─ ReasonAtom → LLM calls get_subagents() or get_subagents(subagent_id)
   └─ ActAtom → Returns current status/results
+
+Later turn (parent steers or cancels):
+  │
+  ├─ ReasonAtom → LLM calls message_subagent(id, "focus on auth module only")
+  └─ ActAtom → Injects message into running subagent's next turn
+
+Later turn (parent resumes completed subagent with follow-up):
+  │
+  ├─ ReasonAtom → LLM calls message_subagent(id, "now fix the issues you found")
+  └─ ActAtom → Resumes subagent with full prior context + new instruction
 ```
 
 ### Priority Ranking
 
 | Feature | Impact | Effort | Priority |
 |---------|--------|--------|----------|
-| `spawn_subagent` tool (foreground) | High | Medium | P0 |
+| `spawn_subagent` tool (foreground + background) | High | Medium | P0 |
+| `get_subagents` tool (list + detail) | High | Low | P0 |
+| `message_subagent` tool (steer + cancel + resume) | High | Medium | P0 |
 | Shared/inherited filesystem | High | Medium | P0 |
 | Tool/capability subsetting | High | Low | P0 |
-| Background subagent mode | High | Medium | P0 |
-| `list_subagents` / `get_subagent_status` tools | High | Low | P0 |
 | Subagent SSE events | Medium | Low | P0 |
 | Nesting prevention | Medium | Trivial | P0 |
 | Model selection per subagent | Medium | Low | P1 |
-| `cancel_subagent` / `resume_subagent` | Medium | Medium | P1 |
 | Ephemeral session cleanup (TTL) | Medium | Low | P1 |
 | Read-only filesystem mode | Medium | Low | P1 |
 | Workspace template discovery (VFS) | Low | Medium | P1 |
@@ -462,8 +464,8 @@ Later turn (parent checks on background subagent):
 
 ### Implementation Path
 
-**Phase 1: Core Subagent Primitive + Background Mode**
-- `SubagentCapability` with all 5 tools
+**Phase 1: All 3 Tools + Core Infrastructure**
+- `SubagentCapability` with 3 tools: `spawn_subagent`, `get_subagents`, `message_subagent`
 - Ephemeral session creation (`parent_session_id` FK, `subagent_config` JSONB)
 - Subagent status lifecycle (`subagent_status` column)
 - Filesystem inheritance (shared mount of parent workspace, rw/ro modes)
@@ -471,13 +473,12 @@ Later turn (parent checks on background subagent):
 - Max turns guard (prevent runaway)
 - Foreground: blocks parent tool call until complete
 - Background: enqueue via durable engine, return immediately
-- `list_subagents` + `get_subagent_status` for host ↔ subagent communication
+- `get_subagents` for listing + detailed status
+- `message_subagent` for steering running subagents, cancelling, and resuming completed/failed ones
 - SSE events: `subagent.spawned`, `subagent.completed`, `subagent.failed`
 - Nesting depth check (block subagents from spawning subagents)
 
-**Phase 2: Lifecycle Management**
-- `cancel_subagent` with graceful shutdown
-- `resume_subagent` with context preservation
+**Phase 2: Ergonomics + Presets**
 - Auto-cleanup: TTL-based ephemeral session garbage collection
 - Built-in subagent presets: `explore` (read-only, fast model), `worker` (read-write, no nesting)
 - `subagent.progress` SSE events (iteration count, current tool)
