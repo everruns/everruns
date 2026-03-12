@@ -202,6 +202,9 @@ impl EventService {
     /// `filter_types`: positive filter — when non-empty, only return matching types.
     /// `exclude_types`: negative filter — remove matching types from the result.
     /// When both are provided, `filter_types` narrows first, then `exclude_types` removes.
+    /// `before_sequence`: cursor for backward pagination (events before this sequence).
+    /// `limit`: max number of events to return (backward pagination, last N events).
+    #[allow(clippy::too_many_arguments)]
     pub async fn list(
         &self,
         session_id: Uuid,
@@ -209,6 +212,8 @@ impl EventService {
         since_id: Option<Uuid>,
         filter_types: &[String],
         exclude_types: &[String],
+        before_sequence: Option<i32>,
+        limit: Option<i32>,
     ) -> Result<Vec<Event>> {
         let rows = self
             .db
@@ -218,6 +223,8 @@ impl EventService {
                 since_id.map(EventId::from_uuid),
                 filter_types,
                 exclude_types,
+                before_sequence,
+                limit,
             )
             .await?;
         Ok(rows
@@ -225,6 +232,25 @@ impl EventService {
             .map(Self::row_to_event)
             .filter(|e| !e.is_unsupported())
             .collect())
+    }
+
+    /// Count events for a session, excluding specified types (for X-Total-Count header).
+    pub async fn count_events(&self, session_id: Uuid, exclude_types: &[String]) -> Result<i64> {
+        self.db
+            .count_events(SessionId::from_uuid(session_id), exclude_types)
+            .await
+    }
+
+    /// Find the nearest turn.started sequence at or before the given sequence.
+    /// Used for turn boundary snapping in pagination.
+    pub async fn find_turn_boundary(
+        &self,
+        session_id: Uuid,
+        before_sequence: i32,
+    ) -> Result<Option<i32>> {
+        self.db
+            .find_turn_boundary(SessionId::from_uuid(session_id), before_sequence)
+            .await
     }
 
     /// List events that represent messages (user, agent, tool results)

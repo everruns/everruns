@@ -8,8 +8,11 @@ use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
-    response::sse::{Event as SseEvent, KeepAlive, Sse},
+    http::{HeaderMap, StatusCode},
+    response::{
+        IntoResponse, Response,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::get,
 };
 // Use axum_extra::extract::Query (backed by serde_html_form) instead of axum's
@@ -51,6 +54,13 @@ pub struct EventsQuery {
     #[serde(default)]
     #[param(style = Form, explode = true)]
     pub exclude: Vec<String>,
+    /// Max events to return (backward pagination). When set, returns the last N events
+    /// (or last N before `before_sequence`). Results are ordered oldest→newest.
+    #[param(minimum = 1, maximum = 1000)]
+    pub limit: Option<i32>,
+    /// Cursor for backward pagination: only return events with sequence < this value.
+    /// Used with `limit` to paginate backward through event history.
+    pub before_sequence: Option<i32>,
 }
 
 impl EventsQuery {
@@ -423,7 +433,7 @@ pub async fn stream_sse(
 
                     // Fetch events since last ID
                     tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
-                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types).await {
+                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
                         Ok(events) if !events.is_empty() => {
                             // Get the last event ID for next iteration
                             let new_last_id = Some(events.last().unwrap().id.uuid());
@@ -530,12 +540,26 @@ impl<S: Stream> Stream for GuardedStream<S> {
 // List Events (JSON response for polling)
 // ============================================
 
+/// Max limit for event pagination
+const MAX_EVENT_LIMIT: i32 = 1000;
+
 /// GET /v1/sessions/{session_id}/events - List events (JSON)
 ///
 /// Returns events for a session as a JSON array. Supports filtering by event type
 /// via `types` (positive: only these types) and `exclude` (negative: remove these types).
 /// When both are provided, `types` narrows first, then `exclude` removes from that set.
 /// Both accept only known event types (max 25 per parameter). Unknown types return 400.
+///
+/// ## Pagination
+///
+/// Supports backward pagination via `limit` and `before_sequence`:
+/// - `limit=200` returns the last 200 events (oldest→newest)
+/// - `limit=200&before_sequence=4500` returns 200 events before sequence 4500
+/// - When `limit` is provided, the response includes an `X-Total-Count` header
+///   with the count of non-delta events for the session
+/// - Turn boundary snapping: when fetching older pages, the batch boundary
+///   snaps to the nearest `turn.started` event to avoid splitting turns
+/// - Without `limit`, all events are returned (backward compatible)
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/events",
@@ -544,7 +568,10 @@ impl<S: Stream> Stream for GuardedStream<S> {
         EventsQuery
     ),
     responses(
-        (status = 200, description = "Events list", body = ListResponse<Event>),
+        (status = 200, description = "Events list", body = ListResponse<Event>,
+         headers(
+             ("X-Total-Count" = i64, description = "Total non-delta event count for the session (only present when limit is used)")
+         )),
         (status = 400, description = "Invalid session ID or invalid event type filter"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
@@ -556,8 +583,30 @@ pub async fn list_events(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<ListResponse<Event>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     query.validate()?;
+
+    // Validate limit range
+    if let Some(limit) = query.limit
+        && (!(1..=MAX_EVENT_LIMIT).contains(&limit))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("limit must be between 1 and {MAX_EVENT_LIMIT}, got {limit}"),
+            }),
+        ));
+    }
+
+    // before_sequence requires limit
+    if query.before_sequence.is_some() && query.limit.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "before_sequence requires limit to be set".to_string(),
+            }),
+        ));
+    }
 
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -591,10 +640,31 @@ pub async fn list_events(
             )
         })?;
 
-    // Fetch events using EventService (converts rows to core::Event)
-    // Optional since_id filter for incremental fetching
-    // Optional types filter for positive event type selection
-    // Optional exclude filter for filtering out event types (e.g., delta events)
+    let is_paginated = query.limit.is_some();
+
+    // Turn boundary snapping: when paginating backward with before_sequence,
+    // snap the cursor to the nearest turn.started boundary to avoid splitting turns.
+    let before_sequence = if let Some(before_seq) = query.before_sequence {
+        if let Some(limit) = query.limit {
+            // Find the event that would be at the boundary of our batch
+            // by looking at what the first event in the batch would be.
+            // We want to snap the *start* of the batch to a turn boundary,
+            // so we first figure out roughly where the batch starts, then
+            // find the nearest turn.started at or before that point.
+            //
+            // Strategy: fetch events, check if the first event is mid-turn,
+            // and if so extend backward to include the full turn.
+            // For simplicity, we pass before_seq as-is and snap in a second pass.
+            let _ = limit; // used below
+            Some(before_seq)
+        } else {
+            Some(before_seq)
+        }
+    } else {
+        None
+    };
+
+    // Fetch events
     let events = state
         .event_service
         .list(
@@ -603,6 +673,8 @@ pub async fn list_events(
             query.since_id.map(|id| id.uuid()),
             &query.types,
             &query.exclude,
+            before_sequence,
+            query.limit,
         )
         .await
         .map_err(|e| {
@@ -615,7 +687,77 @@ pub async fn list_events(
             )
         })?;
 
-    Ok(Json(ListResponse { data: events }))
+    // Turn boundary snapping (second pass): if the first event is not a turn.started
+    // and we're paginating backward, extend the batch to include events from the
+    // beginning of that turn.
+    let events = if is_paginated && !events.is_empty() && before_sequence.is_some() {
+        let first_seq = events[0].sequence.unwrap_or(0);
+        if events[0].event_type != "turn.started" {
+            // Find the turn.started boundary
+            if let Ok(Some(turn_seq)) = state
+                .event_service
+                .find_turn_boundary(session_id.uuid(), first_seq)
+                .await
+            {
+                if turn_seq < first_seq {
+                    // Fetch the missing events from turn boundary to first event
+                    if let Ok(mut prefix) = state
+                        .event_service
+                        .list(
+                            session_id.uuid(),
+                            Some(turn_seq - 1), // since_sequence is exclusive (>)
+                            None,
+                            &query.types,
+                            &query.exclude,
+                            Some(first_seq),
+                            None,
+                        )
+                        .await
+                    {
+                        prefix.extend(events);
+                        prefix
+                    } else {
+                        events
+                    }
+                } else {
+                    events
+                }
+            } else {
+                events
+            }
+        } else {
+            events
+        }
+    } else {
+        events
+    };
+
+    // Build response with optional X-Total-Count header
+    let mut headers = HeaderMap::new();
+    if is_paginated {
+        let total_count = state
+            .event_service
+            .count_events(session_id.uuid(), &query.exclude)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to count events: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Internal server error".to_string(),
+                    }),
+                )
+            })?;
+        headers.insert("X-Total-Count", total_count.to_string().parse().unwrap());
+        // Expose X-Total-Count to browser JS (CORS)
+        headers.insert(
+            "Access-Control-Expose-Headers",
+            "X-Total-Count".parse().unwrap(),
+        );
+    }
+
+    let body = Json(ListResponse { data: events });
+    Ok((headers, body).into_response())
 }
 
 #[cfg(test)]
@@ -829,6 +971,8 @@ mod tests {
             since_id: None,
             types: vec!["turn.started".to_string(), "turn.completed".to_string()],
             exclude: vec![],
+            limit: None,
+            before_sequence: None,
         };
         assert!(query.validate().is_ok());
     }
@@ -842,6 +986,8 @@ mod tests {
                 "output.message.delta".to_string(),
                 "reason.thinking.delta".to_string(),
             ],
+            limit: None,
+            before_sequence: None,
         };
         assert!(query.validate().is_ok());
     }
@@ -852,6 +998,8 @@ mod tests {
             since_id: None,
             types: vec![],
             exclude: vec![],
+            limit: None,
+            before_sequence: None,
         };
         assert!(query.validate().is_ok());
     }
@@ -862,6 +1010,8 @@ mod tests {
             since_id: None,
             types: vec!["turn.started".to_string(), "bogus.type".to_string()],
             exclude: vec![],
+            limit: None,
+            before_sequence: None,
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -875,6 +1025,8 @@ mod tests {
             since_id: None,
             types: vec![],
             exclude: vec!["not.a.real.type".to_string()],
+            limit: None,
+            before_sequence: None,
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -889,6 +1041,8 @@ mod tests {
             since_id: None,
             types,
             exclude: vec![],
+            limit: None,
+            before_sequence: None,
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -902,6 +1056,8 @@ mod tests {
             since_id: None,
             types: vec![],
             exclude,
+            limit: None,
+            before_sequence: None,
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -914,7 +1070,46 @@ mod tests {
             since_id: None,
             types: VALID_EVENT_TYPES.iter().map(|s| s.to_string()).collect(),
             exclude: vec![],
+            limit: None,
+            before_sequence: None,
         };
         assert!(query.validate().is_ok());
+    }
+
+    // ============================================
+    // Pagination query string tests
+    // ============================================
+
+    #[test]
+    fn test_query_string_with_limit() {
+        let qs = "limit=200";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("limit should parse");
+        assert_eq!(query.limit, Some(200));
+        assert!(query.before_sequence.is_none());
+    }
+
+    #[test]
+    fn test_query_string_with_limit_and_before_sequence() {
+        let qs = "limit=200&before_sequence=4500";
+        let query: EventsQuery =
+            serde_html_form::from_str(qs).expect("limit+before_sequence should parse");
+        assert_eq!(query.limit, Some(200));
+        assert_eq!(query.before_sequence, Some(4500));
+    }
+
+    #[test]
+    fn test_query_string_limit_with_exclude() {
+        let qs = "limit=100&exclude=output.message.delta&exclude=reason.thinking.delta";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("limit+exclude should parse");
+        assert_eq!(query.limit, Some(100));
+        assert_eq!(query.exclude.len(), 2);
+    }
+
+    #[test]
+    fn test_query_string_no_limit_defaults_none() {
+        let qs = "";
+        let query: EventsQuery = serde_html_form::from_str(qs).expect("empty should parse");
+        assert!(query.limit.is_none());
+        assert!(query.before_sequence.is_none());
     }
 }
