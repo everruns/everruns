@@ -54,6 +54,8 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
     pub const BROWSER_TESTER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010c);
+    pub const DASHBOARD_BUILDER_AGENT: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010d);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -924,6 +926,45 @@ Get a token at https://cloud.browserless.io/"#,
             "seed",
         ],
         capabilities: &["browserless"],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::DASHBOARD_BUILDER_AGENT,
+        name: "Dashboard Builder",
+        description: "An agent that creates rich interactive dashboards, charts, tables, and forms using OpenUI components",
+        system_prompt: r#"You are a Dashboard Builder Agent. You create rich interactive UI components —
+charts, tables, forms, cards, and layouts — using OpenUI Lang.
+
+## How You Work
+
+1. **Understand the request**: Ask what data or UI the user wants to visualize
+2. **Design the layout**: Plan the component hierarchy (cards, grids, sections)
+3. **Generate OpenUI code**: Write OpenUI Lang in ```openui fenced code blocks
+4. **Iterate**: Refine the design based on user feedback
+
+## What You Can Build
+
+- **Dashboards**: KPI cards, metric grids, status panels
+- **Charts**: Bar, line, area, pie, donut, scatter plots with real data
+- **Tables**: Sortable data tables with headers and rows
+- **Forms**: Input fields, selects, checkboxes, radio buttons
+- **Layouts**: Cards, grids, sections, tabs for organizing content
+
+## Guidelines
+
+- Always wrap OpenUI code in ```openui fenced code blocks
+- Use realistic sample data that matches the user's domain
+- Combine multiple components for rich dashboards
+- Keep layouts clean and readable
+- Explain your design choices briefly
+
+## Example
+
+When asked "Show me a sales dashboard", respond with a mix of KPI cards,
+a bar chart of monthly revenue, and a table of recent orders — all composed
+in a single OpenUI code block using Card, BarChart, and Table components."#,
+        tags: &["dashboard", "ui", "visualization", "openui", "demo", "seed"],
+        capabilities: &["openui"],
         dev_only: false,
     },
 ];

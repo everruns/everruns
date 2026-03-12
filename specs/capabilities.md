@@ -202,6 +202,8 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 | `session_schedule` | `schedules` |
 | `session_sql_database` | `sql_database` |
 
+| `openui` | `openui` |
+
 MCP and Skill virtual capabilities currently declare no features.
 
 #### Known Feature Strings
@@ -213,6 +215,7 @@ MCP and Skill virtual capabilities currently declare no features.
 | `key_value` | Storage tab | Session can store key/value pairs |
 | `schedules` | Schedules tab | Session can create/manage schedules |
 | `sql_database` | *(reserved)* | Session has SQL database access |
+| `openui` | OpenUI rendering | Session can render OpenUI Lang components |
 
 #### compute_features()
 
@@ -408,6 +411,25 @@ The system prompt instructs agents to use task management when:
 2. **Update immediately** - Mark tasks completed as soon as done, don't batch
 3. **Replace entire list** - Each `write_todos` call replaces the full list
 4. **Completion criteria** - Only mark `completed` when fully done (tests pass, no errors)
+
+#### OpenUI
+
+- **ID**: `openui`
+- **Purpose**: Enables agents to generate rich interactive UI (charts, tables, forms, cards) using OpenUI Lang
+- **Tools**: None (prompt-only capability)
+- **Features**: `openui`
+- **Icon**: `layout`
+- **Category**: `UI`
+
+##### Design Decision: Prompt-Only Capability
+
+OpenUI is a pure system prompt capability — it provides no tools. It instructs the LLM to output OpenUI Lang code in ` ```openui ` fenced code blocks. The UI frontend detects and renders these blocks using `@openuidev/react-lang` and `@openuidev/react-ui`.
+
+##### Design Decision: Component Library from Crate
+
+The system prompt is generated from the `everruns-openui` crate which defines the full component library (50+ components across 7 groups: Content, Tables, Charts 2D, Charts 1D, Forms, Buttons, Layout). Component signatures are included in the prompt so the LLM knows valid props.
+
+See `specs/openui.md` for full architecture and UI integration details.
 
 #### SkillsDiscovery
 
