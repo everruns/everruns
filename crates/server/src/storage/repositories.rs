@@ -1396,7 +1396,9 @@ impl Database {
             return Ok(rows);
         }
 
-        // Original unbounded query (backward compat when no limit param)
+        // Safety-limited forward query (backward compat when no limit param).
+        // Cap at 10 000 rows to prevent unbounded result sets.
+        const FORWARD_SAFETY_LIMIT: i64 = 10_000;
         let rows = match (since_id, since_sequence) {
             (Some(id), _) => {
                 sqlx::query_as::<_, EventRow>(
@@ -1408,12 +1410,14 @@ impl Database {
                       AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
                       AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
                     ORDER BY sequence ASC
+                    LIMIT $5
                     "#,
                 )
                 .bind(session_id.uuid())
                 .bind(id.uuid())
                 .bind(filter_types)
                 .bind(exclude_types)
+                .bind(FORWARD_SAFETY_LIMIT)
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -1426,12 +1430,14 @@ impl Database {
                       AND (cardinality($3::text[]) = 0 OR event_type = ANY($3))
                       AND (cardinality($4::text[]) = 0 OR event_type <> ALL($4))
                     ORDER BY sequence ASC
+                    LIMIT $5
                     "#,
                 )
                 .bind(session_id.uuid())
                 .bind(seq)
                 .bind(filter_types)
                 .bind(exclude_types)
+                .bind(FORWARD_SAFETY_LIMIT)
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -1444,11 +1450,13 @@ impl Database {
                       AND (cardinality($2::text[]) = 0 OR event_type = ANY($2))
                       AND (cardinality($3::text[]) = 0 OR event_type <> ALL($3))
                     ORDER BY sequence ASC
+                    LIMIT $4
                     "#,
                 )
                 .bind(session_id.uuid())
                 .bind(filter_types)
                 .bind(exclude_types)
+                .bind(FORWARD_SAFETY_LIMIT)
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -1543,6 +1551,8 @@ impl Database {
             .fetch_all(&self.pool)
             .await?
         } else {
+            // Safety cap when no explicit limit — prevents unbounded result sets.
+            const MESSAGE_SAFETY_LIMIT: i64 = 5_000;
             sqlx::query_as::<_, EventRow>(
                 r#"
                 SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
@@ -1550,14 +1560,32 @@ impl Database {
                 WHERE session_id = $1
                   AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
                 ORDER BY sequence ASC
+                LIMIT $2
                 "#,
             )
             .bind(session_id.uuid())
+            .bind(MESSAGE_SAFETY_LIMIT)
             .fetch_all(&self.pool)
             .await?
         };
 
         Ok(rows)
+    }
+
+    /// Count message events for a session using SELECT COUNT(*) — no row materialization.
+    pub async fn count_message_events(&self, session_id: SessionId) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+            "#,
+        )
+        .bind(session_id.uuid())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
     }
 
     /// List message events for a session with filters applied.

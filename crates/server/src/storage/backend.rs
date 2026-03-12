@@ -439,6 +439,11 @@ impl StorageBackend {
         dispatch!(self, list_message_events_limited, session_id, limit)
     }
 
+    /// Count message events for a session using COUNT(*) — no row materialization.
+    pub async fn count_message_events(&self, session_id: SessionId) -> Result<i64> {
+        dispatch!(self, count_message_events, session_id)
+    }
+
     /// List message events with filters applied
     ///
     /// This method applies the filters from the MessageQuery to efficiently

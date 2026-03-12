@@ -163,12 +163,12 @@ impl MessageRetriever for DbMessageRetriever {
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {
-        let events = self
+        let count = self
             .db
-            .list_message_events(session_id)
+            .count_message_events(session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
-        Ok(events.len())
+        Ok(count as usize)
     }
 }
 

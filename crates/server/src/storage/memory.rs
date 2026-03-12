@@ -1117,12 +1117,11 @@ impl InMemoryDatabase {
 
         result.sort_by_key(|e| e.sequence);
 
-        // Apply limit: take last N events (backward pagination)
-        if let Some(limit) = limit {
-            let limit = limit as usize;
-            if result.len() > limit {
-                result = result.split_off(result.len() - limit);
-            }
+        // Apply limit: take last N events (backward pagination).
+        // Safety cap of 10 000 when no explicit limit to prevent unbounded results.
+        let effective_limit = limit.map(|l| l as usize).unwrap_or(10_000);
+        if result.len() > effective_limit {
+            result = result.split_off(result.len() - effective_limit);
         }
 
         Ok(result)
@@ -1215,6 +1214,23 @@ impl InMemoryDatabase {
             }
         }
         Ok(result)
+    }
+
+    /// Count message events for a session — no row materialization.
+    pub async fn count_message_events(&self, session_id: SessionId) -> Result<i64> {
+        let message_types = [
+            "input.message",
+            "output.message.completed",
+            "tool.completed",
+        ];
+        let events = self.events.read();
+        let count = events
+            .values()
+            .filter(|e| {
+                e.session_id == session_id && message_types.contains(&e.event_type.as_str())
+            })
+            .count();
+        Ok(count as i64)
     }
 
     /// List message events for a session with filters applied.
