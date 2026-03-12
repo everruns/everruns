@@ -159,6 +159,29 @@ pub trait Workflow: Send + Sync + 'static {
     fn error(&self) -> Option<WorkflowError> {
         None
     }
+
+    /// Serialize workflow state for snapshot checkpointing.
+    ///
+    /// Workflows that implement this (along with `restore_state`) enable
+    /// snapshot-based replay: instead of replaying all events from the beginning,
+    /// the engine loads the latest snapshot and replays only events after it.
+    ///
+    /// Default returns `None` (snapshots disabled for this workflow type).
+    fn snapshot_state(&self) -> Option<Vec<u8>> {
+        None
+    }
+
+    /// Restore workflow state from a previously serialized snapshot.
+    ///
+    /// Returns `None` if restoration fails or snapshots aren't supported.
+    /// The `input` parameter is the original workflow input (for fields not
+    /// captured in the snapshot).
+    fn restore_state(_input: Self::Input, _data: &[u8]) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 #[cfg(test)]

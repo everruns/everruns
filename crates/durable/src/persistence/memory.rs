@@ -57,6 +57,13 @@ struct ScheduleExecutionMemState {
     row: ScheduleExecutionRow,
 }
 
+/// Snapshot state in memory
+struct SnapshotMemState {
+    sequence_num: i32,
+    snapshot_data: Vec<u8>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// In-memory implementation of WorkflowEventStore
 ///
 /// This is primarily for testing. It stores all data in memory and
@@ -75,6 +82,8 @@ pub struct InMemoryWorkflowEventStore {
     dlq: RwLock<HashMap<Uuid, DlqEntry>>,
     circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
     workers: RwLock<HashMap<String, WorkerInfo>>,
+    /// Snapshots keyed by workflow_id -> list of snapshots (sorted by sequence_num)
+    snapshots: RwLock<HashMap<Uuid, Vec<SnapshotMemState>>>,
     schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
     schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
@@ -92,6 +101,7 @@ impl InMemoryWorkflowEventStore {
             dlq: RwLock::new(HashMap::new()),
             circuit_breakers: RwLock::new(HashMap::new()),
             workers: RwLock::new(HashMap::new()),
+            snapshots: RwLock::new(HashMap::new()),
             schedules: RwLock::new(HashMap::new()),
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
@@ -232,6 +242,72 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .enumerate()
             .map(|(i, e)| (i as i32, e.clone()))
             .collect())
+    }
+
+    async fn load_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError> {
+        let workflows = self.workflows.read();
+        let workflow = workflows
+            .get(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        Ok(workflow
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| (*i as i32) > after_sequence)
+            .map(|(i, e)| (i as i32, e.clone()))
+            .collect())
+    }
+
+    async fn save_snapshot(
+        &self,
+        workflow_id: Uuid,
+        sequence_num: i32,
+        snapshot_data: Vec<u8>,
+    ) -> Result<(), StoreError> {
+        let mut snapshots = self.snapshots.write();
+        let entry = snapshots.entry(workflow_id).or_default();
+
+        // UPSERT: replace if same sequence_num exists
+        if let Some(existing) = entry.iter_mut().find(|s| s.sequence_num == sequence_num) {
+            existing.snapshot_data = snapshot_data;
+            existing.created_at = Utc::now();
+        } else {
+            entry.push(SnapshotMemState {
+                sequence_num,
+                snapshot_data,
+                created_at: Utc::now(),
+            });
+            entry.sort_by_key(|s| s.sequence_num);
+        }
+
+        Ok(())
+    }
+
+    async fn load_latest_snapshot(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Option<WorkflowSnapshot>, StoreError> {
+        let snapshots = self.snapshots.read();
+        let snapshot = snapshots
+            .get(&workflow_id)
+            .and_then(|entries| entries.last())
+            .map(|s| WorkflowSnapshot {
+                workflow_id,
+                sequence_num: s.sequence_num,
+                snapshot_data: s.snapshot_data.clone(),
+                created_at: s.created_at,
+            });
+        Ok(snapshot)
+    }
+
+    async fn delete_snapshots(&self, workflow_id: Uuid) -> Result<(), StoreError> {
+        self.snapshots.write().remove(&workflow_id);
+        Ok(())
     }
 
     async fn update_workflow_status(
