@@ -127,6 +127,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)
 - `specs/sccache.md` - Shared compile cache (sccache with S3 backend)
 - `specs/browserless.md` - Browserless browser automation integration
+- `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 
 ### Skills
 

@@ -717,6 +717,41 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 **Usage Field:** Contains cumulative session token usage at this point.
 
+### Subagent Events
+
+Subagent lifecycle events are emitted on the **parent session** when a subagent is spawned, completes, fails, or is cancelled. See `crates/core/src/events.rs` for `SubagentEventData`.
+
+#### `subagent.spawned`
+
+Emitted when `spawn_subagent` creates a child session.
+
+```json
+{
+  "type": "subagent.spawned",
+  "session_id": "...",
+  "data": {
+    "subagent_session_id": "...",
+    "subagent_name": "Test Runner",
+    "task": "Run the test suite",
+    "status": "spawning"
+  }
+}
+```
+
+#### `subagent.completed`
+
+Emitted when a subagent session idles after completing its task.
+
+#### `subagent.failed`
+
+Emitted when a subagent encounters an error.
+
+#### `subagent.cancelled`
+
+Emitted when a subagent is cancelled via `message_subagent` with `cancel: true`.
+
+All four events share the same `SubagentEventData` shape: `subagent_session_id`, `subagent_name`, `task`, `status`, and optional `result`/`error` fields.
+
 ### Extended Thinking Events
 
 Extended thinking events provide visibility into the model's chain-of-thought reasoning when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured).

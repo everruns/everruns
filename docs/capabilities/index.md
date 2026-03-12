@@ -37,6 +37,14 @@ Structured data, time awareness, task tracking, and scheduling.
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 
+### Orchestration
+
+Delegate and coordinate work across multiple agent sessions.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
+
 ### Platform & Configuration
 
 Agent self-management, dynamic instructions, and skill discovery.
@@ -115,6 +123,7 @@ Capabilities declare UI features they contribute. The session aggregates feature
 | `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
 | `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
+| `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
 
 ### Ordering
 

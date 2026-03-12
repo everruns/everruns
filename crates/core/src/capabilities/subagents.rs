@@ -244,8 +244,7 @@ impl Tool for SpawnSubagentTool {
         // Extract the last assistant message as the result
         let result_text = messages
             .iter()
-            .filter(|m| m.role == "agent" || m.role == "assistant")
-            .last()
+            .rfind(|m| m.role == "agent" || m.role == "assistant")
             .map(|m| m.content.clone())
             .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
@@ -349,8 +348,7 @@ impl Tool for GetSubagentsTool {
 
                     let last_response = messages
                         .iter()
-                        .filter(|m| m.role == "agent" || m.role == "assistant")
-                        .last()
+                        .rfind(|m| m.role == "agent" || m.role == "assistant")
                         .map(|m| m.content.clone());
 
                     ToolExecutionResult::success(json!({
@@ -546,8 +544,7 @@ impl Tool for MessageSubagentTool {
 
         let result_text = messages
             .iter()
-            .filter(|m| m.role == "agent" || m.role == "assistant")
-            .last()
+            .rfind(|m| m.role == "agent" || m.role == "assistant")
             .map(|m| m.content.clone());
 
         ToolExecutionResult::success(json!({
