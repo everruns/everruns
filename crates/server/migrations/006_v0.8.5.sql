@@ -1,5 +1,13 @@
--- Full-text search on events (EVE-87)
+-- Everruns v0.8.5
+-- Squashed migration for changes between v0.8.4 and v0.8.5
+-- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
 --
+-- Includes:
+-- - Full-text search on events (EVE-87)
+
+-- ============================================
+-- Event full-text search (EVE-87)
+-- ============================================
 -- Replaces `data::text ILIKE '%query%'` (sequential scan) with a tsvector
 -- generated column + GIN index for indexed full-text search.
 --
