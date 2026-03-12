@@ -78,7 +78,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["preferences", "config"] },
   {
     title: "Settings > Profile",
-    href: "/settings",
+    href: "/settings/profile",
     icon: Settings,
     keywords: ["account", "profile"],
   },
@@ -96,15 +96,21 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   },
   {
     title: "Settings > LLM Providers",
-    href: "/settings/llm-providers",
+    href: "/settings/providers",
     icon: Settings,
     keywords: ["openai", "anthropic", "model"],
   },
   {
-    title: "Settings > MCP Servers",
-    href: "/settings/mcp-servers",
+    title: "Settings > Organisation",
+    href: "/settings/organisation",
     icon: Settings,
-    keywords: ["mcp", "server"],
+    keywords: ["org", "team"],
+  },
+  {
+    title: "Settings > Members",
+    href: "/settings/members",
+    icon: Settings,
+    keywords: ["team", "invite"],
   },
   {
     title: "Durable Execution",
