@@ -47,9 +47,9 @@ pub struct Organization {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum OrgRole {
-    #[default]
     Member,
     Admin,
+    #[default]
     Owner,
 }
 
@@ -221,6 +221,6 @@ mod tests {
 
     #[test]
     fn test_org_role_default() {
-        assert_eq!(OrgRole::default(), OrgRole::Member);
+        assert_eq!(OrgRole::default(), OrgRole::Owner);
     }
 }
