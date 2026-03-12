@@ -59,8 +59,20 @@ async fn test_feature_flags_endpoint() {
     // Should return a JSON object with boolean flags
     assert!(body.is_object());
     assert!(body.get("global_chat").is_some());
+    assert!(body.get("notifications").is_some());
     // In test env (DEV_MODE=true), experimental flags are enabled
     assert!(body["global_chat"].is_boolean());
+    assert_eq!(body["notifications"], Value::Bool(false));
+}
+
+#[tokio::test]
+async fn test_notifications_routes_disabled_by_default() {
+    let server = TestServer::new().await;
+
+    server
+        .get("/v1/notifications")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 // ============================================

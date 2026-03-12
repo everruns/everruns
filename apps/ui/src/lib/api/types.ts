@@ -395,6 +395,28 @@ export interface Event {
   sequence?: number;
 }
 
+/** Durable user notification */
+export interface Notification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  href?: string | null;
+  payload: Record<string, unknown>;
+  occurrence_count: number;
+  viewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Notification list response with an accurate bell counter */
+export interface ListNotificationsResponse {
+  data: Notification[];
+  unviewed_count: number;
+}
+
 // ============================================
 // Event Data Types - Typed payloads for each event type
 // ============================================
@@ -718,6 +740,7 @@ export interface FeatureFlags {
   global_chat: boolean;
   apps: boolean;
   global_search: boolean;
+  notifications: boolean;
 }
 
 export interface AuthConfigResponse {

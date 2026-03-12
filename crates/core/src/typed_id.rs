@@ -392,6 +392,13 @@ impl IdMarker for AppIdMarker {
     const PREFIX: &'static str = "app";
 }
 
+/// Marker for Notification IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NotificationIdMarker;
+impl IdMarker for NotificationIdMarker {
+    const PREFIX: &'static str = "notification";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -426,6 +433,8 @@ pub type ExecId = TypedId<ExecIdMarker>;
 pub type ScheduleId = TypedId<ScheduleIdMarker>;
 /// App ID
 pub type AppId = TypedId<AppIdMarker>;
+/// Notification ID
+pub type NotificationId = TypedId<NotificationIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)

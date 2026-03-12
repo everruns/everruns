@@ -75,6 +75,7 @@ import {
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import { useCommandPalette } from "@/hooks/use-command-palette";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -347,11 +348,12 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   return (
     <div className="flex h-full w-64 flex-col border-r bg-background">
       {/* Logo */}
-      <div className="flex h-16 items-center border-b bg-card px-6">
+      <div className="flex h-16 items-center justify-between border-b bg-card px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
           <span className="text-xl font-bold">Everruns</span>
         </Link>
+        {featureFlags.notifications && <NotificationBell />}
       </div>
 
       {/* Organization Selector */}

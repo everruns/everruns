@@ -15,6 +15,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   global_chat: false,
   apps: false,
   global_search: false,
+  notifications: false,
 };
 
 export interface FeatureFlagsContextValue {

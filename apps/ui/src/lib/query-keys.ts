@@ -42,6 +42,11 @@ export const queryKeys = {
     list: (sessionId: string) => ["events", sessionId] as const,
   },
 
+  notifications: {
+    all: ["notifications"] as const,
+    list: () => ["notifications"] as const,
+  },
+
   // LLM Provider queries
   llmProviders: {
     all: ["llm-providers"] as const,

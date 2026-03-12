@@ -40,6 +40,10 @@ pub use task_notifications::TaskNotificationBroadcaster;
 pub mod event_notifications;
 pub use event_notifications::EventNotificationBroadcaster;
 
+// Notification broadcaster for push-based user inbox delivery
+pub mod notification_notifications;
+pub use notification_notifications::NotificationNotificationBroadcaster;
+
 // Internal gRPC service for worker communication
 pub mod grpc_service;
 

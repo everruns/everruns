@@ -121,6 +121,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
 - `specs/slack-integration.md` - Slack bot integration (app-scoped webhook, session routing)
+- `specs/notifications.md` - Generic user notifications (bell, toast, future channels)
 - `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)

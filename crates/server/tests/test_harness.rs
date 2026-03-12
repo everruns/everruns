@@ -134,19 +134,24 @@ impl TestServer {
 
         // Create event listeners (minimal for tests)
         let event_service = Arc::new(services::EventService::with_listeners(db.clone(), vec![]));
+        let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
 
         // Create module-specific states
         let sessions_state =
             api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
-        let messages_state =
-            api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let messages_state = api::messages::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            feature_flags.notifications,
+        );
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
             everruns_server::api::sse::SseConnectionLimits::default(),
         ));
         let events_state = api::events::AppState {
             session_service: Arc::new(services::SessionService::new(db.clone())),
             event_service: event_service.clone(),
-            sse_tracker,
+            sse_tracker: sse_tracker.clone(),
             event_broadcaster: None,
             auth: auth_state.clone(),
         };
@@ -194,9 +199,18 @@ impl TestServer {
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
-        let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
+        let notifications_state = if feature_flags.notifications {
+            Some(api::notifications::AppState {
+                notification_service: Arc::new(services::NotificationService::new(db.clone())),
+                sse_tracker,
+                notification_broadcaster: None,
+                auth: auth_state.clone(),
+            })
+        } else {
+            None
+        };
         let feature_flags_state = api::feature_flags::AppState {
-            flags: feature_flags,
+            flags: feature_flags.clone(),
         };
         let user_connections_state = api::user_connections::AppState {
             db: db.clone(),
@@ -210,10 +224,11 @@ impl TestServer {
             db.clone(),
             runner.clone(),
             None, // No delivery dispatcher in tests
+            feature_flags.notifications,
         );
 
         // Build API routes
-        let api_routes = Router::new()
+        let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
             .merge(api::apps::routes(apps_state))
             .merge(api::harnesses::routes(harnesses_state))
@@ -237,6 +252,10 @@ impl TestServer {
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(auth::routes(auth_backend));
+
+        if let Some(notifications_state) = notifications_state {
+            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
+        }
 
         // Build main router with health endpoint
         let router = Router::new()

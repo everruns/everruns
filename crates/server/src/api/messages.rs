@@ -163,10 +163,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        auth: AuthState,
+        notifications_enabled: bool,
+    ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(db, runner)),
+            message_service: Arc::new(MessageService::new(db, runner, notifications_enabled)),
             auth,
         }
     }
@@ -271,6 +276,7 @@ pub async fn create_message(
         .message_service
         .create(
             org.org_id,
+            org.user_id,
             session.harness_id.uuid(),
             session.agent_id.map(|a| a.uuid()),
             session_id.uuid(),
