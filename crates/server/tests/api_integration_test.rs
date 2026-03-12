@@ -899,8 +899,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        7,
-        "Generic harness should have 7 capabilities"
+        8,
+        "Generic harness should have 8 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -910,6 +910,7 @@ async fn test_get_generic_harness() {
         cap_ids.contains(&"virtual_bash"),
         "Should have virtual bash"
     );
+    assert!(cap_ids.contains(&"web_fetch"), "Should have web fetch");
     assert!(
         cap_ids.contains(&"session_storage"),
         "Should have session storage"
@@ -1098,8 +1099,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness has 7 capabilities
     assert_eq!(
         copied.capabilities.len(),
-        7,
-        "Copied harness should have same 7 capabilities"
+        8,
+        "Copied harness should have same 8 capabilities"
     );
 }
 
@@ -1803,8 +1804,8 @@ async fn test_chat_harness_has_platform_management() {
 
     assert_eq!(
         cap_ids.len(),
-        8,
-        "Platform Chat harness should have 8 capabilities (Generic + platform_management)"
+        9,
+        "Platform Chat harness should have 9 capabilities (Generic + platform_management)"
     );
     assert!(
         cap_ids.contains(&"platform_management"),
