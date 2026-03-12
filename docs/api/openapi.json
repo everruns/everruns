@@ -2819,7 +2819,7 @@
           "events"
         ],
         "summary": "GET /v1/sessions/{session_id}/events - List events (JSON)",
-        "description": "Returns events for a session as a JSON array. Supports filtering by event type\nvia `types` (positive: only these types) and `exclude` (negative: remove these types).\nWhen both are provided, `types` narrows first, then `exclude` removes from that set.\nBoth accept only known event types (max 25 per parameter). Unknown types return 400.",
+        "description": "Returns events for a session as a JSON array. Supports filtering by event type\nvia `types` (positive: only these types) and `exclude` (negative: remove these types).\nWhen both are provided, `types` narrows first, then `exclude` removes from that set.\nBoth accept only known event types (max 25 per parameter). Unknown types return 400.\n\n## Pagination\n\nSupports backward pagination via `limit` and `before_sequence`:\n- `limit=200` returns the last 200 events (oldest→newest)\n- `limit=200&before_sequence=4500` returns 200 events before sequence 4500\n- When `limit` is provided, the response includes an `X-Total-Count` header\n  with the count of non-delta events for the session\n- Turn boundary snapping: when fetching older pages, the batch boundary\n  snaps to the nearest `turn.started` event to avoid splitting turns\n- Without `limit`, all events are returned (backward compatible)",
         "operationId": "list_events",
         "parameters": [
           {
@@ -2874,11 +2874,48 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max events to return (backward pagination). When set, returns the last N events\n(or last N before `before_sequence`). Results are ordered oldest→newest.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "description": "Cursor for backward pagination: only return events with sequence < this value.\nUsed with `limit` to paginate backward through event history.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Events list",
+            "headers": {
+              "X-Total-Count": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "description": "Total non-delta event count for the session (only present when limit is used)"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3594,6 +3631,34 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max events to return (backward pagination). When set, returns the last N events\n(or last N before `before_sequence`). Results are ordered oldest→newest.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "description": "Cursor for backward pagination: only return events with sequence < this value.\nUsed with `limit` to paginate backward through event history.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
