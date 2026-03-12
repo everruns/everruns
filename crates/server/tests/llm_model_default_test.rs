@@ -33,7 +33,11 @@ async fn setup() -> (InMemoryDatabase, everruns_core::ProviderId) {
     (db, provider.id)
 }
 
-fn model_input(provider_id: everruns_core::ProviderId, name: &str, is_default: bool) -> CreateLlmModelRow {
+fn model_input(
+    provider_id: everruns_core::ProviderId,
+    name: &str,
+    is_default: bool,
+) -> CreateLlmModelRow {
     CreateLlmModelRow {
         provider_id,
         model_id: name.to_string(),
@@ -130,7 +134,10 @@ async fn test_update_model_to_default_clears_previous() {
         .await
         .expect("get model-a")
         .expect("model-a exists");
-    assert!(!m1_fetched.is_default, "previous default should be cleared after update");
+    assert!(
+        !m1_fetched.is_default,
+        "previous default should be cleared after update"
+    );
 }
 
 #[tokio::test]
@@ -147,11 +154,7 @@ async fn test_seed_upsert_clears_previous_default() {
     // Seed inserts a model with is_default=true using a fixed ID
     let seed_id = Uuid::new_v4();
     let seed_result = db
-        .create_llm_model_with_id(
-            TEST_ORG_ID,
-            seed_id,
-            model_input(pid, "seed-default", true),
-        )
+        .create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-default", true))
         .await
         .expect("seed model");
     assert!(seed_result.is_some(), "seed should create the model");
@@ -163,7 +166,10 @@ async fn test_seed_upsert_clears_previous_default() {
         .await
         .expect("get user model")
         .expect("user model exists");
-    assert!(!user_fetched.is_default, "user default should be cleared by seed");
+    assert!(
+        !user_fetched.is_default,
+        "user default should be cleared by seed"
+    );
 }
 
 #[tokio::test]
@@ -172,13 +178,9 @@ async fn test_seed_upsert_update_path_clears_previous_default() {
 
     // First seed: model-a is default
     let seed_id = Uuid::new_v4();
-    db.create_llm_model_with_id(
-        TEST_ORG_ID,
-        seed_id,
-        model_input(pid, "seed-model", true),
-    )
-    .await
-    .expect("first seed");
+    db.create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-model", true))
+        .await
+        .expect("first seed");
 
     // User sets another model as default
     let user_model = db
@@ -196,11 +198,7 @@ async fn test_seed_upsert_update_path_clears_previous_default() {
 
     // Re-seed: updates existing seed model back to default
     let reseed = db
-        .create_llm_model_with_id(
-            TEST_ORG_ID,
-            seed_id,
-            model_input(pid, "seed-model", true),
-        )
+        .create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-model", true))
         .await
         .expect("re-seed");
     assert!(reseed.is_some(), "should detect is_default changed");
