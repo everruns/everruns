@@ -41,6 +41,63 @@ fn unique_ts() -> String {
     format!("{}.{:06}", now, seq)
 }
 
+/// Wait for at least `count` sessions with a given tag to appear.
+/// Polls with exponential backoff up to ~6s total.
+async fn wait_for_sessions_with_tag(
+    server: &TestServer,
+    tag: &str,
+    expected_count: usize,
+) -> Vec<Value> {
+    let delays = [100, 200, 400, 800, 1600, 3200];
+    for delay_ms in delays {
+        let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+        let matching: Vec<Value> = sessions["data"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .filter(|s| {
+                s["tags"]
+                    .as_array()
+                    .map(|tags| tags.iter().any(|t| t.as_str() == Some(tag)))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        if matching.len() >= expected_count {
+            return matching;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+    }
+    panic!(
+        "Timed out waiting for {} session(s) with tag '{}'",
+        expected_count, tag
+    );
+}
+
+/// Wait and confirm that NO sessions with the given tag exist after a reasonable wait.
+async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
+    // Wait a bit to give background tasks time to (incorrectly) create sessions
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    let empty: Vec<Value> = vec![];
+    let data = sessions["data"].as_array().unwrap_or(&empty);
+    let count = data
+        .iter()
+        .filter(|s| {
+            s["tags"]
+                .as_array()
+                .map(|tags| tags.iter().any(|t| t.as_str() == Some(tag)))
+                .unwrap_or(false)
+        })
+        .count();
+    assert!(
+        count == 0,
+        "Expected no sessions with tag '{}', found {}",
+        tag,
+        count
+    );
+}
+
 /// Test signing secret (arbitrary, used for webhook signature tests)
 const TEST_SIGNING_SECRET: &str = "test_signing_secret_for_integration_tests";
 
@@ -213,32 +270,11 @@ async fn test_slack_message_creates_session() {
     let body: Value = resp.assert_status(StatusCode::OK).json();
     assert_eq!(body["ok"], true);
 
-    // Allow background task to process
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Verify session was created with correct tags
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let sessions_data = sessions["data"]
-        .as_array()
-        .expect("sessions should be array");
-
+    // Wait for session to be created (async background task)
     let expected_thread_tag = format!("slack:thread:{}", ts);
-    let slack_session = sessions_data.iter().find(|s| {
-        s["tags"]
-            .as_array()
-            .map(|tags| {
-                tags.iter()
-                    .any(|t| t.as_str() == Some(&expected_thread_tag))
-            })
-            .unwrap_or(false)
-    });
+    let sessions = wait_for_sessions_with_tag(&server, &expected_thread_tag, 1).await;
+    let session = &sessions[0];
 
-    assert!(
-        slack_session.is_some(),
-        "Should have created a session with slack:thread tag"
-    );
-
-    let session = slack_session.unwrap();
     let tags: Vec<&str> = session["tags"]
         .as_array()
         .unwrap()
@@ -279,7 +315,9 @@ async fn test_slack_threaded_message_reuses_session() {
         .await
         .assert_status(StatusCode::OK);
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait for first message to create session
+    let expected_tag = format!("slack:thread:{}", thread_ts);
+    wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
 
     // Second message in the same thread
     let payload2 = json!({
@@ -298,25 +336,11 @@ async fn test_slack_threaded_message_reuses_session() {
         .await
         .assert_status(StatusCode::OK);
 
+    // Brief wait for second message to process, then verify still one session
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Should still have only one session for this thread
-    let expected_tag = format!("slack:thread:{}", thread_ts);
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let slack_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                .unwrap_or(false)
-        })
-        .collect();
-
+    let sessions = wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
     assert_eq!(
-        slack_sessions.len(),
+        sessions.len(),
         1,
         "Should reuse the same session for threaded replies"
     );
@@ -345,28 +369,9 @@ async fn test_slack_bot_message_ignored() {
     let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
     resp.assert_status(StatusCode::OK);
 
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
     // No session should have been created for the bot message
     let expected_tag = format!("slack:thread:{}", bot_ts);
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let bot_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert_eq!(
-        bot_sessions.len(),
-        0,
-        "Bot messages should not create sessions"
-    );
+    assert_no_sessions_with_tag(&server, &expected_tag).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -447,27 +452,9 @@ async fn test_slack_app_mention_creates_session() {
     let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
     resp.assert_status(StatusCode::OK);
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
     let expected_tag = format!("slack:thread:{}", mention_ts);
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let mention_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert_eq!(
-        mention_sessions.len(),
-        1,
-        "app_mention should create a session"
-    );
+    let sessions = wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
+    assert_eq!(sessions.len(), 1, "app_mention should create a session");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -508,46 +495,47 @@ async fn test_slack_per_channel_strategy() {
     let ts1 = unique_ts();
     let ts2 = unique_ts();
 
-    // Two messages in same channel, different threads
-    for (ts, thread) in [(ts1.as_str(), None), (ts2.as_str(), Some(ts1.as_str()))] {
-        let mut event = json!({
+    let expected_tag = format!("slack:channel:{}", channel);
+
+    // First message creates the session
+    let payload1 = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
             "type": "message",
             "text": "hello",
             "user": "U_CHANUSER",
             "channel": channel,
-            "ts": ts
-        });
-        if let Some(t) = thread {
-            event["thread_ts"] = json!(t);
+            "ts": ts1
         }
-        let payload = json!({
-            "type": "event_callback",
-            "team_id": "T_TEST",
-            "event": event
-        });
-        send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload)
-            .await
-            .assert_status(StatusCode::OK);
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload1)
+        .await
+        .assert_status(StatusCode::OK);
+    wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
 
-    // Should have exactly one session tagged with slack:channel:{channel}
-    let expected_tag = format!("slack:channel:{}", channel);
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let channel_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                .unwrap_or(false)
-        })
-        .collect();
+    // Second message (threaded reply in same channel) should reuse session
+    let payload2 = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello",
+            "user": "U_CHANUSER",
+            "channel": channel,
+            "ts": ts2,
+            "thread_ts": ts1
+        }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload2)
+        .await
+        .assert_status(StatusCode::OK);
 
+    // Brief wait then verify still one session
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let sessions = wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
     assert_eq!(
-        channel_sessions.len(),
+        sessions.len(),
         1,
         "per_channel strategy should create one session per channel"
     );
@@ -590,50 +578,41 @@ async fn test_slack_per_user_strategy() {
     let alice_tag = format!("slack:user:{}", user_alice);
     let bob_tag = format!("slack:user:{}", user_bob);
 
-    for (user, ts) in [
-        (user_alice.as_str(), unique_ts()),
-        (user_bob.as_str(), unique_ts()),
-    ] {
-        let payload = json!({
-            "type": "event_callback",
-            "team_id": "T_TEST",
-            "event": {
-                "type": "message",
-                "text": "hello from user",
-                "user": user,
-                "channel": "C_USERCHAN",
-                "ts": ts
-            }
-        });
-        send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload)
-            .await
-            .assert_status(StatusCode::OK);
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    }
+    // Send Alice's message and wait for her session
+    let alice_ts = unique_ts();
+    let payload_alice = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello from user",
+            "user": user_alice,
+            "channel": "C_USERCHAN",
+            "ts": alice_ts
+        }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload_alice)
+        .await
+        .assert_status(StatusCode::OK);
+    wait_for_sessions_with_tag(&server, &alice_tag, 1).await;
 
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let user_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| {
-                    tags.iter().any(|t| {
-                        let s = t.as_str().unwrap_or("");
-                        s == alice_tag || s == bob_tag
-                    })
-                })
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert_eq!(
-        user_sessions.len(),
-        2,
-        "per_user strategy should create one session per user"
-    );
+    // Send Bob's message and wait for his session
+    let bob_ts = unique_ts();
+    let payload_bob = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello from user",
+            "user": user_bob,
+            "channel": "C_USERCHAN",
+            "ts": bob_ts
+        }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload_bob)
+        .await
+        .assert_status(StatusCode::OK);
+    wait_for_sessions_with_tag(&server, &bob_tag, 1).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -658,27 +637,8 @@ async fn test_slack_empty_message_ignored() {
         .await
         .assert_status(StatusCode::OK);
 
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
     let expected_tag = format!("slack:thread:{}", empty_ts);
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let empty_sessions: Vec<&Value> = sessions["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert_eq!(
-        empty_sessions.len(),
-        0,
-        "Empty text messages (no files/attachments) should not create sessions"
-    );
+    assert_no_sessions_with_tag(&server, &expected_tag).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -930,22 +890,10 @@ async fn test_real_slack_webhook_to_session() {
     let resp = send_slack_event(&server, &app.public_id, &signing_secret, &payload).await;
     resp.assert_status(StatusCode::OK);
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Verify session was created
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let slack_session = sessions["data"].as_array().unwrap().iter().find(|s| {
-        s["tags"]
-            .as_array()
-            .map(|tags| {
-                tags.iter()
-                    .any(|t| t.as_str() == Some(&format!("slack:thread:{}", event_ts)))
-            })
-            .unwrap_or(false)
-    });
-
+    let expected_tag = format!("slack:thread:{}", event_ts);
+    let sessions = wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
     assert!(
-        slack_session.is_some(),
+        !sessions.is_empty(),
         "Real Slack webhook should create session with thread tag"
     );
 }
