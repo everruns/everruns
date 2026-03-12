@@ -11,6 +11,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.5] - 2026-03-12
+
+### Highlights
+
+- **Browserless Integration** — Browser automation for agents via Browserless ([#776](https://github.com/everruns/everruns/pull/776))
+- **Slack Thread Context** — Bot receives full thread context when first mentioned mid-thread ([#768](https://github.com/everruns/everruns/pull/768))
+- **Preview of OpenUI Generative UI** — Dynamic generative UI capability for agents ([#790](https://github.com/everruns/everruns/pull/790))
+- **Global Search & Command Palette** — Cmd+K to search sessions, navigate, and run commands ([#767](https://github.com/everruns/everruns/pull/767))
+- **Performance Improvements** — GIN-indexed tsvector event search, durable snapshot checkpointing, paginated event loading ([#787](https://github.com/everruns/everruns/pull/787), [#794](https://github.com/everruns/everruns/pull/794))
+
+### What's Changed
+
+- feat(durable): add snapshot checkpointing for workflow event replay ([#794](https://github.com/everruns/everruns/pull/794)) by [@chaliy](https://github.com/chaliy)
+- feat(openui): implement OpenUI generative UI capability ([#790](https://github.com/everruns/everruns/pull/790)) by [@chaliy](https://github.com/chaliy)
+- feat: paginated event loading for large sessions (EVE-82, EVE-83) by [@chaliy](https://github.com/chaliy)
+- feat(ui): bottom-anchored chat scroll with new messages indicator ([#781](https://github.com/everruns/everruns/pull/781)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add exponential backoff to SSE reconnection ([#779](https://github.com/everruns/everruns/pull/779)) by [@chaliy](https://github.com/chaliy)
+- feat(browserless): add Browserless browser automation integration ([#776](https://github.com/everruns/everruns/pull/776)) by [@chaliy](https://github.com/chaliy)
+- feat(search): global search & command palette (Cmd+K) ([#767](https://github.com/everruns/everruns/pull/767)) by [@chaliy](https://github.com/chaliy)
+- feat(daytona): add ownership metadata labels to sandbox creation ([#772](https://github.com/everruns/everruns/pull/772)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): inject thread context when bot is first mentioned mid-thread ([#768](https://github.com/everruns/everruns/pull/768)) by [@chaliy](https://github.com/chaliy)
+- feat(core): set GPT-5.4 as default model ([#762](https://github.com/everruns/everruns/pull/762)) by [@chaliy](https://github.com/chaliy)
+- feat(connections): add generic API key verification for connected accounts ([#760](https://github.com/everruns/everruns/pull/760)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): move MCP Servers from Settings to Building Blocks ([#761](https://github.com/everruns/everruns/pull/761)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add execution phases and iteration tracking ([#759](https://github.com/everruns/everruns/pull/759)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add durable queues management page ([#754](https://github.com/everruns/everruns/pull/754)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): collapse durable execution sidebar by default ([#756](https://github.com/everruns/everruns/pull/756)) by [@chaliy](https://github.com/chaliy)
+- fix(server): log migration errors through tracing before propagating ([#800](https://github.com/everruns/everruns/pull/800)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): fix duplicate React key in command palette navigation ([#798](https://github.com/everruns/everruns/pull/798)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): clear existing default model before setting new one ([#797](https://github.com/everruns/everruns/pull/797)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): close global search on ESC and route navigation ([#795](https://github.com/everruns/everruns/pull/795)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): replace ILIKE event search with GIN-indexed tsvector ([#787](https://github.com/everruns/everruns/pull/787)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): use SELECT COUNT(*) for event counting ([#782](https://github.com/everruns/everruns/pull/782)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): ensure long_description meets Slack's 174-char minimum ([#780](https://github.com/everruns/everruns/pull/780)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): show completed turn duration in chat ([#778](https://github.com/everruns/everruns/pull/778)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): upgrade Astro docs site to v6 ([#777](https://github.com/everruns/everruns/pull/777)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): expose external_actor in API Message response ([#771](https://github.com/everruns/everruns/pull/771)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): auto-complete Slack setup checklist steps 4 and 5 ([#770](https://github.com/everruns/everruns/pull/770)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): use git clone via exec instead of broken /git/clone endpoint ([#766](https://github.com/everruns/everruns/pull/766)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): wire all stores into durable act_activity ([#763](https://github.com/everruns/everruns/pull/763)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): use /home/daytona as workspace path ([#765](https://github.com/everruns/everruns/pull/765)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): remove API key prerequisite from Coder agent prompt ([#757](https://github.com/everruns/everruns/pull/757)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): simplify inline tool transcript ([#758](https://github.com/everruns/everruns/pull/758)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): return 409 instead of 500 on duplicate file creation ([#755](https://github.com/everruns/everruns/pull/755)) by [@chaliy](https://github.com/chaliy)
+- fix(server): increase session files upload body limit to 10MB ([#751](https://github.com/everruns/everruns/pull/751)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): render folder action icons inline with folder name ([#752](https://github.com/everruns/everruns/pull/752)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): fix code block rendering in chat messages ([#753](https://github.com/everruns/everruns/pull/753)) by [@chaliy](https://github.com/chaliy)
+- fix(vfs): correct folder detection in stat() ([#749](https://github.com/everruns/everruns/pull/749)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): prevent workspace file tree from overflowing viewport ([#750](https://github.com/everruns/everruns/pull/750)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump fetchkit from 0.1.2 to 0.1.3 ([#802](https://github.com/everruns/everruns/pull/802))
+- chore(migrations): squash post-0.8.4 migrations into 006_v0.8.5 ([#792](https://github.com/everruns/everruns/pull/792)) by [@chaliy](https://github.com/chaliy)
+- test(slack): enforce credentials, add Slack integration tests to CI ([#789](https://github.com/everruns/everruns/pull/789)) by [@chaliy](https://github.com/chaliy)
+- test(daytona): add live API integration tests ([#774](https://github.com/everruns/everruns/pull/774)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.4] - 2026-03-08
 
 ### Highlights
