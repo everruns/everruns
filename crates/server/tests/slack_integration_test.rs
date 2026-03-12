@@ -718,17 +718,33 @@ async fn test_slack_manifest_endpoint() {
 
 /// Get real Slack credentials from environment. Returns None if not set.
 /// Checks TEST_-prefixed vars first (Doppler convention), then unprefixed.
+///
+/// **In CI** (`CI=true`), panics if any variable is missing — credentials
+/// must always be available via Doppler so real-API tests never silently skip.
 fn real_slack_credentials() -> Option<(String, String, String)> {
+    let in_ci = std::env::var("CI").map_or(false, |v| v == "true");
+
     let token = std::env::var("TEST_SLACK_BOT_TOKEN")
         .or_else(|_| std::env::var("SLACK_BOT_TOKEN"))
-        .ok()?;
+        .ok();
     let secret = std::env::var("TEST_SLACK_SIGNING_SECRET")
         .or_else(|_| std::env::var("SLACK_SIGNING_SECRET"))
-        .ok()?;
+        .ok();
     let channel = std::env::var("TEST_SLACK_TEST_CHANNEL")
         .or_else(|_| std::env::var("SLACK_TEST_CHANNEL"))
-        .ok()?;
-    Some((token, secret, channel))
+        .ok();
+
+    if in_ci {
+        let token =
+            token.expect("CI requires TEST_SLACK_BOT_TOKEN or SLACK_BOT_TOKEN to be set");
+        let secret = secret
+            .expect("CI requires TEST_SLACK_SIGNING_SECRET or SLACK_SIGNING_SECRET to be set");
+        let channel = channel
+            .expect("CI requires TEST_SLACK_TEST_CHANNEL or SLACK_TEST_CHANNEL to be set");
+        return Some((token, secret, channel));
+    }
+
+    Some((token?, secret?, channel?))
 }
 
 /// Test posting a real message to Slack and verifying the response.

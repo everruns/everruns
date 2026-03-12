@@ -285,6 +285,14 @@ jobs:
       - name: Run durable integration tests
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
+      - name: Install Doppler CLI
+        if: env.DOPPLER_TOKEN != ''
+        uses: dopplerhq/cli-action@v3
+
+      - name: Run Slack integration tests (real API via Doppler)
+        if: env.DOPPLER_TOKEN != ''
+        run: doppler run -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
+
       - name: Run LLM integration tests (skips providers without API keys)
         timeout-minutes: 10
         run: cargo test -p everruns-core --test agent_run_basic --test agent_run_with_thinking --all-features
