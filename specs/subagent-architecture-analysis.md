@@ -255,20 +255,136 @@ Spawning → Running → Completed
                   → MaxIterationsReached
 ```
 
+**Subagent Naming:**
+
+Every subagent has a `name` — a short, LLM-chosen or user-provided label. Names make subagents addressable in conversation ("tell the test-runner to focus on auth") and identifiable in the UI.
+
+- `spawn_subagent` accepts `name: string (required)` — LLM picks a descriptive name
+- Name stored on the child session (new `subagent_name` column, distinct from `title`)
+- `get_subagents` returns name alongside id/status/task
+- `message_subagent` accepts name OR id (name resolved to id server-side)
+- Names must be unique within a parent session (rejected otherwise)
+- Convention: lowercase, short, descriptive — `test-runner`, `auth-explorer`, `db-migrator`
+
+**Completion Notification to Host Agent:**
+
+When a background subagent's turn completes, the host agent must know. This uses the existing `session_interact` pattern — `send_message` into the parent session:
+
+```
+Background Subagent Turn Completes
+  │
+  ├─ Store result in subagent_results table
+  ├─ Update subagent_status → "completed" (or "failed")
+  ├─ Emit SSE event: subagent.completed (for UI)
+  │
+  └─ Inject system message into parent session:
+       role: "system"
+       content: "[Subagent '{name}' ({subagent_id}) completed: {result_summary}]"
+       metadata: { subagent_id, status, name }
+       │
+       ├─ If parent is IDLE → triggers new turn automatically
+       │    (same as session_interact send_message behavior)
+       │
+       └─ If parent is ACTIVE → message queued, LLM sees it on next turn
+            (injected between Reason→Act cycles)
+```
+
+This reuses the existing `send_message` → `session.activated` pipeline. No new notification primitive needed. The parent LLM sees a system message like:
+
+```
+[Subagent 'test-runner' (sub_abc) completed: All 47 tests pass. 2 warnings in auth module.]
+```
+
+And can decide to call `get_subagents(subagent_id: "sub_abc")` for the full result, or `message_subagent` to give follow-up work.
+
+For **foreground** subagents: no notification needed — the tool call blocks and returns the result directly.
+
 **SSE Events:**
-- `subagent.spawned` — new subagent created (includes subagent_id, task, mode)
+- `subagent.spawned` — new subagent created (includes subagent_id, name, task, mode)
 - `subagent.progress` — intermediate updates (iteration count, current tool)
-- `subagent.completed` — subagent finished (includes result summary)
-- `subagent.failed` — subagent errored
+- `subagent.completed` — subagent finished (includes name, result summary)
+- `subagent.failed` — subagent errored (includes name, error)
 - `subagent.cancelled` — subagent was cancelled
 
 **Implementation:**
 - Background subagents run via durable execution engine (PostgreSQL-backed, survives restarts)
-- Parent session stores `child_subagents: Vec<SubagentRef>` (id, status, task summary)
-- Subagent results stored in `subagent_results` table (session_id, subagent_id, result, status)
+- Parent session stores `child_subagents: Vec<SubagentRef>` (id, name, status, task summary)
+- Subagent results stored in `subagent_results` table (session_id, subagent_id, name, result, status)
 - Parent LLM sees subagent status via `get_subagents` tool
-- Parent steers/cancels/resumes subagents via `message_subagent` tool
-- On subagent completion, parent session receives notification (triggers new turn if idle)
+- Parent steers/cancels/resumes subagents via `message_subagent` tool (by name or id)
+- On subagent completion, system message injected into parent session (triggers new turn if idle)
+
+### Session UI: Subagent Panel
+
+The session chat view gets a **subagent panel** — a collapsible sidebar/section showing all subagents spawned by the current session.
+
+**UI Components:**
+
+```
+Session Chat View
+  ├─ Chat Panel (existing)
+  │    ├─ Messages (existing)
+  │    └─ Streaming indicator (existing)
+  │
+  └─ Subagent Panel (new)
+       ├─ Header: "Subagents (3)"  [collapse/expand]
+       │
+       ├─ Subagent Card: "test-runner"
+       │    ├─ Status badge: ● Running (green pulse)
+       │    ├─ Task: "Run full test suite and report failures"
+       │    ├─ Model: gpt-4o
+       │    ├─ Started: 2m ago
+       │    └─ [View Messages] → opens subagent message thread
+       │
+       ├─ Subagent Card: "auth-explorer"
+       │    ├─ Status badge: ✓ Completed (green)
+       │    ├─ Task: "Explore auth module for vulnerabilities"
+       │    ├─ Result preview: "Found 3 issues..."
+       │    ├─ Duration: 45s, 12 turns
+       │    └─ [View Messages] → opens subagent message thread
+       │
+       └─ Subagent Card: "db-migrator"
+            ├─ Status badge: ✕ Cancelled (gray)
+            ├─ Task: "Generate migration for new schema"
+            └─ [View Messages] → opens subagent message thread
+```
+
+**Subagent Message View:**
+
+Clicking "View Messages" opens the subagent's full conversation — all events from the child session. This reuses the existing `session-context` / `chat-panel` components since a subagent IS a session:
+
+- Route: `/sessions/{parentSessionId}/subagents/{subagentSessionId}` (or modal/drawer)
+- Fetches events from the subagent's session_id using existing SSE/REST event APIs
+- Read-only for completed/cancelled subagents
+- For running subagents: shows live streaming (same as main session)
+- Back button returns to parent session
+
+**Data Flow:**
+
+```
+UI loads parent session
+  │
+  ├─ GET /v1/sessions?parent_session_id={id}
+  │    → Returns all child sessions with subagent_status, subagent_name
+  │
+  ├─ SSE on parent session (existing connection)
+  │    → subagent.spawned  → add card to panel
+  │    → subagent.progress → update card status
+  │    → subagent.completed → update card with result
+  │    → subagent.failed   → update card with error
+  │
+  └─ User clicks "View Messages" on subagent card
+       → GET /v1/sessions/{subagentSessionId}/events
+       → SSE /v1/sessions/{subagentSessionId}/sse (if running)
+       → Rendered with existing chat-panel components
+```
+
+**Key design decisions:**
+- All status filters visible (including cancelled/failed) — nothing hidden
+- Subagent panel shows in all sessions that have the `subagents` capability
+- Panel hidden when no subagents have been spawned (zero state)
+- Subagent cards sorted by creation time (newest first)
+- Status badges use existing session status styling (active/idle/etc.)
 
 ### Parallel Subagent Execution
 
@@ -294,17 +410,25 @@ Spawning → Running → Completed
 ```sql
 -- New columns on sessions table
 ALTER TABLE sessions ADD COLUMN parent_session_id UUID REFERENCES sessions(id);
-ALTER TABLE sessions ADD COLUMN subagent_config JSONB;  -- inline config for ephemeral subagents
-ALTER TABLE sessions ADD COLUMN subagent_status TEXT;    -- spawning|running|completed|failed|cancelled
+ALTER TABLE sessions ADD COLUMN subagent_name TEXT;      -- LLM-chosen name, unique per parent
+ALTER TABLE sessions ADD COLUMN subagent_task TEXT;       -- original task description
+ALTER TABLE sessions ADD COLUMN subagent_config JSONB;   -- inline config for ephemeral subagents
+ALTER TABLE sessions ADD COLUMN subagent_status TEXT;     -- spawning|running|completed|failed|cancelled
+
+-- Unique name within parent session
+CREATE UNIQUE INDEX idx_subagent_name_per_parent
+    ON sessions (parent_session_id, subagent_name)
+    WHERE parent_session_id IS NOT NULL;
 
 -- Subagent results (separate table for clean querying)
 CREATE TABLE subagent_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     parent_session_id UUID NOT NULL REFERENCES sessions(id),
     subagent_session_id UUID NOT NULL REFERENCES sessions(id),
+    name TEXT NOT NULL,            -- subagent name (denormalized for querying)
     task TEXT NOT NULL,
-    status TEXT NOT NULL,  -- completed|failed|cancelled|max_iterations
-    result TEXT,           -- final result text
+    status TEXT NOT NULL,          -- completed|failed|cancelled|max_iterations
+    result TEXT,                   -- final result text
     iterations INTEGER,
     tool_calls_count INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -348,8 +472,9 @@ impl Capability for SubagentCapability {
 ```json
 {
   "name": "spawn_subagent",
-  "description": "Spawn a subagent to handle a specific task. Runs in own context window.",
+  "description": "Spawn a named subagent to handle a specific task. Runs in own context window.",
   "parameters": {
+    "name": "string (required) — short descriptive name, e.g. 'test-runner', 'auth-explorer'",
     "task": "string (required) — task description for the subagent",
     "mode": "enum: foreground|background (default: foreground)",
     "config": {
@@ -368,18 +493,18 @@ impl Capability for SubagentCapability {
 
 {
   "name": "get_subagents",
-  "description": "List all subagents or get detailed status of a specific one.",
+  "description": "List all subagents or get detailed status of a specific one. Accepts name or id.",
   "parameters": {
-    "subagent_id": "string (optional) — specific subagent for detailed view",
+    "name_or_id": "string (optional) — subagent name or id for detailed view",
     "status_filter": "enum: all|running|completed|failed (optional, only when listing all)"
   }
 }
 
 {
   "name": "message_subagent",
-  "description": "Send a message to a subagent. Steers running subagents, resumes completed/failed ones, cancels with cancel flag.",
+  "description": "Send a message to a subagent by name or id. Steers running subagents, resumes completed/failed ones, cancels with cancel flag.",
   "parameters": {
-    "subagent_id": "string (required)",
+    "name_or_id": "string (required) — subagent name or id",
     "message": "string (required) — instruction or context for the subagent",
     "cancel": "boolean (optional, default: false) — deliver message then gracefully stop"
   }
@@ -404,24 +529,27 @@ Parent Session Turn
   │
   └─ ActAtom (parallel execution of all tool calls)
        │
-       ├─ spawn_subagent(task: "explore auth", mode: "foreground",
+       ├─ spawn_subagent(name: "auth-explorer", task: "explore auth",
+       │    mode: "foreground",
        │    config: { allowed_tools: ["read_file", "grep_files"], model: "fast" })
        │    │
-       │    ├─ Create ephemeral child session (parent_session_id = parent.id)
+       │    ├─ Create ephemeral child session (parent_session_id, subagent_name)
        │    ├─ Mount parent /workspace (shared_ro)
        │    ├─ Build RuntimeAgent with restricted tools + custom/default prompt
        │    ├─ Run child turn loop: Input → Reason → Act → ... → Complete
        │    ├─ Store result in subagent_results
        │    └─ Return result text to parent ActAtom
        │
-       ├─ spawn_subagent(task: "run tests", mode: "background",
+       ├─ spawn_subagent(name: "test-runner", task: "run tests",
+       │    mode: "background",
        │    config: { allowed_tools: ["bash", "read_file"], model: "inherit" })
        │    │
-       │    ├─ Create child session (parent_session_id = parent.id)
+       │    ├─ Create child session (parent_session_id, subagent_name)
        │    ├─ Mount parent /workspace (shared_rw)
        │    ├─ Enqueue in durable execution engine
-       │    ├─ Return immediately: { subagent_id: "sub_xxx", status: "running" }
+       │    ├─ Return immediately: { name: "test-runner", subagent_id: "sub_xxx", status: "running" }
        │    └─ (runs asynchronously, emits SSE events)
+       │    └─ On completion → injects system message into parent session
        │
        └─ regular_tool("get_current_time")
             → Normal tool execution
@@ -431,15 +559,21 @@ Later turn (parent checks on background subagent):
   ├─ ReasonAtom → LLM calls get_subagents() or get_subagents(subagent_id)
   └─ ActAtom → Returns current status/results
 
-Later turn (parent steers or cancels):
+Later turn (parent steers by name):
   │
-  ├─ ReasonAtom → LLM calls message_subagent(id, "focus on auth module only")
+  ├─ ReasonAtom → LLM calls message_subagent("test-runner", "focus on auth module only")
   └─ ActAtom → Injects message into running subagent's next turn
 
 Later turn (parent resumes completed subagent with follow-up):
   │
-  ├─ ReasonAtom → LLM calls message_subagent(id, "now fix the issues you found")
+  ├─ ReasonAtom → LLM calls message_subagent("auth-explorer", "now fix the issues you found")
   └─ ActAtom → Resumes subagent with full prior context + new instruction
+
+Auto-triggered turn (background subagent completed while parent was idle):
+  │
+  ├─ System message injected: "[Subagent 'test-runner' completed: All 47 tests pass.]"
+  ├─ Parent turn triggered automatically
+  └─ LLM processes result, may spawn follow-up work
 ```
 
 ### Priority Ranking
@@ -447,8 +581,11 @@ Later turn (parent resumes completed subagent with follow-up):
 | Feature | Impact | Effort | Priority |
 |---------|--------|--------|----------|
 | `spawn_subagent` tool (foreground + background) | High | Medium | P0 |
-| `get_subagents` tool (list + detail) | High | Low | P0 |
-| `message_subagent` tool (steer + cancel + resume) | High | Medium | P0 |
+| `get_subagents` tool (list + detail, by name or id) | High | Low | P0 |
+| `message_subagent` tool (steer + cancel + resume, by name or id) | High | Medium | P0 |
+| Subagent naming (unique per parent, LLM-chosen) | High | Low | P0 |
+| Completion notification to host (system message injection) | High | Low | P0 |
+| Subagent UI panel (list, status, view messages) | High | Medium | P0 |
 | Shared/inherited filesystem | High | Medium | P0 |
 | Tool/capability subsetting | High | Low | P0 |
 | Subagent SSE events | Medium | Low | P0 |
@@ -464,19 +601,23 @@ Later turn (parent resumes completed subagent with follow-up):
 
 ### Implementation Path
 
-**Phase 1: All 3 Tools + Core Infrastructure**
+**Phase 1: All 3 Tools + Core Infrastructure + UI**
 - `SubagentCapability` with 3 tools: `spawn_subagent`, `get_subagents`, `message_subagent`
+- Subagent naming: `subagent_name` column, unique index per parent, tools accept name or id
 - Ephemeral session creation (`parent_session_id` FK, `subagent_config` JSONB)
 - Subagent status lifecycle (`subagent_status` column)
+- Completion notification: inject system message into parent session on subagent completion
 - Filesystem inheritance (shared mount of parent workspace, rw/ro modes)
 - Tool/capability subsetting via allowlist + denylist
 - Max turns guard (prevent runaway)
 - Foreground: blocks parent tool call until complete
 - Background: enqueue via durable engine, return immediately
-- `get_subagents` for listing + detailed status
-- `message_subagent` for steering running subagents, cancelling, and resuming completed/failed ones
+- `get_subagents` for listing + detailed status (by name or id)
+- `message_subagent` for steering, cancelling, resuming (by name or id)
 - SSE events: `subagent.spawned`, `subagent.completed`, `subagent.failed`
 - Nesting depth check (block subagents from spawning subagents)
+- UI: subagent panel in session view (list cards with status, click to view messages)
+- UI: subagent message view reuses existing chat-panel for child session events
 
 **Phase 2: Ergonomics + Presets**
 - Auto-cleanup: TTL-based ephemeral session garbage collection
@@ -500,14 +641,21 @@ Later turn (parent resumes completed subagent with follow-up):
 | Runtime | Local CLI process | Server-side, durable engine backed |
 | Subagent storage | Local filesystem (jsonl transcripts) | PostgreSQL (sessions + subagent_results) |
 | Background mode | Local async task | Durable workflow (survives server restarts) |
+| Completion notification | UI notification only | System message injected into parent session (triggers turn) |
+| Addressing | By agentId only | By name or id (`message_subagent("test-runner", ...)`) |
 | Filesystem | Shared OS filesystem | VFS with explicit sharing modes |
+| UI | CLI output (no dedicated panel) | Subagent panel with status cards + full message history |
 | MCP scoping | Per-subagent inline definitions | Per-subagent capability config |
 | Hooks | Shell command hooks | Capability-level hooks (future) |
 | Memory | File-based (MEMORY.md) | Session KV store or VFS |
 | Nesting | Blocked | Blocked (same) |
 | Permissions | Inherited + overridable per subagent | Capability subsetting |
 
-The key advantage of server-side implementation: background subagents survive disconnects, are observable via API, and integrate with the durable execution engine for reliability.
+The key advantages of server-side implementation:
+- Background subagents survive disconnects, are observable via API
+- Completion notifications auto-trigger parent turns (not just UI alerts)
+- Named subagents are addressable by LLM in natural conversation
+- Full message history browsable in UI (subagent = session with events)
 
 ---
 
