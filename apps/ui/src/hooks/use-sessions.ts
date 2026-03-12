@@ -24,6 +24,7 @@ import type {
   PaginationParams,
 } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
+import { createReconnectTracker } from "@/lib/sse-reconnect";
 
 /**
  * Fetch paginated sessions for an organization.
@@ -230,8 +231,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
+  const reconnectRef = useRef(createReconnectTracker());
   const isEnabled = options?.enabled !== false;
 
   // Track events by ID to avoid duplicates
@@ -253,8 +256,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     setEvents([]);
     setIsLoading(true);
     setError(null);
+    setIsReconnecting(false);
     lastEventIdRef.current = null;
     eventIdsRef.current.clear();
+    reconnectRef.current = createReconnectTracker();
     setRestLoaded(false);
     cleanup();
   }, [org, sessionId, cleanup]);
@@ -309,19 +314,23 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {
+        reconnectRef.current.reset();
         setError(null);
+        setIsReconnecting(false);
       });
 
       eventSource.addEventListener("disconnecting", (messageEvent) => {
         try {
           const data = JSON.parse(messageEvent.data);
-          const retryMs = data.retry_ms ?? 100;
+          const retryMs = reconnectRef.current.onGraceful(data.retry_ms ?? 100);
           cleanup();
+          setIsReconnecting(true);
           setTimeout(() => {
             if (isEnabled) connectSSE();
           }, retryMs);
         } catch {
           cleanup();
+          setIsReconnecting(true);
           if (isEnabled) connectSSE();
         }
       });
@@ -347,11 +356,18 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       }
 
       eventSource.onerror = () => {
-        setError(new Error("SSE connection error"));
         cleanup();
+        const delayMs = reconnectRef.current.onError();
+        if (delayMs === null) {
+          setError(new Error("SSE connection failed after max retries"));
+          setIsReconnecting(false);
+          return;
+        }
+        setError(new Error("SSE connection error, reconnecting..."));
+        setIsReconnecting(true);
         setTimeout(() => {
           if (isEnabled) connectSSE();
-        }, 2000);
+        }, delayMs);
       };
     };
 
@@ -363,6 +379,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   return {
     data: events,
     isLoading,
+    isReconnecting,
     error,
   };
 }
