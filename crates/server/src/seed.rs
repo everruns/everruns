@@ -283,7 +283,6 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
 // Harness Seeder
 // ============================================
 
-/// Seed harness definition
 /// Capability entry with optional per-capability config.
 struct SeedCapability {
     id: &'static str,
@@ -300,12 +299,6 @@ impl SeedCapability {
             id,
             config: Some(config),
         }
-    }
-}
-
-impl PartialEq<&str> for SeedCapability {
-    fn eq(&self, other: &&str) -> bool {
-        self.id == *other
     }
 }
 

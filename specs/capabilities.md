@@ -131,11 +131,17 @@ See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `Capabi
 
 - **`system_prompt_addition()`** — Sync, returns static `&str`. Used by sync collection path.
 - **`system_prompt_contribution(ctx)`** — Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
+- **`system_prompt_contribution_with_config(ctx, config)`** — Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
+
+##### Config-Aware Methods
+
+- **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
 
 ##### Collection Functions
 
 - **`collect_capabilities()`** — Sync. Collects tools, mounts, static prompts.
 - **`collect_capabilities_async(ctx)`** — Async. Calls `system_prompt_contribution()` for dynamic prompts.
+- **`collect_capabilities_with_configs(ctx, configs)`** — Async. Calls config-aware methods (`tools_with_config`, `system_prompt_contribution_with_config`) for capabilities with per-agent config.
 - **`RuntimeAgentBuilder::with_capabilities_async(ctx)`** — Async builder method.
 
 **Note**: `message_filter_provider()` returns an optional filter that modifies message retrieval. See [Message Filters](#message-filters).
