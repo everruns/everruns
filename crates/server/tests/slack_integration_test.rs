@@ -758,6 +758,17 @@ async fn test_real_slack_post_message() {
         .json::<Value>()
         .await
         .expect("Failed to parse Slack response");
+
+    // Skip gracefully if the bot hasn't been invited to the test channel
+    if body["error"].as_str() == Some("not_in_channel") {
+        eprintln!(
+            "Skipping test_real_slack_post_message: bot not invited to channel {}. \
+             Run /invite @<bot> in the channel first.",
+            channel
+        );
+        return;
+    }
+
     assert!(
         body["ok"].as_bool().unwrap_or(false),
         "chat.postMessage should succeed. Error: {:?}",
