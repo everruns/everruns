@@ -57,8 +57,8 @@ pub enum MessageFilter {
 
     /// Full-text search in message content
     ///
-    /// Maps to: `WHERE data::text ILIKE '%' || $query || '%'`
-    /// For production, consider using pg_trgm or tsvector for better performance.
+    /// Maps to: `WHERE search_vector @@ plainto_tsquery('english', $query)`
+    /// Uses a GIN-indexed tsvector generated column on data->>'content'.
     Search(String),
 
     /// Exclude specific event IDs

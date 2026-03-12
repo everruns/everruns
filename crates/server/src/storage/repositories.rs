@@ -1530,7 +1530,7 @@ impl Database {
                 }
                 MessageFilter::Search(q) => {
                     sql.push_str(&format!(
-                        " AND data::text ILIKE '%' || ${} || '%'",
+                        " AND search_vector @@ plainto_tsquery('english', ${})",
                         param_idx
                     ));
                     search_query = Some(q.clone());
