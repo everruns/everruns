@@ -2,273 +2,99 @@
 
 Extends fetchkit with a `FileSaver` trait abstraction so fetched content can be saved to files. Consumers provide the implementation — CLI uses real filesystem, everruns uses `SessionFileStore`.
 
-## Design
+## Status
 
-### Core abstraction: `FileSaver` trait (in fetchkit)
+**fetchkit 0.1.3 shipped** with the core `FileSaver` abstraction. This spec documents what shipped and what remains for the everruns integration.
+
+## fetchkit 0.1.3 — shipped
+
+See `fetchkit::file_saver` module for full source.
+
+### `FileSaver` trait
 
 ```rust
-/// Destination for saving fetched content to files.
-///
-/// Consumers implement this trait to control where bytes land:
-/// - CLI: writes to real filesystem (`LocalFileSaver`)
-/// - Everruns: writes to session virtual filesystem
-/// - Tests: in-memory buffer
 #[async_trait]
 pub trait FileSaver: Send + Sync {
-    /// Save raw bytes to the given path.
-    /// Returns the canonical path where the file was written and bytes written.
     async fn save(&self, path: &str, bytes: &[u8]) -> Result<SaveResult, FileSaveError>;
-
-    /// Check if a path is writable / allowed before fetching.
-    /// Default: always allowed.
-    async fn validate_path(&self, path: &str) -> Result<(), FileSaveError> {
-        let _ = path;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SaveResult {
-    /// Canonical/normalized path where file was saved
-    pub path: String,
-    /// Bytes written
-    pub bytes_written: u64,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FileSaveError {
-    #[error("Path not allowed: {0}")]
-    PathNotAllowed(String),
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Save error: {0}")]
-    Other(String),
+    async fn validate_path(&self, path: &str) -> Result<(), FileSaveError> { Ok(()) }
 }
 ```
 
 ### `LocalFileSaver` (built-in, for CLI)
 
-```rust
-/// Saves to real filesystem. Ships with fetchkit.
-pub struct LocalFileSaver {
-    /// Optional base directory. Paths resolved relative to this.
-    /// If None, paths must be absolute.
-    base_dir: Option<PathBuf>,
-}
-```
-
-- Resolves relative paths against `base_dir`
+- Resolves relative paths against optional `base_dir`
 - Creates parent directories automatically
 - `validate_path` rejects path traversal (`..`) outside base_dir
+- Without `base_dir`, only absolute paths accepted
 
-### Extended abstraction: `FilesSaver` (unarchive support)
+### `FetchRequest` / `FetchResponse` changes
 
-```rust
-/// Extended saver that can unpack archives after download.
-///
-/// Builds on `FileSaver` — if the fetched content is an archive
-/// (zip, tar.gz, tar), extract its contents into a directory.
-#[async_trait]
-pub trait FilesSaver: FileSaver {
-    /// Save bytes and if the content is a recognized archive, extract it.
-    /// Returns list of all files created.
-    async fn save_and_extract(
-        &self,
-        path: &str,
-        bytes: &[u8],
-        content_type: Option<&str>,
-    ) -> Result<ExtractResult, FileSaveError>;
-}
+- `FetchRequest::save_to_file: Option<String>` — destination path
+- `FetchResponse::saved_path: Option<String>` — where file was written
+- `FetchResponse::bytes_written: Option<u64>` — bytes saved
 
-#[derive(Debug, Clone)]
-pub struct ExtractResult {
-    /// Directory where files were extracted
-    pub directory: String,
-    /// Individual files created
-    pub files: Vec<SaveResult>,
-    /// Total bytes written
-    pub total_bytes: u64,
-}
-```
-
-- Separate trait so consumers can opt-in
-- Archive detection by content-type + magic bytes
-- Supported formats: zip, tar.gz, tar (extensible)
-
-### FetchRequest changes
+### `Tool::execute_with_saver`
 
 ```rust
-pub struct FetchRequest {
-    // ... existing fields ...
-
-    /// Save response body to this path instead of returning content inline.
-    /// Requires a `FileSaver` to be provided at execution time.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub save_to_file: Option<String>,
-
-    /// If true and content is an archive, extract after download.
-    /// Requires a `FilesSaver` implementation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extract: Option<bool>,
-}
+pub async fn execute_with_saver(
+    &self,
+    req: FetchRequest,
+    saver: Option<&dyn FileSaver>,
+) -> Result<FetchResponse, FetchError>
 ```
 
-### FetchResponse changes
+- When `save_to_file` is `None` → delegates to `execute()` (backward compat)
+- When `save_to_file` is set → validates path, fetches via `FetcherRegistry::fetch_to_file`, returns metadata-only response
 
-```rust
-pub struct FetchResponse {
-    // ... existing fields ...
+### `Fetcher::fetch_to_file` (trait default + DefaultFetcher override)
 
-    /// Path where file was saved (when save_to_file was used)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub saved_path: Option<String>,
+- Default: fetches normally then saves `content` as bytes
+- `DefaultFetcher` override: **skips binary rejection**, streams raw bytes, saves through saver
 
-    /// Bytes written to file
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bytes_written: Option<u64>,
+### Schema gating
 
-    /// Extracted files (when extract was used)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extracted_files: Option<Vec<String>>,
-}
-```
+- `ToolBuilder::enable_save_to_file(bool)` — disabled by default
+- `Tool::input_schema()` removes `save_to_file` property when disabled
+- `Tool::description()` / `Tool::llmtxt()` — composable fragments, save_to_file sections only when enabled
 
-### Execution flow
+### Error variants
 
-#### `Tool::execute_with_saver` (new method on fetchkit `Tool`)
+- `FetchError::SaveError(String)` — file save failed
+- `FetchError::SaverNotAvailable` — no saver provided or feature disabled
 
-```rust
-impl Tool {
-    /// Execute fetch with optional file saving.
-    pub async fn execute_with_saver(
-        &self,
-        req: FetchRequest,
-        saver: Option<&dyn FileSaver>,
-    ) -> Result<FetchResponse, FetchError> { ... }
-
-    /// Execute fetch with archive extraction support.
-    pub async fn execute_with_files_saver(
-        &self,
-        req: FetchRequest,
-        saver: Option<&dyn FilesSaver>,
-    ) -> Result<FetchResponse, FetchError> { ... }
-}
-```
-
-Flow when `save_to_file` is set:
-
-1. `validate_path(path)` — fail fast before HTTP request
-2. HTTP fetch — **skip binary content rejection** (binary is expected for downloads)
-3. Stream response bytes (reuse `read_body_with_timeout`)
-4. `saver.save(path, &bytes)` — write through trait
-5. Return metadata response (no inline `content`, add `saved_path` + `bytes_written`)
-
-Flow when `extract: true`:
-
-1. Same as above but use `FilesSaver::save_and_extract`
-2. Response includes `extracted_files` list
-
-### `DefaultFetcher` changes
-
-The key change in `DefaultFetcher::fetch`: when `save_to_file` is set, **skip the binary content rejection** and the HTML conversion paths. The fetcher needs access to the saver, so the `Fetcher` trait gets an optional saver parameter:
-
-```rust
-#[async_trait]
-pub trait Fetcher: Send + Sync {
-    // ... existing methods ...
-
-    /// Fetch with file saving support.
-    /// Default implementation delegates to `fetch()`.
-    async fn fetch_to_file(
-        &self,
-        request: &FetchRequest,
-        options: &FetchOptions,
-        saver: &dyn FileSaver,
-    ) -> Result<FetchResponse, FetchError> {
-        // Default: fetch normally, then save content
-        let response = self.fetch(request, options).await?;
-        if let (Some(path), Some(content)) = (&request.save_to_file, &response.content) {
-            saver.save(path, content.as_bytes()).await
-                .map_err(|e| FetchError::FetcherError(e.to_string()))?;
-        }
-        Ok(response)
-    }
-}
-```
-
-`DefaultFetcher` overrides this with the optimized binary-aware path.
-
-### `FetchOptions` changes
-
-```rust
-pub struct FetchOptions {
-    // ... existing fields ...
-
-    /// Enable save_to_file parameter in requests
-    pub enable_save_to_file: bool,
-
-    /// Enable extract parameter in requests
-    pub enable_extract: bool,
-}
-```
-
-Schema gating in `Tool::input_schema()` follows existing pattern (remove `save_to_file`/`extract` properties when disabled).
-
-### `ToolBuilder` changes
-
-```rust
-impl ToolBuilder {
-    /// Enable file download (save_to_file parameter)
-    pub fn enable_save_to_file(mut self, enable: bool) -> Self { ... }
-
-    /// Enable archive extraction (extract parameter)
-    pub fn enable_extract(mut self, enable: bool) -> Self { ... }
-}
-```
-
-### `FetchError` additions
-
-```rust
-pub enum FetchError {
-    // ... existing variants ...
-
-    /// File save failed
-    #[error("Failed to save file: {0}")]
-    SaveError(String),
-
-    /// No FileSaver provided but save_to_file was requested
-    #[error("File saving not available")]
-    SaverNotAvailable,
-}
-```
-
-## Everruns integration
+## Everruns integration — implementation
 
 In `crates/core/src/capabilities/web_fetch.rs`:
 
-1. `WebFetchTool` switches to `execute_with_context` (like `WriteFileTool`)
-2. When `save_to_file` is in arguments, construct a `SessionFileSaver` adapter:
+### 1. `SessionFileSaver` adapter
+
+Bridges fetchkit's `FileSaver` to everruns' `SessionFileStore`:
 
 ```rust
-/// Adapter: SessionFileStore -> fetchkit::FileSaver
+use crate::traits::SessionFileStore;
+use crate::session_types::SessionId;
+use fetchkit::file_saver::{FileSaver, FileSaveError, SaveResult};
+use base64::Engine as _;
+
 struct SessionFileSaver {
     file_store: Arc<dyn SessionFileStore>,
     session_id: SessionId,
 }
 
 #[async_trait]
-impl fetchkit::FileSaver for SessionFileSaver {
+impl FileSaver for SessionFileSaver {
     async fn save(&self, path: &str, bytes: &[u8]) -> Result<SaveResult, FileSaveError> {
-        // Encode binary as base64 for SessionFileStore
-        let encoding = if is_likely_text(bytes) { "text" } else { "base64" };
-        let content = if encoding == "base64" {
-            base64::encode(bytes)
-        } else {
-            String::from_utf8_lossy(bytes).to_string()
+        // Binary detection: use base64 for non-UTF-8 content
+        let (content, encoding) = match std::str::from_utf8(bytes) {
+            Ok(text) => (text.to_string(), "text"),
+            Err(_) => {
+                let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+                (encoded, "base64")
+            }
         };
 
         let file = self.file_store
-            .write_file(self.session_id.clone(), path, &content, encoding)
+            .write_file(self.session_id, path, &content, encoding)
             .await
             .map_err(|e| FileSaveError::Other(e.to_string()))?;
 
@@ -280,50 +106,64 @@ impl fetchkit::FileSaver for SessionFileSaver {
 }
 ```
 
-3. Pass `Some(&saver)` to `fetchkit::Tool::execute_with_saver`
-4. When `save_to_file` is absent, pass `None` — existing behavior unchanged
+Key decisions:
+- UTF-8 check determines encoding (not content-type heuristic) — correct for all cases
+- Uses `base64::STANDARD` for binary, raw string for text
+- Path normalization handled by WebFetchTool before passing to saver (strips `/workspace` prefix)
 
-## API surface summary
+### 2. `WebFetchTool` changes
 
-### New public types in fetchkit
+- `requires_context()` returns `true` (needs file_store from ToolContext)
+- `execute()` handles non-save requests (backward compat, no context needed)
+- `execute_with_context()` handles `save_to_file`:
+  1. Parse arguments including `save_to_file`
+  2. If no `save_to_file` → delegate to `execute()` (existing path)
+  3. If `save_to_file` set → construct `SessionFileSaver`, call `fetchkit::Tool::execute_with_saver`
+  4. Normalize path (strip `/workspace` prefix), add it back in response
 
-| Type | Kind | Purpose |
-|------|------|---------|
-| `FileSaver` | trait | Core abstraction for file output |
-| `FilesSaver` | trait (extends FileSaver) | Archive extraction support |
-| `LocalFileSaver` | struct | Built-in real-filesystem implementation |
-| `SaveResult` | struct | Result of a save operation |
-| `ExtractResult` | struct | Result of save+extract |
-| `FileSaveError` | enum | File saving errors |
+- `WebFetchCapability` uses `fetchkit::Tool::builder().enable_save_to_file(true)` for schema/description/llmtxt
+- `parameters_schema()` uses the fetchkit Tool with save_to_file enabled
 
-### New/changed methods
+### 3. fetchkit `Tool` instance
 
-| Method | Change |
-|--------|--------|
-| `Tool::execute_with_saver()` | New — fetch + optional save |
-| `Tool::execute_with_files_saver()` | New — fetch + optional extract |
-| `Tool::execute()` | Unchanged — backward compatible |
-| `ToolBuilder::enable_save_to_file()` | New — schema gating |
-| `ToolBuilder::enable_extract()` | New — schema gating |
-| `Fetcher::fetch_to_file()` | New default method |
+`WebFetchTool` holds a `fetchkit::Tool` (configured via builder) instead of raw `FetchOptions`:
 
-### Backward compatibility
+```rust
+pub struct WebFetchTool {
+    fetchkit_tool: fetchkit::Tool,
+}
 
-- `Tool::execute()` unchanged — no `FileSaver` needed
-- `FetchRequest` new fields are `Option` with `skip_serializing_if`
-- `FetchResponse` new fields are `Option` with `skip_serializing_if`
-- Schema gating: `save_to_file`/`extract` hidden unless explicitly enabled
-- Existing consumers see zero changes unless they opt in
+impl Default for WebFetchTool {
+    fn default() -> Self {
+        Self {
+            fetchkit_tool: fetchkit::Tool::builder()
+                .enable_save_to_file(true)
+                .build(),
+        }
+    }
+}
+```
 
-## Implementation order
+This lets `WebFetchTool` delegate schema/description/execution to fetchkit's `Tool`.
 
-1. Add `FileSaver` trait + `LocalFileSaver` + `SaveResult` + `FileSaveError` to fetchkit
-2. Add `save_to_file` to `FetchRequest`, `saved_path`/`bytes_written` to `FetchResponse`
-3. Add `enable_save_to_file` to `FetchOptions`/`ToolBuilder`, schema gating
-4. Implement `execute_with_saver` on `Tool`, `fetch_to_file` on `DefaultFetcher`
-5. Add `FetchError::SaveError` / `FetchError::SaverNotAvailable`
-6. Update `TOOL_LLMTXT` / `TOOL_DESCRIPTION`
-7. Tests: unit tests for `LocalFileSaver`, integration test with wiremock
-8. Bump fetchkit version
-9. Everruns: `SessionFileSaver` adapter, `WebFetchTool` context-aware execution
-10. (Future) `FilesSaver` trait + archive extraction
+## Future: `FilesSaver` (archive extraction)
+
+Not in fetchkit 0.1.3. Design sketch:
+
+```rust
+#[async_trait]
+pub trait FilesSaver: FileSaver {
+    async fn save_and_extract(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        content_type: Option<&str>,
+    ) -> Result<ExtractResult, FileSaveError>;
+}
+```
+
+- Separate trait, consumers opt-in
+- Archive detection by content-type + magic bytes
+- Formats: zip, tar.gz, tar
+- `FetchRequest::extract: Option<bool>` field
+- `FetchResponse::extracted_files: Option<Vec<String>>` field
