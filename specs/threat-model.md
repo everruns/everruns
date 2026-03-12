@@ -13,6 +13,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH | Authentication | Credential theft, session hijack, brute force |
 | TM-CRYPTO | Cryptography | Key compromise, encryption weakness |
 | TM-TENANT | Tenant Isolation | Cross-org data access, enumeration |
+| TM-AUTHZ | Permissions / Authorization | Policy bypass, privilege escalation, missing enforcement |
 | TM-API | API Security | Injection, input validation, SSRF |
 | TM-FS | Filesystem | Path traversal, data leakage in session files |
 | TM-SQL | SQL Database | SQLite sandbox escape, resource exhaustion |
@@ -204,6 +205,23 @@ WHERE a.org_id = $1 AND e.session_id = $2;
 ApiError::NotFound("Agent not found")    // ✓ No information leakage
 ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 ```
+
+## 3b. Permissions / Authorization (TM-AUTHZ)
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-AUTHZ-001 | Default Owner role grants full access | Medium | By design for phase 1; all users are Owners. Future phases will assign roles via admin UI/invitation flow | **BY DESIGN** |
+| TM-AUTHZ-002 | Policy bypass via internal Caller | Medium | `Caller::internal()` bypasses policies with Owner role; only used in gRPC service (worker ↔ server), not HTTP-accessible | MITIGATED |
+| TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
+| TM-AUTHZ-004 | Missing policy on service method | Medium | Compile-time enforcement via `#[policy]` macro; code review required to ensure coverage | MITIGATED |
+
+### Mitigation Details
+
+**TM-AUTHZ-001 — Default Owner Role (BY DESIGN):**
+Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no permission-based restrictions are active in practice. This is intentional to avoid breaking existing workflows while the role assignment infrastructure is built in phase 2.
+
+**TM-AUTHZ-002 — Internal Caller:**
+`Caller::internal(org_id)` is used exclusively in `grpc_service.rs` for worker-to-server calls. The gRPC endpoint requires a bearer token in production (`TM-DURABLE-002`). HTTP handlers always construct `Caller` from `ResolvedOrg` with the user's actual role.
 
 ## 4. API Security (TM-API)
 
@@ -870,7 +888,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Control | Category | Implementation |
 |---------|----------|----------------|
 | Authentication | TM-AUTH | JWT (15 min), API keys (SHA-256), OAuth, Argon2id passwords |
-| Authorization | TM-TENANT | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org |
+| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `#[policy]` macro enforcement, role→permission mapping |
 | Encryption at rest | TM-CRYPTO | AES-256-GCM envelope encryption for API keys |
 | Encryption in transit | TM-LLM | HTTPS for all external communication |
 | Input validation | TM-API | Size limits, path validation, regex constraints |

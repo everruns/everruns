@@ -204,6 +204,7 @@ impl Caller {
     ///
     /// Used for gRPC service calls (worker ↔ server) and other internal
     /// operations that should bypass all policy checks.
+    // THREAT[TM-AUTHZ-002]: Internal caller bypasses policies; only use for gRPC/internal paths
     pub fn internal(org_id: i64) -> Self {
         Self {
             org_id,

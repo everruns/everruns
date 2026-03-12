@@ -77,6 +77,8 @@ Hardcoded. No DB storage (phase 1).
 
 Owner inherits all Admin permissions. Admin inherits all Member permissions.
 
+**Default role:** `Owner` (phase 1). All users get full permissions by default. Future phases will assign roles via invitation/admin UI.
+
 ## Enforcement
 
 ### Service Layer
