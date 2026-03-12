@@ -291,7 +291,7 @@ jobs:
 
       - name: Run Slack integration tests (real API via Doppler)
         if: env.DOPPLER_TOKEN != ''
-        run: doppler run -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
+        run: doppler run --preserve-env DATABASE_URL -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
       - name: Run LLM integration tests (skips providers without API keys)
         timeout-minutes: 10
