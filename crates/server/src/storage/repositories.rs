@@ -2091,7 +2091,7 @@ impl Database {
             WITH clear_default AS (
                 UPDATE llm_models
                 SET is_default = FALSE, updated_at = NOW()
-                WHERE is_default = TRUE AND id != $1 AND $7 = TRUE
+                WHERE is_default = TRUE AND org_id = $2 AND id != $1 AND $7 = TRUE
             )
             INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
