@@ -224,6 +224,7 @@ impl TestServer {
             db.clone(),
             runner.clone(),
             None, // No delivery dispatcher in tests
+            feature_flags.notifications,
         );
 
         // Build API routes
