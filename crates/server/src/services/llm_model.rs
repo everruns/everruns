@@ -51,17 +51,12 @@ impl LlmModelService {
         provider_id: Uuid,
         req: CreateLlmModelRequest,
     ) -> Result<LlmModel> {
-        // If setting this model as default, clear all other defaults first ("last wins")
-        if req.is_default {
-            self.db.clear_all_model_defaults(org_id).await?;
-        }
-
         let input = CreateLlmModelRow {
             provider_id: provider_id.into(),
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            is_default: req.is_default,
+            installed: req.installed,
             is_favorite: req.is_favorite,
             source: "manual".to_string(), // User-created models are always manual
             provider_metadata: None,
@@ -163,16 +158,11 @@ impl LlmModelService {
         id: Uuid,
         req: UpdateLlmModelRequest,
     ) -> Result<Option<LlmModel>> {
-        // If setting this model as default, clear all other defaults first ("last wins")
-        if req.is_default == Some(true) {
-            self.db.clear_all_model_defaults(org_id).await?;
-        }
-
         let input = UpdateLlmModel {
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            is_default: req.is_default,
+            installed: req.installed,
             is_favorite: req.is_favorite,
             status: req.status.map(|s| match s {
                 LlmModelStatus::Active => "active".to_string(),
@@ -183,6 +173,14 @@ impl LlmModelService {
         };
 
         let row = self.db.update_llm_model(org_id, id, input).await?;
+
+        // If uninstalling a model, check if it was the org default and elect a new one
+        if req.installed == Some(false)
+            && let Some(ref row) = row
+        {
+            self.maybe_elect_new_default(org_id, row.id.uuid()).await?;
+        }
+
         if row.is_some() {
             self.invalidate_resolver_cache(org_id).await;
         }
@@ -190,8 +188,13 @@ impl LlmModelService {
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        // Before deleting, check if this was the org default
+        let was_default = self.is_org_default(org_id, id).await?;
         let deleted = self.db.delete_llm_model(org_id, id).await?;
         if deleted {
+            if was_default {
+                self.elect_new_default(org_id).await?;
+            }
             self.invalidate_resolver_cache(org_id).await;
         }
         Ok(deleted)
@@ -203,6 +206,48 @@ impl LlmModelService {
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
+    /// Set the org default model
+    pub async fn set_default(&self, org_id: i64, model_id: Uuid) -> Result<()> {
+        self.db
+            .upsert_organization_settings(org_id, Some(model_id))
+            .await?;
+        self.invalidate_resolver_cache(org_id).await;
+        Ok(())
+    }
+
+    /// Check if a model is the current org default
+    async fn is_org_default(&self, org_id: i64, model_id: Uuid) -> Result<bool> {
+        if let Some(settings) = self.db.get_organization_settings(org_id).await?
+            && let Some(default_id) = settings.default_model_id
+        {
+            return Ok(default_id.uuid() == model_id);
+        }
+        Ok(false)
+    }
+
+    /// If the given model_id is the org default, elect a new one
+    async fn maybe_elect_new_default(&self, org_id: i64, model_id: Uuid) -> Result<()> {
+        if self.is_org_default(org_id, model_id).await? {
+            self.elect_new_default(org_id).await?;
+        }
+        Ok(())
+    }
+
+    /// Elect a new default model from installed models
+    async fn elect_new_default(&self, org_id: i64) -> Result<()> {
+        let all_models = self.db.list_all_llm_models(org_id).await?;
+        let new_default = all_models
+            .iter()
+            .find(|m| m.installed && m.status == "active");
+
+        let new_default_id = new_default.map(|m| m.id.uuid());
+        self.db
+            .upsert_organization_settings(org_id, new_default_id)
+            .await?;
+        self.invalidate_resolver_cache(org_id).await;
+        Ok(())
+    }
+
     fn row_to_model(row: &LlmModelRow) -> LlmModel {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
@@ -212,7 +257,7 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            is_default: row.is_default,
+            installed: row.installed,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
@@ -239,7 +284,7 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            is_default: row.is_default,
+            installed: row.installed,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,

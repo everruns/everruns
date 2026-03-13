@@ -863,7 +863,7 @@ export interface LlmModel {
   model_id: string;
   display_name: string;
   capabilities: string[];
-  is_default: boolean;
+  installed: boolean;
   is_favorite: boolean;
   status: LlmModelStatus;
   created_at: string;
@@ -988,7 +988,7 @@ export interface CreateLlmModelRequest {
   model_id: string;
   display_name: string;
   capabilities?: string[];
-  is_default?: boolean;
+  installed?: boolean;
   is_favorite?: boolean;
 }
 
@@ -996,7 +996,7 @@ export interface UpdateLlmModelRequest {
   model_id?: string;
   display_name?: string;
   capabilities?: string[];
-  is_default?: boolean;
+  installed?: boolean;
   is_favorite?: boolean;
   status?: LlmModelStatus;
 }

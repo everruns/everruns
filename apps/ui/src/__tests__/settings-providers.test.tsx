@@ -35,7 +35,7 @@ const mockModels = [
     provider_id: "provider-1",
     provider_name: "OpenAI Production",
     status: "active",
-    is_default: true,
+    installed: true,
     capabilities: ["chat", "function_calling"],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",

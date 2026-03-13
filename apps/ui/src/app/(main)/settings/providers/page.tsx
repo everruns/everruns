@@ -198,7 +198,7 @@ function ModelRow({
           <div>
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
-              {model.is_default && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+              {model.installed && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
               {profile && (
                 <Badge
                   variant="outline"
@@ -550,7 +550,7 @@ function AddModelDialog({
     const data: CreateLlmModelRequest = {
       model_id: modelId,
       display_name: displayName,
-      is_default: isDefault,
+      installed: isDefault,
     };
     await createModel.mutateAsync(data);
     onOpenChange(false);

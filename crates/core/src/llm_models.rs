@@ -143,8 +143,10 @@ pub struct LlmModel {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    pub is_default: bool,
     pub is_favorite: bool,
+    /// Whether this model is installed (available in UI model pickers).
+    /// All models are available via API regardless of this flag.
+    pub installed: bool,
     pub status: LlmModelStatus,
     /// How the model was added to the system
     pub source: LlmModelSource,
@@ -163,8 +165,9 @@ pub struct LlmModelWithProvider {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    pub is_default: bool,
     pub is_favorite: bool,
+    /// Whether this model is installed (available in UI model pickers)
+    pub installed: bool,
     pub status: LlmModelStatus,
     /// How the model was added to the system
     pub source: LlmModelSource,

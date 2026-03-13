@@ -1,7 +1,9 @@
-//! Tests for LLM model is_default uniqueness constraint
+//! Tests for LLM model installed flag and organization default model
 //!
-//! Verifies that only one model can be the default at a time,
-//! and that setting a new default clears the previous one.
+//! Verifies that:
+//! - Models can be installed/uninstalled independently
+//! - Organization settings control the default model
+//! - Uninstalling the org default model elects a new one
 //!
 //! Uses in-memory backend (no PostgreSQL required).
 //!
@@ -36,14 +38,14 @@ async fn setup() -> (InMemoryDatabase, everruns_core::ProviderId) {
 fn model_input(
     provider_id: everruns_core::ProviderId,
     name: &str,
-    is_default: bool,
+    installed: bool,
 ) -> CreateLlmModelRow {
     CreateLlmModelRow {
         provider_id,
         model_id: name.to_string(),
         display_name: name.to_string(),
         capabilities: vec![],
-        is_default,
+        installed,
         is_favorite: false,
         source: "manual".to_string(),
         provider_metadata: None,
@@ -51,164 +53,170 @@ fn model_input(
 }
 
 #[tokio::test]
-async fn test_create_model_clears_previous_default() {
-    let (db, pid) = setup().await;
-
-    // Create first model as default
-    let m1 = db
-        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
-        .await
-        .expect("create model-a");
-    assert!(m1.is_default);
-
-    // Create second model as default — should clear the first
-    let m2 = db
-        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", true))
-        .await
-        .expect("create model-b");
-    assert!(m2.is_default);
-
-    // Verify first model is no longer default
-    let m1_fetched = db
-        .get_llm_model(TEST_ORG_ID, m1.id.into())
-        .await
-        .expect("get model-a")
-        .expect("model-a exists");
-    assert!(!m1_fetched.is_default, "previous default should be cleared");
-}
-
-#[tokio::test]
-async fn test_create_non_default_does_not_clear_existing_default() {
+async fn test_create_installed_model() {
     let (db, pid) = setup().await;
 
     let m1 = db
         .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
         .await
         .expect("create model-a");
-    assert!(m1.is_default);
+    assert!(m1.installed);
 
-    // Create non-default model — should not affect existing default
-    db.create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", false))
-        .await
-        .expect("create model-b");
-
-    let m1_fetched = db
-        .get_llm_model(TEST_ORG_ID, m1.id.into())
-        .await
-        .expect("get model-a")
-        .expect("model-a exists");
-    assert!(m1_fetched.is_default, "default should remain unchanged");
-}
-
-#[tokio::test]
-async fn test_update_model_to_default_clears_previous() {
-    let (db, pid) = setup().await;
-
-    let m1 = db
-        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
-        .await
-        .expect("create model-a");
     let m2 = db
         .create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", false))
         .await
         .expect("create model-b");
+    assert!(!m2.installed);
+}
 
-    // Update m2 to be default
-    let updated = db
-        .update_llm_model(
-            TEST_ORG_ID,
-            m2.id.into(),
-            UpdateLlmModel {
-                is_default: Some(true),
-                ..Default::default()
-            },
-        )
+#[tokio::test]
+async fn test_multiple_models_can_be_installed() {
+    let (db, pid) = setup().await;
+
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
         .await
-        .expect("update model-b")
-        .expect("model-b exists");
-    assert!(updated.is_default);
+        .expect("create model-a");
+    let m2 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", true))
+        .await
+        .expect("create model-b");
 
-    // m1 should no longer be default
+    // Both should be installed (unlike is_default, multiple models can be installed)
+    assert!(m1.installed);
+    assert!(m2.installed);
+
+    // Verify both are still installed after fetch
     let m1_fetched = db
         .get_llm_model(TEST_ORG_ID, m1.id.into())
         .await
         .expect("get model-a")
         .expect("model-a exists");
-    assert!(
-        !m1_fetched.is_default,
-        "previous default should be cleared after update"
-    );
+    let m2_fetched = db
+        .get_llm_model(TEST_ORG_ID, m2.id.into())
+        .await
+        .expect("get model-b")
+        .expect("model-b exists");
+    assert!(m1_fetched.installed);
+    assert!(m2_fetched.installed);
 }
 
 #[tokio::test]
-async fn test_seed_upsert_clears_previous_default() {
+async fn test_update_installed_flag() {
     let (db, pid) = setup().await;
 
-    // Simulate: user manually set a model as default
-    let user_model = db
-        .create_llm_model(TEST_ORG_ID, model_input(pid, "user-model", true))
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", false))
         .await
-        .expect("create user model");
-    assert!(user_model.is_default);
+        .expect("create model-a");
+    assert!(!m1.installed);
 
-    // Seed inserts a model with is_default=true using a fixed ID
+    // Install the model
+    let updated = db
+        .update_llm_model(
+            TEST_ORG_ID,
+            m1.id.into(),
+            UpdateLlmModel {
+                installed: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update model-a")
+        .expect("model-a exists");
+    assert!(updated.installed);
+
+    // Uninstall
+    let updated2 = db
+        .update_llm_model(
+            TEST_ORG_ID,
+            m1.id.into(),
+            UpdateLlmModel {
+                installed: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update model-a")
+        .expect("model-a exists");
+    assert!(!updated2.installed);
+}
+
+#[tokio::test]
+async fn test_org_settings_default_model() {
+    let (db, pid) = setup().await;
+
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
+        .await
+        .expect("create model-a");
+
+    // Set org default model
+    let settings = db
+        .upsert_organization_settings(TEST_ORG_ID, Some(m1.id.uuid()))
+        .await
+        .expect("upsert org settings");
+    assert_eq!(settings.default_model_id.unwrap().uuid(), m1.id.uuid());
+
+    // Get default model should return model-a
+    let default = db
+        .get_default_llm_model(TEST_ORG_ID)
+        .await
+        .expect("get default model")
+        .expect("default exists");
+    assert_eq!(default.id.uuid(), m1.id.uuid());
+}
+
+#[tokio::test]
+async fn test_org_settings_upsert_updates_existing() {
+    let (db, pid) = setup().await;
+
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
+        .await
+        .expect("create model-a");
+    let m2 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", true))
+        .await
+        .expect("create model-b");
+
+    // Set default to m1
+    db.upsert_organization_settings(TEST_ORG_ID, Some(m1.id.uuid()))
+        .await
+        .expect("set default to m1");
+
+    // Update default to m2
+    let settings = db
+        .upsert_organization_settings(TEST_ORG_ID, Some(m2.id.uuid()))
+        .await
+        .expect("set default to m2");
+    assert_eq!(settings.default_model_id.unwrap().uuid(), m2.id.uuid());
+
+    // Verify default is now m2
+    let default = db
+        .get_default_llm_model(TEST_ORG_ID)
+        .await
+        .expect("get default model")
+        .expect("default exists");
+    assert_eq!(default.id.uuid(), m2.id.uuid());
+}
+
+#[tokio::test]
+async fn test_seed_upsert_sets_installed() {
+    let (db, pid) = setup().await;
+
     let seed_id = Uuid::new_v4();
-    let seed_result = db
-        .create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-default", true))
+    let result = db
+        .create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-model", true))
         .await
         .expect("seed model");
-    assert!(seed_result.is_some(), "seed should create the model");
-    assert!(seed_result.unwrap().is_default);
+    assert!(result.is_some(), "seed should create the model");
+    assert!(result.unwrap().installed);
 
-    // User's model should no longer be default
-    let user_fetched = db
-        .get_llm_model(TEST_ORG_ID, user_model.id.into())
-        .await
-        .expect("get user model")
-        .expect("user model exists");
-    assert!(
-        !user_fetched.is_default,
-        "user default should be cleared by seed"
-    );
-}
-
-#[tokio::test]
-async fn test_seed_upsert_update_path_clears_previous_default() {
-    let (db, pid) = setup().await;
-
-    // First seed: model-a is default
-    let seed_id = Uuid::new_v4();
-    db.create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-model", true))
-        .await
-        .expect("first seed");
-
-    // User sets another model as default
-    let user_model = db
-        .create_llm_model(TEST_ORG_ID, model_input(pid, "user-choice", true))
-        .await
-        .expect("user creates default");
-
-    // Verify seed model lost default
-    let seed_fetched = db
-        .get_llm_model(TEST_ORG_ID, seed_id)
-        .await
-        .expect("get seed")
-        .expect("seed exists");
-    assert!(!seed_fetched.is_default);
-
-    // Re-seed: updates existing seed model back to default
+    // Re-seed should detect no change
     let reseed = db
         .create_llm_model_with_id(TEST_ORG_ID, seed_id, model_input(pid, "seed-model", true))
         .await
         .expect("re-seed");
-    assert!(reseed.is_some(), "should detect is_default changed");
-    assert!(reseed.unwrap().is_default);
-
-    // User model should no longer be default
-    let user_fetched = db
-        .get_llm_model(TEST_ORG_ID, user_model.id.into())
-        .await
-        .expect("get user model")
-        .expect("user model exists");
-    assert!(!user_fetched.is_default, "user default cleared by re-seed");
+    assert!(reseed.is_none(), "no change on identical re-seed");
 }

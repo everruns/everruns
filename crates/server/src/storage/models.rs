@@ -71,6 +71,15 @@ pub struct UpdateOrganization {
     pub name: Option<String>,
 }
 
+/// Organization settings row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationSettingsRow {
+    pub org_id: i64,
+    pub default_model_id: Option<ModelId>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Input for creating an organization member
 #[derive(Debug, Clone)]
 pub struct CreateOrganizationMemberRow {
@@ -427,8 +436,9 @@ pub struct LlmModelRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
-    pub is_default: bool,
     pub is_favorite: bool,
+    /// Whether this model is installed (available in UI model pickers)
+    pub installed: bool,
     pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
@@ -449,8 +459,9 @@ pub struct LlmModelWithProviderRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
-    pub is_default: bool,
     pub is_favorite: bool,
+    /// Whether this model is installed (available in UI model pickers)
+    pub installed: bool,
     pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
@@ -501,8 +512,9 @@ pub struct CreateLlmModelRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    pub is_default: bool,
     pub is_favorite: bool,
+    /// Whether this model is installed (available in UI model pickers)
+    pub installed: bool,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
     /// Raw metadata from provider API response
@@ -514,8 +526,9 @@ pub struct UpdateLlmModel {
     pub model_id: Option<String>,
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
-    pub is_default: Option<bool>,
     pub is_favorite: Option<bool>,
+    /// Update installed flag
+    pub installed: Option<bool>,
     pub status: Option<String>,
     /// Update last_seen_at timestamp (for sync tracking)
     pub last_seen_at: Option<DateTime<Utc>>,

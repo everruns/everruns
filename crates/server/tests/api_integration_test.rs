@@ -551,7 +551,7 @@ async fn test_llm_provider_crud() {
                 "name": "Test OpenAI Provider",
                 "provider_type": "openai",
                 "base_url": "https://api.openai.com/v1",
-                "is_default": true
+                "installed": true
             }),
         )
         .await
@@ -598,7 +598,7 @@ async fn test_llm_model_crud() {
                 "model_id": "gpt-4-test",
                 "display_name": "GPT-4 Test",
                 "capabilities": ["chat"],
-                "is_default": true
+                "installed": true
             }),
         )
         .await
@@ -651,7 +651,7 @@ async fn test_session_inherits_agent_default_model() {
             json!({
                 "model_id": "inherit-test-model",
                 "display_name": "Inherit Test Model",
-                "is_default": false
+                "installed": false
             }),
         )
         .await
