@@ -35,6 +35,7 @@ use crate::events::{
     ToolStartedData,
 };
 use crate::message::ContentPart;
+use crate::tool_narration::{ToolNarrationPhase, render_group_headline, render_tool_narration};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
     AgentStore, EventEmitter, SessionFileStore, SessionMutator, SessionStore, ToolContext,
@@ -366,6 +367,23 @@ where
             act_span_id.clone(), // Same span_id as started
             Some(parent_span_id.clone()),
         );
+        let mut completed_headline = render_group_headline(
+            &tool_calls,
+            &tool_definitions,
+            ToolNarrationPhase::Completed,
+        );
+        if error_count > 0 {
+            let suffix = format!(
+                " with {} error{}",
+                error_count,
+                if error_count == 1 { "" } else { "s" }
+            );
+            completed_headline = Some(match completed_headline {
+                Some(text) => format!("{text}{suffix}"),
+                None => format!("Completed tool batch{suffix}"),
+            });
+        }
+
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -376,6 +394,7 @@ where
                     success_count,
                     error_count,
                     duration_ms: Some(act_duration_ms),
+                    headline: completed_headline,
                 },
             ))
             .await
@@ -455,6 +474,11 @@ where
                 ToolStartedData {
                     tool_call: tool_call.clone(),
                     display_name: display_name.clone(),
+                    narration: Some(render_tool_narration(
+                        tool_def,
+                        &tool_call,
+                        ToolNarrationPhase::Started,
+                    )),
                 },
             ))
             .await
@@ -484,7 +508,12 @@ where
                         "error".to_string(),
                         error_msg.clone(),
                         Some(tool_duration_ms),
-                    ),
+                    )
+                    .with_narration(Some(render_tool_narration(
+                        None,
+                        &tool_call,
+                        ToolNarrationPhase::Failed,
+                    ))),
                 ))
                 .await
             {
@@ -592,6 +621,11 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
+                    .with_narration(Some(render_tool_narration(
+                        Some(tool_def),
+                        &tool_call,
+                        ToolNarrationPhase::Completed,
+                    )))
                 } else {
                     ToolCompletedData::failure(
                         tool_call.id.clone(),
@@ -601,6 +635,11 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
+                    .with_narration(Some(render_tool_narration(
+                        Some(tool_def),
+                        &tool_call,
+                        ToolNarrationPhase::Failed,
+                    )))
                 };
 
                 if let Err(e) = self
@@ -652,7 +691,12 @@ where
                             error_msg.clone(),
                             Some(tool_duration_ms),
                         )
-                        .with_display_name(display_name.clone()),
+                        .with_display_name(display_name.clone())
+                        .with_narration(Some(render_tool_narration(
+                            Some(tool_def),
+                            &tool_call,
+                            ToolNarrationPhase::Failed,
+                        ))),
                     ))
                     .await
                 {

@@ -345,6 +345,9 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
+            e.type === "act.started" ||
+            e.type === "act.completed" ||
+            e.type === "tool.started" ||
             e.type === "tool.completed" ||
             e.type === "tool.call_requested",
         )

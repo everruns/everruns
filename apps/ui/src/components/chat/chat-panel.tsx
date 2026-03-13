@@ -22,12 +22,17 @@ import {
   ArrowDown,
 } from "lucide-react";
 import type {
+  ActCompletedData,
+  ActStartedData,
   Controls,
   InputMessageData,
   OutputMessageCompletedData,
-  ToolCallRequestedData,
   ContentPart,
   CommandDescriptor,
+  ToolCallRequestedData,
+  ToolCallSummary,
+  ToolCompletedData,
+  ToolStartedData,
 } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -40,6 +45,10 @@ import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
 import { MessageContent } from "@/components/chat/message-content";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
+import {
+  ToolActivityTimelineGroup,
+  type TimelineToolRow,
+} from "@/components/chat/tool-activity-timeline-group";
 import {
   formatWorkedDuration,
   getCompletedTurnDurationsByEvent,
@@ -134,6 +143,97 @@ export function ChatPanel() {
     () => getCompletedTurnDurationsByEvent(events ?? []),
     [events],
   );
+
+  const hasNarratedActEvents = useMemo(
+    () => chatEvents.some((event) => event.type === "act.started"),
+    [chatEvents],
+  );
+
+  const actGroupsByStartEventId = useMemo(() => {
+    type GroupState = {
+      startEventId: string;
+      headline: string;
+      completedHeadline?: string;
+      rows: TimelineToolRow[];
+    };
+
+    const groupsByExecId = new Map<string, GroupState>();
+
+    const ensureRow = (
+      group: GroupState,
+      id: string,
+      fallbackLabel: string,
+      state: TimelineToolRow["state"],
+    ) => {
+      const existing = group.rows.find((row) => row.id === id);
+      if (existing) {
+        existing.label = existing.label || fallbackLabel;
+        existing.state = state;
+        return existing;
+      }
+
+      const row: TimelineToolRow = { id, label: fallbackLabel, state };
+      group.rows.push(row);
+      return row;
+    };
+
+    for (const event of chatEvents) {
+      const execId = event.context?.exec_id;
+      if (!execId) continue;
+
+      if (event.type === "act.started") {
+        const data = event.data as ActStartedData;
+        groupsByExecId.set(execId, {
+          startEventId: event.id,
+          headline: data.headline ?? "Working",
+          rows: (data.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
+            id: toolCall.id,
+            label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
+            state: "running",
+          })),
+        });
+        continue;
+      }
+
+      const group = groupsByExecId.get(execId);
+      if (!group) continue;
+
+      if (event.type === "tool.started") {
+        const data = event.data as ToolStartedData;
+        const row = ensureRow(
+          group,
+          data.tool_call.id,
+          data.narration ?? data.display_name ?? data.tool_call.name,
+          "running",
+        );
+        row.label = data.narration ?? row.label;
+        continue;
+      }
+
+      if (event.type === "tool.completed") {
+        const data = event.data as ToolCompletedData;
+        const row = ensureRow(
+          group,
+          data.tool_call_id,
+          data.narration ?? data.display_name ?? data.tool_name ?? "Tool call",
+          data.success ? "completed" : "error",
+        );
+        row.label = data.narration ?? row.label;
+        row.result = data;
+        row.state = data.success ? "completed" : "error";
+        continue;
+      }
+
+      if (event.type === "act.completed") {
+        const data = event.data as ActCompletedData;
+        group.completedHeadline = data.headline;
+      }
+    }
+
+    return new Map(
+      Array.from(groupsByExecId.values()).map((group) => [group.startEventId, group] as const),
+    );
+  }, [chatEvents]);
 
   const handleCommandSelect = useCallback(
     (cmd: CommandDescriptor) => {
@@ -458,13 +558,57 @@ export function ChatPanel() {
               </div>
             )}
             {chatEvents.map((event) => {
-              if (event.type === "tool.completed") {
+              if (event.type === "tool.started" || event.type === "tool.completed") {
                 return null;
+              }
+
+              if (event.type === "act.completed") {
+                return null;
+              }
+
+              if (event.type === "act.started") {
+                const group = actGroupsByStartEventId.get(event.id);
+                if (!group || group.rows.length === 0) return null;
+                return (
+                  <div key={event.id} className="space-y-3">
+                    <div className="ml-9 space-y-1">
+                      <ToolActivityTimelineGroup
+                        headline={group.headline}
+                        completedHeadline={group.completedHeadline}
+                        rows={group.rows}
+                      />
+                    </div>
+                    {renderTurnDivider(event.id)}
+                  </div>
+                );
               }
 
               if (event.type === "tool.call_requested") {
                 const reqData = event.data as ToolCallRequestedData;
                 if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
+
+                if (reqData.headline || reqData.tool_summaries?.length) {
+                  const rows: TimelineToolRow[] = (reqData.tool_summaries ?? []).map((summary) => ({
+                    id: summary.id,
+                    label: summary.narration ?? summary.display_name ?? summary.name,
+                    state: "waiting",
+                  }));
+
+                  if (rows.length > 0) {
+                    return (
+                      <div key={event.id} className="space-y-3">
+                        <div className="ml-9 space-y-1">
+                          <ToolActivityTimelineGroup
+                            headline={reqData.headline ?? "Waiting on tools"}
+                            rows={rows}
+                          />
+                        </div>
+                        {renderTurnDivider(event.id)}
+                      </div>
+                    );
+                  }
+                }
+
                 return (
                   <div key={event.id} className="space-y-3">
                     <div className="ml-9 space-y-1">
@@ -493,6 +637,10 @@ export function ChatPanel() {
                 !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
 
               if (isToolOnlyMessage) {
+                if (hasNarratedActEvents) {
+                  return null;
+                }
+
                 return (
                   <div key={event.id} className="space-y-3">
                     <div className="ml-9 space-y-1">
@@ -560,7 +708,7 @@ export function ChatPanel() {
                     </div>
                   )}
 
-                  {toolCalls.length > 0 && (
+                  {toolCalls.length > 0 && !hasNarratedActEvents && (
                     <div className="ml-9 space-y-1">
                       <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
                     </div>

@@ -1684,13 +1684,16 @@ mod tests {
                     id: "call_1".to_string(),
                     name: "search".to_string(),
                     display_name: None,
+                    narration: None,
                 },
                 ToolCallSummary {
                     id: "call_2".to_string(),
                     name: "fetch".to_string(),
                     display_name: None,
+                    narration: None,
                 },
             ],
+            headline: None,
         };
         let event = Event::new(
             SessionId::new(),
@@ -1741,6 +1744,7 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(200),
+            narration: None,
         };
         let event = Event::new(
             SessionId::new(),
@@ -1928,7 +1932,9 @@ mod tests {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
                 display_name: None,
+                narration: None,
             }],
+            headline: None,
         };
         let act_event = Event::new(
             SessionId::new(),
@@ -1957,6 +1963,7 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(75),
+            narration: None,
         };
         let tool_event = Event::new(
             SessionId::new(),
@@ -2124,7 +2131,9 @@ mod tests {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
                 display_name: None,
+                narration: None,
             }],
+            headline: None,
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -2145,6 +2154,7 @@ mod tests {
             success_count: 1,
             error_count: 0,
             duration_ms: Some(200),
+            headline: None,
         };
         let completed_event = Event::new(
             SessionId::new(),
@@ -2183,6 +2193,7 @@ mod tests {
                 arguments: serde_json::json!({"query": "test"}),
             },
             display_name: None,
+            narration: None,
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -2207,6 +2218,7 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(100),
+            narration: None,
         };
         let completed_event = Event::new(
             SessionId::new(),

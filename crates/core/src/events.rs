@@ -368,6 +368,7 @@ impl Event {
 // ============================================================================
 
 use crate::message::{ContentPart, Message};
+use crate::tool_narration::{ToolNarrationPhase, render_group_headline, render_tool_narration};
 use crate::tool_types::ToolCall;
 
 /// Metadata about the model used for generation
@@ -642,6 +643,9 @@ pub struct ToolCallSummary {
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Human-readable narration for timeline rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<String>,
 }
 
 impl From<&ToolCall> for ToolCallSummary {
@@ -650,6 +654,7 @@ impl From<&ToolCall> for ToolCallSummary {
             id: tc.id.clone(),
             name: tc.name.clone(),
             display_name: None,
+            narration: None,
         }
     }
 }
@@ -683,12 +688,16 @@ impl From<&crate::tool_types::ToolDefinition> for ToolDefinitionSummary {
 pub struct ActStartedData {
     /// Tool calls to be executed
     pub tool_calls: Vec<ToolCallSummary>,
+    /// Human-readable headline for the batch
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headline: Option<String>,
 }
 
 impl ActStartedData {
     pub fn new(tool_calls: &[ToolCall]) -> Self {
         Self {
             tool_calls: tool_calls.iter().map(ToolCallSummary::from).collect(),
+            headline: render_group_headline(tool_calls, &[], ToolNarrationPhase::Started),
         }
     }
 
@@ -703,16 +712,22 @@ impl ActStartedData {
             tool_calls: tool_calls
                 .iter()
                 .map(|tc| {
-                    let display_name = def_map
-                        .get(tc.name.as_str())
-                        .and_then(|d| d.display_name().map(|s| s.to_string()));
+                    let tool_def = def_map.get(tc.name.as_str()).copied();
+                    let display_name =
+                        tool_def.and_then(|d| d.display_name().map(|s| s.to_string()));
                     ToolCallSummary {
                         id: tc.id.clone(),
                         name: tc.name.clone(),
                         display_name,
+                        narration: Some(render_tool_narration(
+                            tool_def,
+                            tc,
+                            ToolNarrationPhase::Started,
+                        )),
                     }
                 })
                 .collect(),
+            headline: render_group_headline(tool_calls, tool_defs, ToolNarrationPhase::Started),
         }
     }
 }
@@ -733,6 +748,9 @@ pub struct ActCompletedData {
     /// Duration of the act phase in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Human-readable headline for the completed batch
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headline: Option<String>,
 }
 
 /// Data for tool.started event
@@ -744,6 +762,9 @@ pub struct ToolStartedData {
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Human-readable narration for timeline rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<String>,
 }
 
 /// Data for tool.completed event
@@ -777,6 +798,9 @@ pub struct ToolCompletedData {
     /// Duration of the tool call in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Human-readable narration for timeline rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<String>,
 }
 
 impl ToolCompletedData {
@@ -795,6 +819,7 @@ impl ToolCompletedData {
             result: Some(result),
             error: None,
             duration_ms,
+            narration: None,
         }
     }
 
@@ -814,12 +839,19 @@ impl ToolCompletedData {
             result: None,
             error: Some(error),
             duration_ms,
+            narration: None,
         }
     }
 
     /// Set display name on this event data
     pub fn with_display_name(mut self, display_name: Option<String>) -> Self {
         self.display_name = display_name;
+        self
+    }
+
+    /// Set narration on this event data
+    pub fn with_narration(mut self, narration: Option<String>) -> Self {
+        self.narration = narration;
         self
     }
 }
@@ -833,6 +865,46 @@ impl ToolCompletedData {
 pub struct ToolCallRequestedData {
     /// Tool calls that need to be executed by the client
     pub tool_calls: Vec<ToolCall>,
+    /// Optional summaries with display names and narration for UI rendering
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_summaries: Vec<ToolCallSummary>,
+    /// Human-readable headline for the requested batch
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headline: Option<String>,
+}
+
+impl ToolCallRequestedData {
+    pub fn with_definitions(
+        tool_calls: &[ToolCall],
+        tool_defs: &[crate::tool_types::ToolDefinition],
+    ) -> Self {
+        let def_map: std::collections::HashMap<&str, &crate::tool_types::ToolDefinition> =
+            tool_defs.iter().map(|d| (d.name(), d)).collect();
+
+        let tool_summaries = tool_calls
+            .iter()
+            .map(|tool_call| {
+                let tool_def = def_map.get(tool_call.name.as_str()).copied();
+                ToolCallSummary {
+                    id: tool_call.id.clone(),
+                    name: tool_call.name.clone(),
+                    display_name: tool_def
+                        .and_then(|def| def.display_name().map(|value| value.to_string())),
+                    narration: Some(render_tool_narration(
+                        tool_def,
+                        tool_call,
+                        ToolNarrationPhase::Waiting,
+                    )),
+                }
+            })
+            .collect();
+
+        Self {
+            tool_calls: tool_calls.to_vec(),
+            tool_summaries,
+            headline: render_group_headline(tool_calls, tool_defs, ToolNarrationPhase::Waiting),
+        }
+    }
 }
 
 // ============================================================================
@@ -2487,7 +2559,9 @@ mod contract_tests {
                 id: "tc_1".to_string(),
                 name: "get_weather".to_string(),
                 display_name: None,
+                narration: None,
             }],
+            headline: None,
         };
         with_settings!({
             sort_maps => true,
@@ -2503,6 +2577,7 @@ mod contract_tests {
             success_count: 2,
             error_count: 0,
             duration_ms: Some(500),
+            headline: None,
         };
         with_settings!({
             sort_maps => true,
@@ -2520,6 +2595,7 @@ mod contract_tests {
                 arguments: serde_json::json!({"city": "London"}),
             },
             display_name: None,
+            narration: None,
         };
         with_settings!({
             sort_maps => true,
@@ -2663,6 +2739,7 @@ mod contract_tests {
             id: "tc_1".to_string(),
             name: "get_weather".to_string(),
             display_name: Some("Get Weather".to_string()),
+            narration: None,
         };
         let json = serde_json::to_value(&summary).unwrap();
         assert_eq!(json["display_name"], "Get Weather");
@@ -2678,6 +2755,7 @@ mod contract_tests {
             id: "tc_1".to_string(),
             name: "get_weather".to_string(),
             display_name: None,
+            narration: None,
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert!(!json.contains("display_name"));
@@ -2751,6 +2829,7 @@ mod contract_tests {
                 arguments: serde_json::json!({"command": "ls"}),
             },
             display_name: Some("Bash".to_string()),
+            narration: None,
         };
 
         let json = serde_json::to_value(&data).unwrap();
@@ -2927,7 +3006,14 @@ mod contract_tests {
                 REASON_COMPLETED,
                 ReasonCompletedData::success("", false, 0, None, None).into(),
             ),
-            (ACT_STARTED, ActStartedData { tool_calls: vec![] }.into()),
+            (
+                ACT_STARTED,
+                ActStartedData {
+                    tool_calls: vec![],
+                    headline: None,
+                }
+                .into(),
+            ),
             (
                 ACT_COMPLETED,
                 ActCompletedData {
@@ -2935,6 +3021,7 @@ mod contract_tests {
                     success_count: 0,
                     error_count: 0,
                     duration_ms: None,
+                    headline: None,
                 }
                 .into(),
             ),
