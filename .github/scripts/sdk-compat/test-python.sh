@@ -51,8 +51,8 @@ async def main() -> None:
     params = list(sig.parameters.keys())
 
     if "harness_id" in params:
-        from everruns_sdk import generate_harness_id
-        harness_id = generate_harness_id()
+        # Use the well-known Generic harness (seeded in every org)
+        harness_id = "harness_01933b5a000070008000000000000602"
         session = await client.sessions.create(harness_id, agent_id=agent.id)
     else:
         session = await client.sessions.create(agent_id=agent.id)

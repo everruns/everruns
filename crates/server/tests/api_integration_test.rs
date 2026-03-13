@@ -265,6 +265,56 @@ async fn test_create_session() {
 }
 
 #[tokio::test]
+async fn test_create_session_nonexistent_harness_returns_404() {
+    let server = TestServer::new().await;
+
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": "harness_00000000000000000000000000000000",
+                "title": "Should fail"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_create_session_nonexistent_model_returns_404() {
+    let server = TestServer::new().await;
+
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "model_id": "model_00000000000000000000000000000000",
+                "title": "Should fail"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_create_session_nonexistent_agent_returns_404() {
+    let server = TestServer::new().await;
+
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": "agent_00000000000000000000000000000000",
+                "title": "Should fail"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_get_session() {
     let server = TestServer::new().await;
 

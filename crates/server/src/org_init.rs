@@ -53,6 +53,9 @@ mod harness_ids {
     pub const CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 }
 
+/// Well-known UUID for the Generic harness (default for sessions without explicit harness)
+pub const GENERIC_HARNESS_ID: Uuid = harness_ids::GENERIC;
+
 /// Well-known UUID for the Chat harness (used by global chat endpoint)
 pub const CHAT_HARNESS_ID: Uuid = harness_ids::CHAT;
 

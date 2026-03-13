@@ -44,11 +44,8 @@ if (fetchedAgent.id !== agent.id) {
 console.log("  agent fetch verified");
 
 // 3. Create session
-// v0.1.0 only sends agent_id; server auto-generates harness_id.
-// Newer versions may also pass harnessId.
-const harnessId = `harness_${[...Array(32)]
-  .map(() => Math.floor(Math.random() * 16).toString(16))
-  .join("")}`;
+// Use the well-known Generic harness (seeded in every org).
+const harnessId = "harness_01933b5a000070008000000000000602";
 const session = await client.sessions.create({ harnessId, agentId: agent.id });
 console.log(`  session created: ${session.id}`);
 

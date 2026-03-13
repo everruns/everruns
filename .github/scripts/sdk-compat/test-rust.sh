@@ -55,9 +55,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fetched.id, agent.id, "agent id mismatch");
     println!("  agent fetch verified");
 
-    // 3. Create session with harness_id
-    let harness_id = everruns_sdk::generate_harness_id();
-    let session = client.sessions().create(&harness_id).await?;
+    // 3. Create session with the well-known Generic harness (seeded in every org)
+    let harness_id = "harness_01933b5a000070008000000000000602";
+    let session = client.sessions().create(harness_id).await?;
     println!("  session created: {}", session.id);
 
     // 4. Fetch session and verify
