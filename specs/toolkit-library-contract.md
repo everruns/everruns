@@ -74,10 +74,11 @@ impl ToolBuilder {
     /// Build the full Tool (metadata + execution factory).
     fn build(&self) -> Tool;
 
-    /// Build a standalone executor: accepts JSON args, returns JSON result.
+    /// Build a `tower::Service` that accepts JSON args and returns JSON result.
     /// No metadata attached — useful for embedding in generic pipelines,
     /// test harnesses, or consumers that manage tool definitions separately.
-    fn build_executor(&self) -> ToolExecutor;
+    /// Implements `tower::Service<Value, Response = Value, Error = ToolError>`.
+    fn build_service(&self) -> impl Service<Value, Response = Value, Error = ToolError>;
 
     /// Build an OpenAI-compatible function tool definition.
     /// Returns JSON matching the OpenAI `tools` array element format:
@@ -95,28 +96,40 @@ impl ToolBuilder {
 }
 ```
 
-**`ToolExecutor`** is a minimal, stateless executor:
+**`build_service()`** returns a standard `tower::Service` — the Rust equivalent of Python's callable protocol (`__call__`). This is the community-standard async request→response interface. Any tower middleware (timeout, retry, rate-limit, tracing) works out of the box.
 
 ```rust
-pub struct ToolExecutor { /* internal */ }
+use tower::Service;
 
-impl ToolExecutor {
-    /// Execute with JSON args, return JSON result.
-    /// No ToolExecution indirection — fire-and-forget for simple consumers.
-    async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError>;
+let mut svc = mykit::ToolBuilder::new()
+    .some_feature(true)
+    .build_service();
 
-    /// Execute with an adapter.
-    async fn execute_with<A: SomeAdapter>(
+// Standard Service::call — just like Python's callable
+let result: Value = svc.call(json!({"url": "https://example.com"})).await?;
+
+// Compose with tower middleware
+use tower::ServiceBuilder;
+let svc = ServiceBuilder::new()
+    .timeout(Duration::from_secs(30))
+    .service(mykit::ToolBuilder::new().build_service());
+```
+
+Toolkits that need adapter injection provide a `ServiceBuilder`-style layer or a second factory method:
+
+```rust
+impl ToolBuilder {
+    /// Build a service with an adapter injected.
+    fn build_service_with<A: SomeAdapter>(
         &self,
-        args: serde_json::Value,
-        adapter: &A,
-    ) -> Result<serde_json::Value, ToolError>;
+        adapter: A,
+    ) -> impl Service<Value, Response = Value, Error = ToolError>;
 }
 ```
 
 **When to use which:**
 - `build()` → everruns integration (full metadata + `ToolExecution` with cancel/stream)
-- `build_executor()` → test harnesses, scripts, pipelines that just need `Value` in → `Value` out
+- `build_service()` → generic async callable, tower middleware composition, test harnesses
 - `build_tool_definition()` → registering tools with OpenAI-compatible APIs
 - `build_input_schema()` / `build_output_schema()` → codegen, validation, documentation
 
@@ -348,7 +361,7 @@ Toolkit crates re-export all types needed to implement adapter traits and handle
 
 ```rust
 // mykit/src/lib.rs
-pub use tool::{ToolBuilder, Tool, ToolExecutor, ToolExecution, ToolOutput, ToolOutputChunk, ToolImage};
+pub use tool::{ToolBuilder, Tool, ToolExecution, ToolOutput, ToolOutputChunk, ToolImage};
 pub use error::ToolError;
 pub use adapters::{AdapterTrait, AdapterError, DefaultAdapter};
 // Any types needed to implement AdapterTrait:
@@ -489,7 +502,7 @@ fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
 | both | No `version()` on Tool | Add; return `env!("CARGO_PKG_VERSION")` |
 | both | No `build_tool_definition()` | Add; return OpenAI function call JSON |
 | both | No `build_output_schema()` | Add; describe shape of result JSON |
-| both | No `build_executor()` | Add; return `ToolExecutor` for generic Value→Value usage |
+| both | No `build_service()` | Add; return `impl Service<Value>` for generic callable usage |
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
 | bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
