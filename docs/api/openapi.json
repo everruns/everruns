@@ -4933,9 +4933,9 @@
             "description": "Human-readable display name for the model.",
             "example": "GPT-4o"
           },
-          "is_default": {
+          "installed": {
             "type": "boolean",
-            "description": "Whether this model should be the default for the provider.\nOnly one model per provider can be the default.",
+            "description": "Whether this model should be installed (visible in UI model pickers).",
             "example": false
           },
           "is_favorite": {
@@ -6468,8 +6468,8 @@
                 "model_id",
                 "display_name",
                 "capabilities",
-                "is_default",
                 "is_favorite",
+                "installed",
                 "status",
                 "source",
                 "created_at",
@@ -6493,8 +6493,9 @@
                   "type": "string",
                   "example": "model_01933b5a00007000800000000000001"
                 },
-                "is_default": {
-                  "type": "boolean"
+                "installed": {
+                  "type": "boolean",
+                  "description": "Whether this model is installed (available in UI model pickers).\nAll models are available via API regardless of this flag."
                 },
                 "is_favorite": {
                   "type": "boolean"
@@ -6541,8 +6542,8 @@
                 "model_id",
                 "display_name",
                 "capabilities",
-                "is_default",
                 "is_favorite",
+                "installed",
                 "status",
                 "source",
                 "created_at",
@@ -6568,8 +6569,9 @@
                   "type": "string",
                   "example": "model_01933b5a00007000800000000000001"
                 },
-                "is_default": {
-                  "type": "boolean"
+                "installed": {
+                  "type": "boolean",
+                  "description": "Whether this model is installed (available in UI model pickers)"
                 },
                 "is_favorite": {
                   "type": "boolean"
@@ -7329,8 +7331,8 @@
           "model_id",
           "display_name",
           "capabilities",
-          "is_default",
           "is_favorite",
+          "installed",
           "status",
           "source",
           "created_at",
@@ -7354,8 +7356,9 @@
             "type": "string",
             "example": "model_01933b5a00007000800000000000001"
           },
-          "is_default": {
-            "type": "boolean"
+          "installed": {
+            "type": "boolean",
+            "description": "Whether this model is installed (available in UI model pickers).\nAll models are available via API regardless of this flag."
           },
           "is_favorite": {
             "type": "boolean"
@@ -7607,8 +7610,8 @@
           "model_id",
           "display_name",
           "capabilities",
-          "is_default",
           "is_favorite",
+          "installed",
           "status",
           "source",
           "created_at",
@@ -7634,8 +7637,9 @@
             "type": "string",
             "example": "model_01933b5a00007000800000000000001"
           },
-          "is_default": {
-            "type": "boolean"
+          "installed": {
+            "type": "boolean",
+            "description": "Whether this model is installed (available in UI model pickers)"
           },
           "is_favorite": {
             "type": "boolean"
@@ -10113,12 +10117,12 @@
             "description": "Human-readable display name for the model.",
             "example": "GPT-4o Mini"
           },
-          "is_default": {
+          "installed": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether this model should be the default for the provider.",
+            "description": "Whether this model should be installed (visible in UI model pickers).",
             "example": true
           },
           "is_favorite": {
