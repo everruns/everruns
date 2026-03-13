@@ -73,3 +73,56 @@ pub mod slack_delivery;
 // App builder for composable server configurations
 pub mod app_builder;
 pub use app_builder::{ServerAppBuilder, ServerContext};
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn migration_versions_are_unique() {
+        let migrations_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut files_by_version: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for entry in fs::read_dir(&migrations_dir).expect("Failed to read migrations directory") {
+            let path = entry.expect("Failed to read migration entry").path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("sql") {
+                continue;
+            }
+
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("Migration file name must be valid UTF-8")
+                .to_string();
+
+            let (version, _) = file_name
+                .split_once('_')
+                .expect("Migration file names must start with '<version>_'");
+
+            files_by_version
+                .entry(version.to_string())
+                .or_default()
+                .push(file_name);
+        }
+
+        let duplicates: Vec<String> = files_by_version
+            .into_iter()
+            .filter_map(|(version, mut files)| {
+                if files.len() <= 1 {
+                    return None;
+                }
+
+                files.sort();
+                Some(format!("{version}: {}", files.join(", ")))
+            })
+            .collect();
+
+        assert!(
+            duplicates.is_empty(),
+            "Migration versions must be unique. Duplicates:\n{}",
+            duplicates.join("\n")
+        );
+    }
+}
