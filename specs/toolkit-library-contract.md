@@ -32,7 +32,7 @@ ToolBuilder (config)  →  Tool (metadata)  →  ToolExecution (runtime)
 
 ### 1. `ToolBuilder`
 
-Every `*kit` library exposes a `ToolBuilder` for configuration:
+Every `*kit` library exposes a `ToolBuilder` for configuration. The builder is a factory that can produce different artifacts depending on what the consumer needs.
 
 ```rust
 let builder = mykit::ToolBuilder::new()
@@ -40,16 +40,21 @@ let builder = mykit::ToolBuilder::new()
     .some_feature(true)
     .some_limit(1000);
 
+// Full object — metadata + execution factory
 let tool = builder.build();
+
+// Or produce individual artifacts without building the full Tool:
+let definition = builder.build_tool_definition();   // OpenAI function call JSON
+let input_schema = builder.build_input_schema();     // JSON Schema for args
+let output_schema = builder.build_output_schema();   // JSON Schema for result
+let executor = builder.build_executor();             // generic Value → Value executor
 ```
 
-`ToolBuilder` methods are chainable. `build()` consumes the builder and returns a `Tool`.
+Config methods are chainable. Build methods take `&self` (non-consuming) — you can call multiple on the same builder.
 
 `ToolBuilder` need not be `Send + Sync`.
 
-#### Required builder methods
-
-Every `ToolBuilder` must accept:
+#### Required config methods
 
 ```rust
 impl ToolBuilder {
@@ -61,6 +66,59 @@ impl ToolBuilder {
 ```
 
 Kit-specific config methods are added alongside `locale()`.
+
+#### Build methods
+
+```rust
+impl ToolBuilder {
+    /// Build the full Tool (metadata + execution factory).
+    fn build(&self) -> Tool;
+
+    /// Build a standalone executor: accepts JSON args, returns JSON result.
+    /// No metadata attached — useful for embedding in generic pipelines,
+    /// test harnesses, or consumers that manage tool definitions separately.
+    fn build_executor(&self) -> ToolExecutor;
+
+    /// Build an OpenAI-compatible function tool definition.
+    /// Returns JSON matching the OpenAI `tools` array element format:
+    /// `{"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}`
+    fn build_tool_definition(&self) -> serde_json::Value;
+
+    /// Build the JSON Schema for the tool's input parameters.
+    /// Same as `Tool::input_schema()` but without building the full Tool.
+    fn build_input_schema(&self) -> serde_json::Value;
+
+    /// Build the JSON Schema for the tool's output.
+    /// Describes the shape of `ToolOutput::result` so consumers can
+    /// validate results or generate types.
+    fn build_output_schema(&self) -> serde_json::Value;
+}
+```
+
+**`ToolExecutor`** is a minimal, stateless executor:
+
+```rust
+pub struct ToolExecutor { /* internal */ }
+
+impl ToolExecutor {
+    /// Execute with JSON args, return JSON result.
+    /// No ToolExecution indirection — fire-and-forget for simple consumers.
+    async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolError>;
+
+    /// Execute with an adapter.
+    async fn execute_with<A: SomeAdapter>(
+        &self,
+        args: serde_json::Value,
+        adapter: &A,
+    ) -> Result<serde_json::Value, ToolError>;
+}
+```
+
+**When to use which:**
+- `build()` → everruns integration (full metadata + `ToolExecution` with cancel/stream)
+- `build_executor()` → test harnesses, scripts, pipelines that just need `Value` in → `Value` out
+- `build_tool_definition()` → registering tools with OpenAI-compatible APIs
+- `build_input_schema()` / `build_output_schema()` → codegen, validation, documentation
 
 ### 2. `Tool` — metadata
 
@@ -290,7 +348,7 @@ Toolkit crates re-export all types needed to implement adapter traits and handle
 
 ```rust
 // mykit/src/lib.rs
-pub use tool::{ToolBuilder, Tool, ToolExecution, ToolOutput, ToolOutputChunk, ToolImage};
+pub use tool::{ToolBuilder, Tool, ToolExecutor, ToolExecution, ToolOutput, ToolOutputChunk, ToolImage};
 pub use error::ToolError;
 pub use adapters::{AdapterTrait, AdapterError, DefaultAdapter};
 // Any types needed to implement AdapterTrait:
@@ -302,16 +360,22 @@ pub use adapters::{SaveResult, Metadata, DirEntry, ...};
 Toolkit crates must not depend on `everruns-core` or any everruns crate. They are standalone libraries. The integration boundary is:
 
 ```
-toolkit crate (standalone)       everruns-core
-├── ToolBuilder (config+locale)  ├── XxxCapability (implements Capability trait)
-├── Tool (metadata+version)      │   └── builds Tool, reads metadata for system prompt
-├── ToolExecution (runtime)      ├── XxxTool (implements everruns Tool trait)
-│   ├── execute()                │   ├── delegates metadata to toolkit Tool
-│   ├── cancel() [optional]      │   ├── creates ToolExecution per call
-│   └── output_stream() [opt]    │   ├── wires cancel/stream to everruns runtime
-├── AdapterTrait                 │   └── maps errors/output to ToolExecutionResult
-├── Error types                  └── AdapterImpl (implements toolkit::AdapterTrait)
-└── Output types                     └── bridges to SessionFileStore, etc.
+toolkit crate (standalone)       everruns-core             other consumers
+├── ToolBuilder                  ├── XxxCapability          ├── build_executor()
+│   ├── build() → Tool           │   └── builds Tool        │   └── Value in → Value out
+│   ├── build_executor()         ├── XxxTool                ├── build_tool_definition()
+│   ├── build_tool_definition()  │   ├── delegates metadata │   └── OpenAI function JSON
+│   ├── build_input_schema()     │   ├── creates Execution  ├── build_input_schema()
+│   └── build_output_schema()    │   ├── wires cancel/stream└── build_output_schema()
+├── Tool (metadata+version)      │   └── maps to everruns
+├── ToolExecutor (Value→Value)   └── AdapterImpl
+├── ToolExecution (stateful)         └── bridges to SessionFileStore
+│   ├── execute()
+│   ├── cancel() [optional]
+│   └── output_stream() [opt]
+├── AdapterTrait
+├── Error types
+└── Output types
 ```
 
 ## Consumer integration pattern
@@ -423,6 +487,9 @@ fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
 | both | No `locale()` on builder | Add; default `"en-US"`, thread through to description/system_prompt/errors |
 | both | No `display_name()` on Tool | Add; return localized human-readable name |
 | both | No `version()` on Tool | Add; return `env!("CARGO_PKG_VERSION")` |
+| both | No `build_tool_definition()` | Add; return OpenAI function call JSON |
+| both | No `build_output_schema()` | Add; describe shape of result JSON |
+| both | No `build_executor()` | Add; return `ToolExecutor` for generic Value→Value usage |
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
 | bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
