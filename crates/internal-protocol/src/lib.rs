@@ -227,6 +227,10 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SubagentSpawned(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SubagentCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SubagentFailed(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SubagentCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::Unsupported { data, .. } => {
             // Should not happen in production - unsupported events are filtered before reaching here
             data.clone()

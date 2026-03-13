@@ -612,6 +612,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         is_pinned: None,
         active_schedule_count: None,
         features: vec![], // Computed at API read time, not in worker
+        parent_session_id: None,
+        subagent_name: None,
+        subagent_task: None,
+        subagent_status: None,
     })
 }
 

@@ -150,6 +150,7 @@ Events are organized into categories based on what they represent:
 | **Atom** | `reason.*`, `act.*`, `tool.*` | Internal execution phases |
 | **LLM** | `llm.generation` | Full LLM API call details |
 | **Session** | `session.*` | Session state changes |
+| **Subagent** | `subagent.*` | Subagent lifecycle (spawned, completed, failed, cancelled) |
 
 ## Event Structure
 

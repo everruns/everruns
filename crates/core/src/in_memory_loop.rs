@@ -384,6 +384,10 @@ impl InMemoryAgenticLoopBuilder {
             is_pinned: None,
             active_schedule_count: None,
             features: vec![],
+            parent_session_id: None,
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
         };
         session_store.add_session(session).await;
 

@@ -70,6 +70,12 @@ pub const SESSION_IDLED: &str = "session.idled";
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
 
+// Subagent lifecycle events
+pub const SUBAGENT_SPAWNED: &str = "subagent.spawned";
+pub const SUBAGENT_COMPLETED: &str = "subagent.completed";
+pub const SUBAGENT_FAILED: &str = "subagent.failed";
+pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
+
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
 /// and prevent unbounded arrays from reaching the database.
@@ -97,6 +103,10 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_ACTIVATED,
     SESSION_IDLED,
     SCHEDULE_TRIGGERED,
+    SUBAGENT_SPAWNED,
+    SUBAGENT_COMPLETED,
+    SUBAGENT_FAILED,
+    SUBAGENT_CANCELLED,
 ];
 
 // ============================================================================
@@ -1311,6 +1321,42 @@ pub struct SessionIdledData {
 }
 
 // ============================================================================
+// Subagent event data
+// ============================================================================
+
+/// Data for subagent lifecycle events (spawned, completed, failed, cancelled).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SubagentEventData {
+    /// The subagent's child session ID
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub subagent_session_id: SessionId,
+    /// Human-readable subagent name
+    pub subagent_name: String,
+    /// Task description
+    pub task: String,
+    /// Subagent status (spawning, running, completed, failed, cancelled)
+    pub status: String,
+    /// Result summary (only for completed/failed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    /// Error message (only for failed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl From<SubagentEventData> for EventData {
+    fn from(data: SubagentEventData) -> Self {
+        match data.status.as_str() {
+            "completed" => EventData::SubagentCompleted(data),
+            "failed" => EventData::SubagentFailed(data),
+            "cancelled" => EventData::SubagentCancelled(data),
+            _ => EventData::SubagentSpawned(data),
+        }
+    }
+}
+
+// ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================
 
@@ -1344,6 +1390,10 @@ pub struct SessionIdledData {
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
+/// - `subagent.spawned` → SubagentEventData
+/// - `subagent.completed` → SubagentEventData
+/// - `subagent.failed` → SubagentEventData
+/// - `subagent.cancelled` → SubagentEventData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -1401,6 +1451,12 @@ pub enum EventData {
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
 
+    // Subagent lifecycle events
+    SubagentSpawned(SubagentEventData),
+    SubagentCompleted(SubagentEventData),
+    SubagentFailed(SubagentEventData),
+    SubagentCancelled(SubagentEventData),
+
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
     /// Logs a warning when created to alert developers of unknown types.
@@ -1440,6 +1496,10 @@ impl EventData {
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
+            EventData::SubagentSpawned(_) => SUBAGENT_SPAWNED,
+            EventData::SubagentCompleted(_) => SUBAGENT_COMPLETED,
+            EventData::SubagentFailed(_) => SUBAGENT_FAILED,
+            EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
             EventData::Unsupported { .. } => "unsupported",
         }
     }

@@ -15,7 +15,7 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, CapabilityRegistry, HarnessId, ModelId, Session, SessionId,
-    SessionStatus, TokenUsage,
+    SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
 };
 use std::sync::Arc;
@@ -512,6 +512,12 @@ impl SessionService {
             is_pinned: None,             // Populated by caller with user context
             active_schedule_count: None, // Populated by caller
             features: vec![],            // Populated by caller via populate_features()
+            parent_session_id: row.parent_session_id,
+            subagent_name: row.subagent_name,
+            subagent_task: row.subagent_task,
+            subagent_status: row
+                .subagent_status
+                .map(|s| SubagentStatus::from(s.as_str())),
         }
     }
 }

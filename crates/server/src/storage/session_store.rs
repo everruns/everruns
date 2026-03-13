@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, HarnessId, Result, SessionId, TokenUsage,
-    session::{Session, SessionStatus},
+    session::{Session, SessionStatus, SubagentStatus},
     traits::SessionStore,
 };
 
@@ -95,6 +95,12 @@ impl SessionStore for DbSessionStore {
                     is_pinned: None,
                     active_schedule_count: None,
                     features: vec![],
+                    parent_session_id: row.parent_session_id,
+                    subagent_name: row.subagent_name,
+                    subagent_task: row.subagent_task,
+                    subagent_status: row
+                        .subagent_status
+                        .map(|s| SubagentStatus::from(s.as_str())),
                 }))
             }
             None => Ok(None),

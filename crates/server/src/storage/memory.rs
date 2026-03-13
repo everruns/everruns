@@ -851,6 +851,10 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            parent_session_id: None,
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
         };
         self.sessions.write().insert(id, row.clone());
         Ok(row)

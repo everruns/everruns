@@ -503,6 +503,104 @@ Emitted when a session becomes idle (turn completed).
 }
 ```
 
+## Subagent Events
+
+### subagent.spawned
+
+Emitted when a subagent is spawned from a parent session.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subagent_session_id` | string | Session ID of the new subagent |
+| `subagent_name` | string | Human-readable name (e.g., "Test Runner") |
+| `task` | string | Task description given to the subagent |
+| `status` | string | Initial status ("spawning") |
+
+```json
+{
+  "type": "subagent.spawned",
+  "data": {
+    "subagent_session_id": "session_...",
+    "subagent_name": "Test Runner",
+    "task": "Run the test suite and report results",
+    "status": "spawning"
+  }
+}
+```
+
+### subagent.completed
+
+Emitted when a subagent finishes successfully.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subagent_session_id` | string | Session ID of the subagent |
+| `subagent_name` | string | Human-readable name |
+| `task` | string | Original task description |
+| `status` | string | Final status ("completed") |
+| `result` | string? | Summary of the subagent's output |
+
+```json
+{
+  "type": "subagent.completed",
+  "data": {
+    "subagent_session_id": "session_...",
+    "subagent_name": "Test Runner",
+    "task": "Run the test suite and report results",
+    "status": "completed",
+    "result": "All 42 tests passed."
+  }
+}
+```
+
+### subagent.failed
+
+Emitted when a subagent fails with an error.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subagent_session_id` | string | Session ID of the subagent |
+| `subagent_name` | string | Human-readable name |
+| `task` | string | Original task description |
+| `status` | string | Final status ("failed") |
+| `error` | string? | Error description |
+
+```json
+{
+  "type": "subagent.failed",
+  "data": {
+    "subagent_session_id": "session_...",
+    "subagent_name": "Test Runner",
+    "task": "Run the test suite and report results",
+    "status": "failed",
+    "error": "Timeout after 300 seconds"
+  }
+}
+```
+
+### subagent.cancelled
+
+Emitted when a subagent is cancelled by the parent.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subagent_session_id` | string | Session ID of the subagent |
+| `subagent_name` | string | Human-readable name |
+| `task` | string | Original task description |
+| `status` | string | Final status ("cancelled") |
+
+```json
+{
+  "type": "subagent.cancelled",
+  "data": {
+    "subagent_session_id": "session_...",
+    "subagent_name": "Test Runner",
+    "task": "Run the test suite and report results",
+    "status": "cancelled"
+  }
+}
+```
+
 ## Supporting Types
 
 ### TokenUsage

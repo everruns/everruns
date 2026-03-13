@@ -14,6 +14,46 @@ use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+/// Subagent lifecycle status.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SubagentStatus {
+    Spawning,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+    MaxIterationsReached,
+}
+
+impl std::fmt::Display for SubagentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubagentStatus::Spawning => write!(f, "spawning"),
+            SubagentStatus::Running => write!(f, "running"),
+            SubagentStatus::Completed => write!(f, "completed"),
+            SubagentStatus::Failed => write!(f, "failed"),
+            SubagentStatus::Cancelled => write!(f, "cancelled"),
+            SubagentStatus::MaxIterationsReached => write!(f, "max_iterations_reached"),
+        }
+    }
+}
+
+impl From<&str> for SubagentStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "spawning" => SubagentStatus::Spawning,
+            "running" => SubagentStatus::Running,
+            "completed" => SubagentStatus::Completed,
+            "failed" => SubagentStatus::Failed,
+            "cancelled" => SubagentStatus::Cancelled,
+            "max_iterations_reached" => SubagentStatus::MaxIterationsReached,
+            _ => SubagentStatus::Spawning,
+        }
+    }
+}
+
 /// Session execution status.
 /// - `started`: Session just created, no turn executed yet
 /// - `active`: A turn is currently running
@@ -127,4 +167,19 @@ pub struct Session {
     /// Known features: "file_system", "schedules", "secrets", "key_value", "sql_database".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+
+    // -- Subagent fields (only set when this session is a subagent) --
+    /// Parent session that spawned this subagent. NULL for top-level sessions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub parent_session_id: Option<SessionId>,
+    /// Human-readable subagent name ("Test Runner"), unique per parent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_name: Option<String>,
+    /// Original task description given to this subagent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_task: Option<String>,
+    /// Subagent lifecycle status: spawning, running, completed, failed, cancelled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_status: Option<SubagentStatus>,
 }

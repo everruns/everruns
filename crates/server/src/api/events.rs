@@ -73,8 +73,8 @@ impl EventsQuery {
     }
 }
 
-/// Max event types per filter parameter. There are ~23 known types; 25 is generous.
-const MAX_EVENT_TYPE_FILTER_SIZE: usize = 25;
+/// Max event types per filter parameter. There are ~27 known types; 30 is generous.
+const MAX_EVENT_TYPE_FILTER_SIZE: usize = 30;
 
 /// Validate a list of event type strings: checks size limit and known types.
 fn validate_event_type_list(
@@ -1038,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_validate_too_many_types_rejected() {
-        let types: Vec<String> = (0..30).map(|i| format!("type.{i}")).collect();
+        let types: Vec<String> = (0..31).map(|i| format!("type.{i}")).collect();
         let query = EventsQuery {
             since_id: None,
             types,
@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn test_validate_too_many_exclude_rejected() {
-        let exclude: Vec<String> = (0..30).map(|i| format!("type.{i}")).collect();
+        let exclude: Vec<String> = (0..31).map(|i| format!("type.{i}")).collect();
         let query = EventsQuery {
             since_id: None,
             types: vec![],

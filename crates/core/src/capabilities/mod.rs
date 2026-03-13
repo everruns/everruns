@@ -93,6 +93,7 @@ mod session_sql_database;
 mod session_storage;
 mod skills;
 mod stateless_todo_list;
+mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
@@ -165,6 +166,7 @@ pub use session_sql_database::{
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
+pub use subagents::SubagentCapability;
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -518,6 +520,9 @@ impl CapabilityRegistry {
 
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
+
+        // Subagents (spawn child agent sessions, all environments)
+        registry.register(SubagentCapability);
 
         // System commands (/clear, /status, /compact, /model)
         registry.register(SystemCommandsCapability);
@@ -1227,6 +1232,7 @@ mod tests {
         assert!(registry.has("system_commands"));
         assert!(registry.has("openai_tool_search"));
         assert!(registry.has("openui"));
+        assert!(registry.has("subagents"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
         assert_eq!(registry.len(), 25);

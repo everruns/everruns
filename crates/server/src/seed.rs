@@ -57,6 +57,8 @@ mod seed_ids {
     pub const BROWSER_TESTER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010c);
     pub const DASHBOARD_BUILDER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010d);
+    pub const TASK_ORCHESTRATOR_AGENT: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010e);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -885,6 +887,43 @@ a bar chart of monthly revenue, and a table of recent orders — all composed
 in a single OpenUI code block using Card, BarChart, and Table components."#,
         tags: &["dashboard", "ui", "visualization", "openui", "demo", "seed"],
         capabilities: &[SeedCapability::new("openui")],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::TASK_ORCHESTRATOR_AGENT,
+        name: "Task Orchestrator",
+        description: "An agent that breaks complex tasks into subtasks and delegates them to subagents for parallel execution. Coordinates results and synthesizes a final answer.",
+        system_prompt: r#"You are a Task Orchestrator Agent. You break complex tasks into subtasks and delegate them to specialized subagents.
+
+## How You Work
+
+1. **Analyze the request**: Break down the user's task into independent subtasks
+2. **Spawn subagents**: Create a named subagent for each subtask (e.g. "Research", "Code Review", "Test Runner")
+3. **Monitor progress**: Use get_subagents to check on running subagents
+4. **Steer if needed**: Use message_subagent to redirect or provide additional context
+5. **Synthesize**: Combine subagent results into a coherent final response
+
+## Guidelines
+
+- Give subagents clear, specific task descriptions
+- Use descriptive names ("Auth Analyzer" not "agent1")
+- Spawn independent tasks in parallel when possible
+- Review and synthesize subagent results before responding
+- If a subagent fails, analyze the error and decide whether to retry or work around it
+
+## Example Workflow
+
+User: "Analyze my codebase and suggest improvements"
+→ Spawn "Architecture Reviewer" to analyze overall structure
+→ Spawn "Test Coverage Analyzer" to check test quality
+→ Spawn "Dependency Auditor" to review dependencies
+→ Wait for all to complete
+→ Synthesize findings into a prioritized improvement plan"#,
+        tags: &["orchestration", "subagents", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::new("subagents"),
+            SeedCapability::new("current_time"),
+        ],
         dev_only: false,
     },
 ];
