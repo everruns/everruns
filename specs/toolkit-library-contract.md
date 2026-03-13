@@ -36,6 +36,7 @@ Every `*kit` library exposes a `ToolBuilder` for configuration:
 
 ```rust
 let builder = mykit::ToolBuilder::new()
+    .locale("en-US")
     .some_feature(true)
     .some_limit(1000);
 
@@ -45,6 +46,21 @@ let tool = builder.build();
 `ToolBuilder` methods are chainable. `build()` consumes the builder and returns a `Tool`.
 
 `ToolBuilder` need not be `Send + Sync`.
+
+#### Required builder methods
+
+Every `ToolBuilder` must accept:
+
+```rust
+impl ToolBuilder {
+    /// Set the locale for user-facing text (description, system prompt, error messages).
+    /// BCP 47 language tag (e.g. "en-US", "uk-UA").
+    /// Default: "en-US".
+    fn locale(self, locale: &str) -> Self;
+}
+```
+
+Kit-specific config methods are added alongside `locale()`.
 
 ### 2. `Tool` — metadata
 
@@ -56,8 +72,17 @@ impl Tool {
     /// Snake_case, stable across versions.
     fn name(&self) -> &str;
 
+    /// Human-readable display name for UI (e.g. "Bash", "Web Fetch").
+    /// Localized per builder locale.
+    fn display_name(&self) -> &str;
+
+    /// Semantic version of the toolkit library (e.g. "0.1.8").
+    /// Defaults to the crate version (`env!("CARGO_PKG_VERSION")`).
+    /// Consumer can use this for diagnostics, logging, or compatibility checks.
+    fn version(&self) -> &str;
+
     /// Human-readable description of the tool for the LLM.
-    /// Baked in at build() time from builder config.
+    /// Baked in at build() time from builder config. Localized per builder locale.
     fn description(&self) -> &str;
 
     /// JSON Schema for the tool's input parameters.
@@ -68,13 +93,47 @@ impl Tool {
     /// System prompt content (LLM instructions for using this tool).
     /// Returned as plain text — the consumer wraps it in XML tags.
     /// Returns empty string if no system prompt contribution.
+    /// Localized per builder locale.
     fn system_prompt(&self) -> String;
+
+    /// The locale this tool was built with (e.g. "en-US").
+    fn locale(&self) -> &str;
 }
 ```
 
 `Tool` is `Send + Sync` and cheap to clone (typically `Arc` internals or static data).
 
 **Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on `Tool` so the consumer can delegate without duplication.
+
+#### Locale affects
+
+Locale controls the language of human-readable text:
+- `description()` — tool description sent to LLM
+- `display_name()` — UI label
+- `system_prompt()` — LLM instructions
+- Error messages from `ToolError` (user-facing variants)
+
+Locale does **not** affect:
+- `name()` — always English snake_case (LLM contract)
+- `input_schema()` — property names and types are locale-independent
+- `version()` — always semver
+
+#### Examples
+
+```rust
+// English (default)
+let tool = mykit::ToolBuilder::new().build();
+assert_eq!(tool.name(), "web_fetch");
+assert_eq!(tool.display_name(), "Web Fetch");
+assert_eq!(tool.version(), "0.1.3");
+assert!(tool.description().starts_with("Fetch content from a URL"));
+
+// Ukrainian
+let tool_ua = mykit::ToolBuilder::new().locale("uk-UA").build();
+assert_eq!(tool_ua.name(), "web_fetch"); // unchanged
+assert_eq!(tool_ua.display_name(), "Веб-завантаження");
+assert!(tool_ua.description().starts_with("Завантажити вміст за URL"));
+```
 
 ### 3. `ToolExecution` — runtime
 
@@ -244,8 +303,8 @@ Toolkit crates must not depend on `everruns-core` or any everruns crate. They ar
 
 ```
 toolkit crate (standalone)       everruns-core
-├── ToolBuilder (config)         ├── XxxCapability (implements Capability trait)
-├── Tool (metadata)              │   └── builds Tool, reads metadata for system prompt
+├── ToolBuilder (config+locale)  ├── XxxCapability (implements Capability trait)
+├── Tool (metadata+version)      │   └── builds Tool, reads metadata for system prompt
 ├── ToolExecution (runtime)      ├── XxxTool (implements everruns Tool trait)
 │   ├── execute()                │   ├── delegates metadata to toolkit Tool
 │   ├── cancel() [optional]      │   ├── creates ToolExecution per call
@@ -289,9 +348,12 @@ impl Capability for XxxCapability {
 }
 
 /// Helper: config JSON → built Tool
-fn tool_from_config(config: &Value) -> mykit::Tool {
+fn tool_from_config(config: &Value, locale: &str) -> mykit::Tool {
     let feature = config.get("some_feature").and_then(|v| v.as_bool()).unwrap_or(false);
-    mykit::ToolBuilder::new().some_feature(feature).build()
+    mykit::ToolBuilder::new()
+        .locale(locale)
+        .some_feature(feature)
+        .build()
 }
 
 pub struct XxxTool {
@@ -307,6 +369,7 @@ impl XxxTool {
 #[async_trait]
 impl Tool for XxxTool {
     fn name(&self) -> &str { self.kit_tool.name() }
+    fn display_name(&self) -> Option<&str> { Some(self.kit_tool.display_name()) }
     fn description(&self) -> &str { self.kit_tool.description() }
     fn parameters_schema(&self) -> Value { self.kit_tool.input_schema() }
 
@@ -355,6 +418,11 @@ fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
 
 | Library | Gap | Migration |
 |---------|-----|-----------|
+| Library | Gap | Migration |
+|---------|-----|-----------|
+| both | No `locale()` on builder | Add; default `"en-US"`, thread through to description/system_prompt/errors |
+| both | No `display_name()` on Tool | Add; return localized human-readable name |
+| both | No `version()` on Tool | Add; return `env!("CARGO_PKG_VERSION")` |
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
 | bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
