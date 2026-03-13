@@ -921,7 +921,7 @@ User: "Analyze my codebase and suggest improvements"
 → Wait for all to complete
 → Synthesize findings into a prioritized improvement plan"#,
         tags: &["orchestration", "subagents", "demo", "seed"],
-        capabilities: &["subagents", "current_time"],
+        capabilities: &[SeedCapability::new("subagents"), SeedCapability::new("current_time")],
         dev_only: false,
     },
 ];

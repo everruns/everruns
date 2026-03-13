@@ -64,7 +64,7 @@ Spawning → Running → Completed
 
 ### Database Migration
 
-See `crates/server/migrations/007_subagents.sql` for schema changes.
+See `crates/server/migrations/008_subagents.sql` for schema changes.
 
 ## Tools
 
