@@ -5500,6 +5500,18 @@
           },
           {
             "$ref": "#/components/schemas/SessionIdledData"
+          },
+          {
+            "$ref": "#/components/schemas/SubagentEventData"
+          },
+          {
+            "$ref": "#/components/schemas/SubagentEventData"
+          },
+          {
+            "$ref": "#/components/schemas/SubagentEventData"
+          },
+          {
+            "$ref": "#/components/schemas/SubagentEventData"
           }
         ],
         "title": "EventData",
@@ -8236,6 +8248,13 @@
                   ],
                   "description": "Preview text from the last assistant response (truncated)."
                 },
+                "parent_session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+                },
                 "preview": {
                   "type": [
                     "string",
@@ -8254,6 +8273,31 @@
                 "status": {
                   "$ref": "#/components/schemas/SessionStatus",
                   "description": "Current execution status of the session."
+                },
+                "subagent_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+                },
+                "subagent_status": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SubagentStatus",
+                      "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
+                    }
+                  ]
+                },
+                "subagent_task": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Original task description given to this subagent."
                 },
                 "tags": {
                   "type": "array",
@@ -8992,6 +9036,13 @@
             ],
             "description": "Preview text from the last assistant response (truncated)."
           },
+          "parent_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+          },
           "preview": {
             "type": [
               "string",
@@ -9010,6 +9061,31 @@
           "status": {
             "$ref": "#/components/schemas/SessionStatus",
             "description": "Current execution status of the session."
+          },
+          "subagent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+          },
+          "subagent_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SubagentStatus",
+                "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
+              }
+            ]
+          },
+          "subagent_task": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original task description given to this subagent."
           },
           "tags": {
             "type": "array",
@@ -9377,6 +9453,60 @@
             "description": "Path to the file or directory"
           }
         }
+      },
+      "SubagentEventData": {
+        "type": "object",
+        "description": "Data for subagent lifecycle events (spawned, completed, failed, cancelled).",
+        "required": [
+          "subagent_session_id",
+          "subagent_name",
+          "task",
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message (only for failed)"
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Result summary (only for completed/failed)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Subagent status (spawning, running, completed, failed, cancelled)"
+          },
+          "subagent_name": {
+            "type": "string",
+            "description": "Human-readable subagent name"
+          },
+          "subagent_session_id": {
+            "type": "string",
+            "description": "The subagent's child session ID"
+          },
+          "task": {
+            "type": "string",
+            "description": "Task description"
+          }
+        }
+      },
+      "SubagentStatus": {
+        "type": "string",
+        "description": "Subagent lifecycle status.",
+        "enum": [
+          "spawning",
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+          "max_iterations_reached"
+        ]
       },
       "SubmitToolResultsRequest": {
         "type": "object",
