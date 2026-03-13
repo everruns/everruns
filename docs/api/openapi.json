@@ -4273,6 +4273,13 @@
             "description": "Number of failed tool calls",
             "minimum": 0
           },
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable headline for the completed batch"
+          },
           "success_count": {
             "type": "integer",
             "format": "int32",
@@ -4288,6 +4295,13 @@
           "tool_calls"
         ],
         "properties": {
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable headline for the batch"
+          },
           "tool_calls": {
             "type": "array",
             "items": {
@@ -9885,12 +9899,26 @@
           "tool_calls"
         ],
         "properties": {
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable headline for the requested batch"
+          },
           "tool_calls": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ToolCall"
             },
             "description": "Tool calls that need to be executed by the client"
+          },
+          "tool_summaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallSummary"
+            },
+            "description": "Optional summaries with display names and narration for UI rendering"
           }
         }
       },
@@ -9914,6 +9942,13 @@
           },
           "name": {
             "type": "string"
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable narration for timeline rendering"
           }
         }
       },
@@ -9949,6 +9984,13 @@
               "null"
             ],
             "description": "Error message if failed"
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable narration for timeline rendering"
           },
           "result": {
             "type": [
@@ -10096,6 +10138,13 @@
               "null"
             ],
             "description": "Human-readable display name for UI rendering"
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable narration for timeline rendering"
           },
           "tool_call": {
             "$ref": "#/components/schemas/ToolCall",
