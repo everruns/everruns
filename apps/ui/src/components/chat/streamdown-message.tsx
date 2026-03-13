@@ -22,8 +22,7 @@ const code = (() => {
   const plugin = createCodePlugin();
   const orig = plugin.supportsLanguage;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plugin.supportsLanguage = (lang: any) =>
-    lang === "openui" ? false : orig(lang);
+  plugin.supportsLanguage = (lang: any) => (lang === "openui" ? false : orig(lang));
   return plugin;
 })();
 
