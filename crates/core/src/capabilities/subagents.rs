@@ -124,6 +124,31 @@ fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutio
         })
 }
 
+/// Extract the last assistant/agent message content from a list of messages.
+fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Option<String> {
+    messages
+        .iter()
+        .rfind(|m| m.role == "agent" || m.role == "assistant")
+        .map(|m| m.content.clone())
+}
+
+/// Find a child session by name (case-insensitive) or ID within a list of sessions.
+fn find_child_session<'a>(
+    sessions: &'a [crate::session::Session],
+    parent_id: crate::typed_id::SessionId,
+    name_or_id: &str,
+) -> Option<&'a crate::session::Session> {
+    sessions
+        .iter()
+        .filter(|s| s.parent_session_id == Some(parent_id))
+        .find(|s| {
+            s.subagent_name
+                .as_ref()
+                .is_some_and(|n| n.eq_ignore_ascii_case(name_or_id))
+                || s.id.to_string() == name_or_id
+        })
+}
+
 // =============================================================================
 // Tool: spawn_subagent
 // =============================================================================
@@ -241,11 +266,7 @@ impl Tool for SpawnSubagentTool {
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
 
-        // Extract the last assistant message as the result
-        let result_text = messages
-            .iter()
-            .rfind(|m| m.role == "agent" || m.role == "assistant")
-            .map(|m| m.content.clone())
+        let result_text = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
         ToolExecutionResult::success(json!({
@@ -313,16 +334,10 @@ impl Tool for GetSubagentsTool {
             Err(e) => return e,
         };
 
-        // List all sessions, then filter to children of this session
         let all_sessions = match store.list_sessions(Some(100), None).await {
             Ok(s) => s,
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
-
-        let children: Vec<_> = all_sessions
-            .into_iter()
-            .filter(|s| s.parent_session_id == Some(context.session_id))
-            .collect();
 
         let name_or_id = arguments
             .get("name_or_id")
@@ -330,26 +345,16 @@ impl Tool for GetSubagentsTool {
             .filter(|s| !s.trim().is_empty());
 
         if let Some(query) = name_or_id {
-            // Find specific subagent by name (case-insensitive) or ID
-            let found = children.iter().find(|s| {
-                s.subagent_name
-                    .as_ref()
-                    .is_some_and(|n| n.eq_ignore_ascii_case(query))
-                    || s.id.to_string() == query
-            });
+            let found = find_child_session(&all_sessions, context.session_id, query);
 
             match found {
                 Some(child) => {
-                    // Get messages for detailed view
                     let messages = store
                         .get_messages(child.id, Some(10))
                         .await
                         .unwrap_or_default();
 
-                    let last_response = messages
-                        .iter()
-                        .rfind(|m| m.role == "agent" || m.role == "assistant")
-                        .map(|m| m.content.clone());
+                    let last_response = last_agent_message(&messages);
 
                     ToolExecutionResult::success(json!({
                         "subagent_id": child.id.to_string(),
@@ -370,8 +375,9 @@ impl Tool for GetSubagentsTool {
             // List all subagents
             let status_filter = arguments.get("status_filter").and_then(|v| v.as_str());
 
-            let filtered: Vec<_> = children
+            let filtered: Vec<_> = all_sessions
                 .iter()
+                .filter(|s| s.parent_session_id == Some(context.session_id))
                 .filter(|s| {
                     if let Some(filter) = status_filter {
                         if filter == "all" {
@@ -478,23 +484,12 @@ impl Tool for MessageSubagentTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        // Find the subagent
         let all_sessions = match store.list_sessions(Some(100), None).await {
             Ok(s) => s,
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
 
-        let child = all_sessions
-            .iter()
-            .filter(|s| s.parent_session_id == Some(context.session_id))
-            .find(|s| {
-                s.subagent_name
-                    .as_ref()
-                    .is_some_and(|n| n.eq_ignore_ascii_case(&name_or_id))
-                    || s.id.to_string() == name_or_id
-            });
-
-        let child = match child {
+        let child = match find_child_session(&all_sessions, context.session_id, &name_or_id) {
             Some(c) => c,
             None => {
                 return ToolExecutionResult::tool_error(format!(
@@ -542,17 +537,12 @@ impl Tool for MessageSubagentTool {
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
 
-        let result_text = messages
-            .iter()
-            .rfind(|m| m.role == "agent" || m.role == "assistant")
-            .map(|m| m.content.clone());
-
         ToolExecutionResult::success(json!({
             "subagent_id": child_id.to_string(),
             "name": child.subagent_name,
             "delivered": true,
             "status": status,
-            "result": result_text,
+            "result": last_agent_message(&messages),
         }))
     }
 
