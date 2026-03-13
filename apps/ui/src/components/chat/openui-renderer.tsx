@@ -3,7 +3,7 @@
 /**
  * OpenUI Renderer - Renders OpenUI Lang code blocks into interactive UI components.
  *
- * Uses @openuidev/react-lang Renderer with the @openuidev/react-ui chat library
+ * Uses @openuidev/react-lang Renderer with the @openuidev/react-ui full library
  * to parse and render OpenUI Lang DSL code into React components (charts, tables,
  * forms, cards, etc.).
  *
@@ -12,7 +12,7 @@
  */
 
 import { Renderer } from "@openuidev/react-lang";
-import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
+import { openuiLibrary } from "@openuidev/react-ui/genui-lib";
 import "@openuidev/react-ui/components.css";
 
 interface OpenUIBlockProps {
@@ -36,7 +36,7 @@ export function OpenUIBlock({ code, isStreaming = false }: OpenUIBlockProps) {
 
   return (
     <div className="openui-block my-2 overflow-hidden rounded-lg border border-border bg-card">
-      <Renderer response={code} library={openuiChatLibrary} isStreaming={isStreaming} />
+      <Renderer response={code} library={openuiLibrary} isStreaming={isStreaming} />
     </div>
   );
 }
