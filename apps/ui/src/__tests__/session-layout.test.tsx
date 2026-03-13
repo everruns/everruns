@@ -1,10 +1,12 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import { Suspense } from "react";
 
 // Mock next/navigation
 const mockPathname = jest.fn();
+const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 // Mock next/link
@@ -60,6 +62,52 @@ jest.mock("@/components/ui/input", () => ({
   Input: (props: Record<string, unknown>) => <input {...props} />,
 }));
 
+jest.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({
+    children,
+    className,
+    ...props
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => (
+    <button className={className} {...props}>
+      {children}
+    </button>
+  ),
+  DropdownMenuPositioner: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <div className={className}>{children}</div>,
+  DropdownMenuGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    className,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    onClick?: () => void;
+  }) => (
+    <button className={className} onClick={onClick}>
+      {children}
+    </button>
+  ),
+  DropdownMenuShortcut: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <span className={className}>{children}</span>,
+}));
+
 jest.mock("@/components/ui/copy-button", () => ({
   CopyButton: () => <button aria-label="Copy" />,
 }));
@@ -106,6 +154,7 @@ import SessionLayout from "@/app/(main)/sessions/[sessionId]/layout";
 
 describe("SessionLayout", () => {
   beforeEach(() => {
+    mockPush.mockReset();
     mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
     mockSessionContext.sessionLoading = false;
     mockSessionContext.effectiveStatus = "idle";
@@ -168,19 +217,16 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders all tab navigation links", async () => {
+  it("renders compact navigation controls", async () => {
     await renderLayout();
 
     await waitFor(() => {
       expect(screen.getByRole("link", { name: /chat/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: /workspace/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /storage/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /trajectory/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /advanced navigation/i })).toBeInTheDocument();
   });
 
-  it("renders correct tab hrefs", async () => {
+  it("renders correct compact navigation destinations", async () => {
     await renderLayout();
 
     await waitFor(() => {
@@ -189,25 +235,14 @@ describe("SessionLayout", () => {
         "/sessions/ses-abc12345/chat",
       );
     });
-    expect(screen.getByRole("link", { name: /workspace/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/files",
-    );
-    expect(screen.getByRole("link", { name: /storage/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/storage",
-    );
-    expect(screen.getByRole("link", { name: /events/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/events",
-    );
-    expect(screen.getByRole("link", { name: /trajectory/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/trajectory",
-    );
+
+    fireEvent.click(screen.getByRole("button", { name: /advanced navigation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /workspace/i }));
+
+    expect(mockPush).toHaveBeenCalledWith("/sessions/ses-abc12345/files");
   });
 
-  it("highlights active chat tab", async () => {
+  it("highlights active chat navigation", async () => {
     mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
     await renderLayout();
 
@@ -218,25 +253,24 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("highlights active files tab", async () => {
+  it("highlights advanced navigation when an advanced view is active", async () => {
     mockPathname.mockReturnValue("/sessions/ses-abc12345/files");
     await renderLayout();
 
     await waitFor(() => {
-      const filesLink = screen.getByRole("link", { name: /workspace/i });
-      expect(filesLink).toHaveClass("border-primary");
-      expect(filesLink).toHaveClass("bg-card");
+      const advancedTrigger = screen.getByRole("button", { name: /advanced navigation/i });
+      expect(advancedTrigger).toHaveClass("border-primary");
+      expect(advancedTrigger).toHaveClass("bg-card");
     });
   });
 
-  it("shows inactive style for non-active tabs", async () => {
+  it("shows inactive style for advanced navigation on chat", async () => {
     mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
     await renderLayout();
 
     await waitFor(() => {
-      const eventsLink = screen.getByRole("link", { name: /events/i });
-      expect(eventsLink).toHaveClass("border-transparent");
-      expect(eventsLink).toHaveClass("bg-transparent");
+      const advancedTrigger = screen.getByRole("button", { name: /advanced navigation/i });
+      expect(advancedTrigger).not.toHaveClass("border-primary");
     });
   });
 
@@ -302,16 +336,17 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      // Chat, Events, Trajectory are always present
+      // Chat and the advanced menu remain available
       expect(screen.getByRole("link", { name: /chat/i })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /trajectory/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /advanced navigation/i })).toBeInTheDocument();
     });
 
-    // Feature-gated tabs should NOT be present
-    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /storage/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /schedules/i })).not.toBeInTheDocument();
+    // Feature-gated advanced items should NOT be present
+    expect(screen.queryByRole("button", { name: /workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /storage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /schedules/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /events/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /trajectory/i })).toBeInTheDocument();
   });
 
   it("shows only workspace tab when only file_system feature is present", async () => {
@@ -322,11 +357,11 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /workspace/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /workspace/i })).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("link", { name: /storage/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /schedules/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /storage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /schedules/i })).not.toBeInTheDocument();
   });
 
   it("shows schedules tab when schedules feature is present", async () => {
@@ -337,10 +372,24 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /schedules/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /schedules/i })).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /workspace/i })).not.toBeInTheDocument();
+  });
+
+  it("shows schedules count inside advanced navigation", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      active_schedule_count: 3,
+      features: ["schedules"],
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /schedules/i })).toBeInTheDocument();
+    });
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("has flex-col layout for proper content stacking", async () => {

@@ -1,12 +1,23 @@
 "use client";
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPositioner,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft,
   Sparkles,
@@ -21,6 +32,7 @@ import {
   Check,
   X,
   CalendarClock,
+  ChevronDown,
   Wrench,
 } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
@@ -57,6 +69,23 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 interface SessionLayoutContentProps {
   children: React.ReactNode;
   sessionId: string;
+}
+
+type SessionNavKey =
+  | "chat"
+  | "files"
+  | "storage"
+  | "resources"
+  | "schedules"
+  | "events"
+  | "trajectory";
+
+interface SessionNavItem {
+  key: SessionNavKey;
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
 }
 
 function EditableSessionTitle({
@@ -143,11 +172,12 @@ function EditableSessionTitle({
 
 function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
     useSessionContext();
 
   // Determine active tab from pathname
-  const getActiveTab = () => {
+  const getActiveTab = (): SessionNavKey => {
     if (pathname.endsWith("/files")) return "files";
     if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
@@ -159,17 +189,82 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   const activeTab = getActiveTab();
 
   const basePath = `/sessions/${sessionId}`;
-  const getTabClassName = (isActive: boolean) =>
+  const getNavigationClassName = (isActive: boolean) =>
     cn(
-      "inline-flex h-9 items-center gap-2 border px-3 text-sm transition-colors",
-      isActive
-        ? "border-primary bg-card text-foreground"
-        : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
+      buttonVariants({ variant: "outline", size: "sm" }),
+      isActive ? "border-primary bg-card text-foreground" : "text-muted-foreground",
     );
 
   // Compute active feature set from session capabilities
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
   const hasFeature = (feature: string) => features.has(feature);
+  const navigationItems: SessionNavItem[] = [
+    {
+      key: "chat",
+      label: "Chat",
+      href: `${basePath}/chat`,
+      icon: MessageSquare,
+    },
+    ...(hasFeature("file_system")
+      ? [
+          {
+            key: "files" as const,
+            label: "Workspace",
+            href: `${basePath}/files`,
+            icon: Folder,
+          },
+        ]
+      : []),
+    ...(hasFeature("secrets") || hasFeature("key_value")
+      ? [
+          {
+            key: "storage" as const,
+            label: "Storage",
+            href: `${basePath}/storage`,
+            icon: Database,
+          },
+        ]
+      : []),
+    ...(hasFeature("leased_resources")
+      ? [
+          {
+            key: "resources" as const,
+            label: "Resources",
+            href: `${basePath}/resources`,
+            icon: Wrench,
+          },
+        ]
+      : []),
+    ...(hasFeature("schedules")
+      ? [
+          {
+            key: "schedules" as const,
+            label: "Schedules",
+            href: `${basePath}/schedules`,
+            icon: CalendarClock,
+            badge:
+              (session?.active_schedule_count ?? 0) > 0
+                ? String(session?.active_schedule_count ?? 0)
+                : undefined,
+          },
+        ]
+      : []),
+    {
+      key: "events",
+      label: "Events",
+      href: `${basePath}/events`,
+      icon: Activity,
+    },
+    {
+      key: "trajectory",
+      label: "Trajectory",
+      href: `${basePath}/trajectory`,
+      icon: GitBranch,
+    },
+  ];
+  const chatItem = navigationItems[0];
+  const advancedNavigationItems = navigationItems.slice(1);
+  const activeAdvancedItem = advancedNavigationItems.find((item) => item.key === activeTab);
 
   if (sessionLoading) {
     return (
@@ -229,7 +324,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {liveUsage && (
               <TooltipProvider>
                 <Tooltip>
@@ -272,61 +367,58 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             {effectiveStatus === "active" && <Badge variant="default">Processing...</Badge>}
             {effectiveStatus === "idle" && <Badge variant="secondary">Ready</Badge>}
             {effectiveStatus === "started" && <Badge variant="outline">New</Badge>}
+            <Link
+              href={chatItem.href}
+              className={getNavigationClassName(activeTab === chatItem.key)}
+              aria-current={activeTab === chatItem.key ? "page" : undefined}
+            >
+              <chatItem.icon className="icon-sharp h-4 w-4" />
+              {chatItem.label}
+            </Link>
+            {advancedNavigationItems.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={getNavigationClassName(activeTab !== "chat")}
+                  aria-label="Advanced navigation"
+                >
+                  Advanced
+                  {activeAdvancedItem && (
+                    <span className="text-xs text-muted-foreground">
+                      {activeAdvancedItem.label}
+                    </span>
+                  )}
+                  <ChevronDown className="icon-sharp h-4 w-4 opacity-60" />
+                </DropdownMenuTrigger>
+                <DropdownMenuPositioner align="end">
+                  <DropdownMenuContent className="w-56">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Advanced Views</DropdownMenuLabel>
+                      {advancedNavigationItems.map((item) => (
+                        <DropdownMenuItem
+                          key={item.key}
+                          onClick={() => router.push(item.href)}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <item.icon className="icon-sharp h-4 w-4" />
+                            <span>{item.label}</span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {item.badge && (
+                              <DropdownMenuShortcut>{item.badge}</DropdownMenuShortcut>
+                            )}
+                            {activeTab === item.key && (
+                              <Check className="icon-sharp h-4 w-4 text-primary" />
+                            )}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenuPositioner>
+              </DropdownMenu>
+            )}
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 mt-4">
-          <Link href={`${basePath}/chat`} className={getTabClassName(activeTab === "chat")}>
-            <MessageSquare className="icon-sharp h-4 w-4" />
-            Chat
-          </Link>
-          {hasFeature("file_system") && (
-            <Link href={`${basePath}/files`} className={getTabClassName(activeTab === "files")}>
-              <Folder className="icon-sharp h-4 w-4" />
-              Workspace
-            </Link>
-          )}
-          {(hasFeature("secrets") || hasFeature("key_value")) && (
-            <Link href={`${basePath}/storage`} className={getTabClassName(activeTab === "storage")}>
-              <Database className="icon-sharp h-4 w-4" />
-              Storage
-            </Link>
-          )}
-          {hasFeature("leased_resources") && (
-            <Link
-              href={`${basePath}/resources`}
-              className={getTabClassName(activeTab === "resources")}
-            >
-              <Wrench className="icon-sharp h-4 w-4" />
-              Resources
-            </Link>
-          )}
-          {hasFeature("schedules") && (
-            <Link
-              href={`${basePath}/schedules`}
-              className={getTabClassName(activeTab === "schedules")}
-            >
-              <CalendarClock className="icon-sharp h-4 w-4" />
-              Schedules
-              {(session.active_schedule_count ?? 0) > 0 && (
-                <Badge variant="secondary" className="h-5 min-w-5 px-1 text-xs">
-                  {session.active_schedule_count}
-                </Badge>
-              )}
-            </Link>
-          )}
-          <Link href={`${basePath}/events`} className={getTabClassName(activeTab === "events")}>
-            <Activity className="icon-sharp h-4 w-4" />
-            Events
-          </Link>
-          <Link
-            href={`${basePath}/trajectory`}
-            className={getTabClassName(activeTab === "trajectory")}
-          >
-            <GitBranch className="icon-sharp h-4 w-4" />
-            Trajectory
-          </Link>
         </div>
       </div>
 
