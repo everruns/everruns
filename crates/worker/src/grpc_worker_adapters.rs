@@ -9,9 +9,12 @@ use everruns_core::capabilities::{
 };
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{AgentStore, ResolvedImage};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
+use everruns_core::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
+};
 use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,8 +23,8 @@ use uuid::Uuid;
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionSqlDbStore,
-    GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore,
+    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
@@ -347,11 +350,52 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+        Arc::new(GrpcLeasedResourceStore::new(self.client.clone()))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
             self.client.clone(),
             org_id,
         ))
+    }
+
+    async fn claim_due_leased_resources(
+        &self,
+        limit: u32,
+        stale_after_seconds: u32,
+    ) -> Result<Vec<LeasedResource>> {
+        self.client
+            .claim_due_leased_resources(limit, stale_after_seconds)
+            .await
+    }
+
+    async fn mark_leased_resource_released(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool> {
+        self.client
+            .mark_leased_resource_released(resource_id, expected_cleanup_started_at)
+            .await
+    }
+
+    async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+        retry_after_seconds: u32,
+        error: &str,
+    ) -> Result<bool> {
+        self.client
+            .mark_leased_resource_cleanup_failed(
+                resource_id,
+                expected_cleanup_started_at,
+                retry_after_seconds,
+                error,
+            )
+            .await
     }
 
     async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {

@@ -47,6 +47,7 @@ pub mod capability_dto;
 pub mod connection_provider;
 pub mod events;
 pub mod harness;
+pub mod leased_resource;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
@@ -110,10 +111,10 @@ pub use message_filter::{
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, HarnessStore, ImageResolver, KeyInfo, LlmProviderStore, ModelWithProvider,
-    NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore, SessionMutator,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext, ToolExecutor,
-    UserConnectionResolver,
+    EventEmitter, HarnessStore, ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore,
+    ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
+    SessionMutator, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
+    ToolExecutor, UserConnectionResolver,
 };
 
 // Platform store re-exports
@@ -213,6 +214,9 @@ pub use events::{
     TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use harness::{Harness, HarnessStatus};
+pub use leased_resource::{
+    LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+};
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
     LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelSource,
@@ -241,9 +245,9 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, McpServerId,
-    MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId,
-    TypedId,
+    AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId,
+    McpServerId, MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId, SessionId,
+    SkillId, TurnId, TypedId,
 };
 
 // Permissions re-exports

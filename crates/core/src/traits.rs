@@ -58,6 +58,7 @@ pub trait HarnessStore: Send + Sync {
 // SessionStore - For retrieving session information
 // ============================================================================
 
+use crate::leased_resource::{LeasedResource, UpsertLeasedResource};
 use crate::session::Session;
 
 /// Trait for retrieving session configurations
@@ -349,6 +350,44 @@ pub trait SessionScheduleStore: Send + Sync {
 }
 
 // ============================================================================
+// LeasedResourceStore - For lifecycle-managed external resources
+// ============================================================================
+
+/// Trait for session-scoped leased resource operations.
+///
+/// Tools use this store to register or refresh leases when they create or use
+/// external provider resources. Cleanup workers operate through control-plane
+/// storage APIs directly so they can claim work across organizations.
+#[async_trait]
+pub trait LeasedResourceStore: Send + Sync {
+    /// Create or refresh a leased resource for a session.
+    ///
+    /// Implementations must treat this as an idempotent upsert keyed by the
+    /// provider-specific resource identity so repeated tool usage extends the
+    /// same lease instead of creating duplicate rows.
+    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource>;
+
+    /// Mark a leased resource as explicitly released.
+    ///
+    /// This is the fast path for explicit user intent such as "close browser"
+    /// or "delete sandbox". It should transition the resource to `released`
+    /// without waiting for the durable cleanup worker to observe lease expiry.
+    async fn release_resource(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        resource_type: &str,
+        external_id: &str,
+    ) -> Result<Option<LeasedResource>>;
+
+    /// List leased resources currently associated with a session.
+    ///
+    /// Session surfaces use this for visibility. Released resources remain
+    /// visible so operators can inspect cleanup outcomes and failure history.
+    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>>;
+}
+
+// ============================================================================
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
@@ -368,6 +407,30 @@ pub trait UserConnectionResolver: Send + Sync {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<String>>;
+
+    /// Resolve the user ID of the connection used for a session/provider pair.
+    ///
+    /// This is used by leased resources to bind cleanup to the same provider
+    /// identity that created the remote resource.
+    async fn get_connection_user(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<Uuid>> {
+        Ok(None)
+    }
+
+    /// Resolve a provider token for a specific user.
+    ///
+    /// Cleanup workers use this to avoid "first org member wins" behavior when
+    /// cleaning resources created by a specific provider connection owner.
+    async fn get_connection_token_for_user(
+        &self,
+        _user_id: Uuid,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 /// Runtime context provided to tools during execution.
@@ -412,6 +475,8 @@ pub struct ToolContext {
 
     /// Optional platform store for org-level management tools.
     pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    /// Optional leased resource store for lifecycle-managed provider resources.
+    pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
 }
 
 impl ToolContext {
@@ -429,6 +494,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            leased_resource_store: None,
         }
     }
 
@@ -446,6 +512,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            leased_resource_store: None,
         }
     }
 
@@ -466,6 +533,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            leased_resource_store: None,
         }
     }
 
@@ -487,6 +555,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            leased_resource_store: None,
         }
     }
 
@@ -543,6 +612,12 @@ impl ToolContext {
         self.platform_store = Some(store);
         self
     }
+
+    /// Add a leased resource store to this context.
+    pub fn with_leased_resource_store(mut self, store: Arc<dyn LeasedResourceStore>) -> Self {
+        self.leased_resource_store = Some(store);
+        self
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -559,6 +634,10 @@ impl std::fmt::Debug for ToolContext {
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
             .field("platform_store", &self.platform_store.is_some())
+            .field(
+                "leased_resource_store",
+                &self.leased_resource_store.is_some(),
+            )
             .finish()
     }
 }

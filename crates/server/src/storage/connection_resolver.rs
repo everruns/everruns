@@ -13,16 +13,18 @@ use async_trait::async_trait;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{AgentLoopError, Result};
+use uuid::Uuid;
 
 use super::backend::StorageBackend;
 use super::encryption::EncryptionService;
 use crate::auth::oauth::GitHubAppService;
 
-/// Resolves user connection tokens by looking up the session's org members.
+/// Resolves user connection tokens from stored user connections.
 ///
-/// Query path: session_id → org_id → org_members → user_connections.
-/// For single-member orgs (default dev mode), this is unambiguous.
-/// For multi-member orgs, returns the first match (future: track session creator).
+/// Tool execution still supports the existing session-based lookup
+/// (`session_id -> org_members -> user_connections`) for convenience.
+/// Leased-resource cleanup additionally uses explicit owner-user lookups so
+/// the same provider identity that created a resource can delete it later.
 #[derive(Clone)]
 pub struct DbConnectionResolver {
     db: StorageBackend,
@@ -109,6 +111,59 @@ impl UserConnectionResolver for DbConnectionResolver {
         let encrypted = self
             .db
             .get_connection_token_for_session(session_id, provider)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection: {e}")))?;
+
+        match encrypted {
+            Some(blob) => {
+                let token = self.encryption.decrypt_to_string(&blob).map_err(|e| {
+                    AgentLoopError::store(format!("Failed to decrypt connection token: {e}"))
+                })?;
+                Ok(Some(token))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn get_connection_user(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Uuid>> {
+        self.db
+            .get_connection_user_for_session(session_id, provider)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection owner: {e}")))
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        // GitHub App path: mint a fresh installation token for the specific user connection.
+        if provider == "github"
+            && let Some(ref minter) = self.github_app
+        {
+            let installation_id = self
+                .db
+                .get_installation_id_for_user(user_id, provider)
+                .await
+                .map_err(|e| {
+                    AgentLoopError::store(format!(
+                        "Failed to resolve GitHub installation for cleanup: {e}"
+                    ))
+                })?;
+
+            if let Some(id) = installation_id {
+                let token = minter.mint_token(id).await.map_err(AgentLoopError::store)?;
+                return Ok(Some(token));
+            }
+        }
+
+        let encrypted = self
+            .db
+            .get_connection_token_for_user(user_id, provider)
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection: {e}")))?;
 

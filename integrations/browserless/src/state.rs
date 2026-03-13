@@ -82,6 +82,19 @@ impl BrowserSessionState {
     }
 }
 
+/// Stable leased-resource identifier for a browser session.
+///
+/// Browserless reconnect endpoints may carry ephemeral query parameters.
+/// The leased-resource key strips the query string so touch operations keep
+/// updating the same logical browser session resource.
+pub fn browser_session_external_id(ws_endpoint: &str) -> String {
+    ws_endpoint
+        .split('?')
+        .next()
+        .unwrap_or(ws_endpoint)
+        .to_string()
+}
+
 /// Save browser session state to session storage (plain key-value, not secret).
 pub async fn save_browser_session(
     context: &ToolContext,

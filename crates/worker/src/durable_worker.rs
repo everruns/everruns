@@ -132,6 +132,7 @@ impl Default for DurableWorkerConfig {
                 "process_input".to_string(),
                 "reason".to_string(),
                 "act".to_string(),
+                "leased_resource_cleanup".to_string(),
             ],
             max_concurrent_tasks: 1000, // High default for massive workflow parallelism
             poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
@@ -718,6 +719,20 @@ impl DurableWorker {
                     )
                     .await;
                 (res, Some(turn_input))
+            }
+            "leased_resource_cleanup" => {
+                let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
+                let adapters = crate::grpc_worker_adapters::GrpcWorkerAdapters::from_client(
+                    grpc_client.clone(),
+                );
+                let res = crate::leased_resource_cleanup::execute_cleanup_activity(
+                    &adapters,
+                    &cleanup_input,
+                )
+                .await;
+                (res, None)
             }
             _ => (
                 Err(anyhow::anyhow!(

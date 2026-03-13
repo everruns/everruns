@@ -385,6 +385,13 @@ impl IdMarker for ScheduleIdMarker {
     const PREFIX: &'static str = "sched";
 }
 
+/// Marker for leased resource IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeasedResourceIdMarker;
+impl IdMarker for LeasedResourceIdMarker {
+    const PREFIX: &'static str = "resource";
+}
+
 /// Marker for App IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AppIdMarker;
@@ -431,6 +438,8 @@ pub type TurnId = TypedId<TurnIdMarker>;
 pub type ExecId = TypedId<ExecIdMarker>;
 /// Session Schedule ID
 pub type ScheduleId = TypedId<ScheduleIdMarker>;
+/// Leased resource ID
+pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
 /// App ID
 pub type AppId = TypedId<AppIdMarker>;
 /// Notification ID

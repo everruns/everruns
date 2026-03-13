@@ -538,6 +538,10 @@ impl ServerAppBuilder {
             session_schedule_service.clone(),
             auth_state.clone(),
         );
+        let leased_resource_service =
+            Arc::new(crate::services::LeasedResourceService::new(db.clone()));
+        let session_resources_state =
+            api::session_resources::AppState::new(leased_resource_service, auth_state.clone());
 
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
@@ -578,6 +582,7 @@ impl ServerAppBuilder {
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
+            .merge(api::session_resources::routes(session_resources_state))
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))
@@ -945,6 +950,14 @@ impl ServerAppBuilder {
 
         // -- Durable task scheduler (both prod and dev) --
         if let Some(store) = scheduler_store {
+            if let Err(e) =
+                crate::leased_resource_scheduler::ensure_leased_resource_cleanup_schedule(
+                    store.clone(),
+                )
+                .await
+            {
+                tracing::error!(error = %e, "Failed to bootstrap leased-resource cleanup schedule");
+            }
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),

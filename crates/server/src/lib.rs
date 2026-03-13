@@ -57,6 +57,7 @@ pub mod org_init;
 pub mod seed;
 
 // Session schedule poller
+pub mod leased_resource_scheduler;
 pub mod session_scheduler;
 
 // Server configuration and router helpers

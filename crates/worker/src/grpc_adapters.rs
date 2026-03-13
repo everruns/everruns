@@ -9,13 +9,14 @@
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileStore,
-    SessionStore,
+    AgentStore, EventEmitter, HarnessStore, LeasedResourceStore, LlmProviderStore,
+    ModelWithProvider, SessionFileStore, SessionStore,
 };
-use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
+use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, Harness, HarnessStatus, Message, Session};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
@@ -167,6 +168,81 @@ impl GrpcClient {
             api_key: proto_server.api_key,
             headers: proto_server.headers,
         })
+    }
+
+    /// Claim due leased resources for cleanup.
+    pub async fn claim_due_leased_resources(
+        &self,
+        limit: u32,
+        stale_after_seconds: u32,
+    ) -> Result<Vec<LeasedResource>> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .claim_due_leased_resources(proto::ClaimDueLeasedResourcesRequest {
+                limit,
+                stale_after_seconds,
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC claim_due_leased_resources failed: {e}")))?;
+
+        response
+            .into_inner()
+            .resources
+            .into_iter()
+            .map(proto_leased_resource_to_schema)
+            .collect()
+    }
+
+    /// Mark a leased resource cleanup as released using compare-and-set semantics.
+    pub async fn mark_leased_resource_released(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .mark_leased_resource_released(proto::MarkLeasedResourceReleasedRequest {
+                resource_id: Some(uuid_to_proto(resource_id.uuid())),
+                expected_cleanup_started_at: Some(
+                    everruns_internal_protocol::datetime_to_proto_timestamp(
+                        expected_cleanup_started_at,
+                    ),
+                ),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC mark_leased_resource_released failed: {e}")))?;
+
+        Ok(response.into_inner().updated)
+    }
+
+    /// Mark a leased resource cleanup as failed using compare-and-set semantics.
+    pub async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+        retry_after_seconds: u32,
+        error: &str,
+    ) -> Result<bool> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .mark_leased_resource_cleanup_failed(proto::MarkLeasedResourceCleanupFailedRequest {
+                resource_id: Some(uuid_to_proto(resource_id.uuid())),
+                expected_cleanup_started_at: Some(
+                    everruns_internal_protocol::datetime_to_proto_timestamp(
+                        expected_cleanup_started_at,
+                    ),
+                ),
+                retry_after_seconds,
+                error: error.to_string(),
+            })
+            .await
+            .map_err(|e| {
+                grpc_error(format!(
+                    "gRPC mark_leased_resource_cleanup_failed failed: {e}"
+                ))
+            })?;
+
+        Ok(response.into_inner().updated)
     }
 }
 
@@ -1368,6 +1444,43 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
             .map_err(|e| grpc_error(format!("gRPC get_connection_token failed: {}", e)))?;
         Ok(response.into_inner().token)
     }
+
+    async fn get_connection_user(
+        &self,
+        session_id: everruns_core::SessionId,
+        provider: &str,
+    ) -> Result<Option<Uuid>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_connection_user(proto::GetConnectionUserRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_connection_user failed: {}", e)))?;
+
+        match response.into_inner().user_id {
+            Some(user_id) => Ok(Some(proto_uuid_to_uuid(Some(&user_id))?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_connection_token_for_user(proto::GetConnectionTokenForUserRequest {
+                user_id: Some(uuid_to_proto(user_id)),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_connection_token_for_user failed: {}", e)))?;
+
+        Ok(response.into_inner().token)
+    }
 }
 
 // ============================================================================
@@ -1402,6 +1515,93 @@ impl everruns_core::traits::SessionMutator for GrpcSessionMutator {
 }
 
 // ============================================================================
+// GrpcLeasedResourceStore - LeasedResourceStore over gRPC
+// ============================================================================
+
+/// gRPC-backed leased resource store.
+///
+/// Tools use this to register/touch/release provider-owned remote resources so
+/// the control plane can later clean them through the durable leased-resource
+/// cleanup schedule.
+pub struct GrpcLeasedResourceStore {
+    client: GrpcClient,
+}
+
+impl GrpcLeasedResourceStore {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl LeasedResourceStore for GrpcLeasedResourceStore {
+    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .upsert_leased_resource(proto::UpsertLeasedResourceRequest {
+                session_id: Some(uuid_to_proto(input.session_id.uuid())),
+                provider: input.provider,
+                resource_type: input.resource_type,
+                external_id: input.external_id,
+                display_name: input.display_name,
+                owner_user_id: input.owner_user_id.map(uuid_to_proto),
+                lease_duration_seconds: input.lease_duration_seconds,
+                metadata: Some(json_to_proto_struct(&input.metadata)),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC upsert_leased_resource failed: {e}")))?;
+
+        let resource = response
+            .into_inner()
+            .resource
+            .ok_or_else(|| grpc_error("No leased resource in upsert response"))?;
+        proto_leased_resource_to_schema(resource)
+    }
+
+    async fn release_resource(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        resource_type: &str,
+        external_id: &str,
+    ) -> Result<Option<LeasedResource>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .release_leased_resource(proto::ReleaseLeasedResourceRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+                resource_type: resource_type.to_string(),
+                external_id: external_id.to_string(),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC release_leased_resource failed: {e}")))?;
+
+        response
+            .into_inner()
+            .resource
+            .map(proto_leased_resource_to_schema)
+            .transpose()
+    }
+
+    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_leased_resources(proto::ListSessionLeasedResourcesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+            })
+            .await
+            .map_err(|e| grpc_error(format!("gRPC list_session_leased_resources failed: {e}")))?;
+
+        response
+            .into_inner()
+            .resources
+            .into_iter()
+            .map(proto_leased_resource_to_schema)
+            .collect()
+    }
+}
+
+// ============================================================================
 // GrpcScheduleStore - SessionScheduleStore over gRPC
 // ============================================================================
 
@@ -1417,6 +1617,60 @@ impl GrpcScheduleStore {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self { client, org_id }
     }
+}
+
+fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<LeasedResource> {
+    let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
+    let status = match s.status.as_str() {
+        "active" => LeasedResourceStatus::Active,
+        "cleaning" => LeasedResourceStatus::Cleaning,
+        "released" => LeasedResourceStatus::Released,
+        "cleanup_failed" => LeasedResourceStatus::CleanupFailed,
+        other => {
+            return Err(grpc_error(format!(
+                "Unknown leased resource status from gRPC: {other}"
+            )));
+        }
+    };
+
+    Ok(LeasedResource {
+        id: LeasedResourceId::from_uuid(id_uuid),
+        session_id: s
+            .session_id
+            .as_ref()
+            .map(|id| proto_uuid_to_uuid(Some(id)).map(SessionId::from_uuid))
+            .transpose()?,
+        provider: s.provider,
+        resource_type: s.resource_type,
+        external_id: s.external_id,
+        display_name: s.display_name,
+        status,
+        owner_user_id: s
+            .owner_user_id
+            .as_ref()
+            .map(|id| proto_uuid_to_uuid(Some(id)))
+            .transpose()?,
+        lease_duration_seconds: s.lease_duration_seconds,
+        last_touched_at: proto_timestamp_or_now(s.last_touched_at.as_ref()),
+        lease_expires_at: proto_timestamp_or_now(s.lease_expires_at.as_ref()),
+        cleanup_started_at: s
+            .cleanup_started_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime),
+        cleanup_completed_at: s
+            .cleanup_completed_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime),
+        cleanup_attempts: s.cleanup_attempts,
+        last_cleanup_error: s.last_cleanup_error,
+        metadata: s
+            .metadata
+            .as_ref()
+            .map(proto_struct_to_json)
+            .unwrap_or_else(|| serde_json::json!({})),
+        created_at: proto_timestamp_or_now(s.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(s.updated_at.as_ref()),
+    })
 }
 
 fn proto_schedule_to_schema(

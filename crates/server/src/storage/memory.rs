@@ -9,8 +9,8 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, McpServerId,
-    MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, LeasedResourceId,
+    McpServerId, MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -81,6 +81,8 @@ pub struct InMemoryDatabase {
     notification_turn_requests: RwLock<HashMap<MessageId, NotificationTurnRequestRow>>,
     // Session schedules
     session_schedules: RwLock<HashMap<ScheduleId, SessionScheduleRow>>,
+    // Generic leased resources that require eventual cleanup.
+    leased_resources: RwLock<HashMap<LeasedResourceId, LeasedResourceRow>>,
     // Audit logs (TM-OBS-007)
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
@@ -133,6 +135,7 @@ impl Default for InMemoryDatabase {
             notifications: RwLock::new(HashMap::new()),
             notification_turn_requests: RwLock::new(HashMap::new()),
             session_schedules: RwLock::new(HashMap::new()),
+            leased_resources: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
         }
@@ -3640,6 +3643,55 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    pub async fn get_connection_user_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Uuid>> {
+        let sessions = self.sessions.read();
+        let session = match sessions.get(&session_id) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let org_id = session.org_id;
+        drop(sessions);
+
+        let members = self.organization_members.read();
+        let user_ids: Vec<Uuid> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), _)| *uid)
+            .collect();
+        drop(members);
+
+        let connections = self.user_connections.read();
+        for uid in user_ids {
+            if connections
+                .values()
+                .any(|conn| conn.user_id == uid && conn.provider == provider)
+            {
+                return Ok(Some(uid));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub async fn get_connection_token_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .user_connections
+            .read()
+            .values()
+            .find(|c| {
+                c.user_id == user_id && c.provider == provider && c.access_token_encrypted.is_some()
+            })
+            .and_then(|c| c.access_token_encrypted.clone()))
+    }
+
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
@@ -3675,6 +3727,19 @@ impl InMemoryDatabase {
         }
 
         Ok(None)
+    }
+
+    pub async fn get_installation_id_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<i64>> {
+        Ok(self
+            .user_connections
+            .read()
+            .values()
+            .find(|c| c.user_id == user_id && c.provider == provider && c.installation_id.is_some())
+            .and_then(|c| c.installation_id))
     }
 
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
@@ -4042,6 +4107,205 @@ impl InMemoryDatabase {
         due.sort_by(|a, b| a.next_trigger_at.cmp(&b.next_trigger_at));
         due.truncate(limit as usize);
         Ok(due)
+    }
+
+    // ============================================
+    // Leased Resources
+    // ============================================
+
+    pub async fn get_session_organization_id(&self, session_id: SessionId) -> Result<Option<i64>> {
+        Ok(self.sessions.read().get(&session_id).map(|row| row.org_id))
+    }
+
+    pub async fn upsert_leased_resource(
+        &self,
+        input: UpsertLeasedResourceRow,
+    ) -> Result<LeasedResourceRow> {
+        let now = Self::now();
+        let mut resources = self.leased_resources.write();
+
+        if let Some(existing) = resources.values_mut().find(|row| {
+            row.org_id == input.org_id
+                && row.provider == input.provider
+                && row.resource_type == input.resource_type
+                && row.external_id == input.external_id
+        }) {
+            existing.session_id = Some(input.session_id);
+            existing.display_name = input.display_name.or_else(|| existing.display_name.clone());
+            existing.status = "active".to_string();
+            existing.owner_user_id = input.owner_user_id.or(existing.owner_user_id);
+            existing.lease_duration_seconds = input.lease_duration_seconds;
+            existing.last_touched_at = now;
+            existing.lease_expires_at = input.lease_expires_at;
+            existing.cleanup_started_at = None;
+            existing.cleanup_completed_at = None;
+            existing.last_cleanup_error = None;
+            existing.metadata = input.metadata;
+            existing.updated_at = now;
+            return Ok(existing.clone());
+        }
+
+        let id = LeasedResourceId::new();
+        let row = LeasedResourceRow {
+            id,
+            public_id: id.to_string(),
+            org_id: input.org_id,
+            session_id: Some(input.session_id),
+            provider: input.provider,
+            resource_type: input.resource_type,
+            external_id: input.external_id,
+            display_name: input.display_name,
+            status: "active".to_string(),
+            owner_user_id: input.owner_user_id,
+            lease_duration_seconds: input.lease_duration_seconds,
+            last_touched_at: now,
+            lease_expires_at: input.lease_expires_at,
+            cleanup_started_at: None,
+            cleanup_completed_at: None,
+            cleanup_attempts: 0,
+            last_cleanup_error: None,
+            metadata: input.metadata,
+            created_at: now,
+            updated_at: now,
+        };
+        resources.insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn release_leased_resource(
+        &self,
+        input: ReleaseLeasedResourceRow,
+    ) -> Result<Option<LeasedResourceRow>> {
+        let now = Self::now();
+        let mut resources = self.leased_resources.write();
+        let row = resources.values_mut().find(|row| {
+            row.org_id == input.org_id
+                && row.session_id == Some(input.session_id)
+                && row.provider == input.provider
+                && row.resource_type == input.resource_type
+                && row.external_id == input.external_id
+        });
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        row.status = "released".to_string();
+        row.cleanup_started_at = None;
+        row.cleanup_completed_at = Some(now);
+        row.lease_expires_at = now;
+        row.last_cleanup_error = None;
+        row.updated_at = now;
+        Ok(Some(row.clone()))
+    }
+
+    pub async fn list_session_leased_resources(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Vec<LeasedResourceRow>> {
+        let resources = self.leased_resources.read();
+        let mut result: Vec<_> = resources
+            .values()
+            .filter(|row| row.session_id == Some(session_id))
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn claim_due_leased_resources(
+        &self,
+        limit: i32,
+        stale_after_seconds: i32,
+    ) -> Result<Vec<LeasedResourceRow>> {
+        let now = Self::now();
+        let stale_before = now - chrono::TimeDelta::seconds(stale_after_seconds as i64);
+        let mut resources = self.leased_resources.write();
+        let mut due_ids: Vec<_> = resources
+            .values()
+            .filter(|row| {
+                (matches!(row.status.as_str(), "active" | "cleanup_failed")
+                    && row.lease_expires_at <= now)
+                    || (row.status == "cleaning"
+                        && row.cleanup_started_at.is_some_and(|ts| ts <= stale_before))
+            })
+            .map(|row| row.id)
+            .collect();
+        due_ids.sort_by(|a, b| {
+            let left = resources.get(a).expect("leased resource must exist");
+            let right = resources.get(b).expect("leased resource must exist");
+            (
+                &left.lease_expires_at,
+                &left.cleanup_started_at,
+                &left.created_at,
+            )
+                .cmp(&(
+                    &right.lease_expires_at,
+                    &right.cleanup_started_at,
+                    &right.created_at,
+                ))
+        });
+        due_ids.truncate(limit as usize);
+
+        let mut claimed = Vec::with_capacity(due_ids.len());
+        for id in due_ids {
+            if let Some(row) = resources.get_mut(&id) {
+                row.status = "cleaning".to_string();
+                row.cleanup_started_at = Some(now);
+                row.cleanup_attempts += 1;
+                row.last_cleanup_error = None;
+                row.updated_at = now;
+                claimed.push(row.clone());
+            }
+        }
+
+        Ok(claimed)
+    }
+
+    pub async fn mark_leased_resource_released(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: DateTime<Utc>,
+    ) -> Result<Option<LeasedResourceRow>> {
+        let now = Self::now();
+        let mut resources = self.leased_resources.write();
+        let Some(row) = resources.get_mut(&resource_id) else {
+            return Ok(None);
+        };
+        if row.status != "cleaning" || row.cleanup_started_at != Some(expected_cleanup_started_at) {
+            return Ok(None);
+        }
+
+        row.status = "released".to_string();
+        row.cleanup_started_at = None;
+        row.cleanup_completed_at = Some(now);
+        row.lease_expires_at = now;
+        row.last_cleanup_error = None;
+        row.updated_at = now;
+        Ok(Some(row.clone()))
+    }
+
+    pub async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: DateTime<Utc>,
+        retry_after_seconds: i32,
+        error: &str,
+    ) -> Result<Option<LeasedResourceRow>> {
+        let now = Self::now();
+        let mut resources = self.leased_resources.write();
+        let Some(row) = resources.get_mut(&resource_id) else {
+            return Ok(None);
+        };
+        if row.status != "cleaning" || row.cleanup_started_at != Some(expected_cleanup_started_at) {
+            return Ok(None);
+        }
+
+        row.status = "cleanup_failed".to_string();
+        row.cleanup_started_at = None;
+        row.lease_expires_at = now + chrono::TimeDelta::seconds(retry_after_seconds as i64);
+        row.last_cleanup_error = Some(error.to_string());
+        row.updated_at = now;
+        Ok(Some(row.clone()))
     }
 
     // Audit Logs (TM-OBS-007)

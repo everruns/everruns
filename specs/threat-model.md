@@ -241,6 +241,7 @@ Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no per
 | TM-API-012 | WebFetch DNS rebinding | Medium | fetchkit v0.1.2 DNS pinning: resolves hostname, validates IP, pins to resolved address for connection | MITIGATED |
 | TM-API-013 | LLM provider base URL SSRF | High | `url_validation::validate_url()` blocks private IPs, loopback, link-local, cloud metadata, non-HTTPS on provider create/update (EVE-69) | MITIGATED |
 | TM-API-014 | Search query SQL wildcard injection | Low | LIKE wildcards (`%`, `_`, `\`) in `?search=` input are escaped; tokens capped at 8 to prevent query amplification from long inputs | MITIGATED |
+| TM-API-015 | Provider secret leakage via leased-resource metadata | High | Leased-resource metadata is explicitly non-secret; cleanup reconstructs provider auth from user connections/session secrets, and session resources stay org/session scoped | MITIGATED |
 
 ### Mitigation Details
 
@@ -299,6 +300,18 @@ Private IP ranges are blocked at the DNS resolution layer. Agents cannot reach i
 
 **TM-API-012 — DNS Rebinding (MITIGATED — fetchkit v0.1.2):**
 Fetchkit v0.1.2 implements DNS pinning: the hostname is resolved once, all resolved IPs are validated against blocked ranges, and the first non-blocked IP is pinned via `reqwest::resolve()`. A second DNS lookup cannot return a different IP because the connection is pinned to the validated address.
+
+**TM-API-015 — Leased-Resource Metadata Secrets (MITIGATED):**
+The session Resources API returns leased-resource metadata to users and the UI, so this feature must not persist provider bearer tokens or equivalent secrets in `metadata`.
+
+- Lease registration stores only non-secret metadata needed for cleanup and debugging.
+- Cleanup handlers reconstruct provider auth from the original user connection or session secret store at execution time.
+- Session resources are still gated by the existing org/session ownership check before rows are listed.
+
+Code references:
+- [`crates/core/src/leased_resource.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/leased_resource.rs)
+- [`integrations/browserless/src/session_tools.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/integrations/browserless/src/session_tools.rs)
+- [`integrations/daytona/src/state.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/integrations/daytona/src/state.rs)
 
 ## 5. Session Filesystem (TM-FS)
 

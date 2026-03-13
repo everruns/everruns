@@ -14,6 +14,7 @@ pub mod connection;
 pub mod state;
 mod tools;
 
+use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
@@ -119,6 +120,8 @@ Tools:
 All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
 Sandboxes auto-stop after 5 minutes of inactivity.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
+Active sandboxes also appear in the session Resources tab so users can see what
+may be cleaned automatically later.
 
 Git cloning: Use `daytona_git_clone` to clone repositories into `/home/daytona/owner/repo`.
 If the user has connected their GitHub account (Settings > Connections), private repos
@@ -147,6 +150,10 @@ fetch, rebase, etc.) — they authenticate automatically. Call again to refresh 
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
+    }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec![LEASED_RESOURCES_FEATURE]
     }
 }
 

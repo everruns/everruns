@@ -219,6 +219,33 @@ export interface UpdateSessionScheduleRequest {
 }
 
 // ============================================
+// Session Leased Resource types
+// ============================================
+
+export type LeasedResourceStatus = "active" | "cleaning" | "released" | "cleanup_failed";
+
+export interface LeasedResource {
+  id: string;
+  session_id?: string;
+  provider: string;
+  resource_type: string;
+  external_id: string;
+  display_name?: string;
+  status: LeasedResourceStatus;
+  owner_user_id?: string;
+  lease_duration_seconds: number;
+  last_touched_at: string;
+  lease_expires_at: string;
+  cleanup_started_at?: string;
+  cleanup_completed_at?: string;
+  cleanup_attempts: number;
+  last_cleanup_error?: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
 // Message types (M2) - PRIMARY data
 // ============================================
 

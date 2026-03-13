@@ -374,7 +374,7 @@ pub trait Capability: Send + Sync {
     /// to decide which tabs/sections to render.
     ///
     /// Known features: `"file_system"`, `"schedules"`, `"secrets"`,
-    /// `"key_value"`, `"sql_database"`.
+    /// `"key_value"`, `"sql_database"`, `"leased_resources"`.
     ///
     /// By default, returns an empty vector (no features).
     fn features(&self) -> Vec<&'static str> {

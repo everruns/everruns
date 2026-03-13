@@ -22,6 +22,7 @@ pub mod session_tools;
 pub mod state;
 mod tools;
 
+use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
@@ -111,6 +112,8 @@ No resources are left behind.
 Use `browserless_open_browser` to create a persistent browser session via Chrome DevTools Protocol.
 The browser stays alive between tool calls, preserving login state, cookies, and navigation history.
 Use `browserless_close_browser` when done to release the browser.
+Persistent sessions also appear in the session Resources tab so users can see
+what may be cleaned automatically after inactivity.
 
 When a persistent session is active, the navigate/screenshot/content/interact tools will
 automatically use it instead of creating fresh browsers.
@@ -173,6 +176,10 @@ or leave it false to get the DOM content instead."#,
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec![LEASED_RESOURCES_FEATURE]
     }
 }
 

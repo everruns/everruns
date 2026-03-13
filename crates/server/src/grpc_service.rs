@@ -30,6 +30,9 @@ use everruns_internal_protocol::proto::{
     CheckCircuitBreakerRequest,
     CheckCircuitBreakerResponse,
     CircuitBreakerState as ProtoCircuitBreakerState,
+    // Connection token resolution
+    ClaimDueLeasedResourcesRequest,
+    ClaimDueLeasedResourcesResponse,
     ClaimDurableTasksRequest,
     ClaimDurableTasksResponse,
     CommitExecRequest,
@@ -56,9 +59,12 @@ use everruns_internal_protocol::proto::{
     FailDurableTaskResponse,
     GetAgentRequest,
     GetAgentResponse,
-    // Connection token resolution
+    GetConnectionTokenForUserRequest,
+    GetConnectionTokenForUserResponse,
     GetConnectionTokenRequest,
     GetConnectionTokenResponse,
+    GetConnectionUserRequest,
+    GetConnectionUserResponse,
     GetDefaultModelRequest,
     GetDefaultModelResponse,
     GetDurableWorkflowStatusRequest,
@@ -77,10 +83,16 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    ListSessionLeasedResourcesRequest,
+    ListSessionLeasedResourcesResponse,
     ListSessionSchedulesRequest,
     ListSessionSchedulesResponse,
     LoadMessagesRequest,
     LoadMessagesResponse,
+    MarkLeasedResourceCleanupFailedRequest,
+    MarkLeasedResourceCleanupFailedResponse,
+    MarkLeasedResourceReleasedRequest,
+    MarkLeasedResourceReleasedResponse,
     McpServerInfo,
     McpToolDef,
     PlatformCapabilityInfo,
@@ -125,6 +137,8 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerSuccessResponse,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
+    ReleaseLeasedResourceRequest,
+    ReleaseLeasedResourceResponse,
     ResolveImageRequest,
     ResolveImageResponse,
     ResolveImagesRequest,
@@ -183,6 +197,8 @@ use everruns_internal_protocol::proto::{
     TaskNotificationType,
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
+    UpsertLeasedResourceRequest,
+    UpsertLeasedResourceResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -426,6 +442,11 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
+    /// Create the leased-resource store used by tools over gRPC.
+    fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+        Arc::new(crate::storage::DbLeasedResourceStore::new(self.db.clone()))
+    }
+
     /// Create schedule store scoped to the given org_id, or return unavailable if no pool.
     #[allow(clippy::result_large_err)]
     fn schedule_store(
@@ -618,6 +639,40 @@ fn session_schedule_to_proto(
         next_trigger_at: s.next_trigger_at.map(datetime_to_proto_timestamp),
         last_triggered_at: s.last_triggered_at.map(datetime_to_proto_timestamp),
         trigger_count: s.trigger_count as i32,
+        created_at: Some(datetime_to_proto_timestamp(s.created_at)),
+        updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+    }
+}
+
+/// Convert a leased resource to proto representation.
+fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedResourceProto {
+    use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+    proto::LeasedResourceProto {
+        id: Some(proto::Uuid {
+            value: s.id.uuid().to_string(),
+        }),
+        session_id: s.session_id.map(|id| proto::Uuid {
+            value: id.uuid().to_string(),
+        }),
+        provider: s.provider.clone(),
+        resource_type: s.resource_type.clone(),
+        external_id: s.external_id.clone(),
+        display_name: s.display_name.clone(),
+        status: s.status.to_string(),
+        owner_user_id: s.owner_user_id.map(|id| proto::Uuid {
+            value: id.to_string(),
+        }),
+        lease_duration_seconds: s.lease_duration_seconds,
+        last_touched_at: Some(datetime_to_proto_timestamp(s.last_touched_at)),
+        lease_expires_at: Some(datetime_to_proto_timestamp(s.lease_expires_at)),
+        cleanup_started_at: s.cleanup_started_at.map(datetime_to_proto_timestamp),
+        cleanup_completed_at: s.cleanup_completed_at.map(datetime_to_proto_timestamp),
+        cleanup_attempts: s.cleanup_attempts,
+        last_cleanup_error: s.last_cleanup_error.clone(),
+        metadata: Some(everruns_internal_protocol::json_to_proto_struct(
+            &s.metadata,
+        )),
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
     }
@@ -2740,6 +2795,224 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
+    async fn get_connection_user(
+        &self,
+        request: Request<GetConnectionUserRequest>,
+    ) -> Result<Response<GetConnectionUserResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let resolver = self.connection_resolver()?;
+
+        let user_id = resolver
+            .get_connection_user(session_id.into(), &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve connection owner: {}", e);
+                Status::internal("Failed to resolve connection owner")
+            })?;
+
+        Ok(Response::new(GetConnectionUserResponse {
+            user_id: user_id.map(|user_id| proto::Uuid {
+                value: user_id.to_string(),
+            }),
+        }))
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        request: Request<GetConnectionTokenForUserRequest>,
+    ) -> Result<Response<GetConnectionTokenForUserResponse>, Status> {
+        let req = request.into_inner();
+        let user_id = parse_uuid(req.user_id.as_ref())?;
+        let resolver = self.connection_resolver()?;
+
+        let token = resolver
+            .get_connection_token_for_user(user_id, &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve connection token for user: {}", e);
+                Status::internal("Failed to resolve connection token for user")
+            })?;
+
+        Ok(Response::new(GetConnectionTokenForUserResponse { token }))
+    }
+
+    // ========================================================================
+    // Leased resource operations
+    // ========================================================================
+
+    async fn upsert_leased_resource(
+        &self,
+        request: Request<UpsertLeasedResourceRequest>,
+    ) -> Result<Response<UpsertLeasedResourceResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.leased_resource_store();
+
+        let resource = store
+            .upsert_resource(everruns_core::UpsertLeasedResource {
+                session_id: session_id.into(),
+                provider: req.provider,
+                resource_type: req.resource_type,
+                external_id: req.external_id,
+                display_name: req.display_name,
+                owner_user_id: req
+                    .owner_user_id
+                    .as_ref()
+                    .map(|id| parse_uuid(Some(id)))
+                    .transpose()?,
+                lease_duration_seconds: req.lease_duration_seconds,
+                metadata: req
+                    .metadata
+                    .as_ref()
+                    .map(everruns_internal_protocol::proto_struct_to_json)
+                    .unwrap_or_else(|| serde_json::json!({})),
+            })
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to upsert leased resource: {}", e);
+                Status::internal("Failed to upsert leased resource")
+            })?;
+
+        Ok(Response::new(UpsertLeasedResourceResponse {
+            resource: Some(leased_resource_to_proto(&resource)),
+        }))
+    }
+
+    async fn release_leased_resource(
+        &self,
+        request: Request<ReleaseLeasedResourceRequest>,
+    ) -> Result<Response<ReleaseLeasedResourceResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.leased_resource_store();
+
+        let resource = store
+            .release_resource(
+                session_id.into(),
+                &req.provider,
+                &req.resource_type,
+                &req.external_id,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to release leased resource: {}", e);
+                Status::internal("Failed to release leased resource")
+            })?;
+
+        Ok(Response::new(ReleaseLeasedResourceResponse {
+            resource: resource.as_ref().map(leased_resource_to_proto),
+        }))
+    }
+
+    async fn list_session_leased_resources(
+        &self,
+        request: Request<ListSessionLeasedResourcesRequest>,
+    ) -> Result<Response<ListSessionLeasedResourcesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.leased_resource_store();
+
+        let resources = store.list_resources(session_id.into()).await.map_err(|e| {
+            tracing::error!("Failed to list leased resources: {}", e);
+            Status::internal("Failed to list leased resources")
+        })?;
+
+        Ok(Response::new(ListSessionLeasedResourcesResponse {
+            resources: resources.iter().map(leased_resource_to_proto).collect(),
+        }))
+    }
+
+    async fn claim_due_leased_resources(
+        &self,
+        request: Request<ClaimDueLeasedResourcesRequest>,
+    ) -> Result<Response<ClaimDueLeasedResourcesResponse>, Status> {
+        let req = request.into_inner();
+        let rows = self
+            .db
+            .claim_due_leased_resources(req.limit as i32, req.stale_after_seconds as i32)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to claim leased resources: {}", e);
+                Status::internal("Failed to claim leased resources")
+            })?;
+
+        let resources = rows
+            .iter()
+            .map(crate::storage::leased_resource_row_to_domain)
+            .collect::<everruns_core::Result<Vec<_>>>()
+            .map_err(|e| {
+                tracing::error!("Failed to map leased resources: {}", e);
+                Status::internal("Failed to map leased resources")
+            })?;
+
+        Ok(Response::new(ClaimDueLeasedResourcesResponse {
+            resources: resources.iter().map(leased_resource_to_proto).collect(),
+        }))
+    }
+
+    async fn mark_leased_resource_released(
+        &self,
+        request: Request<MarkLeasedResourceReleasedRequest>,
+    ) -> Result<Response<MarkLeasedResourceReleasedResponse>, Status> {
+        let req = request.into_inner();
+        let resource_id = parse_uuid(req.resource_id.as_ref())?;
+        let expected_cleanup_started_at = req
+            .expected_cleanup_started_at
+            .as_ref()
+            .map(everruns_internal_protocol::proto_timestamp_to_datetime)
+            .ok_or_else(|| Status::invalid_argument("Missing expected_cleanup_started_at"))?;
+
+        let updated = self
+            .db
+            .mark_leased_resource_released(
+                everruns_core::LeasedResourceId::from_uuid(resource_id),
+                expected_cleanup_started_at,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to mark leased resource released: {}", e);
+                Status::internal("Failed to mark leased resource released")
+            })?
+            .is_some();
+
+        Ok(Response::new(MarkLeasedResourceReleasedResponse {
+            updated,
+        }))
+    }
+
+    async fn mark_leased_resource_cleanup_failed(
+        &self,
+        request: Request<MarkLeasedResourceCleanupFailedRequest>,
+    ) -> Result<Response<MarkLeasedResourceCleanupFailedResponse>, Status> {
+        let req = request.into_inner();
+        let resource_id = parse_uuid(req.resource_id.as_ref())?;
+        let expected_cleanup_started_at = req
+            .expected_cleanup_started_at
+            .as_ref()
+            .map(everruns_internal_protocol::proto_timestamp_to_datetime)
+            .ok_or_else(|| Status::invalid_argument("Missing expected_cleanup_started_at"))?;
+
+        let updated = self
+            .db
+            .mark_leased_resource_cleanup_failed(
+                everruns_core::LeasedResourceId::from_uuid(resource_id),
+                expected_cleanup_started_at,
+                req.retry_after_seconds as i32,
+                &req.error,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to mark leased resource cleanup failed: {}", e);
+                Status::internal("Failed to mark leased resource cleanup failed")
+            })?
+            .is_some();
+
+        Ok(Response::new(MarkLeasedResourceCleanupFailedResponse {
+            updated,
+        }))
     }
 
     // ========================================================================
