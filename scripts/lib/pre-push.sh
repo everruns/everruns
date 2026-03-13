@@ -62,15 +62,13 @@ fi
 
 # 6. Commit author attribution check
 echo "6/6 Commit author attribution"
-AUTHOR_NAME=$(git config user.name 2>/dev/null || echo "")
-AUTHOR_EMAIL=$(git config user.email 2>/dev/null || echo "")
-BOT_PATTERN="(claude|cursor|copilot|github-actions|bot|ai-agent|openai|anthropic|gpt)"
-if echo "$AUTHOR_NAME" | grep -iEq "$BOT_PATTERN"; then
-  fail "git user.name looks like a bot: '$AUTHOR_NAME' — commits must use a real user"
-elif echo "$AUTHOR_EMAIL" | grep -iEq "$BOT_PATTERN"; then
-  fail "git user.email looks like a bot: '$AUTHOR_EMAIL' — commits must use a real user"
+if ! resolve_commit_git_identity; then
+  fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
+elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then
+  IFS=$'\t' read -r OFFENDING_SHA OFFENDING_NAME OFFENDING_EMAIL <<< "$OFFENDING_COMMIT"
+  fail "outgoing commit $OFFENDING_SHA has agent-like author '$OFFENDING_NAME <$OFFENDING_EMAIL>'"
 else
-  pass "commit author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+  pass "commit author ($RESOLVED_GIT_AUTHOR_SOURCE): $RESOLVED_GIT_AUTHOR_NAME <$RESOLVED_GIT_AUTHOR_EMAIL>"
 fi
 
 echo ""
