@@ -6,11 +6,12 @@
 // Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
 
+use crate::org_init;
 use crate::storage::{
     StorageBackend,
     models::{
-        CreateAgentRow, CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow,
-        CreateMcpServerRow, CreateOrganizationRow, CreateUserRow,
+        CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
+        CreateOrganizationRow, CreateUserRow,
     },
 };
 use everruns_core::{
@@ -22,7 +23,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 /// Well-known UUID for the Chat harness (used by global chat endpoint)
-pub const CHAT_HARNESS_ID: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
+pub const CHAT_HARNESS_ID: Uuid = org_init::CHAT_HARNESS_ID;
 
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
@@ -60,10 +61,7 @@ mod seed_ids {
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
 
-    // Harnesses (0x600-0x6FF)
-    pub const BASE_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
-    pub const GENERIC_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
-    pub const CHAT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
+    // Harnesses (0x600-0x6FF) — now managed by org_init module
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -172,33 +170,6 @@ async fn sync_agent_capabilities(
     Ok(true)
 }
 
-/// Sync capabilities for a harness, only writing if the set actually changed.
-/// Returns true if capabilities were updated.
-async fn sync_harness_capabilities(
-    db: &StorageBackend,
-    harness_id: Uuid,
-    desired: &[SeedCapability],
-) -> anyhow::Result<bool> {
-    let current = db.get_harness_capabilities(harness_id).await?;
-    let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
-    let desired_ids: Vec<&str> = desired.iter().map(|c| c.id).collect();
-
-    if current_ids == desired_ids {
-        return Ok(false);
-    }
-
-    let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
-        .iter()
-        .enumerate()
-        .map(|(idx, cap)| {
-            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-            (cap.id.to_string(), idx as i32, config)
-        })
-        .collect();
-    db.set_harness_capabilities(harness_id, cap_tuples).await?;
-    Ok(true)
-}
-
 // ============================================
 // Default Organization Seeder
 // ============================================
@@ -280,7 +251,7 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
 }
 
 // ============================================
-// Harness Seeder
+// Agent Seeder
 // ============================================
 
 /// Capability entry with optional per-capability config.
@@ -307,118 +278,6 @@ impl std::fmt::Display for SeedCapability {
         f.write_str(self.id)
     }
 }
-
-struct SeedHarness {
-    id: Uuid,
-    name: &'static str,
-    description: &'static str,
-    system_prompt: &'static str,
-    tags: &'static [&'static str],
-    capabilities: &'static [SeedCapability],
-}
-
-/// Built-in seed harnesses
-const SEED_HARNESSES: &[SeedHarness] = &[
-    SeedHarness {
-        id: seed_ids::BASE_HARNESS,
-        name: "Base",
-        description: "Empty harness with no capabilities. Provides a blank canvas for custom configurations.",
-        system_prompt: "You are a helpful assistant.",
-        tags: &["base", "seed"],
-        capabilities: &[],
-    },
-    SeedHarness {
-        id: seed_ids::GENERIC_HARNESS,
-        name: "Generic",
-        description: "General-purpose harness with file system, bash, web fetch, secrets, session management, and agent skills. Recommended default for most use cases.",
-        system_prompt: "You are a helpful assistant.",
-        tags: &["generic", "default", "seed"],
-        capabilities: &[
-            SeedCapability::new("session_file_system"),
-            SeedCapability::new("virtual_bash"),
-            SeedCapability::with_config(
-                "web_fetch",
-                || serde_json::json!({"enable_file_download": true}),
-            ),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session"),
-            SeedCapability::new("agent_instructions"),
-            SeedCapability::new("skills"),
-            SeedCapability::new("openai_tool_search"),
-        ],
-    },
-    SeedHarness {
-        id: seed_ids::CHAT_HARNESS,
-        name: "Platform Chat",
-        description: "Conversational harness for the global chat interface with platform management capabilities.",
-        system_prompt: "You are a helpful assistant on the Everruns platform.\n\nCapabilities are the primary way to extend agent functionality. Use `list_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.\n\nWhen creating agents, always use `list_capabilities` first to find relevant capability IDs to include.\n\n## Running agents\n\nWhen asked to \"run an agent\" or \"run X with agent Y\", follow these steps:\n1. Create a session for the agent (use `manage_sessions` with operation \"create\")\n2. Send the user's message/task to the session (use `session_interact` with operation \"send_message\")\n3. Wait for the turn to complete (use `session_interact` with operation \"wait_for_idle\")\n4. Retrieve and relay the results (use `session_interact` with operation \"get_messages\")\n\n## Harness creation\n\nAvoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `manage_harnesses` with operation \"list\") which already includes file system, bash, storage, session, agent instructions, and skills capabilities.\n\n## Confirmation guidelines\n\n- **Always confirm** before creating a harness or agent — these are reusable org-wide entities.\n- **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.",
-        tags: &["chat", "seed"],
-        capabilities: &[
-            SeedCapability::new("session_file_system"),
-            SeedCapability::new("virtual_bash"),
-            SeedCapability::with_config(
-                "web_fetch",
-                || serde_json::json!({"enable_file_download": true}),
-            ),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session"),
-            SeedCapability::new("agent_instructions"),
-            SeedCapability::new("skills"),
-            SeedCapability::new("platform_management"),
-            SeedCapability::new("openai_tool_search"),
-        ],
-    },
-];
-
-/// Seed harnesses into the database (upserts, only when changed)
-async fn seed_harnesses(db: &StorageBackend) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-
-    for seed in SEED_HARNESSES {
-        let input = CreateHarnessRow {
-            name: seed.name.to_string(),
-            description: Some(seed.description.to_string()),
-            system_prompt: seed.system_prompt.to_string(),
-            default_model_id: None,
-            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
-        };
-
-        match db
-            .create_harness_with_id(DEFAULT_ORG_ID, seed.id.into(), input)
-            .await?
-        {
-            Some(row) => {
-                // Row was created or updated — sync capabilities
-                sync_harness_capabilities(db, row.id.uuid(), seed.capabilities).await?;
-                if row.created_at == row.updated_at {
-                    tracing::info!(name = seed.name, id = %seed.id, "Created seed harness");
-                    result.created += 1;
-                } else {
-                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed harness");
-                    result.updated += 1;
-                }
-            }
-            None => {
-                // Row unchanged — check if capabilities need syncing
-                let caps_changed =
-                    sync_harness_capabilities(db, seed.id, seed.capabilities).await?;
-                if caps_changed {
-                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed harness capabilities");
-                    result.updated += 1;
-                } else {
-                    tracing::debug!(name = seed.name, id = %seed.id, "Harness up to date");
-                    result.unchanged += 1;
-                }
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-// ============================================
-// Agent Seeder
-// ============================================
 
 /// Seed agent definition
 struct SeedAgent {
@@ -1838,15 +1697,17 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
     );
     result.merge(mcp_result);
 
-    // Seed harnesses (before agents, sessions may reference them)
-    let harness_result = seed_harnesses(db).await?;
+    // Reconcile built-in harnesses across all orgs (before agents, sessions may reference them)
+    let harness_result = org_init::reconcile_built_in_harnesses(db).await?;
     tracing::debug!(
         created = harness_result.created,
         updated = harness_result.updated,
         unchanged = harness_result.unchanged,
-        "Harnesses seeded"
+        "Built-in harnesses reconciled"
     );
-    result.merge(harness_result);
+    result.created += harness_result.created;
+    result.updated += harness_result.updated;
+    result.unchanged += harness_result.unchanged;
 
     // Seed agents (respects deployment grade for dev-only agents)
     let agent_result = seed_agents(db, grade).await?;
@@ -1877,7 +1738,10 @@ mod tests {
 
     #[test]
     fn test_seed_harness_ids_are_unique() {
-        let ids: Vec<Uuid> = SEED_HARNESSES.iter().map(|h| h.id).collect();
+        let ids: Vec<Uuid> = org_init::BUILT_IN_HARNESSES
+            .iter()
+            .map(|h| h.seed_id)
+            .collect();
         let mut unique_ids = ids.clone();
         unique_ids.sort();
         unique_ids.dedup();
@@ -1890,7 +1754,10 @@ mod tests {
 
     #[test]
     fn test_seed_harness_names_are_unique() {
-        let names: Vec<&str> = SEED_HARNESSES.iter().map(|h| h.name).collect();
+        let names: Vec<&str> = org_init::BUILT_IN_HARNESSES
+            .iter()
+            .map(|h| h.name)
+            .collect();
         let mut unique_names = names.clone();
         unique_names.sort();
         unique_names.dedup();
@@ -1903,7 +1770,7 @@ mod tests {
 
     #[test]
     fn test_base_harness_has_no_capabilities() {
-        let base = SEED_HARNESSES
+        let base = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Base")
             .expect("Base harness should exist");
@@ -1916,7 +1783,7 @@ mod tests {
 
     #[test]
     fn test_generic_harness_has_expected_capabilities() {
-        let generic = SEED_HARNESSES
+        let generic = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
@@ -1942,7 +1809,7 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = SEED_HARNESSES
+        let generic = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
@@ -1970,7 +1837,7 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = SEED_HARNESSES
+        let generic = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
@@ -2014,7 +1881,7 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = SEED_HARNESSES
+        let generic = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
@@ -2059,7 +1926,7 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = SEED_HARNESSES
+        let generic = org_init::BUILT_IN_HARNESSES
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
@@ -2240,7 +2107,13 @@ mod tests {
         let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
 
         // Mutate harness description via public API
-        let harness_id = everruns_core::HarnessId::from_uuid(seed_ids::BASE_HARNESS);
+        let harness_id = everruns_core::HarnessId::from_uuid(
+            org_init::BUILT_IN_HARNESSES
+                .iter()
+                .find(|h| h.name == "Base")
+                .unwrap()
+                .seed_id,
+        );
         db.update_harness(
             DEFAULT_ORG_ID,
             harness_id,

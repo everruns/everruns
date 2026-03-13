@@ -55,6 +55,7 @@ async fn setup_test_environment() -> (
         default_model_id: None,
         tags: vec![],
         capabilities: vec![],
+        is_built_in: false,
         status: HarnessStatus::Active,
         created_at: now,
         updated_at: now,

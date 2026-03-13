@@ -50,6 +50,9 @@ pub mod grpc_service;
 // Event retention background job
 pub mod event_retention;
 
+// Organization initialization (built-in harnesses, reconciliation)
+pub mod org_init;
+
 // Service seeding (default agents, providers, models)
 pub mod seed;
 

@@ -125,6 +125,12 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const isLoading = harnessLoading || capabilitiesLoading;
   const isSaving = updateHarness.isPending;
 
+  // Built-in harnesses cannot be edited — redirect to detail page
+  if (harness?.is_built_in) {
+    router.replace(`/harnesses/${harnessId}`);
+    return null;
+  }
+
   if (isLoading) {
     return (
       <div className="container mx-auto p-6">

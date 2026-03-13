@@ -194,6 +194,15 @@ pub async fn create_organization(
         .await
         .log_internal_error_json("add organization member")?;
 
+    // Initialize built-in harnesses for the new organization
+    if let Err(e) = crate::org_init::initialize_org_harnesses(&state.db, row.org_id).await {
+        tracing::warn!(
+            org_id = row.org_id,
+            error = %e,
+            "Failed to initialize built-in harnesses for new org (non-fatal)"
+        );
+    }
+
     let org = Organization {
         public_id: row.public_id,
         name: row.name,

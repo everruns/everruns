@@ -40,9 +40,16 @@ export function HarnessCard({
           </CardTitle>
           <CopyButton value={harness.id} />
         </div>
-        <Badge variant={harness.status === "active" ? "default" : "secondary"}>
-          {harness.status}
-        </Badge>
+        <div className="flex items-center gap-1">
+          {harness.is_built_in && (
+            <Badge variant="outline" className="text-xs">
+              Built-in
+            </Badge>
+          )}
+          <Badge variant={harness.status === "active" ? "default" : "secondary"}>
+            {harness.status}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent>
         {harness.description ? (
@@ -95,7 +102,7 @@ export function HarnessCard({
           <span className="text-xs text-muted-foreground">
             Created {new Date(harness.created_at).toLocaleDateString()}
           </span>
-          {showEditButton && (
+          {showEditButton && !harness.is_built_in && (
             <Link href={`/harnesses/${harness.id}/edit`}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <Pencil className="icon-sharp h-4 w-4" />

@@ -71,6 +71,11 @@ pub struct Harness {
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Whether this harness is built-in (system-managed, readonly).
+    /// Built-in harnesses are provisioned during org initialization and
+    /// cannot be modified or deleted via the API. Users can copy them.
+    #[serde(default)]
+    pub is_built_in: bool,
     /// Current lifecycle status of the harness.
     pub status: HarnessStatus,
     /// Timestamp when the harness was created.

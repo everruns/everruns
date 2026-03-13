@@ -65,6 +65,7 @@ impl HarnessStore for DbHarnessStore {
                     default_model_id: row.default_model_id,
                     tags: row.tags,
                     capabilities,
+                    is_built_in: row.is_built_in,
                     status: HarnessStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,
