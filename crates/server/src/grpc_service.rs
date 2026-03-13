@@ -3316,6 +3316,7 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: None,
             tags: vec![],
             capabilities,
+            initial_files: vec![],
         };
 
         let internal_caller = everruns_core::Caller::internal(req.org_id);
@@ -3344,6 +3345,7 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: None,
             tags: None,
             capabilities: None,
+            initial_files: None,
             status: None,
         };
 
@@ -3400,6 +3402,7 @@ impl WorkerService for WorkerServiceImpl {
                 default_model_id: None,
                 tags: None,
                 capabilities: None,
+                initial_files: None,
                 status: None,
             };
             self.harness_service
@@ -3453,6 +3456,7 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: None,
             tags: vec![],
             capabilities,
+            initial_files: vec![],
             tools: vec![],
         };
 
@@ -3491,6 +3495,7 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: None,
             tags: None,
             capabilities: None,
+            initial_files: None,
             tools: None,
             status: None,
         };

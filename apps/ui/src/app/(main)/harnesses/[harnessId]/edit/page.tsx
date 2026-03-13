@@ -14,9 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
+import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
-import type { AgentCapabilityConfig } from "@/lib/api/types";
+import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
 interface FormData {
   name: string;
@@ -73,6 +74,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
+  const initialFiles = useMemo(() => harness?.initial_files ?? [], [harness?.initial_files]);
+  const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
+  const selectedInitialFiles = localInitialFiles ?? initialFiles;
 
   const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
     setLocalCapabilities(newCapabilities);
@@ -90,6 +94,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       const capabilitiesToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
         JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
+      const initialFilesToSave = localInitialFiles ?? initialFiles;
+      const initialFilesChanged =
+        JSON.stringify(initialFilesToSave) !== JSON.stringify(initialFiles);
 
       await updateHarness.mutateAsync({
         harnessId,
@@ -100,6 +107,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           tags,
           default_model_id: formData.default_model_id || undefined,
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
+          ...(initialFilesChanged && { initial_files: initialFilesToSave }),
         },
       });
 
@@ -254,6 +262,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         Instructions for the AI model (supports Markdown)
                       </p>
                     </div>
+
+                    <InitialFilesEditor
+                      value={selectedInitialFiles}
+                      onChange={setLocalInitialFiles}
+                      disabled={isSaving}
+                      description="Files copied into each new session created from this harness."
+                    />
                   </CardContent>
                 </Card>
 

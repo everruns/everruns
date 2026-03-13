@@ -10,8 +10,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentId, AgentStatus, Caller, Permission, Policy, Rule,
-    TokenUsage,
+    Agent, AgentCapabilityConfig, AgentId, AgentStatus, Caller, InitialFile, Permission, Policy,
+    Rule, TokenUsage,
 };
 use everruns_macros::policy;
 use std::sync::Arc;
@@ -35,6 +35,20 @@ pub struct AgentService {
     db: Arc<StorageBackend>,
 }
 
+fn ensure_file_system_capability(
+    mut capabilities: Vec<AgentCapabilityConfig>,
+    has_initial_files: bool,
+) -> Vec<AgentCapabilityConfig> {
+    if has_initial_files
+        && !capabilities
+            .iter()
+            .any(|cap| cap.capability_id() == "session_file_system")
+    {
+        capabilities.insert(0, AgentCapabilityConfig::new("session_file_system"));
+    }
+    capabilities
+}
+
 impl AgentService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
@@ -47,6 +61,9 @@ impl AgentService {
         client_id: Option<AgentId>,
         req: CreateAgentRequest,
     ) -> Result<Agent> {
+        let capabilities_to_store =
+            ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+
         // When no client_id, generate internal UUID and derive public_id from it.
         // This keeps public_id == AgentId::from_uuid(internal_id), so session FKs
         // (which store the internal UUID) serialize to the same agent_<hex> string.
@@ -59,6 +76,7 @@ impl AgentService {
                 system_prompt: req.system_prompt.clone(),
                 default_model_id: req.default_model_id,
                 tags: req.tags.clone(),
+                initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             };
             let row = self.db.create_agent(caller.org_id, input).await?;
@@ -74,6 +92,7 @@ impl AgentService {
                 system_prompt: req.system_prompt.clone(),
                 default_model_id: req.default_model_id,
                 tags: req.tags.clone(),
+                initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             };
             let row = self
@@ -85,9 +104,8 @@ impl AgentService {
         };
 
         // Set capabilities if provided
-        let capabilities = if !req.capabilities.is_empty() {
-            let cap_tuples: Vec<(String, i32, serde_json::Value)> = req
-                .capabilities
+        let capabilities = if !capabilities_to_store.is_empty() {
+            let cap_tuples: Vec<(String, i32, serde_json::Value)> = capabilities_to_store
                 .iter()
                 .enumerate()
                 .map(|(idx, cap)| {
@@ -101,7 +119,7 @@ impl AgentService {
             self.db
                 .set_agent_capabilities(agent_id_uuid, cap_tuples)
                 .await?;
-            req.capabilities
+            capabilities_to_store
         } else {
             vec![]
         };
@@ -173,6 +191,22 @@ impl AgentService {
             return Ok(None);
         };
         let internal_id = existing.id;
+        let existing_initial_files: Vec<InitialFile> =
+            serde_json::from_value(existing.initial_files.clone()).unwrap_or_default();
+        let final_has_initial_files = req
+            .initial_files
+            .as_ref()
+            .map(|files| !files.is_empty())
+            .unwrap_or(!existing_initial_files.is_empty());
+
+        let capabilities_override = match req.capabilities.clone() {
+            Some(caps) => Some(ensure_file_system_capability(caps, final_has_initial_files)),
+            None if final_has_initial_files => Some(ensure_file_system_capability(
+                self.get_capabilities(internal_id.uuid()).await?,
+                true,
+            )),
+            None => None,
+        };
 
         let input = UpdateAgent {
             name: req.name,
@@ -181,6 +215,9 @@ impl AgentService {
             default_model_id: req.default_model_id,
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
+            initial_files: req
+                .initial_files
+                .map(|files| serde_json::to_value(&files).unwrap_or_default()),
             tools: req
                 .tools
                 .map(|t| serde_json::to_value(&t).unwrap_or_default()),
@@ -192,8 +229,8 @@ impl AgentService {
 
         match row {
             Some(row) => {
-                // Update capabilities if provided
-                let capabilities = if let Some(caps) = req.capabilities {
+                // Update capabilities if provided or required by initial files
+                let capabilities = if let Some(caps) = capabilities_override {
                     let cap_tuples: Vec<(String, i32, serde_json::Value)> = caps
                         .iter()
                         .enumerate()
@@ -236,6 +273,7 @@ impl AgentService {
             default_model_id: source.default_model_id,
             tags: source.tags,
             capabilities: source.capabilities,
+            initial_files: source.initial_files,
             tools: source.tools,
         };
 
@@ -264,6 +302,9 @@ impl AgentService {
         public_id: &str,
         req: CreateAgentRequest,
     ) -> Result<(Agent, bool)> {
+        let capabilities_to_store =
+            ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: req.name,
@@ -271,15 +312,15 @@ impl AgentService {
             system_prompt: req.system_prompt,
             default_model_id: req.default_model_id,
             tags: req.tags,
+            initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
         };
         let (row, was_created) = self.db.upsert_agent(caller.org_id, input).await?;
         let agent_id_uuid = row.id.uuid();
 
         // Set capabilities if provided (replace existing on upsert)
-        let capabilities = if !req.capabilities.is_empty() {
-            let cap_tuples: Vec<(String, i32, serde_json::Value)> = req
-                .capabilities
+        let capabilities = if !capabilities_to_store.is_empty() {
+            let cap_tuples: Vec<(String, i32, serde_json::Value)> = capabilities_to_store
                 .iter()
                 .enumerate()
                 .map(|(idx, cap)| {
@@ -293,7 +334,7 @@ impl AgentService {
             self.db
                 .set_agent_capabilities(agent_id_uuid, cap_tuples)
                 .await?;
-            req.capabilities
+            capabilities_to_store
         } else if was_created {
             vec![]
         } else {
@@ -348,6 +389,8 @@ impl AgentService {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
+                .unwrap_or_default(),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,

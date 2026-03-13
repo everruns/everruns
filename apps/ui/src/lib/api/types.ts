@@ -18,6 +18,13 @@ export interface AgentCapabilityConfig {
   config: Record<string, unknown>;
 }
 
+export interface InitialFile {
+  path: string;
+  content: string;
+  encoding: "text" | "base64";
+  is_readonly: boolean;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -27,6 +34,7 @@ export interface Agent {
   tags: string[];
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
+  initial_files: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */
   tools?: ToolDefinition[];
   status: AgentStatus;
@@ -44,6 +52,7 @@ export interface CreateAgentRequest {
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
+  initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
 }
@@ -56,7 +65,10 @@ export interface UpdateAgentRequest {
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
+  initial_files?: InitialFile[];
   status?: AgentStatus;
+  /** Tool definitions (including client-side tools) */
+  tools?: ToolDefinition[];
 }
 
 // ============================================
@@ -74,6 +86,7 @@ export interface Harness {
   tags: string[];
   /** Capabilities with per-harness configuration */
   capabilities: AgentCapabilityConfig[];
+  initial_files: InitialFile[];
   /** Whether this harness is built-in (system-managed, readonly) */
   is_built_in: boolean;
   status: HarnessStatus;
@@ -89,6 +102,7 @@ export interface CreateHarnessRequest {
   tags?: string[];
   /** Capabilities with per-harness configuration */
   capabilities?: AgentCapabilityConfig[];
+  initial_files?: InitialFile[];
 }
 
 export interface UpdateHarnessRequest {
@@ -99,6 +113,7 @@ export interface UpdateHarnessRequest {
   tags?: string[];
   /** Capabilities with per-harness configuration */
   capabilities?: AgentCapabilityConfig[];
+  initial_files?: InitialFile[];
   status?: HarnessStatus;
 }
 

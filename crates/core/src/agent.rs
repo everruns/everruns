@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, ModelId};
 
@@ -83,6 +84,9 @@ pub struct Agent {
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Starter files copied into each new session for this agent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initial_files: Vec<InitialFile>,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -155,6 +159,7 @@ mod tests {
             default_model_id: None,
             tags: vec![],
             capabilities: vec![],
+            initial_files: vec![],
             tools: vec![],
             status: AgentStatus::Active,
             created_at: Utc::now(),

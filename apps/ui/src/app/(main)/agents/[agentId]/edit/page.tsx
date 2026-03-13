@@ -14,9 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
+import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
-import type { AgentCapabilityConfig } from "@/lib/api/types";
+import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
 interface FormData {
   name: string;
@@ -76,6 +77,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
+  const initialFiles = useMemo(() => agent?.initial_files ?? [], [agent?.initial_files]);
+  const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
+  const selectedInitialFiles = localInitialFiles ?? initialFiles;
 
   // Capabilities change handler
   const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
@@ -97,6 +101,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       const capabilitiesToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
         JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
+      const initialFilesToSave = localInitialFiles ?? initialFiles;
+      const initialFilesChanged =
+        JSON.stringify(initialFilesToSave) !== JSON.stringify(initialFiles);
 
       // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
@@ -109,6 +116,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           default_model_id: formData.default_model_id || undefined,
           // Only include capabilities if they changed
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
+          ...(initialFilesChanged && { initial_files: initialFilesToSave }),
         },
       });
 
@@ -258,6 +266,13 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         Instructions for the AI model (supports Markdown)
                       </p>
                     </div>
+
+                    <InitialFilesEditor
+                      value={selectedInitialFiles}
+                      onChange={setLocalInitialFiles}
+                      disabled={isSaving}
+                      description="Files copied into each new session for this agent."
+                    />
                   </CardContent>
                 </Card>
 

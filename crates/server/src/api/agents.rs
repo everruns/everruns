@@ -15,8 +15,8 @@ use axum::{
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, Caller, OrgRole, ResourceConfigResponse,
-    ToolDefinition, evaluate_policies,
+    Agent, AgentCapabilityConfig, AgentStatus, Caller, InitialFile, OrgRole,
+    ResourceConfigResponse, ToolDefinition, evaluate_policies,
 };
 
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
@@ -60,6 +60,9 @@ pub struct CreateAgentRequest {
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Starter files copied into each new session for this agent.
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
     /// Client-side tools for this agent.
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default)]
@@ -94,6 +97,9 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
+    /// Starter files copied into each new session for this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_files: Option<Vec<InitialFile>>,
     /// The status of the agent. Set to "archived" to soft-delete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<AgentStatus>,
@@ -169,6 +175,8 @@ struct AgentFile {
     /// Capabilities - supports both string IDs and objects with ref/config
     #[serde(default)]
     pub capabilities: Vec<AgentFileCapability>,
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
 }
 
 use crate::services::agent::{AGENT_MANAGE, AGENT_VIEW};
@@ -292,6 +300,7 @@ pub async fn create_agent(
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
+        &req.initial_files,
     )?;
 
     // TM-AGENT-005: High-risk capabilities require admin role
@@ -417,6 +426,7 @@ pub async fn update_agent(
         req.description.as_deref(),
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),
+        req.initial_files.as_deref(),
     )?;
 
     // TM-AGENT-005: High-risk capabilities require admin role
@@ -566,6 +576,7 @@ pub async fn upsert_agent(
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
+        &req.initial_files,
     )?;
 
     // TM-AGENT-005: High-risk capabilities require admin role
@@ -688,6 +699,7 @@ pub async fn import_agent(
         agent_file.description.as_deref(),
         &system_prompt,
         agent_file.capabilities.len(),
+        &agent_file.initial_files,
     )?;
 
     let client_id = agent_file.id;
@@ -703,6 +715,7 @@ pub async fn import_agent(
             .iter()
             .map(|c| c.to_agent_capability_config())
             .collect(),
+        initial_files: agent_file.initial_files,
         tools: vec![],
     };
 
@@ -759,6 +772,22 @@ fn agent_to_markdown(agent: &Agent) -> String {
         }
     }
 
+    if !agent.initial_files.is_empty() {
+        yaml_lines.push("initial_files:".to_string());
+        for file in &agent.initial_files {
+            yaml_lines.push(format!(
+                "  - path: {}",
+                serde_json::to_string(&file.path).unwrap_or_else(|_| "\"/\"".to_string())
+            ));
+            yaml_lines.push(format!("    encoding: {}", file.encoding));
+            yaml_lines.push(format!("    is_readonly: {}", file.is_readonly));
+            yaml_lines.push(format!(
+                "    content: {}",
+                serde_json::to_string(&file.content).unwrap_or_else(|_| "\"\"".to_string())
+            ));
+        }
+    }
+
     format!(
         "---\n{}\n---\n{}",
         yaml_lines.join("\n"),
@@ -802,6 +831,7 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
         default_model_id: None,
         tags: vec![],
         capabilities: vec![],
+        initial_files: vec![],
     })
 }
 

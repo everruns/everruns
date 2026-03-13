@@ -61,6 +61,7 @@ async fn test_agent_crud() {
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -133,6 +134,7 @@ async fn test_agent_get_by_name() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -170,6 +172,7 @@ async fn test_session_crud() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -262,6 +265,7 @@ async fn test_event_crud() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -334,6 +338,7 @@ async fn test_event_exclude_types() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -414,6 +419,7 @@ async fn test_event_filter_types() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -696,6 +702,7 @@ async fn test_session_file_crud() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -869,6 +876,7 @@ async fn test_agent_capabilities() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -1087,6 +1095,7 @@ async fn test_session_usage_tracking() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -1165,6 +1174,7 @@ async fn test_session_previews() {
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )

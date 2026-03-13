@@ -458,6 +458,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            initial_files: input.initial_files,
             tools: input.tools,
             status: "active".to_string(),
             created_at: now,
@@ -489,6 +490,7 @@ impl InMemoryDatabase {
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
                 && existing.tags == input.tags
+                && existing.initial_files == input.initial_files
                 && existing.tools == input.tools
             {
                 return Ok(None); // Unchanged
@@ -499,6 +501,7 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 tags: input.tags,
+                initial_files: input.initial_files,
                 tools: input.tools,
                 updated_at: now,
                 ..existing.clone()
@@ -516,6 +519,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            initial_files: input.initial_files,
             tools: input.tools,
             status: "active".to_string(),
             created_at: now,
@@ -597,8 +601,14 @@ impl InMemoryDatabase {
             if let Some(tags) = input.tags {
                 agent.tags = tags;
             }
+            if let Some(initial_files) = input.initial_files {
+                agent.initial_files = initial_files;
+            }
             if let Some(status) = input.status {
                 agent.status = status;
+            }
+            if let Some(tools) = input.tools {
+                agent.tools = tools;
             }
             agent.updated_at = Self::now();
             return Ok(Some(agent.clone()));
@@ -642,6 +652,7 @@ impl InMemoryDatabase {
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
             agent.tags = input.tags;
+            agent.initial_files = input.initial_files;
             agent.tools = input.tools;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
@@ -658,6 +669,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 tags: input.tags,
+                initial_files: input.initial_files,
                 tools: input.tools,
                 status: "active".to_string(),
                 created_at: now,
@@ -697,6 +709,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            initial_files: input.initial_files,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -723,6 +736,7 @@ impl InMemoryDatabase {
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
                 && existing.tags == input.tags
+                && existing.initial_files == input.initial_files
             {
                 return Ok(None); // Unchanged
             }
@@ -731,6 +745,7 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 tags: input.tags,
+                initial_files: input.initial_files,
                 updated_at: now,
                 ..existing.clone()
             };
@@ -746,6 +761,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             tags: input.tags,
+            initial_files: input.initial_files,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -804,6 +820,9 @@ impl InMemoryDatabase {
             }
             if let Some(tags) = input.tags {
                 harness.tags = tags;
+            }
+            if let Some(initial_files) = input.initial_files {
+                harness.initial_files = initial_files;
             }
             if let Some(status) = input.status {
                 harness.status = status;
@@ -4489,6 +4508,7 @@ mod tests {
                     system_prompt: "You are helpful".to_string(),
                     default_model_id: None,
                     tags: vec!["test".to_string()],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -4516,6 +4536,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -4560,6 +4581,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -4621,6 +4643,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -4678,6 +4701,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -5150,6 +5174,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -5192,6 +5217,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -5274,6 +5300,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )
@@ -5572,6 +5599,7 @@ mod tests {
                 system_prompt: String::new(),
                 default_model_id: None,
                 tags: vec![],
+                initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
             },
         )
@@ -6005,6 +6033,7 @@ mod tests {
                     system_prompt: String::new(),
                     default_model_id: None,
                     tags: vec![],
+                    initial_files: serde_json::json!([]),
                     tools: serde_json::json!([]),
                 },
             )

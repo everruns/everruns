@@ -505,6 +505,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        initial_files: vec![],
         tools: vec![],
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
@@ -580,6 +581,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        initial_files: vec![],
         is_built_in: false,
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),

@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
+use crate::session_file::InitialFile;
 use crate::typed_id::{HarnessId, ModelId};
 
 #[cfg(feature = "openapi")]
@@ -71,6 +72,9 @@ pub struct Harness {
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Starter files copied into each new session for this harness.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initial_files: Vec<InitialFile>,
     /// Whether this harness is built-in (system-managed, readonly).
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.

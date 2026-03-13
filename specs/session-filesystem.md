@@ -120,6 +120,7 @@ See the OpenAPI spec (`./scripts/export-openapi.sh`) for detailed request/respon
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files
 5. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
+6. **Starter files:** Agents and harnesses can declare starter files that are copied into each new session before use. Agent starter files override harness starter files when they target the same normalized path.
 
 ### Database Schema
 
@@ -130,6 +131,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `session_files` table
 - "Workspace" tab on session detail page
 - File browser component with directory navigation
 - File viewer with Preview/Source toggle
+- Read-only starter files are visible in the UI but cannot be edited or deleted
 - File preview support:
   - **Code files** (ts, js, py, rs, go, etc.): Shiki-based syntax highlighting via Streamdown
   - **CSV files**: Rendered as formatted tables with row/column count

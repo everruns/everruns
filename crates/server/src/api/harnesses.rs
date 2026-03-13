@@ -14,8 +14,8 @@ use axum::{
 };
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
-    AgentCapabilityConfig, Caller, Harness, HarnessStatus, ResourceConfigResponse, ToolDefinition,
-    evaluate_policies,
+    AgentCapabilityConfig, Caller, Harness, HarnessStatus, InitialFile, ResourceConfigResponse,
+    ToolDefinition, evaluate_policies,
 };
 
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
@@ -51,6 +51,9 @@ pub struct CreateHarnessRequest {
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Starter files copied into each new session for this harness.
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
 }
 
 /// Request to update a harness. Only provided fields will be updated.
@@ -70,6 +73,8 @@ pub struct UpdateHarnessRequest {
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_files: Option<Vec<InitialFile>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<HarnessStatus>,
 }
@@ -187,6 +192,7 @@ pub async fn create_harness(
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
+        &req.initial_files,
     )?;
 
     let caller = Caller::from(&org);
@@ -305,6 +311,7 @@ pub async fn update_harness(
         req.description.as_deref(),
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),
+        req.initial_files.as_deref(),
     )?;
 
     let caller = Caller::from(&org);

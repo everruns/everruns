@@ -71,6 +71,7 @@ impl AgentStore for DbAgentStore {
                     default_model_id: row.default_model_id,
                     tags: row.tags,
                     capabilities,
+                    initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
                     tools: serde_json::from_value(row.tools).unwrap_or_default(),
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,

@@ -65,6 +65,7 @@ impl HarnessStore for DbHarnessStore {
                     default_model_id: row.default_model_id,
                     tags: row.tags,
                     capabilities,
+                    initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
                     is_built_in: row.is_built_in,
                     status: HarnessStatus::from(row.status.as_str()),
                     created_at: row.created_at,

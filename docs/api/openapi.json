@@ -4355,6 +4355,13 @@
             "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
             "example": "agent_01933b5a000070008000000000000001"
           },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Starter files copied into each new session for this agent."
+          },
           "name": {
             "type": "string",
             "description": "Display name of the agent."
@@ -4871,6 +4878,13 @@
             ],
             "description": "Client-supplied agent ID (format: agent_{32-hex}).\nIf not provided, one is auto-generated.",
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Starter files copied into each new session for this agent."
           },
           "name": {
             "type": "string",
@@ -5886,6 +5900,32 @@
           }
         }
       },
+      "InitialFile": {
+        "type": "object",
+        "description": "Starter file copied into a new session from an agent or harness.",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "File content: plain text or base64-encoded binary."
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Content encoding: `text` or `base64`."
+          },
+          "is_readonly": {
+            "type": "boolean",
+            "description": "Prevent session-side edits or deletes when true."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path within the session workspace. `/workspace` prefix is accepted."
+          }
+        }
+      },
       "InputContentPart": {
         "oneOf": [
           {
@@ -6232,6 +6272,13 @@
                   "type": "string",
                   "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
                   "example": "agent_01933b5a000070008000000000000001"
+                },
+                "initial_files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitialFile"
+                  },
+                  "description": "Starter files copied into each new session for this agent."
                 },
                 "name": {
                   "type": "string",
@@ -10343,6 +10390,16 @@
             ],
             "description": "A human-readable description of what the agent does.",
             "example": "Updated description for the agent"
+          },
+          "initial_files": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Starter files copied into each new session for this agent."
           },
           "name": {
             "type": [
