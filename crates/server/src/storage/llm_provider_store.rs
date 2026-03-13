@@ -90,7 +90,7 @@ impl LlmProviderStore for DbLlmProviderStore {
     }
 
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
-        // Look up the default model (is_default = true)
+        // Look up the default model via organization settings
         let model_row = self
             .db
             .get_default_llm_model(self.org_id)

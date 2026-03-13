@@ -90,7 +90,7 @@ function ModelList() {
                   </div>
                 </div>
                 <FavoriteToggle model={model} size="sm" />
-                {model.is_default && (
+                {model.installed && (
                   <Badge variant="secondary" className="text-xs">
                     Default
                   </Badge>
@@ -115,7 +115,7 @@ function ModelList() {
                   </div>
                 </div>
                 <FavoriteToggle model={model} size="sm" />
-                {model.is_default && (
+                {model.installed && (
                   <Badge variant="secondary" className="text-xs">
                     Default
                   </Badge>

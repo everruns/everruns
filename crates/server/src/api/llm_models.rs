@@ -62,11 +62,10 @@ pub struct CreateLlmModelRequest {
     #[serde(default)]
     #[schema(example = json!(["chat", "vision", "tools"]))]
     pub capabilities: Vec<String>,
-    /// Whether this model should be the default for the provider.
-    /// Only one model per provider can be the default.
+    /// Whether this model should be installed (visible in UI model pickers).
     #[serde(default)]
     #[schema(example = false)]
-    pub is_default: bool,
+    pub installed: bool,
     /// Whether this model should be marked as a favorite for quick access.
     #[serde(default)]
     #[schema(example = false)]
@@ -105,10 +104,10 @@ pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["chat", "tools"]))]
     pub capabilities: Option<Vec<String>>,
-    /// Whether this model should be the default for the provider.
+    /// Whether this model should be installed (visible in UI model pickers).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
-    pub is_default: Option<bool>,
+    pub installed: Option<bool>,
     /// Whether this model should be marked as a favorite for quick access.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]

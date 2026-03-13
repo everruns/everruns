@@ -46,19 +46,21 @@ export function ModelPicker({
 }: ModelPickerProps) {
   const { data: models = [], isLoading } = useLlmModels();
 
-  // Sort models: favorites first, then by provider and name
-  const sortedModels = [...models].sort((a, b) => {
-    // Favorites first
-    if (a.is_favorite !== b.is_favorite) {
-      return a.is_favorite ? -1 : 1;
-    }
-    // Then by provider name
-    if (a.provider_name !== b.provider_name) {
-      return a.provider_name.localeCompare(b.provider_name);
-    }
-    // Then by display name
-    return a.display_name.localeCompare(b.display_name);
-  });
+  // Only show installed models, sorted: favorites first, then by provider and name
+  const sortedModels = [...models]
+    .filter((m) => m.installed)
+    .sort((a, b) => {
+      // Favorites first
+      if (a.is_favorite !== b.is_favorite) {
+        return a.is_favorite ? -1 : 1;
+      }
+      // Then by provider name
+      if (a.provider_name !== b.provider_name) {
+        return a.provider_name.localeCompare(b.provider_name);
+      }
+      // Then by display name
+      return a.display_name.localeCompare(b.display_name);
+    });
 
   const selectedModel = models.find((m) => m.id === value);
 

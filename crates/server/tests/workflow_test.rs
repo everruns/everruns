@@ -262,7 +262,7 @@ async fn test_llm_provider_and_model_workflow() {
             "name": "Test OpenAI Provider",
             "provider_type": "openai",
             "base_url": "https://api.openai.com/v1",
-            "is_default": true
+            "installed": true
         }))
         .send()
         .await
@@ -290,7 +290,7 @@ async fn test_llm_provider_and_model_workflow() {
             "model_id": "gpt-5.2",
             "display_name": "GPT-5.2",
             "capabilities": ["chat", "vision"],
-            "is_default": true
+            "installed": true
         }))
         .send()
         .await
@@ -338,7 +338,7 @@ async fn test_llm_model_profile() {
         .json(&json!({
             "name": "Test Profile Provider",
             "provider_type": "openai",
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -362,7 +362,7 @@ async fn test_llm_model_profile() {
             "model_id": "gpt-4o",
             "display_name": "GPT-4o",
             "capabilities": ["chat", "vision"],
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -449,7 +449,7 @@ async fn test_session_inherits_agent_default_model() {
         .json(&json!({
             "name": "Test Provider for Session Model",
             "provider_type": "openai",
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -471,7 +471,7 @@ async fn test_session_inherits_agent_default_model() {
         .json(&json!({
             "model_id": "test-model",
             "display_name": "Test Model",
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -543,7 +543,7 @@ async fn test_session_inherits_agent_default_model() {
         .json(&json!({
             "model_id": "test-model-2",
             "display_name": "Test Model 2",
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -1025,7 +1025,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             "name": "FS Bash Integration Test Provider",
             "provider_type": "anthropic",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -1573,7 +1573,7 @@ async fn test_no_duplicate_tool_calls() {
             "name": "Duplicate Tool Test Provider",
             "provider_type": "openai",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -3122,7 +3122,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
             "name": "OpenAI Tool Test Provider",
             "provider_type": "openai",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -3370,7 +3370,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             "name": "Anthropic Tool Test Provider",
             "provider_type": "anthropic",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -4260,7 +4260,7 @@ async fn test_anthropic_extended_thinking() {
             "name": "Anthropic Thinking Test Provider",
             "provider_type": "anthropic",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await
@@ -4618,7 +4618,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             "name": "Anthropic Thinking+Tools Test",
             "provider_type": "anthropic",
             "api_key": api_key,
-            "is_default": false
+            "installed": false
         }))
         .send()
         .await

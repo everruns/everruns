@@ -376,7 +376,7 @@ mod tests {
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
                     capabilities: vec!["chat".to_string()],
-                    is_default: false,
+                    installed: false,
                     is_favorite: false,
                     source: "manual".to_string(),
                     provider_metadata: None,
@@ -492,7 +492,7 @@ mod tests {
                     model_id: "claude-3-opus".to_string(),
                     display_name: "Claude 3 Opus".to_string(),
                     capabilities: vec![],
-                    is_default: false,
+                    installed: false,
                     is_favorite: false,
                     source: "manual".to_string(),
                     provider_metadata: None,
@@ -509,7 +509,7 @@ mod tests {
                     model_id: "claude-3-sonnet".to_string(),
                     display_name: "Claude 3 Sonnet".to_string(),
                     capabilities: vec![],
-                    is_default: true,
+                    installed: true,
                     is_favorite: false,
                     source: "manual".to_string(),
                     provider_metadata: None,
@@ -555,21 +555,27 @@ mod tests {
             .await
             .unwrap();
 
-        db.create_llm_model(
-            org_id,
-            CreateLlmModelRow {
-                provider_id: provider_row.id,
-                model_id: "gpt-4o".to_string(),
-                display_name: "GPT-4o".to_string(),
-                capabilities: vec![],
-                is_default: true,
-                is_favorite: false,
-                source: "manual".to_string(),
-                provider_metadata: None,
-            },
-        )
-        .await
-        .unwrap();
+        let model = db
+            .create_llm_model(
+                org_id,
+                CreateLlmModelRow {
+                    provider_id: provider_row.id,
+                    model_id: "gpt-4o".to_string(),
+                    display_name: "GPT-4o".to_string(),
+                    capabilities: vec![],
+                    installed: true,
+                    is_favorite: false,
+                    source: "manual".to_string(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Set org default model
+        db.upsert_organization_settings(org_id, Some(model.id.uuid()))
+            .await
+            .unwrap();
 
         // First call: populates cache
         let result = resolver
@@ -749,21 +755,27 @@ mod tests {
             .await
             .unwrap();
 
-        db.create_llm_model(
-            org_id,
-            CreateLlmModelRow {
-                provider_id: provider_row.id,
-                model_id: "gpt-4o".to_string(),
-                display_name: "GPT-4o".to_string(),
-                capabilities: vec![],
-                is_default: true,
-                is_favorite: false,
-                source: "manual".to_string(),
-                provider_metadata: None,
-            },
-        )
-        .await
-        .unwrap();
+        let model = db
+            .create_llm_model(
+                org_id,
+                CreateLlmModelRow {
+                    provider_id: provider_row.id,
+                    model_id: "gpt-4o".to_string(),
+                    display_name: "GPT-4o".to_string(),
+                    capabilities: vec![],
+                    installed: true,
+                    is_favorite: false,
+                    source: "manual".to_string(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Set org default model
+        db.upsert_organization_settings(org_id, Some(model.id.uuid()))
+            .await
+            .unwrap();
 
         // Default model belongs to DEFAULT_ORG_ID — should resolve
         let result = resolver

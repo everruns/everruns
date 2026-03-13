@@ -87,6 +87,8 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
+    // Organization settings (default model, etc.)
+    org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -138,6 +140,7 @@ impl Default for InMemoryDatabase {
             leased_resources: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
+            org_settings: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -1650,45 +1653,75 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
     ) -> Result<Option<LlmModelWithProviderRow>> {
+        let org_settings = self.org_settings.read();
+        let default_model_id = org_settings.get(&org_id).and_then(|s| s.default_model_id);
+        let default_model_id = match default_model_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
-        for model in models.values() {
-            if model.is_default
-                && model.org_id == org_id
-                && let Some(provider) = providers.get(&model.provider_id)
-            {
-                return Ok(Some(LlmModelWithProviderRow {
-                    id: model.id,
-                    org_id: model.org_id,
-                    provider_id: model.provider_id,
-                    model_id: model.model_id.clone(),
-                    display_name: model.display_name.clone(),
-                    capabilities: model.capabilities.clone(),
-                    is_default: model.is_default,
-                    is_favorite: model.is_favorite,
-                    status: model.status.clone(),
-                    source: model.source.clone(),
-                    last_seen_at: model.last_seen_at,
-                    provider_metadata: model.provider_metadata.clone(),
-                    created_at: model.created_at,
-                    updated_at: model.updated_at,
-                    provider_name: provider.name.clone(),
-                    provider_type: provider.provider_type.clone(),
-                }));
-            }
+        if let Some(model) = models.get(&default_model_id)
+            && model.org_id == org_id
+            && let Some(provider) = providers.get(&model.provider_id)
+        {
+            return Ok(Some(LlmModelWithProviderRow {
+                id: model.id,
+                org_id: model.org_id,
+                provider_id: model.provider_id,
+                model_id: model.model_id.clone(),
+                display_name: model.display_name.clone(),
+                capabilities: model.capabilities.clone(),
+                is_favorite: model.is_favorite,
+                installed: model.installed,
+                status: model.status.clone(),
+                source: model.source.clone(),
+                last_seen_at: model.last_seen_at,
+                provider_metadata: model.provider_metadata.clone(),
+                created_at: model.created_at,
+                updated_at: model.updated_at,
+                provider_name: provider.name.clone(),
+                provider_type: provider.provider_type.clone(),
+            }));
         }
         Ok(None)
     }
 
-    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
-        for model in self.llm_models.write().values_mut() {
-            if model.org_id == org_id {
-                model.is_default = false;
-            }
-        }
-        Ok(())
+    // ============================================
+    // Organization Settings (in-memory)
+    // ============================================
+
+    pub async fn get_organization_settings(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<OrganizationSettingsRow>> {
+        Ok(self.org_settings.read().get(&org_id).cloned())
     }
+
+    pub async fn upsert_organization_settings(
+        &self,
+        org_id: i64,
+        default_model_id: Option<Uuid>,
+    ) -> Result<OrganizationSettingsRow> {
+        let now = Self::now();
+        let mut settings = self.org_settings.write();
+        let row = settings
+            .entry(org_id)
+            .or_insert_with(|| OrganizationSettingsRow {
+                org_id,
+                default_model_id: None,
+                created_at: now,
+                updated_at: now,
+            });
+        row.default_model_id = default_model_id.map(ModelId::from_uuid);
+        row.updated_at = now;
+        Ok(row.clone())
+    }
+
+    // ============================================
+    // LLM Models (continued)
+    // ============================================
 
     pub async fn create_llm_model(
         &self,
@@ -1704,31 +1737,20 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
-            is_default: input.is_default,
             is_favorite: input.is_favorite,
-            status: "active".to_string(), // Default status for new models
+            installed: input.installed,
+            status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
             provider_metadata: input.provider_metadata,
             created_at: now,
             updated_at: now,
         };
-        let mut models = self.llm_models.write();
-        if input.is_default {
-            for m in models.values_mut() {
-                if m.org_id == org_id && m.is_default {
-                    m.is_default = false;
-                    m.updated_at = now;
-                }
-            }
-        }
-        models.insert(id, row.clone());
+        self.llm_models.write().insert(id, row.clone());
         Ok(row)
     }
 
-    /// Create or update a model with a specific ID (for seeding)
-    /// Uses upsert to update display_name, is_default, is_favorite if model exists
-    /// Create or update LLM model with a specific ID (for seeding).
+    /// Create or update a model with a specific ID (for seeding).
     /// Returns Some(row) if created or updated, None if unchanged.
     pub async fn create_llm_model_with_id(
         &self,
@@ -1743,23 +1765,15 @@ impl InMemoryDatabase {
         if let Some(existing) = models.get(&id).cloned() {
             // Check if seed-controlled fields differ
             if existing.display_name == input.display_name
-                && existing.is_default == input.is_default
                 && existing.is_favorite == input.is_favorite
+                && existing.installed == input.installed
             {
                 return Ok(None); // Unchanged
             }
-            if input.is_default {
-                for m in models.values_mut() {
-                    if m.org_id == org_id && m.is_default && m.id != id {
-                        m.is_default = false;
-                        m.updated_at = now;
-                    }
-                }
-            }
             let row = LlmModelRow {
                 display_name: input.display_name,
-                is_default: input.is_default,
                 is_favorite: input.is_favorite,
+                installed: input.installed,
                 updated_at: now,
                 ..existing
             };
@@ -1767,14 +1781,6 @@ impl InMemoryDatabase {
             return Ok(Some(row));
         }
 
-        if input.is_default {
-            for m in models.values_mut() {
-                if m.org_id == org_id && m.is_default {
-                    m.is_default = false;
-                    m.updated_at = now;
-                }
-            }
-        }
         let row = LlmModelRow {
             id,
             org_id,
@@ -1782,8 +1788,8 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
-            is_default: input.is_default,
             is_favorite: input.is_favorite,
+            installed: input.installed,
             status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
@@ -1825,8 +1831,8 @@ impl InMemoryDatabase {
                 model_id: model.model_id.clone(),
                 display_name: model.display_name.clone(),
                 capabilities: model.capabilities.clone(),
-                is_default: model.is_default,
                 is_favorite: model.is_favorite,
+                installed: model.installed,
                 status: model.status.clone(),
                 source: model.source.clone(),
                 last_seen_at: model.last_seen_at,
@@ -1873,8 +1879,8 @@ impl InMemoryDatabase {
                         model_id: model.model_id.clone(),
                         display_name: model.display_name.clone(),
                         capabilities: model.capabilities.clone(),
-                        is_default: model.is_default,
                         is_favorite: model.is_favorite,
+                        installed: model.installed,
                         status: model.status.clone(),
                         source: model.source.clone(),
                         last_seen_at: model.last_seen_at,
@@ -1886,10 +1892,11 @@ impl InMemoryDatabase {
                     })
             })
             .collect();
-        // Sort by favorite first, then by display_name
+        // Sort by installed first, then favorite, then display_name
         result.sort_by(|a, b| {
-            b.is_favorite
-                .cmp(&a.is_favorite)
+            b.installed
+                .cmp(&a.installed)
+                .then_with(|| b.is_favorite.cmp(&a.is_favorite))
                 .then_with(|| a.display_name.cmp(&b.display_name))
         });
         Ok(result)
@@ -1907,16 +1914,6 @@ impl InMemoryDatabase {
         if models.get(&id).is_none_or(|m| m.org_id != org_id) {
             return Ok(None);
         }
-        // Clear default on other models if setting this one as default
-        if input.is_default == Some(true) {
-            let now = Self::now();
-            for m in models.values_mut() {
-                if m.org_id == org_id && m.is_default && m.id != id {
-                    m.is_default = false;
-                    m.updated_at = now;
-                }
-            }
-        }
         let model = models.get_mut(&id).unwrap();
         if let Some(display_name) = input.display_name {
             model.display_name = display_name;
@@ -1924,11 +1921,11 @@ impl InMemoryDatabase {
         if let Some(capabilities) = input.capabilities {
             model.capabilities = serde_json::to_value(&capabilities)?;
         }
-        if let Some(is_default) = input.is_default {
-            model.is_default = is_default;
-        }
         if let Some(is_favorite) = input.is_favorite {
             model.is_favorite = is_favorite;
+        }
+        if let Some(installed) = input.installed {
+            model.installed = installed;
         }
         if let Some(status) = input.status {
             model.status = status;
@@ -1970,8 +1967,8 @@ impl InMemoryDatabase {
                     model_id: model.model_id.clone(),
                     display_name: model.display_name.clone(),
                     capabilities: model.capabilities.clone(),
-                    is_default: model.is_default,
                     is_favorite: model.is_favorite,
+                    installed: model.installed,
                     status: model.status.clone(),
                     source: model.source.clone(),
                     last_seen_at: model.last_seen_at,

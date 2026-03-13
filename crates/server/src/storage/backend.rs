@@ -649,8 +649,19 @@ impl StorageBackend {
         dispatch!(self, get_default_llm_model, org_id)
     }
 
-    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
-        dispatch!(self, clear_all_model_defaults, org_id)
+    pub async fn get_organization_settings(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<OrganizationSettingsRow>> {
+        dispatch!(self, get_organization_settings, org_id)
+    }
+
+    pub async fn upsert_organization_settings(
+        &self,
+        org_id: i64,
+        default_model_id: Option<uuid::Uuid>,
+    ) -> Result<OrganizationSettingsRow> {
+        dispatch!(self, upsert_organization_settings, org_id, default_model_id)
     }
 
     pub async fn create_llm_model(
