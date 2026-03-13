@@ -1,8 +1,8 @@
 # Ship
 
-Run the full ship flow: verify quality, ensure test coverage, simplify code, review security, update artifacts, smoke test, then push, create PR, and merge when CI is green.
+Land a change safely: achieve the requested goal, gather convincing evidence, create a mergeable PR, and merge only after CI is green.
 
-This command implements the complete "Shipping" definition and Pre-PR Checklist from AGENTS.md. When the user says "ship" or "fix and ship", execute ALL phases below — not just the push/merge steps.
+This command implements the "Shipping" definition and Pre-PR Checklist from AGENTS.md. Optimize for required outcomes, not a rigid script. Use judgment on ordering and depth: if risk is low, keep it lean; if risk is high, increase validation.
 
 ## Arguments
 
@@ -10,146 +10,86 @@ This command implements the complete "Shipping" definition and Pre-PR Checklist 
 
 ## Instructions
 
-### Phase 1: Pre-flight
+### Required outcomes
 
-1. Confirm we're NOT on `main` or `master`
-2. Confirm there are no uncommitted changes (`git diff --quiet && git diff --cached --quiet`)
-3. If uncommitted changes exist, stop and tell the user
+1. **Safe branch state**
+   - Not on `main` or `master`
+   - Clean working tree before final push
+   - Rebased onto the latest `origin/main` before merge
+2. **Goal achieved with evidence**
+   - Review the delta with `git diff origin/main...HEAD` and `git log origin/main..HEAD`
+   - Confirm the requested behavior is implemented
+   - Add or update validation that matches risk:
+     - Bug fixes: prefer a failing test first, then prove the fix
+     - Features: cover acceptance criteria plus important negative paths
+     - Docs/config-only changes: explain why code tests are unnecessary and run the relevant docs/build/lint checks
+3. **Changed code is fit to merge**
+   - Simplify obvious duplication or unnecessary complexity
+   - Review touched areas for security risks: auth, input validation, data exposure, injection, dependency risk
+   - If you find issues, fix them and refresh the validation
+4. **Artifacts stay in sync**
+   - Update only the artifacts affected by the change:
+     - `specs/`
+     - `specs/threat-model.md`
+     - `AGENTS.md`
+     - `test_cases/`
+     - `apps/docs/`
+     - OpenAPI via `./scripts/export-openapi.sh`
+5. **Relevant runtime confidence exists**
+   - Smoke test impacted flows when tests/builds are not enough
+   - Prefer dev mode for fast UI checks: `just start-dev --no-watch`
+   - Use full mode for database, migration, infra, or API integration risk: `just start-all --no-watch`
+   - Stop any servers you started
+6. **PR is created and merged safely**
+   - Push the branch
+   - Create or update the PR using `.github/pull_request_template.md`
+   - Wait for CI to go green
+   - Merge with squash only after green CI
 
-### Phase 2: Test Coverage
+### Hints
 
-Review the changes on this branch (use `git diff origin/main...HEAD` and `git log origin/main..HEAD`) and ensure comprehensive test coverage:
+- Start from the goal and the risk surface. Touching auth, persistence, migrations, external APIs, or end-to-end UI flows usually warrants deeper validation.
+- Use the smallest set of checks that gives high confidence. Expand only when the first pass leaves gaps or reveals issues.
+- If a bug is hard to capture with a unit test, choose the next-best proof: integration test, regression harness, or explicit smoke test.
+- If `just fmt` can auto-fix a failing formatting check, use it and retry once.
+- Stop only for blockers you cannot safely resolve alone, such as merge conflicts, missing credentials, or ambiguous product intent.
 
-1. **Identify all changed code paths** — every new/modified function, endpoint, handler, component
-2. **Verify existing tests cover the changes** — run `cargo test --all-features` and check for failures
-3. **Write missing tests** for any uncovered code paths:
-   - **Positive tests**: happy path, valid inputs, expected state transitions
-   - **Negative tests**: invalid inputs, error conditions, boundary cases, permission failures, missing resources
-   - **Backend tests**: unit tests for logic, integration tests for API endpoints and database operations
-   - **UI tests**: if UI code was changed, verify `npm run lint` and `npm run build` pass in `apps/ui/`; add/update component tests as needed
-4. **Run all tests** to confirm green: `cargo test --all-features`
-5. If any test fails, fix the code or test until green
+### Common checks by impact
 
-### Phase 3: Code Simplification
+Run the checks that match the files and risk you changed. Skip unaffected categories.
 
-Review all changed code on this branch (`git diff origin/main...HEAD`) for opportunities to simplify:
+| Check | Run when |
+|-------|----------|
+| `cargo fmt --check` | Rust or workspace config changed |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Rust changed |
+| `cargo test --all-features --lib --bins` | Rust changed |
+| `cargo fetch --locked` | Rust dependencies or lockfile changed |
+| `cd apps/ui && npm run format:check && npm run lint && npm run build` | UI changed |
+| `./scripts/export-openapi.sh` | API surface changed |
+| `cd apps/docs && npm run check && npm run build` | Docs changed |
 
-1. **Identify duplication** — look for repeated logic that could be consolidated
-2. **Reduce complexity** — simplify nested conditionals, long functions, over-engineered abstractions
-3. **Remove dead code** — unused variables, unreachable branches, leftover debugging code
-4. **Improve clarity** — rename unclear variables/functions, flatten unnecessary indirection
-5. **Check for over-engineering** — feature flags, abstractions, or configurability beyond what's needed for the current change
-
-If simplifications are made, re-run `cargo test --all-features` to confirm tests still pass.
-
-### Phase 4: Security Review
-
-Analyze all changed code on this branch (`git diff origin/main...HEAD`) for security vulnerabilities:
-
-1. **Injection flaws** — SQL injection, command injection, XSS, template injection in any new/modified code paths
-2. **Authentication & authorization** — missing or bypassed auth checks, privilege escalation, insecure session handling
-3. **Input validation** — unsanitized user input, missing bounds checks, unchecked deserialization
-4. **Data exposure** — secrets in logs, verbose error messages leaking internals, sensitive data in responses
-5. **Cryptographic issues** — weak algorithms, hardcoded keys, missing encryption for sensitive data
-6. **Dependency risks** — newly added dependencies with known vulnerabilities
-7. **OWASP Top 10 coverage** — check against current OWASP Top 10 categories for any applicable issues
-
-If vulnerabilities are found, fix them, add tests for the fix, and loop back to Phase 2 to verify all tests pass.
-
-### Phase 5: Artifact Updates
-
-Review the changes and update project artifacts where applicable. Skip items that aren't affected.
-
-1. **Specs** (`specs/`): if the change adds/modifies behavior covered by a spec, update the relevant spec file to stay in sync
-2. **Threat model** (`specs/threat-model.md`): if the change introduces new attack surfaces, external inputs, authentication/authorization changes, or data handling — add or update threat entries using the `TM-<CATEGORY>-<NNN>` format and add `// THREAT[TM-XXX-NNN]` code comments at mitigation points
-3. **AGENTS.md**: if the change adds new specs, skills, or modifies development workflows — update the relevant section
-4. **Test cases** (`test_cases/`): for significant new features or complex flows, add manual test cases following the `TC###_short_description.md` format in `specs/test-cases.md`
-5. **Documentation** (`apps/docs/`): if the change affects user-facing APIs, configuration, or features documented on the docs site — update the relevant docs pages
-6. **OpenAPI spec**: if API endpoints were added/modified, run `./scripts/export-openapi.sh` to regenerate
-
-### Phase 6: Smoke Testing
-
-Smoke test impacted functionality to verify it works end-to-end:
-
-1. **UI changes**: start dev server (`just start-dev --no-watch`), verify the UI loads and changed functionality works. Take UI screenshots if applicable using the `ui-screenshots` skill.
-2. **Backend/API changes**: start full mode (`sudo -E .claude/skills/no-docker-setup/scripts/start.sh` or `just start-all --no-watch`), hit affected endpoints, verify responses.
-3. **Database/migration changes**: test in full mode with PostgreSQL to verify migrations apply and queries work.
-4. Stop any servers started for smoke testing before proceeding.
-
-If smoke testing reveals issues, fix them and loop back to Phase 2 (tests must still pass).
-
-### Phase 7: Quality Gates
+Before the final quality pass and PR merge, rebase:
 
 ```bash
 git fetch origin main && git rebase origin/main
 ```
 
-- If rebase fails with conflicts, abort and tell the user to resolve manually
+If rebase fails with conflicts, stop and report it.
 
-**Impact detection** — before running checks, determine what changed:
+### PR and merge
 
-```bash
-# Detect changed file categories
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
-HAS_RUST=$(echo "$CHANGED_FILES" | grep -qE '\.(rs|toml)$' && echo true || echo false)
-HAS_UI=$(echo "$CHANGED_FILES" | grep -qE '^apps/ui/' && echo true || echo false)
-HAS_DOCS=$(echo "$CHANGED_FILES" | grep -qE '^apps/docs/' && echo true || echo false)
-HAS_API=$(echo "$CHANGED_FILES" | grep -qE '^(crates/.*api|crates/.*server)' && echo true || echo false)
-```
+Use conventional-commit style for the PR title. In the body, explain:
 
-Run only relevant checks based on impact. Skip categories that have zero changed files:
+- what changed
+- why it changed
+- how you validated it
+- notable risks or follow-ups
 
-| Check | Run when |
-|-------|----------|
-| `cargo fmt --check` | `HAS_RUST` |
-| `cargo clippy --all-targets --all-features -- -D warnings` | `HAS_RUST` |
-| `cargo test --all-features --lib --bins` | `HAS_RUST` |
-| `cargo fetch --locked` | `HAS_RUST` |
-| UI format, lint, build (`cd apps/ui && npm run format:check && npm run lint && npm run build`) | `HAS_UI` |
-| OpenAPI spec freshness (`./scripts/export-openapi.sh`) | `HAS_API` |
-| Docs build (`cd apps/docs && npm run check && npm run build`) | `HAS_DOCS` |
-
-- For skipped categories, log: `⏭️ Skipping <category> checks (no <category> files changed)`
-- If `just fmt` can auto-fix failures in a relevant category, run it then retry once
-- If still failing, stop and report
-
-### Phase 8: Push and PR
-
-```bash
-git push -u origin <current-branch>
-```
-
-Check for existing PR:
-
-```bash
-gh pr view --json url 2>/dev/null
-```
-
-If no PR exists, create one using the PR template (`.github/pull_request_template.md`):
-
-- **Title**: conventional commit style from the branch commits
-- **Body**: fill in the PR template sections (What, Why, How, Risk, Checklist) based on the actual changes. Include what tests were added/verified.
-- Use `gh pr create`
-
-If a PR already exists, update it if needed and report its URL.
-
-### Phase 9: Wait for CI and Merge
-
-- Check CI status with `gh pr checks` (poll every 30s, up to 15 minutes)
-- If CI is green, merge with `gh pr merge --squash --auto`
-- If CI fails, report the failing checks and stop
-- **NEVER** merge when CI is red
-
-### Phase 10: Post-merge
-
-After successful merge:
-
-- Report the merged PR URL
-- Done
+Use `gh pr view --json url` to detect an existing PR. Create one with `gh pr create` if needed. Poll `gh pr checks` until CI finishes. If CI is green, merge with `gh pr merge --squash --auto`. If CI is red, report the failures and stop.
 
 ## Notes
 
-- This is the canonical shipping workflow. It implements the full "Shipping" definition and Pre-PR Checklist from AGENTS.md.
-- Phases 2-6 (tests, simplification, security, artifacts, smoke testing) are the quality core — do NOT skip them.
-- The `$ARGUMENTS` context helps scope which tests, specs, and smoke tests are relevant.
+- This is the canonical shipping workflow. It implements the "Shipping" definition and Pre-PR Checklist from AGENTS.md.
+- The quality bar is mandatory. The exact order is flexible.
+- The `$ARGUMENTS` context helps scope the goal, risk, validation, and artifact updates.
 - For "fix and ship" requests: implement the fix first, then run `/ship` to validate and merge.

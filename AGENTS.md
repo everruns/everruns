@@ -188,9 +188,24 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
 ### Shipping
 
-"Ship" means: implement with extensive test coverage (positive and negative paths), then complete the full Pre-PR Checklist (especially smoke testing impacted functionality in both dev and full modes), create PR, and merge when CI is green.
+"Ship" means: achieve the requested goal, produce enough evidence that it works, create a mergeable PR, and merge only after CI is green.
 
-Use the [`/ship`](.claude/commands/ship.md) command to execute the full shipping workflow. It covers test coverage verification, code simplification, security review, artifact updates (specs, threat model, docs, test cases), smoke testing, quality gates, PR creation, and merge. When asked to "fix and ship", implement the fix first, then run `/ship`.
+Expected outcomes:
+
+- the requested behavior or fix is complete
+- validation matches the risk: tests, smoke tests, manual checks, or build/lint proof as appropriate
+- relevant artifacts stay in sync: specs, docs, test cases, threat model, OpenAPI, AGENTS.md
+- the PR explains what changed, why, risk, and validation
+- all review comments are resolved before merge
+
+How to achieve it:
+
+- start from the goal and changed risk surface, not a rigid sequence of steps
+- prefer a failing test first for bugs, but choose the validation strategy that best proves the change
+- run deeper checks when touching APIs, auth, persistence, migrations, or end-to-end UI flows
+- use the smallest set of steps that gives high confidence, then expand if signals are weak
+
+Use the [`/ship`](.claude/commands/ship.md) command to execute the canonical shipping workflow. It is outcome-oriented: it defines the required results and common hints, while leaving flexibility in ordering and tactics. When asked to "fix and ship", implement the fix first, then run `/ship`.
 
 ### Pre-PR Checklist
 

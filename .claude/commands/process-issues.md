@@ -61,7 +61,7 @@ Run `/ship` to implement, test, validate, create PR, and merge. Pass the Linear 
 - **PR "Why" section**: link to Linear issue (e.g., `Fixes ENG-123`)
 - **Write failing test first** for bugs; validate acceptance criteria for features
 
-`/ship` handles: test coverage, code simplification, security review, artifact updates, smoke testing, quality gates (including rebase on main), PR creation, CI wait, and merge.
+`/ship` handles the required shipping outcomes: evidence for correctness, code simplification, security review, artifact updates, smoke testing, quality gates (including rebase on main), PR creation, CI wait, and merge.
 
 #### 3e. Merge PRs Sequentially
 
