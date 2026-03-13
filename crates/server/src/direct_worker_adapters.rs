@@ -17,7 +17,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
+    Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
     LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
     ToolResultContentPart,
 };
@@ -691,7 +691,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Result<McpServerInfo> {
         let resolved = self
             .mcp_server_service
-            .resolve_by_prefix(org_id, server_prefix)
+            .resolve_by_prefix(&Caller::internal(org_id), server_prefix)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve MCP server: {}", e);
@@ -1049,7 +1049,7 @@ impl DirectWorkerAdapters {
 
             let tools = match self
                 .mcp_server_service
-                .get_tools(org_id, server_id, false)
+                .get_tools(&Caller::internal(org_id), server_id, false)
                 .await
             {
                 Ok(t) => t,
@@ -1063,7 +1063,11 @@ impl DirectWorkerAdapters {
                 }
             };
 
-            let server_name = match self.mcp_server_service.get(org_id, server_id).await {
+            let server_name = match self
+                .mcp_server_service
+                .get(&Caller::internal(org_id), server_id)
+                .await
+            {
                 Ok(Some(s)) => s.name,
                 _ => {
                     tracing::warn!(server_id = %server_id, "MCP server not found, skipping");

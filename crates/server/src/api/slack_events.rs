@@ -25,7 +25,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig};
+use everruns_core::{App, AppStatus, Caller, ChannelType, SessionStrategy, SlackChannelConfig};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -470,11 +470,11 @@ async fn process_slack_message(
                     capabilities: vec![],
                     tools: vec![],
                 };
+                let internal_caller = Caller::internal(org_id);
                 let s = state
                     .session_service
                     .create(
-                        org_id,
-                        &org_public_id,
+                        &internal_caller,
                         app.harness_id.uuid(),
                         Some(app.agent_id.uuid()),
                         Some(app.agent_id),

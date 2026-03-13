@@ -14,14 +14,27 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, CapabilityRegistry, HarnessId, ModelId, Session, SessionId,
-    SessionStatus, SubagentStatus, TokenUsage,
+    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, ModelId, Permission,
+    Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
 };
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
+
+/// Policy: View sessions (read-only).
+pub const SESSION_VIEW: Policy = Policy {
+    id: "session.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgSessionsManage)],
+};
+
+/// Policy: Manage sessions (create, update, delete).
+pub const SESSION_MANAGE: Policy = Policy {
+    id: "session.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgSessionsManage)],
+};
 
 /// Session counts grouped by status.
 #[derive(Debug, Clone, Default)]
@@ -57,15 +70,17 @@ impl SessionService {
         }
     }
 
+    #[policy(SESSION_MANAGE)]
     pub async fn create(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
         req: CreateSessionRequest,
     ) -> Result<Session> {
+        let org_id = caller.org_id;
+        let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
         let agent_id = agent_internal_id.map(AgentId::from_uuid);
 
@@ -181,26 +196,27 @@ impl SessionService {
         Ok(())
     }
 
+    #[policy(SESSION_VIEW)]
     pub async fn get(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         id: Uuid,
         user_id: Option<Uuid>,
     ) -> Result<Option<Session>> {
         let row = self
             .db
-            .get_session(org_id, SessionId::from_uuid(id))
+            .get_session(caller.org_id, SessionId::from_uuid(id))
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, org_public_id);
+                let mut session = Self::row_to_session(r, &caller.org_public_id);
                 // Populate features before resolving agent_id (needs internal UUID)
                 self.populate_features(&mut session).await?;
-                self.resolve_session_agent_id(org_id, &mut session).await?;
+                self.resolve_session_agent_id(caller.org_id, &mut session)
+                    .await?;
                 // Populate is_pinned if user context available
                 if let Some(uid) = user_id {
-                    let pinned = self.db.list_pinned_session_ids(uid, org_id).await?;
+                    let pinned = self.db.list_pinned_session_ids(uid, caller.org_id).await?;
                     session.is_pinned = Some(pinned.iter().any(|s| s.uuid() == id));
                 }
                 Ok(Some(session))
@@ -210,8 +226,9 @@ impl SessionService {
     }
 
     /// Get session counts grouped by status for an organization.
-    pub async fn stats(&self, org_id: i64) -> Result<SessionStats> {
-        let counts = self.db.count_sessions_by_status(org_id).await?;
+    #[policy(SESSION_VIEW)]
+    pub async fn stats(&self, caller: &Caller) -> Result<SessionStats> {
+        let counts = self.db.count_sessions_by_status(caller.org_id).await?;
         let mut stats = SessionStats::default();
         for (status, count) in counts {
             let count = count as u32;
@@ -230,15 +247,17 @@ impl SessionService {
     /// List sessions for an organization with optional agent filter.
     /// Returns (sessions, total_count).
     /// Sessions include preview text from first user message and last assistant response.
+    #[policy(SESSION_VIEW)]
     pub async fn list(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         agent_id: Option<Uuid>,
         user_id: Option<Uuid>,
         search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
+        let org_id = caller.org_id;
+        let org_public_id = &caller.org_public_id;
         let agent_id = agent_id.map(AgentId::from_uuid);
         let (rows, total) = self
             .db
@@ -287,10 +306,10 @@ impl SessionService {
         Ok((sessions, total))
     }
 
+    #[policy(SESSION_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         id: Uuid,
         req: UpdateSessionRequest,
     ) -> Result<Option<Session>> {
@@ -301,12 +320,13 @@ impl SessionService {
         };
         let row = self
             .db
-            .update_session(org_id, SessionId::from_uuid(id), input)
+            .update_session(caller.org_id, SessionId::from_uuid(id), input)
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, org_public_id);
-                self.resolve_session_agent_id(org_id, &mut session).await?;
+                let mut session = Self::row_to_session(r, &caller.org_public_id);
+                self.resolve_session_agent_id(caller.org_id, &mut session)
+                    .await?;
                 Ok(Some(session))
             }
             None => Ok(None),
@@ -314,10 +334,10 @@ impl SessionService {
     }
 
     /// Update session status (used by worker via gRPC)
+    #[policy(SESSION_MANAGE)]
     pub async fn update_status(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         id: Uuid,
         status: String,
     ) -> Result<Option<Session>> {
@@ -327,12 +347,13 @@ impl SessionService {
         };
         let row = self
             .db
-            .update_session(org_id, SessionId::from_uuid(id), input)
+            .update_session(caller.org_id, SessionId::from_uuid(id), input)
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, org_public_id);
-                self.resolve_session_agent_id(org_id, &mut session).await?;
+                let mut session = Self::row_to_session(r, &caller.org_public_id);
+                self.resolve_session_agent_id(caller.org_id, &mut session)
+                    .await?;
                 Ok(Some(session))
             }
             None => Ok(None),
@@ -342,13 +363,15 @@ impl SessionService {
     /// Get or create the global chat session for a user.
     /// Uses tags for per-user singleton: `["global-chat", "user:{user_id}"]`.
     /// Creates with the Platform Chat harness if no existing session is found.
+    #[policy(SESSION_MANAGE)]
     pub async fn get_or_create_chat_session(
         &self,
-        org_id: i64,
-        org_public_id: &str,
+        caller: &Caller,
         user_id: Uuid,
         harness_id: Uuid,
     ) -> Result<Session> {
+        let org_id = caller.org_id;
+        let org_public_id = &caller.org_public_id;
         let user_tag = format!("user:{}", user_id);
         let tags = vec!["global-chat".to_string(), user_tag.clone()];
 
@@ -384,21 +407,24 @@ impl SessionService {
         Ok(session)
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    #[policy(SESSION_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         self.db
-            .delete_session(org_id, SessionId::from_uuid(id))
+            .delete_session(caller.org_id, SessionId::from_uuid(id))
             .await
     }
 
     /// Pin a session for a user
-    pub async fn pin(&self, user_id: Uuid, session_id: Uuid, org_id: i64) -> Result<()> {
+    #[policy(SESSION_MANAGE)]
+    pub async fn pin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<()> {
         self.db
-            .pin_session(user_id, SessionId::from_uuid(session_id), org_id)
+            .pin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
             .await
     }
 
     /// Unpin a session for a user
-    pub async fn unpin(&self, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+    #[policy(SESSION_MANAGE)]
+    pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
         self.db
             .unpin_session(user_id, SessionId::from_uuid(session_id))
             .await

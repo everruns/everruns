@@ -3,7 +3,7 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE};
+use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -14,7 +14,7 @@ use axum::{
 };
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
-    AgentCapabilityConfig, Caller, Harness, HarnessStatus, PolicyConfigResponse, ToolDefinition,
+    AgentCapabilityConfig, Caller, Harness, HarnessStatus, ResourceConfigResponse, ToolDefinition,
     evaluate_policies,
 };
 
@@ -126,16 +126,6 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create Caller from ResolvedOrg
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-    }
-}
-
 /// Create harness routes (no import/export)
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -160,14 +150,17 @@ pub fn routes(state: AppState) -> Router {
     get,
     path = "/v1/harnesses/config",
     responses(
-        (status = 200, description = "Policy config for harnesses", body = PolicyConfigResponse),
+        (status = 200, description = "Resource config for harnesses", body = ResourceConfigResponse),
     ),
     tag = "harnesses"
 )]
-pub async fn harness_config(org: ResolvedOrg) -> Json<PolicyConfigResponse> {
-    let caller = caller_from_org(&org);
-    let policies = evaluate_policies(&caller, &[&HARNESS_MANAGE, &HARNESS_DANGEROUS]);
-    Json(PolicyConfigResponse { policies })
+pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = Caller::from(&org);
+    let policies = evaluate_policies(
+        &caller,
+        &[&HARNESS_VIEW, &HARNESS_MANAGE, &HARNESS_DANGEROUS],
+    );
+    Json(ResourceConfigResponse { policies })
 }
 
 /// POST /v1/harnesses
@@ -196,7 +189,7 @@ pub async fn create_harness(
         req.capabilities.len(),
     )?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let harness = state
         .service
         .create(&caller, req)
@@ -223,7 +216,7 @@ pub async fn list_harnesses(
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
 ) -> Result<Json<ListResponse<Harness>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let harnesses = state
         .service
         .list(&caller, query.search.as_deref())
@@ -263,7 +256,7 @@ pub async fn get_harness(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let harness = state
         .service
         .get(&caller, harness_id.uuid())
@@ -314,7 +307,7 @@ pub async fn update_harness(
         req.capabilities.as_ref().map(|c| c.len()),
     )?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let harness = state
         .service
         .update(&caller, harness_id.uuid(), req)
@@ -355,7 +348,7 @@ pub async fn delete_harness(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, harness_id.uuid())
@@ -407,7 +400,7 @@ pub async fn copy_harness(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let harness = state
         .service
         .copy(&caller, harness_id.uuid())

@@ -19,6 +19,10 @@ org:llm-providers:manage          # CRUD on LLM providers
 org:settings:manage               # Org settings
 org:members:manage                # Invite/remove members
 org:api-keys:manage               # CRUD on API keys
+org:harnesses:view                # View harnesses (read-only)
+org:llm-providers:view            # View LLM providers (read-only)
+org:settings:view                 # View org settings (read-only)
+org:members:view                  # View org members (read-only)
 ```
 
 ### Rule
@@ -31,8 +35,8 @@ Hardcoded enum variants (no dynamic rules):
 |------|-------------|
 | `UserHasPermission(perm)` | User's role grants the permission |
 | `UserHasRole(role)` | User has at least this OrgRole |
+| `IsPlatformUser` | Caller is in platform user allowlist |
 | `UserIsResourceOwner` | User created the resource (future) |
-| `IsPlatformUser` | User is in platform allowlist (future) |
 
 Rules are **additive within a policy** — all rules must pass (AND logic).
 
@@ -74,6 +78,10 @@ Hardcoded. No DB storage (phase 1).
 | `org:settings:manage` | yes | yes | no |
 | `org:members:manage` | yes | yes | no |
 | `org:api-keys:manage` | yes | yes | no |
+| `org:harnesses:view` | yes | yes | yes |
+| `org:llm-providers:view` | yes | yes | yes |
+| `org:settings:view` | yes | yes | yes |
+| `org:members:view` | yes | yes | yes |
 
 Owner inherits all Admin permissions. Admin inherits all Member permissions.
 
@@ -281,7 +289,12 @@ Per-resource config endpoints return which policies the caller satisfies.
 ```
 GET /v1/harnesses/config
 GET /v1/agents/config
+GET /v1/apps/config
 GET /v1/sessions/config
+GET /v1/mcp-servers/config
+GET /v1/llm-providers/config
+GET /v1/llm-models/config
+GET /v1/skills/config
 ```
 
 ### Response
@@ -302,13 +315,25 @@ UI uses this on load to show/hide controls (delete buttons, admin panels, etc.).
 Each resource module defines its relevant policies. The config handler evaluates all of them against the caller:
 
 ```rust
-pub async fn harness_config(org: ResolvedOrg) -> Json<ConfigResponse> {
+pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    Json(ConfigResponse {
+    Json(ResourceConfigResponse {
         policies: evaluate_policies(&caller, &[HARNESS_MANAGE, HARNESS_DANGEROUS]),
     })
 }
 ```
+
+## Policy Requirements for New Features
+
+All new service methods MUST have `#[policy]` enforcement with a `Caller` parameter. No service method should accept raw `org_id` — use `Caller` to carry auth context. New features without policy enforcement will not pass review.
+
+### Checklist for New Resources
+
+1. Define view + manage policies (and dangerous if applicable)
+2. Add `#[policy]` to all service methods
+3. Use `Caller` parameter instead of `org_id`
+4. Add `GET /v1/{resource}/config` endpoint returning `ResourceConfigResponse`
+5. Wire UI with `usePolicies(resource)` hook
 
 ## Migration Path
 
@@ -318,12 +343,12 @@ pub async fn harness_config(org: ResolvedOrg) -> Json<ConfigResponse> {
 - Role → permission mapping (hardcoded)
 - Service-layer enforcement
 - Config endpoints for UI
+- `IsPlatformUser` rule with allowlist
 - No DB changes
 
 ### Phase 2 (future)
 - `user_permissions` table for per-user grants beyond role defaults
 - `UserIsResourceOwner` rule (needs `created_by` on resources)
-- `IsPlatformUser` rule with allowlist
 - Admin UI for permission management
 
 ## Files

@@ -20,13 +20,14 @@ use axum::{
 // support deserializing repeated query keys (?exclude=a&exclude=b) into Vec<String>.
 use axum_extra::extract::Query;
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventListener, VALID_EVENT_TYPES};
+use everruns_core::{Caller, Event, EventListener, VALID_EVENT_TYPES};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use crate::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
+
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -247,7 +248,7 @@ pub async fn stream_sse(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -622,7 +623,7 @@ pub async fn list_events(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

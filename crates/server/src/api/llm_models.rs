@@ -1,8 +1,9 @@
 // LLM Model API endpoints
 // Routes: /v1/llm-providers/:provider_id/models/... and /v1/llm-models/...
 
-use crate::api::common::{ErrorResponse, ListResponse};
+use crate::api::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::llm_model::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -12,7 +13,10 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::{ModelId, ProviderId};
-use everruns_core::{LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider};
+use everruns_core::{
+    Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, ResourceConfigResponse,
+    evaluate_policies,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -147,19 +151,12 @@ pub async fn create_model(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let model = state
         .service
-        .create(org.org_id, provider_id.uuid(), req)
+        .create(&caller, provider_id.uuid(), req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to create LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("create LLM model")?;
 
     Ok((StatusCode::CREATED, Json(model)))
 }
@@ -191,19 +188,12 @@ pub async fn list_provider_models(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let models = state
         .service
-        .list_for_provider(org.org_id, provider_id.uuid())
+        .list_for_provider(&caller, provider_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to list LLM models for provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("list LLM models for provider")?;
 
     Ok(Json(ListResponse::new(models)))
 }
@@ -225,24 +215,17 @@ pub async fn list_all_models(
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(&org);
     let models = state
         .service
         .list_all_with_filters(
-            org.org_id,
+            &caller,
             query.source,
             query.include_stale,
             query.favorites_only,
         )
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to list all LLM models: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("list all LLM models")?;
 
     Ok(Json(ListResponse::new(models)))
 }
@@ -275,27 +258,13 @@ pub async fn get_model(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let model = state
         .service
-        .get_with_provider(org.org_id, model_id.uuid())
+        .get_with_provider(&caller, model_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Model not found".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("get LLM model")?
+        .ok_or_not_found_json("Model")?;
 
     Ok(Json(model))
 }
@@ -330,27 +299,13 @@ pub async fn update_model(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let model = state
         .service
-        .update(org.org_id, model_id.uuid(), req)
+        .update(&caller, model_id.uuid(), req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Model not found".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("update LLM model")?
+        .ok_or_not_found_json("Model")?;
 
     Ok(Json(model))
 }
@@ -383,34 +338,38 @@ pub async fn delete_model(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let deleted = state
         .service
-        .delete(org.org_id, model_id.uuid())
+        .delete(&caller, model_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("delete LLM model")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Model not found".to_string(),
-            }),
-        ))
+        Err(ErrorResponse::not_found("Model"))
     }
+}
+
+/// GET /v1/llm-models/config
+#[utoipa::path(
+    get,
+    path = "/v1/llm-models/config",
+    responses(
+        (status = 200, description = "Resource config for LLM models", body = ResourceConfigResponse),
+    ),
+    tag = "llm-models"
+)]
+pub async fn llm_model_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = Caller::from(&org);
+    let policies = evaluate_policies(&caller, &[&LLM_MODEL_VIEW, &LLM_MODEL_MANAGE]);
+    Json(ResourceConfigResponse { policies })
 }
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/llm-models/config", get(llm_model_config))
         .route(
             "/v1/llm-providers/{provider_id}/models",
             post(create_model).get(list_provider_models),

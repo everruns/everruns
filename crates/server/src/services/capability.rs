@@ -18,8 +18,8 @@ use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition, RiskLevel,
-    mcp_capability_id, skill_capability_id,
+    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition,
+    RiskLevel, mcp_capability_id, skill_capability_id,
 };
 use std::sync::Arc;
 
@@ -42,6 +42,7 @@ impl CapabilityService {
 
     /// List all available capabilities including MCP servers and skills (public info only)
     pub async fn list_all(&self, org_id: i64) -> Result<Vec<CapabilityInfo>> {
+        let internal_caller = Caller::internal(org_id);
         // Get built-in capabilities
         let mut capabilities: Vec<CapabilityInfo> = self
             .registry
@@ -51,7 +52,10 @@ impl CapabilityService {
             .collect();
 
         // Get MCP server capabilities
-        let mcp_servers = self.mcp_service.list_active_with_tools(org_id).await?;
+        let mcp_servers = self
+            .mcp_service
+            .list_active_with_tools(&internal_caller)
+            .await?;
         for server_with_tools in mcp_servers {
             let mcp_cap = McpCapability::new(
                 server_with_tools.server.id.uuid(),
@@ -86,7 +90,7 @@ impl CapabilityService {
         }
 
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
-        let skills = self.skill_service.list(org_id, None).await?;
+        let skills = self.skill_service.list(&internal_caller, None).await?;
         for skill in &skills {
             if skill.status != everruns_core::SkillStatus::Active {
                 continue;
@@ -118,11 +122,15 @@ impl CapabilityService {
     /// This ensures viewing a capability doesn't fail if the MCP server is unreachable.
     /// Use the refresh tools endpoint to explicitly update cached tools.
     pub async fn get(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
+        let internal_caller = Caller::internal(org_id);
         // Check if it's an MCP capability
         if let Some(server_id) = id.mcp_server_id() {
             // Use cached tools only - no external refresh on read
-            let tools = self.mcp_service.get_cached_tools(org_id, server_id).await;
-            let server = self.mcp_service.get(org_id, server_id).await?;
+            let tools = self
+                .mcp_service
+                .get_cached_tools(&internal_caller, server_id)
+                .await?;
+            let server = self.mcp_service.get(&internal_caller, server_id).await?;
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(
@@ -159,7 +167,7 @@ impl CapabilityService {
 
         // Check if it's a skill capability (mount-only, no prompt/tools)
         if let Some(skill_uuid) = id.skill_id() {
-            let skill = self.skill_service.get(org_id, skill_uuid).await?;
+            let skill = self.skill_service.get(&internal_caller, skill_uuid).await?;
             if let Some(skill) = skill {
                 return Ok(Some(CapabilityInfo {
                     id: CapabilityId::new(skill_capability_id(skill.id.uuid())),
@@ -196,7 +204,7 @@ impl CapabilityService {
         force_refresh: bool,
     ) -> Result<Vec<McpToolDefinition>> {
         self.mcp_service
-            .get_tools(org_id, server_id, force_refresh)
+            .get_tools(&Caller::internal(org_id), server_id, force_refresh)
             .await
     }
 
@@ -207,7 +215,9 @@ impl CapabilityService {
         org_id: i64,
         server_id: uuid::Uuid,
     ) -> Result<Vec<McpToolDefinition>> {
-        self.mcp_service.refresh_tools(org_id, server_id).await
+        self.mcp_service
+            .refresh_tools(&Caller::internal(org_id), server_id)
+            .await
     }
 
     /// Get the built-in capability registry
@@ -257,7 +267,10 @@ impl CapabilityService {
         &self,
         org_id: i64,
     ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
-        let skills = self.skill_service.list(org_id, None).await?;
+        let skills = self
+            .skill_service
+            .list(&Caller::internal(org_id), None)
+            .await?;
         let commands = skills
             .into_iter()
             .filter(|s| s.status == everruns_core::SkillStatus::Active && s.user_invocable)
@@ -333,9 +346,13 @@ impl CapabilityService {
 
         // Collect from MCP capabilities using cached tools only (no refresh)
         // Note: MCP capabilities don't have dependencies
+        let internal_caller = Caller::internal(org_id);
         for server_id in mcp_cap_ids {
-            let tools = self.mcp_service.get_cached_tools(org_id, server_id).await;
-            let server = self.mcp_service.get(org_id, server_id).await?;
+            let tools = self
+                .mcp_service
+                .get_cached_tools(&internal_caller, server_id)
+                .await?;
+            let server = self.mcp_service.get(&internal_caller, server_id).await?;
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(

@@ -778,6 +778,11 @@ export interface AuthConfigResponse {
   signup_enabled: boolean;
 }
 
+/** Response from GET /v1/{resource}/config */
+export interface ResourceConfigResponse {
+  policies: Record<string, boolean>;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

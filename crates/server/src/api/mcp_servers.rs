@@ -3,6 +3,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::McpServerService;
+use crate::services::mcp_server::{MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
 use axum::{
@@ -12,9 +13,12 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::McpServerId;
-use everruns_core::{McpServer, McpServerStatus, McpServerTransportType, validate_safe_url};
+use everruns_core::{
+    Caller, McpServer, McpServerStatus, McpServerTransportType, ResourceConfigResponse,
+    evaluate_policies, validate_safe_url,
+};
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -127,6 +131,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/mcp-servers",
             post(create_mcp_server).get(list_mcp_servers),
         )
+        .route("/v1/mcp-servers/config", get(mcp_server_config))
         .route(
             "/v1/mcp-servers/{server_id}",
             get(get_mcp_server)
@@ -134,6 +139,23 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_mcp_server),
         )
         .with_state(state)
+}
+
+/// GET /v1/mcp-servers/config
+///
+/// Returns which MCP server policies the caller satisfies.
+#[utoipa::path(
+    get,
+    path = "/v1/mcp-servers/config",
+    responses(
+        (status = 200, description = "Resource config for MCP servers", body = ResourceConfigResponse),
+    ),
+    tag = "mcp-servers"
+)]
+pub async fn mcp_server_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = Caller::from(&org);
+    let policies = evaluate_policies(&caller, &[&MCP_SERVER_VIEW, &MCP_SERVER_MANAGE]);
+    Json(ResourceConfigResponse { policies })
 }
 
 /// POST /v1/mcp-servers - Create a new MCP server
@@ -171,16 +193,12 @@ pub async fn create_mcp_server(
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let server = state.service.create(org.org_id, req).await.map_err(|e| {
-        // Check if it's a duplicate name error
-        let msg = e.to_string();
-        if msg.contains("already exists") {
-            ErrorResponse::new(msg).into_response(StatusCode::BAD_REQUEST)
-        } else {
-            tracing::error!("Failed to create MCP server: {}", e);
-            ErrorResponse::internal_error()
-        }
-    })?;
+    let caller = Caller::from(&org);
+    let server = state
+        .service
+        .create(&caller, req)
+        .await
+        .map_policy_or_internal("create MCP server")?;
 
     Ok((StatusCode::CREATED, Json(server)))
 }
@@ -200,12 +218,13 @@ pub async fn list_mcp_servers(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
-) -> Result<Json<ListResponse<McpServer>>, StatusCode> {
+) -> Result<Json<ListResponse<McpServer>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(&org);
     let servers = state
         .service
-        .list(org.org_id, query.search.as_deref())
+        .list(&caller, query.search.as_deref())
         .await
-        .log_internal_error("list MCP servers")?;
+        .map_policy_or_internal("list MCP servers")?;
 
     Ok(Json(ListResponse::new(servers)))
 }
@@ -239,11 +258,12 @@ pub async fn get_mcp_server(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let server = state
         .service
-        .get(org.org_id, server_id.uuid())
+        .get(&caller, server_id.uuid())
         .await
-        .log_internal_error_json("get MCP server")?
+        .map_policy_or_internal("get MCP server")?
         .ok_or_not_found_json("MCP server")?;
 
     Ok(Json(server))
@@ -302,11 +322,12 @@ pub async fn update_mcp_server(
         })?;
     }
 
+    let caller = Caller::from(&org);
     let server = state
         .service
-        .update(org.org_id, server_id.uuid(), req)
+        .update(&caller, server_id.uuid(), req)
         .await
-        .log_internal_error_json("update MCP server")?
+        .map_policy_or_internal("update MCP server")?
         .ok_or_not_found_json("MCP server")?;
 
     Ok(Json(server))
@@ -341,11 +362,12 @@ pub async fn delete_mcp_server(
         )
     })?;
 
+    let caller = Caller::from(&org);
     let deleted = state
         .service
-        .delete(org.org_id, server_id.uuid())
+        .delete(&caller, server_id.uuid())
         .await
-        .log_internal_error_json("delete MCP server")?;
+        .map_policy_or_internal("delete MCP server")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

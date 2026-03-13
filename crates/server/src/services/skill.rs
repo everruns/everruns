@@ -12,9 +12,10 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    Skill, SkillContent, SkillFileEntry, SkillId, SkillSourceType, SkillStatus,
-    SkillValidationResult, parse_skill_md, validate_skill_md,
+    Caller, Permission, Policy, Rule, Skill, SkillContent, SkillFileEntry, SkillId,
+    SkillSourceType, SkillStatus, SkillValidationResult, parse_skill_md, validate_skill_md,
 };
+use everruns_macros::policy;
 use moka::future::Cache;
 use std::collections::HashMap;
 use std::io::Read;
@@ -33,6 +34,15 @@ const MAX_DECOMPRESSED_SIZE: usize = 10 * 1024 * 1024;
 
 /// Cache TTL for skill listings per org
 const SKILL_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+
+pub const SKILL_VIEW: Policy = Policy {
+    id: "skill.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+pub const SKILL_MANAGE: Policy = Policy {
+    id: "skill.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
 
 pub struct SkillService {
     db: Arc<StorageBackend>,
@@ -55,14 +65,15 @@ impl SkillService {
     }
 
     /// Create a skill from SKILL.md content
-    pub async fn create(&self, org_id: i64, req: CreateSkillRequest) -> Result<Skill> {
+    #[policy(SKILL_MANAGE)]
+    pub async fn create(&self, caller: &Caller, req: CreateSkillRequest) -> Result<Skill> {
         let parsed = parse_skill_md(&req.skill_md)
             .map_err(|errors| anyhow!("Invalid SKILL.md: {}", errors.join("; ")))?;
 
         // Check duplicate name
         if self
             .db
-            .get_skill_by_name(org_id, &parsed.name)
+            .get_skill_by_name(caller.org_id, &parsed.name)
             .await?
             .is_some()
         {
@@ -90,13 +101,18 @@ impl SkillService {
             version: parsed.version,
         };
 
-        let row = self.db.create_skill(org_id, input).await?;
-        self.invalidate_cache(org_id).await;
+        let row = self.db.create_skill(caller.org_id, input).await?;
+        self.invalidate_cache(caller.org_id).await;
         Ok(Self::row_to_skill(&row))
     }
 
     /// Create a skill from a ZIP archive
-    pub async fn create_from_archive(&self, org_id: i64, archive_data: Vec<u8>) -> Result<Skill> {
+    #[policy(SKILL_MANAGE)]
+    pub async fn create_from_archive(
+        &self,
+        caller: &Caller,
+        archive_data: Vec<u8>,
+    ) -> Result<Skill> {
         if archive_data.len() > MAX_ARCHIVE_SIZE {
             return Err(anyhow!(
                 "Archive too large: {} bytes (max {})",
@@ -120,7 +136,7 @@ impl SkillService {
         // Check duplicate name
         if self
             .db
-            .get_skill_by_name(org_id, &parsed.name)
+            .get_skill_by_name(caller.org_id, &parsed.name)
             .await?
             .is_some()
         {
@@ -148,7 +164,7 @@ impl SkillService {
             version: parsed.version,
         };
 
-        let row = self.db.create_skill(org_id, input).await?;
+        let row = self.db.create_skill(caller.org_id, input).await?;
 
         // Store extracted files
         for file in &extracted.files {
@@ -171,38 +187,41 @@ impl SkillService {
             self.db.create_skill_file(input).await?;
         }
 
-        self.invalidate_cache(org_id).await;
+        self.invalidate_cache(caller.org_id).await;
         Ok(Self::row_to_skill(&row))
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Skill>> {
-        let row = self.db.get_skill(org_id, id).await?;
+    #[policy(SKILL_VIEW)]
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Skill>> {
+        let row = self.db.get_skill(caller.org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_skill))
     }
 
-    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<Skill>> {
+    #[policy(SKILL_VIEW)]
+    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Skill>> {
         // Only use cache for unfiltered list
         if search.is_none()
-            && let Some(cached) = self.list_cache.get(&org_id).await
+            && let Some(cached) = self.list_cache.get(&caller.org_id).await
         {
             return Ok((*cached).clone());
         }
 
-        let rows = self.db.list_skills(org_id, search).await?;
+        let rows = self.db.list_skills(caller.org_id, search).await?;
         let skills: Vec<Skill> = rows.iter().map(Self::row_to_skill).collect();
 
         // Only populate cache for unfiltered list
         if search.is_none() {
             self.list_cache
-                .insert(org_id, Arc::new(skills.clone()))
+                .insert(caller.org_id, Arc::new(skills.clone()))
                 .await;
         }
         Ok(skills)
     }
 
     /// Get full skill content (SKILL.md + files)
-    pub async fn get_content(&self, org_id: i64, id: Uuid) -> Result<Option<SkillContent>> {
-        let row = match self.db.get_skill(org_id, id).await? {
+    #[policy(SKILL_VIEW)]
+    pub async fn get_content(&self, caller: &Caller, id: Uuid) -> Result<Option<SkillContent>> {
+        let row = match self.db.get_skill(caller.org_id, id).await? {
             Some(r) => r,
             None => return Ok(None),
         };
@@ -252,9 +271,10 @@ impl SkillService {
         Ok(Some(SkillContent { skill_md, files }))
     }
 
+    #[policy(SKILL_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         req: UpdateSkillRequest,
     ) -> Result<Option<Skill>> {
@@ -266,11 +286,11 @@ impl SkillService {
                 .map_err(|errors| anyhow!("Invalid SKILL.md: {}", errors.join("; ")))?;
 
             // Check name uniqueness if name changed
-            if let Some(existing) = self.db.get_skill(org_id, id).await?
+            if let Some(existing) = self.db.get_skill(caller.org_id, id).await?
                 && existing.name != parsed.name
                 && self
                     .db
-                    .get_skill_by_name(org_id, &parsed.name)
+                    .get_skill_by_name(caller.org_id, &parsed.name)
                     .await?
                     .is_some()
             {
@@ -291,14 +311,15 @@ impl SkillService {
             input.status = Some(status.to_string());
         }
 
-        let row = self.db.update_skill(org_id, id, input).await?;
-        self.invalidate_cache(org_id).await;
+        let row = self.db.update_skill(caller.org_id, id, input).await?;
+        self.invalidate_cache(caller.org_id).await;
         Ok(row.as_ref().map(Self::row_to_skill))
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let result = self.db.delete_skill(org_id, id).await?;
-        self.invalidate_cache(org_id).await;
+    #[policy(SKILL_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        let result = self.db.delete_skill(caller.org_id, id).await?;
+        self.invalidate_cache(caller.org_id).await;
         Ok(result)
     }
 
@@ -562,6 +583,7 @@ mod tests {
     use crate::api::skills::CreateSkillRequest;
     use crate::storage::StorageBackend;
     use crate::storage::memory::InMemoryDatabase;
+    use everruns_core::Caller;
 
     fn test_skill_md(name: &str) -> String {
         format!("---\nname: {name}\ndescription: A test skill.\n---\n\nInstructions for {name}.")
@@ -570,6 +592,10 @@ mod tests {
     fn make_service() -> SkillService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
         SkillService::new(db)
+    }
+
+    fn test_caller(org_id: i64) -> Caller {
+        Caller::internal(org_id)
     }
 
     /// Helper to check if org_id is cached (avoids type inference issues in assert!)
@@ -587,13 +613,13 @@ mod tests {
         let req = CreateSkillRequest {
             skill_md: test_skill_md("cache-test"),
         };
-        svc.create(org_id, req).await.unwrap();
+        svc.create(&test_caller(org_id), req).await.unwrap();
 
         // Cache should have been invalidated by create, so list should query DB
         assert!(!is_cached(&svc, org_id).await);
 
         // First list call populates cache
-        let skills = svc.list(org_id, None).await.unwrap();
+        let skills = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "cache-test");
 
@@ -610,10 +636,10 @@ mod tests {
         let req = CreateSkillRequest {
             skill_md: test_skill_md("cached-skill"),
         };
-        svc.create(org_id, req).await.unwrap();
+        svc.create(&test_caller(org_id), req).await.unwrap();
 
         // First list populates cache
-        let first = svc.list(org_id, None).await.unwrap();
+        let first = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(first.len(), 1);
 
         // Insert a skill directly into DB to prove cache is being used
@@ -634,7 +660,7 @@ mod tests {
         svc.db.create_skill(org_id, input).await.unwrap();
 
         // Second list should return cached result (1 skill, not 2)
-        let second = svc.list(org_id, None).await.unwrap();
+        let second = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].name, "cached-skill");
     }
@@ -648,8 +674,8 @@ mod tests {
         let req = CreateSkillRequest {
             skill_md: test_skill_md("skill-one"),
         };
-        svc.create(org_id, req).await.unwrap();
-        let skills = svc.list(org_id, None).await.unwrap();
+        svc.create(&test_caller(org_id), req).await.unwrap();
+        let skills = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(skills.len(), 1);
         assert!(is_cached(&svc, org_id).await);
 
@@ -657,11 +683,11 @@ mod tests {
         let req2 = CreateSkillRequest {
             skill_md: test_skill_md("skill-two"),
         };
-        svc.create(org_id, req2).await.unwrap();
+        svc.create(&test_caller(org_id), req2).await.unwrap();
         assert!(!is_cached(&svc, org_id).await);
 
         // Next list should show both skills
-        let skills = svc.list(org_id, None).await.unwrap();
+        let skills = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(skills.len(), 2);
     }
 
@@ -673,10 +699,10 @@ mod tests {
         let req = CreateSkillRequest {
             skill_md: test_skill_md("update-me"),
         };
-        let skill = svc.create(org_id, req).await.unwrap();
+        let skill = svc.create(&test_caller(org_id), req).await.unwrap();
 
         // Populate cache
-        svc.list(org_id, None).await.unwrap();
+        svc.list(&test_caller(org_id), None).await.unwrap();
         assert!(is_cached(&svc, org_id).await);
 
         // Update skill - should invalidate cache
@@ -684,13 +710,13 @@ mod tests {
             skill_md: Some(test_skill_md("updated-name")),
             status: None,
         };
-        svc.update(org_id, skill.id.uuid(), update_req)
+        svc.update(&test_caller(org_id), skill.id.uuid(), update_req)
             .await
             .unwrap();
         assert!(!is_cached(&svc, org_id).await);
 
         // Next list should reflect the update
-        let skills = svc.list(org_id, None).await.unwrap();
+        let skills = svc.list(&test_caller(org_id), None).await.unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "updated-name");
     }
@@ -703,19 +729,22 @@ mod tests {
         let req = CreateSkillRequest {
             skill_md: test_skill_md("delete-me"),
         };
-        let skill = svc.create(org_id, req).await.unwrap();
+        let skill = svc.create(&test_caller(org_id), req).await.unwrap();
 
         // Populate cache
-        svc.list(org_id, None).await.unwrap();
+        svc.list(&test_caller(org_id), None).await.unwrap();
         assert!(is_cached(&svc, org_id).await);
 
         // Delete skill - should invalidate cache
-        let deleted = svc.delete(org_id, skill.id.uuid()).await.unwrap();
+        let deleted = svc
+            .delete(&test_caller(org_id), skill.id.uuid())
+            .await
+            .unwrap();
         assert!(deleted);
         assert!(!is_cached(&svc, org_id).await);
 
         // Next list should be empty
-        let skills = svc.list(org_id, None).await.unwrap();
+        let skills = svc.list(&test_caller(org_id), None).await.unwrap();
         assert!(skills.is_empty());
     }
 
@@ -729,17 +758,17 @@ mod tests {
         let req_a = CreateSkillRequest {
             skill_md: test_skill_md("org-a-skill"),
         };
-        svc.create(org_a, req_a).await.unwrap();
+        svc.create(&test_caller(org_a), req_a).await.unwrap();
 
         // Create skill in org B
         let req_b = CreateSkillRequest {
             skill_md: test_skill_md("org-b-skill"),
         };
-        svc.create(org_b, req_b).await.unwrap();
+        svc.create(&test_caller(org_b), req_b).await.unwrap();
 
         // Populate both caches
-        let skills_a = svc.list(org_a, None).await.unwrap();
-        let skills_b = svc.list(org_b, None).await.unwrap();
+        let skills_a = svc.list(&test_caller(org_a), None).await.unwrap();
+        let skills_b = svc.list(&test_caller(org_b), None).await.unwrap();
         assert_eq!(skills_a.len(), 1);
         assert_eq!(skills_b.len(), 1);
         assert_eq!(skills_a[0].name, "org-a-skill");
@@ -749,12 +778,12 @@ mod tests {
         let req_a2 = CreateSkillRequest {
             skill_md: test_skill_md("org-a-skill-2"),
         };
-        svc.create(org_a, req_a2).await.unwrap();
+        svc.create(&test_caller(org_a), req_a2).await.unwrap();
         assert!(!is_cached(&svc, org_a).await);
         assert!(is_cached(&svc, org_b).await);
 
         // Org B still returns cached result
-        let skills_b_cached = svc.list(org_b, None).await.unwrap();
+        let skills_b_cached = svc.list(&test_caller(org_b), None).await.unwrap();
         assert_eq!(skills_b_cached.len(), 1);
         assert_eq!(skills_b_cached[0].name, "org-b-skill");
     }

@@ -1,241 +1,171 @@
-# Session Schedules — Implementation Plan
+# Policy Coverage Plan
 
 ## Overview
 
-Add session-scoped scheduling capability that lets agents schedule future work within a session. When a schedule fires, a system message is injected into the session, triggering a turn.
+Wire policies into all services, add view/manage split, platform user rule for durable, UI shared helper, update specs to mandate policies for new features.
 
-**Key difference from existing durable schedules**: Session schedules are user-facing, session-bound, created via agent tools, and trigger conversational turns — not system-level workflows.
+## 1. Core: New permissions + IsPlatformUser rule
 
-## Architecture
+**File: `crates/core/src/permissions.rs`**
 
+Add 4 view permissions:
 ```
-Agent (via tools)                   Session Schedules Tab (UI)
-    │                                        │
-    ▼                                        ▼
-┌─────────────────────────────────────────────────┐
-│  session_schedules table (PostgreSQL)           │
-│  - session_id FK, cron/one-shot, description    │
-│  - max 5 active per session                     │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│  SessionScheduler (control-plane)               │
-│  - Polls due session schedules                  │
-│  - Injects input.message (role: "schedule")     │
-│  - Triggers turn via runner.start_run()         │
-└─────────────────────────────────────────────────┘
+OrgHarnessesView       → org:harnesses:view
+OrgLlmProvidersView    → org:llm-providers:view
+OrgSettingsView        → org:settings:view
+OrgMembersView         → org:members:view
 ```
 
-## Data Model
+Update role mapping — all 3 roles get all 4 view permissions (Members can view everything).
 
-### New table: `session_schedules`
+Add `IsPlatformUser` to `Rule` enum.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | UUID PK (uuidv7) | Primary key |
-| public_id | TEXT UNIQUE | Format: `sched_{32-hex}` |
-| session_id | UUID FK → sessions | Parent session |
-| description | TEXT NOT NULL | What the agent should do |
-| cron_expression | TEXT | Cron expression (NULL for one-shot) |
-| scheduled_at | TIMESTAMPTZ | One-shot trigger time (NULL for recurring) |
-| timezone | TEXT DEFAULT 'UTC' | IANA timezone |
-| enabled | BOOLEAN DEFAULT true | Active flag |
-| next_trigger_at | TIMESTAMPTZ | Next computed trigger (indexed) |
-| last_triggered_at | TIMESTAMPTZ | Last trigger |
-| trigger_count | INTEGER DEFAULT 0 | Total triggers |
-| created_at | TIMESTAMPTZ | Creation time |
-| updated_at | TIMESTAMPTZ | Last update |
+Add `is_platform_user: bool` to `Caller`. Update `Caller::internal()` → `is_platform_user: true`.
 
-Constraint: `CHECK (cron_expression IS NOT NULL OR scheduled_at IS NOT NULL)` — must have one scheduling method.
-
-Index: `CREATE INDEX idx_session_schedules_polling ON session_schedules (next_trigger_at) WHERE enabled = true;`
-
-Index: `CREATE INDEX idx_session_schedules_session ON session_schedules (session_id) WHERE enabled = true;`
-
-### New TypedId: `ScheduleId` (prefix: `sched_`)
-
-Add to `typed_id.rs` and `id-schema.md`.
-
-### New event type: `schedule.triggered`
-
-Data: `{ schedule_id, description }` — emitted when a schedule fires (informational).
-
-### Message injection
-
-When a schedule fires, inject an `input.message` event with a special metadata marker:
-
-```json
-{
-  "type": "input.message",
-  "data": {
-    "message": {
-      "role": "user",
-      "content": [{"type": "text", "text": "Scheduled task: <description>"}],
-      "metadata": { "source": "schedule", "schedule_id": "sched_..." }
+Update `Policy::evaluate()`:
+```rust
+Rule::IsPlatformUser => {
+    if !caller.is_platform_user {
+        return Err(PolicyError::denied(self.id, "platform_user"));
     }
-  }
 }
 ```
 
-Using `role: "user"` with metadata marker (not a new role) keeps compatibility with all LLM providers. The UI can render these differently based on `metadata.source === "schedule"`.
+Rename `PolicyConfigResponse` → `ResourceConfigResponse` (same shape: `{ policies: HashMap<String, bool> }`).
 
-## Implementation Steps
+## 2. Platform user resolution
 
-### Phase 1: Core (Rust)
+**File: `crates/server/src/auth/config.rs`** — load `PLATFORM_USER_EMAILS` env var (comma-separated) into `AuthConfig`.
 
-1. **Migration** (`010_session_schedules.sql`)
-   - `session_schedules` table with all fields above
-   - Polling and session indexes
+**File: `crates/server/src/api/common.rs`** — shared `caller_from_org(org, platform_emails)` that checks if user email is in platform list → sets `is_platform_user`.
 
-2. **TypedId** — add `ScheduleId` with `sched_` prefix
+For durable: build `Caller` from `AuthUser` + platform check. Define `DURABLE_MANAGE` policy with `Rule::IsPlatformUser`. Replace `AdminUser` extractor.
 
-3. **Storage layer** (`server/src/storage/`)
-   - `SessionScheduleRow`, `CreateSessionScheduleRow`, `UpdateSessionScheduleRow`
-   - CRUD operations + `list_by_session`, `claim_due_schedules`, `count_active_for_session`
+## 3. Service layer: Add Caller + policies
 
-4. **Service layer** (`server/src/services/session_schedule.rs`)
-   - `SessionScheduleService` — business logic
-   - Enforce max 5 active per session
-   - Compute `next_trigger_at` from cron/one-shot
-   - Trigger: inject message + start turn
+Each service gets `Caller` param replacing `org_id`, policy consts, `#[policy]` on every method.
 
-5. **Session event type** — add `SCHEDULE_TRIGGERED` constant
+### AgentService
+- VIEW: `agent.view` → `OrgAgentsManage` (get, get_by_public_id, list)
+- MANAGE: `agent.manage` → `OrgAgentsManage` (create, update, copy, delete, upsert)
 
-6. **Scheduler loop** (`server/src/session_scheduler.rs`)
-   - Poll `session_schedules` every 1s for due schedules
-   - Claim via `SELECT FOR UPDATE SKIP LOCKED`
-   - For each: inject message event, start turn workflow
-   - For one-shot: set `enabled = false` after trigger
-   - For recurring: compute and set next `next_trigger_at`
-   - Start in server alongside existing durable scheduler
+### AppService
+- VIEW: `app.view` → `OrgAgentsManage` (get, list)
+- MANAGE: `app.manage` → `OrgAgentsManage` (create, update)
+- DANGEROUS: `app.dangerous` → `OrgAgentsManage` + `OrgSettingsManage` (delete, publish, unpublish)
 
-### Phase 2: Capability & Tools (Rust)
+### SessionService
+- VIEW: `session.view` → `OrgSessionsManage` (get, list, stats)
+- MANAGE: `session.manage` → `OrgSessionsManage` (create, update, update_status, delete, get_or_create_chat, pin, unpin)
 
-7. **Capability** (`core/src/capabilities/session_schedule.rs`)
-   - ID: `session_schedule`
-   - System prompt addition explaining scheduling tools
-   - 3 tools: `create_schedule`, `cancel_schedule`, `list_schedules`
+### McpServerService (Members allowed — building blocks)
+- VIEW: `mcp_server.view` → `OrgAgentsManage` (get, list, list_active, list_active_with_tools, get_tools, get_cached_tools, get_batch_with_tools, resolve_by_prefix)
+- MANAGE: `mcp_server.manage` → `OrgAgentsManage` (create, update, delete, refresh_tools, decrypt_api_key)
 
-8. **Tools implementation**
-   - `create_schedule`: params `{ description, cron_expression?, scheduled_at?, timezone? }`
-     - Validates max 5 active
-     - Computes next_trigger_at
-     - Returns schedule details
-   - `cancel_schedule`: params `{ schedule_id }`
-     - Sets `enabled = false`
-   - `list_schedules`: no params
-     - Returns all schedules for session (active and recent inactive)
+### LlmProviderService
+- VIEW: `llm_provider.view` → `OrgLlmProvidersView` (get, list)
+- MANAGE: `llm_provider.manage` → `OrgLlmProvidersManage` (create, update, delete)
 
-9. **ToolContext extension**
-   - Add `session_schedule_store: Option<Arc<dyn SessionScheduleStore>>` to `ToolContext`
-   - `SessionScheduleStore` trait in `core/src/traits.rs`
+### LlmModelService
+- VIEW: `llm_model.view` → `OrgLlmProvidersView` (get_with_provider, list_for_provider, list_all, list_all_with_filters, get_default)
+- MANAGE: `llm_model.manage` → `OrgLlmProvidersManage` (create, update, delete)
 
-10. **Register capability** in `CapabilityRegistry::with_builtins_for_grade()`
+### SkillService
+- VIEW: `skill.view` → `OrgAgentsManage` (get, list, get_content)
+- MANAGE: `skill.manage` → `OrgAgentsManage` (create, create_from_archive, update, delete)
 
-### Phase 3: API (Rust)
+### HarnessService (update existing)
+- VIEW: `harness.view` → `OrgHarnessesView` (get, list — currently `HARNESS_MANAGE`, downgrade)
+- MANAGE/DANGEROUS: unchanged
 
-11. **REST endpoints** (`server/src/api/session_schedules.rs`)
-    - `GET /v1/sessions/{session_id}/schedules` — list schedules
-    - `GET /v1/sessions/{session_id}/schedules/{schedule_id}` — get schedule
-    - `PATCH /v1/sessions/{session_id}/schedules/{schedule_id}` — update (enable/disable)
-    - `DELETE /v1/sessions/{session_id}/schedules/{schedule_id}` — delete schedule
-    - `POST /v1/sessions/{session_id}/schedules/{schedule_id}/trigger` — manual trigger
+### Durable (new)
+- `DURABLE_MANAGE` → `IsPlatformUser` (all durable endpoints)
 
-12. **SSE event** — add `schedule.triggered` to supported event types list
+## 4. API layer: Update handlers + config endpoints
 
-13. **Session response extension**
-    - Add `active_schedule_count: Option<u32>` to `Session` struct
-    - Populate in session queries (subquery or join)
+For each resource API file:
+1. Use shared `caller_from_org()` from `common.rs`
+2. Pass `Caller` to service methods
+3. Use `.map_policy_or_internal()` on results
+4. Add `GET /v1/{resource}/config` → `ResourceConfigResponse`
 
-### Phase 4: UI (TypeScript/React)
+New config endpoints: agents, apps, sessions, mcp-servers, llm-providers, llm-models, skills.
+Update: harnesses config (add `harness.view`, use `ResourceConfigResponse`).
 
-14. **API client** (`lib/api/session-schedules.ts`)
-    - Types: `SessionSchedule`, list/get/update/delete/trigger functions
+Durable: replace `AdminUser` with `Caller` + `DURABLE_MANAGE` policy.
 
-15. **Hooks** (`hooks/use-session-schedules.ts`)
-    - `useSessionSchedules(sessionId)`, `useUpdateSchedule()`, `useDeleteSchedule()`, `useTriggerSchedule()`
+## 5. Internal callers (gRPC, workers)
 
-16. **Query keys** — add `sessionSchedules` section
+All `Caller::internal(org_id)` already gets Owner role + `is_platform_user: true`.
+Update gRPC service methods to pass `Caller::internal()` instead of raw `org_id`.
 
-17. **Schedules tab** (`sessions/[sessionId]/schedules/page.tsx`)
-    - Table: description, type (one-shot/recurring), cron/time, next run, trigger count, status
-    - Actions: enable/disable toggle, delete, trigger now
-    - Empty state when no schedules
+## 6. UI: Shared policy helper
 
-18. **Tab navigation** — add "Schedules" tab with `Clock` icon in session layout
+### Types (`apps/ui/src/lib/api/types.ts`)
+```ts
+export interface ResourceConfigResponse {
+  policies: Record<string, boolean>;
+}
+```
 
-19. **Schedule indicator** — in session layout header and session cards
-    - Small badge/icon showing active schedule count
-    - Only shown when count > 0
+### Hook (`apps/ui/src/hooks/use-policies.ts`)
+```ts
+export function usePolicies(resource: string) {
+  // Fetches GET /v1/{resource}/config
+  // Returns { can(policyId): boolean, isLoading, ... }
+}
+```
 
-20. **Scheduled message rendering** — in chat view
-    - Detect `metadata.source === "schedule"` on input messages
-    - Render with clock icon and "Scheduled" label instead of user avatar
+### Component (`apps/ui/src/components/policy-gate.tsx`)
+```tsx
+export function PolicyGate({ resource, policy, fallback?, children }) {
+  // Renders children only if policy passes
+}
+```
 
-21. **Session context** — add `activeScheduleCount` from session data
+### Query keys — add `policies.config(resource)`.
 
-### Phase 5: Tests
+### Wire into UI pages — harnesses as example, others follow pattern.
 
-22. **Unit tests** (Rust)
-    - Cron next-trigger computation
-    - Max 5 enforcement
-    - One-shot disabling after trigger
-    - Tool parameter validation
-    - Storage CRUD operations
+## 7. Specs updates
 
-23. **Integration tests** (Rust)
-    - Schedule creation via API
-    - Manual trigger via API
-    - Enable/disable via API
-    - Session response includes schedule count
+### `specs/permissions.md`
+- Add view permissions to table
+- Add `IsPlatformUser` rule (move from "future" to current)
+- Add `ResourceConfigResponse` pattern
+- Add durable policy
+- **Add section: "Policy Requirements" — all new service methods MUST have `#[policy]` with `Caller`**
 
-24. **UI tests** — component tests for schedule list, indicator
+### `specs/code-organization.md`
+Add rule: "All service methods MUST have `#[policy]` enforcement with `Caller` parameter. New features without policies will not pass review."
 
-## File Changes Summary
+### `specs/apis.md`
+Document config endpoints.
 
-### New files
-- `crates/server/migrations/010_session_schedules.sql`
-- `crates/core/src/capabilities/session_schedule.rs`
-- `crates/server/src/services/session_schedule.rs`
-- `crates/server/src/api/session_schedules.rs`
-- `crates/server/src/session_scheduler.rs`
-- `apps/ui/src/lib/api/session-schedules.ts`
-- `apps/ui/src/hooks/use-session-schedules.ts`
-- `apps/ui/src/app/(main)/sessions/[sessionId]/schedules/page.tsx`
+### `specs/durable-execution-engine.md`
+Document platform user access replacing AdminUser.
 
-### Modified files
-- `crates/core/src/typed_id.rs` — add ScheduleId
-- `crates/core/src/capabilities/mod.rs` — register session_schedule
-- `crates/core/src/traits.rs` — add SessionScheduleStore trait + ToolContext field
-- `crates/core/src/events.rs` — add SCHEDULE_TRIGGERED constant
-- `crates/core/src/session.rs` — add active_schedule_count field
-- `crates/server/src/api/mod.rs` — add schedule routes
-- `crates/server/src/server.rs` — start scheduler loop
-- `crates/server/src/storage/` — add schedule storage
-- `apps/ui/src/app/(main)/sessions/[sessionId]/layout.tsx` — add tab + indicator
-- `apps/ui/src/components/session/session-card.tsx` — add indicator
-- `apps/ui/src/lib/query-keys.ts` — add schedule keys
-- `apps/ui/src/lib/api/types.ts` — add schedule types
-- `apps/ui/src/app/(main)/sessions/[sessionId]/session-context.tsx` — add schedule count
+## 8. Tests
 
-### Spec update
-- `specs/scheduled-tasks.md` — add session schedules section (or new `specs/session-schedules.md`)
-- `specs/id-schema.md` — add ScheduleId
+### Core unit tests
+- View permissions in role mapping (all roles get view)
+- `IsPlatformUser` rule (pass when true, fail when false)
+- `is_platform_user` field on Caller
 
-## Dependencies
+### Integration tests
+- Need TestServer role-switching support to test 403 responses
+- Test at least: Member gets 403 on harness create, Admin gets 403 on harness delete
 
-### Rust
-- `cron` crate (already in workspace for durable schedules)
-- `chrono-tz` (already in workspace)
+## Execution order
 
-### npm
-- `cronstrue` — human-readable cron descriptions (optional, nice-to-have)
-
-## Decisions
-
-1. **Message role**: Use `role: "user"` with `metadata.source: "schedule"` rather than new role — avoids LLM provider compatibility issues
-2. **Storage**: Separate `session_schedules` table (not reusing `durable_schedules`) — different lifecycle, session-scoped, simpler schema
-3. **Scheduler**: Separate scheduler loop from durable scheduler — different concerns, lighter weight
-4. **Max 5**: Enforced at service layer (not DB constraint) for better error messages
-5. **One-shot + recurring**: Both supported — one-shot auto-disables after trigger
+1. Core permissions (view perms, IsPlatformUser, Caller field, ResourceConfigResponse)
+2. Platform user loading in auth config
+3. Shared caller_from_org in common.rs
+4. HarnessService: add HARNESS_VIEW, update get/list
+5-11. Remaining services: add Caller + policies (agent, app, session, mcp, llm_provider, llm_model, skill)
+12. API handlers: update all to pass Caller + add config endpoints
+13. Durable: replace AdminUser with IsPlatformUser policy
+14. gRPC/internal: update to Caller::internal
+15. UI: usePolicies + PolicyGate + wire harnesses
+16. Specs: update permissions, code-organization, apis, durable
+17. Tests

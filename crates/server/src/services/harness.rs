@@ -16,7 +16,13 @@ use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Policy: CRUD on harnesses (create, read, update, copy).
+/// Policy: View harnesses (read-only).
+pub const HARNESS_VIEW: Policy = Policy {
+    id: "harness.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgHarnessesView)],
+};
+
+/// Policy: CRUD on harnesses (create, update, copy).
 pub const HARNESS_MANAGE: Policy = Policy {
     id: "harness.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgHarnessesManage)],
@@ -78,7 +84,7 @@ impl HarnessService {
         Ok(Self::row_to_harness(row, capabilities))
     }
 
-    #[policy(HARNESS_MANAGE)]
+    #[policy(HARNESS_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Harness>> {
         let row = self
             .db
@@ -93,7 +99,7 @@ impl HarnessService {
         }
     }
 
-    #[policy(HARNESS_MANAGE)]
+    #[policy(HARNESS_VIEW)]
     pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Harness>> {
         let rows = self.db.list_harnesses(caller.org_id, search).await?;
 

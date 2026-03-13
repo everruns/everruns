@@ -9,11 +9,27 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentId, AgentStatus, TokenUsage};
+use everruns_core::{
+    Agent, AgentCapabilityConfig, AgentId, AgentStatus, Caller, Permission, Policy, Rule,
+    TokenUsage,
+};
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::agents::{CreateAgentRequest, UpdateAgentRequest};
+
+/// Policy: View agents (read-only).
+pub const AGENT_VIEW: Policy = Policy {
+    id: "agent.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
+/// Policy: Manage agents (create, update, copy, delete).
+pub const AGENT_MANAGE: Policy = Policy {
+    id: "agent.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
 
 pub struct AgentService {
     db: Arc<StorageBackend>,
@@ -24,9 +40,10 @@ impl AgentService {
         Self { db }
     }
 
+    #[policy(AGENT_MANAGE)]
     pub async fn create(
         &self,
-        org_id: i64,
+        caller: &Caller,
         client_id: Option<AgentId>,
         req: CreateAgentRequest,
     ) -> Result<Agent> {
@@ -44,7 +61,7 @@ impl AgentService {
                 tags: req.tags.clone(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             };
-            let row = self.db.create_agent(org_id, input).await?;
+            let row = self.db.create_agent(caller.org_id, input).await?;
             let uuid = row.id.uuid();
             (row, uuid)
         } else {
@@ -61,7 +78,7 @@ impl AgentService {
             };
             let row = self
                 .db
-                .create_agent_with_id(org_id, AgentId::from_uuid(internal_uuid), input)
+                .create_agent_with_id(caller.org_id, AgentId::from_uuid(internal_uuid), input)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent UUID collision"))?;
             (row, internal_uuid)
@@ -92,8 +109,12 @@ impl AgentService {
         Ok(Self::row_to_agent(row, capabilities))
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Agent>> {
-        let row = self.db.get_agent(org_id, AgentId::from_uuid(id)).await?;
+    #[policy(AGENT_VIEW)]
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Agent>> {
+        let row = self
+            .db
+            .get_agent(caller.org_id, AgentId::from_uuid(id))
+            .await?;
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(id).await?;
@@ -103,8 +124,16 @@ impl AgentService {
         }
     }
 
-    pub async fn get_by_public_id(&self, org_id: i64, public_id: &str) -> Result<Option<Agent>> {
-        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+    #[policy(AGENT_VIEW)]
+    pub async fn get_by_public_id(
+        &self,
+        caller: &Caller,
+        public_id: &str,
+    ) -> Result<Option<Agent>> {
+        let row = self
+            .db
+            .get_agent_by_public_id(caller.org_id, public_id)
+            .await?;
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(row.id.uuid()).await?;
@@ -114,8 +143,9 @@ impl AgentService {
         }
     }
 
-    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<Agent>> {
-        let rows = self.db.list_agents(org_id, search).await?;
+    #[policy(AGENT_VIEW)]
+    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Agent>> {
+        let rows = self.db.list_agents(caller.org_id, search).await?;
 
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());
@@ -127,14 +157,18 @@ impl AgentService {
         Ok(agents)
     }
 
+    #[policy(AGENT_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         public_id: &str,
         req: UpdateAgentRequest,
     ) -> Result<Option<Agent>> {
         // Resolve public_id -> internal AgentId
-        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+        let row = self
+            .db
+            .get_agent_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = row else {
             return Ok(None);
         };
@@ -151,7 +185,10 @@ impl AgentService {
                 .tools
                 .map(|t| serde_json::to_value(&t).unwrap_or_default()),
         };
-        let row = self.db.update_agent(org_id, internal_id, input).await?;
+        let row = self
+            .db
+            .update_agent(caller.org_id, internal_id, input)
+            .await?;
 
         match row {
             Some(row) => {
@@ -184,8 +221,9 @@ impl AgentService {
 
     /// Copy an agent by public_id. Creates a new agent with "{name} (copy)" and
     /// duplicates description, system_prompt, default_model_id, tags, capabilities, tools.
-    pub async fn copy(&self, org_id: i64, public_id: &str) -> Result<Option<Agent>> {
-        let source = self.get_by_public_id(org_id, public_id).await?;
+    #[policy(AGENT_MANAGE)]
+    pub async fn copy(&self, caller: &Caller, public_id: &str) -> Result<Option<Agent>> {
+        let source = self.get_by_public_id(caller, public_id).await?;
         let Some(source) = source else {
             return Ok(None);
         };
@@ -201,23 +239,28 @@ impl AgentService {
             tools: source.tools,
         };
 
-        let agent = self.create(org_id, None, req).await?;
+        let agent = self.create(caller, None, req).await?;
         Ok(Some(agent))
     }
 
-    pub async fn delete(&self, org_id: i64, public_id: &str) -> Result<bool> {
+    #[policy(AGENT_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, public_id: &str) -> Result<bool> {
         // Resolve public_id -> internal AgentId
-        let row = self.db.get_agent_by_public_id(org_id, public_id).await?;
+        let row = self
+            .db
+            .get_agent_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = row else {
             return Ok(false);
         };
-        self.db.delete_agent(org_id, existing.id).await
+        self.db.delete_agent(caller.org_id, existing.id).await
     }
 
     /// Upsert agent by public_id. Returns (agent, was_created).
+    #[policy(AGENT_MANAGE)]
     pub async fn upsert(
         &self,
-        org_id: i64,
+        caller: &Caller,
         public_id: &str,
         req: CreateAgentRequest,
     ) -> Result<(Agent, bool)> {
@@ -230,7 +273,7 @@ impl AgentService {
             tags: req.tags,
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
         };
-        let (row, was_created) = self.db.upsert_agent(org_id, input).await?;
+        let (row, was_created) = self.db.upsert_agent(caller.org_id, input).await?;
         let agent_id_uuid = row.id.uuid();
 
         // Set capabilities if provided (replace existing on upsert)

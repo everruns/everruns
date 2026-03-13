@@ -10,7 +10,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use everruns_core::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, Caller, DEFAULT_ORG_ID,
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, validate_org_public_id,
 };
 use serde::Serialize;
@@ -421,6 +421,18 @@ pub struct ResolvedOrg {
     pub user_id: Option<Uuid>,
     /// User's role in this organization
     pub role: OrgRole,
+}
+
+impl From<&ResolvedOrg> for Caller {
+    fn from(org: &ResolvedOrg) -> Self {
+        Caller {
+            org_id: org.org_id,
+            org_public_id: org.public_id.clone(),
+            user_id: org.user_id,
+            role: org.role,
+            is_platform_user: false,
+        }
+    }
 }
 
 impl<S> FromRequestParts<S> for ResolvedOrg

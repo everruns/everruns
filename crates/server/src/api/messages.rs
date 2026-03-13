@@ -26,6 +26,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
+use everruns_core::Caller;
+
 use crate::services::{MessageService, SessionService};
 
 // Re-export core types with ToSchema for OpenAPI
@@ -229,9 +231,10 @@ pub async fn create_message(
     })?;
 
     // Get session to retrieve agent_id
+    let caller = Caller::from(&org);
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&caller, session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -260,12 +263,7 @@ pub async fn create_message(
         );
         if let Err(e) = state
             .session_service
-            .update_status(
-                org.org_id,
-                &org.public_id,
-                session_id.uuid(),
-                "active".to_string(),
-            )
+            .update_status(&caller, session_id.uuid(), "active".to_string())
             .await
         {
             tracing::warn!(error = %e, "Failed to reset session status from waiting_for_tool_results");
@@ -328,7 +326,7 @@ pub async fn list_messages(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
