@@ -306,6 +306,12 @@ The following HTTP status codes trigger automatic retry:
 - `429` - Too Many Requests (Rate Limited)
 - `5xx` - Server Errors (except 501 Not Implemented)
 
+For streaming providers, Everruns also retries a narrow class of **in-band stream errors** when:
+- the provider emits a transient server/rate-limit style error event inside an accepted stream
+- no text, thinking content, tool calls, or completion metadata have been emitted yet
+
+Once any output has been surfaced to the user, the generation is not retried automatically. This avoids duplicated partial output and preserves deterministic event history.
+
 ### Rate Limit Header Support
 
 Drivers parse provider-specific headers to determine retry timing:

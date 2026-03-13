@@ -375,6 +375,31 @@ pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
     false
 }
 
+/// Check if an in-band provider error message looks transient and safe to retry.
+///
+/// This complements HTTP-status-based retry detection for streaming APIs that can
+/// emit retryable provider failures inside an otherwise successful event stream.
+pub fn is_transient_error_message(message: &str) -> bool {
+    let msg = message.trim().to_ascii_lowercase();
+
+    [
+        "server_error",
+        "internal server error",
+        "overloaded",
+        "overloaded_error",
+        "rate limit",
+        "too many requests",
+        "request timeout",
+        "timed out",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "temporarily unavailable",
+    ]
+    .iter()
+    .any(|needle| msg.contains(needle))
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -527,6 +552,25 @@ mod tests {
         assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN)); // 403
         assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND)); // 404
         assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED)); // 501
+    }
+
+    #[test]
+    fn test_is_transient_error_message_detects_provider_server_errors() {
+        assert!(is_transient_error_message(
+            "server_error: An error occurred while processing your request."
+        ));
+        assert!(is_transient_error_message("Rate limit exceeded"));
+        assert!(is_transient_error_message(
+            "Service temporarily unavailable"
+        ));
+    }
+
+    #[test]
+    fn test_is_transient_error_message_rejects_non_retryable_messages() {
+        assert!(!is_transient_error_message(
+            "invalid_request_error: bad tool schema"
+        ));
+        assert!(!is_transient_error_message("Model not available: gpt-99"));
     }
 
     #[test]
