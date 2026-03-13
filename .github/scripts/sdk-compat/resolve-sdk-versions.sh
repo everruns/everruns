@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep this script portable to stock GitHub runners; avoid non-default tools.
 repo_url="https://github.com/everruns/sdk.git"
 
 mapfile -t versions < <(
   git ls-remote --tags --refs "$repo_url" \
     | awk '{print $2}' \
     | sed -E 's#refs/tags/v##' \
-    | rg '^[0-9]+\.[0-9]+\.[0-9]+$' \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
     | sort -t. -k1,1n -k2,2n -k3,3n
 )
 
@@ -21,7 +22,7 @@ IFS='.' read -r latest_major latest_minor latest_patch <<< "$latest"
 
 version_exists() {
   local candidate="$1"
-  printf '%s\n' "${versions[@]}" | rg -qx "$candidate"
+  printf '%s\n' "${versions[@]}" | grep -Fxq "$candidate"
 }
 
 find_highest_for_constraint() {
