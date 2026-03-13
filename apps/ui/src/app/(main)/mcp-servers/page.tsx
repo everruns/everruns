@@ -284,60 +284,57 @@ export default function McpServersPage() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* MCP Servers Section */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold">MCP Servers</h2>
-            <p className="text-sm text-muted-foreground">
-              Configure Model Context Protocol (MCP) servers to extend agent capabilities with
-              external tools and resources.
-            </p>
-          </div>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">MCP Servers</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Configure Model Context Protocol (MCP) servers to extend agent capabilities with
+            external tools and resources.
+          </p>
+        </div>
+        <Button onClick={() => setAddServerOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Server
+        </Button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
+          Failed to load MCP servers: {error.message}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <McpServerCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : servers.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+          <h2 className="mb-2 text-lg font-medium">No MCP servers configured</h2>
+          <p className="mb-4 text-muted-foreground">
+            Add an MCP server to extend your agents with external tools and resources.
+          </p>
           <Button onClick={() => setAddServerOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Add Server
           </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {servers.map((server) => (
+            <McpServerCard
+              key={server.id}
+              server={server}
+              onDelete={handleDeleteServer}
+              onSetApiKey={setApiKeyServer}
+            />
+          ))}
         </div>
-
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-            Failed to load MCP servers: {error.message}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <McpServerCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : servers.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Plug className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No MCP servers configured</h3>
-            <p className="text-muted-foreground mb-4">
-              Add an MCP server to extend your agents with external tools and resources.
-            </p>
-            <Button onClick={() => setAddServerOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Server
-            </Button>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {servers.map((server) => (
-              <McpServerCard
-                key={server.id}
-                server={server}
-                onDelete={handleDeleteServer}
-                onSetApiKey={setApiKeyServer}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      )}
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
