@@ -203,6 +203,7 @@ pub mod tests {
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("session")],
+                    is_built_in: false,
                     status: HarnessStatus::Active,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),

@@ -504,6 +504,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        is_built_in: false,
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_harness.updated_at.as_ref()),

@@ -48,6 +48,7 @@ impl HarnessService {
             system_prompt: req.system_prompt,
             default_model_id: req.default_model_id,
             tags: req.tags,
+            is_built_in: false,
         };
         let row = self.db.create_harness(caller.org_id, input).await?;
         let harness_id = row.id;
@@ -112,6 +113,13 @@ impl HarnessService {
         id: Uuid,
         req: UpdateHarnessRequest,
     ) -> Result<Option<Harness>> {
+        // Reject updates to built-in harnesses
+        if self.is_built_in(caller.org_id, id).await? {
+            anyhow::bail!(
+                "Cannot modify built-in harness. Copy it first to create an editable version."
+            );
+        }
+
         let input = UpdateHarness {
             name: req.name,
             description: req.description,
@@ -175,9 +183,23 @@ impl HarnessService {
 
     #[policy(HARNESS_DANGEROUS)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        // Reject deletion of built-in harnesses
+        if self.is_built_in(caller.org_id, id).await? {
+            anyhow::bail!("Cannot delete built-in harness.");
+        }
+
         self.db
             .delete_harness(caller.org_id, HarnessId::from_uuid(id))
             .await
+    }
+
+    /// Check if a harness is built-in (system-managed, readonly).
+    async fn is_built_in(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let row = self
+            .db
+            .get_harness(org_id, HarnessId::from_uuid(id))
+            .await?;
+        Ok(row.map(|r| r.is_built_in).unwrap_or(false))
     }
 
     async fn get_capabilities(&self, harness_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
@@ -197,6 +219,7 @@ impl HarnessService {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

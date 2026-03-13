@@ -821,9 +821,9 @@ impl Database {
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active')
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -832,6 +832,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(input.is_built_in)
         .fetch_one(&self.pool)
         .await?;
 
@@ -850,20 +851,22 @@ impl Database {
     ) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 tags = EXCLUDED.tags,
+                is_built_in = EXCLUDED.is_built_in,
                 updated_at = NOW()
             WHERE
                 harnesses.name IS DISTINCT FROM EXCLUDED.name
                 OR harnesses.description IS DISTINCT FROM EXCLUDED.description
                 OR harnesses.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
                 OR harnesses.tags IS DISTINCT FROM EXCLUDED.tags
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+                OR harnesses.is_built_in IS DISTINCT FROM EXCLUDED.is_built_in
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(id.uuid())
@@ -873,6 +876,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(input.is_built_in)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -882,7 +886,7 @@ impl Database {
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
             FROM harnesses
             WHERE org_id = $1 AND id = $2
             "#,
@@ -903,7 +907,7 @@ impl Database {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
         let sql = format!(
-            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
                 FROM harnesses
                 WHERE org_id = $1 AND status = 'active'{search_sql}
                 ORDER BY created_at DESC"#
@@ -933,7 +937,7 @@ impl Database {
                 status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(org_id)

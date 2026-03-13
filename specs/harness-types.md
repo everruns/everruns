@@ -96,15 +96,22 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | Why include `session` in Generic? | Session metadata (title, info) is commonly needed and has minimal overhead. |
 | Why include `agent_instructions` in Generic? | AGENTS.md is the standard way to provide project-level instructions. Including it by default means users get this functionality without extra configuration. |
 | Why include `skills` in Generic? | Skills extend agent abilities via portable instruction packages. Including discovery by default means agents can use skills uploaded to the session filesystem without extra capability setup. |
-| Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are seed data, not the only options. |
+| Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
+| Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
+| How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |
 
-## Seed Data
+## Built-in Harness Lifecycle
 
-Built-in harnesses are seeded on server startup using fixed UUIDs for idempotency. They use `ON CONFLICT DO NOTHING` to avoid overwriting user modifications.
+Built-in harnesses are managed by `crates/server/src/org_init.rs`:
 
-### UUID Allocation
+1. **Org initialization**: When a new org is created (API or seed), `initialize_org_harnesses()` provisions all built-in harnesses with `is_built_in = true`.
+2. **Reconciliation**: On server startup, `reconcile_built_in_harnesses()` ensures all orgs have up-to-date built-in harnesses. New definitions are created; changed definitions are updated.
+3. **Readonly protection**: API rejects update/delete on harnesses with `is_built_in = true`. Users can copy built-in harnesses to get editable versions.
+4. **Default org**: Uses fixed seed UUIDs (backward compat). Other orgs get fresh UUIDs.
 
-Harness UUIDs occupy the `0x600-0x6FF` range in the seed ID schema:
+### UUID Allocation (Default Org Only)
+
+Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs are only used for the default org; other orgs get auto-generated UUIDs.
 
 | Harness | UUID (hex) |
 |---------|-----------|

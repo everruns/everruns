@@ -74,6 +74,8 @@ export interface Harness {
   tags: string[];
   /** Capabilities with per-harness configuration */
   capabilities: AgentCapabilityConfig[];
+  /** Whether this harness is built-in (system-managed, readonly) */
+  is_built_in: boolean;
   status: HarnessStatus;
   created_at: string;
   updated_at: string;

@@ -874,6 +874,7 @@ impl DirectWorkerAdapters {
                 .into_iter()
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
+            is_built_in: r.is_built_in,
             status: match r.status.as_str() {
                 "active" => HarnessStatus::Active,
                 "archived" => HarnessStatus::Archived,
@@ -1131,6 +1132,7 @@ impl DirectPlatformStore {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1259,6 +1261,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
             tags: vec!["managed".to_string()],
+            is_built_in: false,
         };
         let row = self
             .db

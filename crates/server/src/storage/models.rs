@@ -259,6 +259,7 @@ pub struct HarnessRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    pub is_built_in: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -271,6 +272,7 @@ pub struct CreateHarnessRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    pub is_built_in: bool,
 }
 
 #[derive(Debug, Clone, Default)]
