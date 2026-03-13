@@ -69,7 +69,7 @@ pub const BUILT_IN_HARNESSES: &[BuiltInHarness] = &[
     BuiltInHarness {
         seed_id: harness_ids::GENERIC,
         name: "Generic",
-        description: "General-purpose harness with file system, bash, web fetch, secrets, session management, and agent skills. Recommended default for most use cases.",
+        description: "General-purpose harness with file system, bash, web fetch, secrets, session management, long-context support, and agent skills. Recommended default for most use cases.",
         system_prompt: "You are a helpful assistant.",
         tags: &["generic", "default", "built-in"],
         capabilities: &[
@@ -83,6 +83,7 @@ pub const BUILT_IN_HARNESSES: &[BuiltInHarness] = &[
             BuiltInCapability::new("session"),
             BuiltInCapability::new("agent_instructions"),
             BuiltInCapability::new("skills"),
+            BuiltInCapability::new("infinity_context"),
             BuiltInCapability::new("openai_tool_search"),
         ],
     },
@@ -90,7 +91,7 @@ pub const BUILT_IN_HARNESSES: &[BuiltInHarness] = &[
         seed_id: harness_ids::CHAT,
         name: "Platform Chat",
         description: "Conversational harness for the global chat interface with platform management capabilities.",
-        system_prompt: "You are a helpful assistant on the Everruns platform.\n\nCapabilities are the primary way to extend agent functionality. Use `list_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.\n\nWhen creating agents, always use `list_capabilities` first to find relevant capability IDs to include.\n\n## Running agents\n\nWhen asked to \"run an agent\" or \"run X with agent Y\", follow these steps:\n1. Create a session for the agent (use `manage_sessions` with operation \"create\")\n2. Send the user's message/task to the session (use `session_interact` with operation \"send_message\")\n3. Wait for the turn to complete (use `session_interact` with operation \"wait_for_idle\")\n4. Retrieve and relay the results (use `session_interact` with operation \"get_messages\")\n\n## Harness creation\n\nAvoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `manage_harnesses` with operation \"list\") which already includes file system, bash, storage, session, agent instructions, and skills capabilities.\n\n## Confirmation guidelines\n\n- **Always confirm** before creating a harness or agent — these are reusable org-wide entities.\n- **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.",
+        system_prompt: "You are a helpful assistant on the Everruns platform.\n\nCapabilities are the primary way to extend agent functionality. Use `list_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.\n\nWhen creating agents, always use `list_capabilities` first to find relevant capability IDs to include.\n\n## Running agents\n\nWhen asked to \"run an agent\" or \"run X with agent Y\", follow these steps:\n1. Create a session for the agent (use `manage_sessions` with operation \"create\")\n2. Send the user's message/task to the session (use `session_interact` with operation \"send_message\")\n3. Wait for the turn to complete (use `session_interact` with operation \"wait_for_idle\")\n4. Retrieve and relay the results (use `session_interact` with operation \"get_messages\")\n\n## Harness creation\n\nAvoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `manage_harnesses` with operation \"list\") which already includes file system, bash, storage, long-context support, session, agent instructions, and skills capabilities.\n\n## Confirmation guidelines\n\n- **Always confirm** before creating a harness or agent — these are reusable org-wide entities.\n- **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.",
         tags: &["chat", "built-in"],
         capabilities: &[
             BuiltInCapability::new("session_file_system"),
@@ -103,6 +104,7 @@ pub const BUILT_IN_HARNESSES: &[BuiltInHarness] = &[
             BuiltInCapability::new("session"),
             BuiltInCapability::new("agent_instructions"),
             BuiltInCapability::new("skills"),
+            BuiltInCapability::new("infinity_context"),
             BuiltInCapability::new("platform_management"),
             BuiltInCapability::new("openai_tool_search"),
         ],

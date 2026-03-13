@@ -79,6 +79,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+mod infinity_context;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
@@ -134,6 +135,9 @@ pub use fake_warehouse::{
 pub use file_system::{
     DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
     StatFileTool, WriteFileTool,
+};
+pub use infinity_context::{
+    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
 };
 pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
@@ -507,6 +511,7 @@ impl CapabilityRegistry {
         registry.register(WebFetchCapability);
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
+        registry.register(InfinityContextCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -1184,11 +1189,12 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
+        assert!(registry.has("infinity_context"));
         assert!(registry.has("platform_management"));
         assert!(registry.has("system_commands"));
-        // 22 core built-in capabilities
+        // 23 core built-in capabilities
         // (integration plugins like docker_container, daytona add more when linked)
-        assert!(registry.len() >= 22);
+        assert!(registry.len() >= 23);
     }
 
     #[test]
@@ -1216,13 +1222,14 @@ mod tests {
         assert!(registry.has("fake_financial"));
         assert!(registry.has("skills"));
         assert!(registry.has("session_schedule"));
+        assert!(registry.has("infinity_context"));
         assert!(registry.has("platform_management"));
         assert!(registry.has("system_commands"));
         assert!(registry.has("openai_tool_search"));
         assert!(registry.has("openui"));
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 24);
+        assert_eq!(registry.len(), 25);
     }
 
     #[test]
@@ -2215,9 +2222,13 @@ mod tests {
         let generic_harness_caps = vec![
             "session_file_system".to_string(),
             "virtual_bash".to_string(),
+            "web_fetch".to_string(),
             "session_storage".to_string(),
             "session".to_string(),
+            "agent_instructions".to_string(),
             "skills".to_string(),
+            "infinity_context".to_string(),
+            "openai_tool_search".to_string(),
         ];
 
         let registry = CapabilityRegistry::with_builtins();

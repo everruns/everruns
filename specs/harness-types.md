@@ -45,6 +45,8 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | `session` | Session | Session info access and title management | |
 | `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
+| `infinity_context` | Infinity Context | Trims older messages from the live prompt while exposing `query_history` for long sessions | |
+| `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
 
 **Use cases:**
 - Default harness for most agents
@@ -74,6 +76,8 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | `session` | Session | Session info access and title management | |
 | `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
+| `infinity_context` | Infinity Context | Trims older prompt history while keeping it queryable | |
+| `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
 | `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools | |
 
 **System prompt guidance includes:**
@@ -96,6 +100,8 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | Why include `session` in Generic? | Session metadata (title, info) is commonly needed and has minimal overhead. |
 | Why include `agent_instructions` in Generic? | AGENTS.md is the standard way to provide project-level instructions. Including it by default means users get this functionality without extra configuration. |
 | Why include `skills` in Generic? | Skills extend agent abilities via portable instruction packages. Including discovery by default means agents can use skills uploaded to the session filesystem without extra capability setup. |
+<<<<<<< HEAD
+| Why include `infinity_context` in Generic? | General-purpose sessions often grow long. Including long-context support by default keeps the prompt bounded without permanently hiding earlier conversation state. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
 | Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
 | How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |

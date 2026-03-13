@@ -73,10 +73,8 @@ When searching history:
 - Capability config MUST support:
   ```json
   {
-    "context_budget_percent": 70,
-    "min_recent_messages": 10,
-    "search_boost_recency": true,
-    "search_boost_user_messages": true
+    "context_budget_tokens": 100000,
+    "min_recent_messages": 10
   }
   ```
 
