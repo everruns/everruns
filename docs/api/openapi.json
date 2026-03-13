@@ -5199,9 +5199,6 @@
       "CreateSessionRequest": {
         "type": "object",
         "description": "Request to create a session",
-        "required": [
-          "harness_id"
-        ],
         "properties": {
           "agent_id": {
             "type": [
@@ -5220,7 +5217,7 @@
           },
           "harness_id": {
             "type": "string",
-            "description": "ID of the harness for this session (format: harness_{32-hex}).",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nAuto-generated if omitted (backward compatibility with older SDKs).",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "model_id": {

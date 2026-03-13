@@ -19,57 +19,91 @@ edition = "2021"
 [dependencies]
 everruns-sdk = "=$version"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-rand = "0.9"
 TOML
 
+# The SDK session API changed:
+#   v0.1.0-v0.1.2: sessions().create(agent_id)
+#   v0.1.3+: sessions().create(harness_id), with .agent_id() builder
+
+# Compare versions: if version >= 0.1.3, use harness_id API
+version_gte_013() {
+  IFS='.' read -r major minor patch <<< "$1"
+  [ "$major" -gt 0 ] && return 0
+  [ "$minor" -gt 1 ] && return 0
+  [ "$minor" -eq 1 ] && [ "$patch" -ge 3 ] && return 0
+  return 1
+}
+
+if version_gte_013 "$version"; then
 cat > "$workdir/smoke/src/main.rs" <<'RS'
-use everruns_sdk::{Client, CreateAgentRequest, CreateSessionRequest};
-use rand::{distr::Alphanumeric, Rng};
+use everruns_sdk::Everruns;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("EVERRUNS_API_KEY")?;
     let base_url = std::env::var("EVERRUNS_BASE_URL")?;
+    let sdk_version = std::env::var("SDK_VERSION")?;
 
-    let client = Client::builder().api_key(api_key).base_url(base_url).build()?;
+    let client = Everruns::with_base_url(api_key, &base_url)?;
 
-    let suffix: String = rand::rng()
-        .sample_iter(Alphanumeric)
-        .take(8)
-        .map(char::from)
-        .collect();
+    // 1. Create agent
+    let agent = client.agents().create("sdk-compat-rs", "Compatibility test agent").await?;
+    println!("  agent created: {}", agent.id);
 
-    let agent = client
-        .agents()
-        .create(CreateAgentRequest {
-            name: format!("sdk-compat-rs-{suffix}"),
-            system_prompt: "Compatibility test agent".to_string(),
-            ..Default::default()
-        })
-        .await?;
+    // 2. Fetch agent and verify
+    let fetched = client.agents().get(&agent.id).await?;
+    assert_eq!(fetched.id, agent.id, "agent id mismatch");
+    println!("  agent fetch verified");
 
-    let fetched_agent = client.agents().get(&agent.id).await?;
-    if fetched_agent.id != agent.id {
-        return Err(format!("agent id mismatch: {} != {}", fetched_agent.id, agent.id).into());
-    }
+    // 3. Create session with harness_id
+    let harness_id = everruns_sdk::generate_harness_id();
+    let session = client.sessions().create(&harness_id).await?;
+    println!("  session created: {}", session.id);
 
-    let session = client
-        .sessions()
-        .create(CreateSessionRequest {
-            agent_id: agent.id.clone(),
-            ..Default::default()
-        })
-        .await?;
-
+    // 4. Fetch session and verify
     let fetched_session = client.sessions().get(&session.id).await?;
-    if fetched_session.id != session.id {
-        return Err(format!("session id mismatch: {} != {}", fetched_session.id, session.id).into());
-    }
+    assert_eq!(fetched_session.id, session.id, "session id mismatch");
+    println!("  session fetch verified");
 
-    println!("ok rust sdk {}", std::env::var("SDK_VERSION")?);
+    println!("ok rust sdk {}", sdk_version);
     Ok(())
 }
 RS
+else
+cat > "$workdir/smoke/src/main.rs" <<'RS'
+use everruns_sdk::Everruns;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api_key = std::env::var("EVERRUNS_API_KEY")?;
+    let base_url = std::env::var("EVERRUNS_BASE_URL")?;
+    let sdk_version = std::env::var("SDK_VERSION")?;
+
+    let client = Everruns::with_base_url(api_key, &base_url)?;
+
+    // 1. Create agent
+    let agent = client.agents().create("sdk-compat-rs", "Compatibility test agent").await?;
+    println!("  agent created: {}", agent.id);
+
+    // 2. Fetch agent and verify
+    let fetched = client.agents().get(&agent.id).await?;
+    assert_eq!(fetched.id, agent.id, "agent id mismatch");
+    println!("  agent fetch verified");
+
+    // 3. Create session (old API: takes agent_id, not harness_id)
+    let session = client.sessions().create(&agent.id).await?;
+    println!("  session created: {}", session.id);
+
+    // 4. Fetch session and verify
+    let fetched_session = client.sessions().get(&session.id).await?;
+    assert_eq!(fetched_session.id, session.id, "session id mismatch");
+    println!("  session fetch verified");
+
+    println!("ok rust sdk {}", sdk_version);
+    Ok(())
+}
+RS
+fi
 
 (
   cd "$workdir/smoke"

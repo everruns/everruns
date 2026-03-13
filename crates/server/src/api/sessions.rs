@@ -30,6 +30,8 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
+    /// Auto-generated if omitted (backward compatibility with older SDKs).
+    #[serde(default = "HarnessId::new")]
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: HarnessId,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
@@ -710,11 +712,11 @@ mod tests {
     }
 
     #[test]
-    fn test_create_session_request_missing_harness_id() {
-        // harness_id is required, so this should fail
+    fn test_create_session_request_missing_harness_id_auto_generates() {
+        // harness_id is optional — auto-generated for backward compat with older SDKs
         let json = r#"{}"#;
-        let result: Result<CreateSessionRequest, _> = serde_json::from_str(json);
-        assert!(result.is_err());
+        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.harness_id.to_string().starts_with("harness_"));
     }
 
     #[test]

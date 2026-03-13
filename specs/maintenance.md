@@ -121,6 +121,13 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 8. Verify CLI crate (`crates/cli/`) can exercise all SDK sub-clients without errors
 9. File issues or PRs on [everruns/sdk](https://github.com/everruns/sdk) for any gaps found
 
+**SDK publishing:**
+10. Verify all SDK languages are published to their registries for the latest tag:
+    - **npm**: `npm view @everruns/sdk versions` — TODO: versions beyond 0.1.0 are not yet published
+    - **PyPI**: `pip index versions everruns-sdk` — all versions published
+    - **crates.io**: `cargo search everruns-sdk` — all versions published
+11. The CI SDK compatibility matrix resolves versions per registry. Unpublished versions are automatically excluded but reduce test coverage for that language.
+
 ### 10. Rust Documentation
 
 1. Run `cargo doc --no-deps --all-features` — must compile without warnings

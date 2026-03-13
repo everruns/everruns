@@ -585,7 +585,7 @@ jobs:
       AUTH_MODE: none
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       EVERRUNS_API_KEY: sdk-compat-test-key
-      EVERRUNS_BASE_URL: http://localhost:9000/api
+      EVERRUNS_BASE_URL: http://localhost:9000
 
     steps:
       - uses: actions/checkout@v4
