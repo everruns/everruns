@@ -128,6 +128,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/sccache.md` - Shared compile cache (sccache with S3 backend)
 - `specs/browserless.md` - Browserless browser automation integration
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
+- `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
 
 ### Skills
 
