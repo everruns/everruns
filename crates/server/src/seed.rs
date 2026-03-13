@@ -1321,7 +1321,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_OPUS_4_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-opus-4-5-20251101",
+        model_id: "claude-opus-4-5",
         display_name: "Claude Opus 4.5",
         is_default: false,
         is_favorite: true, // Favorite model
@@ -1329,7 +1329,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_4_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-sonnet-4-5-20250929",
+        model_id: "claude-sonnet-4-5",
         display_name: "Claude Sonnet 4.5",
         is_default: false,
         is_favorite: true, // Favorite model
@@ -1337,7 +1337,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_HAIKU_4_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-haiku-4-5-20251001",
+        model_id: "claude-haiku-4-5",
         display_name: "Claude Haiku 4.5",
         is_default: false,
         is_favorite: true, // Favorite model
@@ -1346,7 +1346,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_OPUS_4,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-opus-4-20250514",
+        model_id: "claude-opus-4",
         display_name: "Claude Opus 4",
         is_default: false,
         is_favorite: false,
@@ -1354,7 +1354,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_4,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-sonnet-4-20250514",
+        model_id: "claude-sonnet-4",
         display_name: "Claude Sonnet 4",
         is_default: false,
         is_favorite: false,
@@ -1363,7 +1363,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_3_7_SONNET,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-7-sonnet-20250219",
+        model_id: "claude-3-7-sonnet-latest",
         display_name: "Claude 3.7 Sonnet",
         is_default: false,
         is_favorite: false,
@@ -1372,7 +1372,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_3_5_SONNET,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-sonnet-20241022",
+        model_id: "claude-3-5-sonnet-latest",
         display_name: "Claude 3.5 Sonnet",
         is_default: false,
         is_favorite: false,
@@ -1380,7 +1380,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_3_5_HAIKU,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-haiku-20241022",
+        model_id: "claude-3-5-haiku-latest",
         display_name: "Claude 3.5 Haiku",
         is_default: false,
         is_favorite: false,
