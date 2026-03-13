@@ -505,6 +505,14 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                     .load_events_after(workflow_id, snap.sequence_num)
                     .await?;
 
+                if events.len() > self.config.max_events_per_workflow {
+                    return Err(ExecutorError::TooManyEvents(
+                        workflow_id,
+                        events.len(),
+                        self.config.max_events_per_workflow,
+                    ));
+                }
+
                 debug!(
                     %workflow_id,
                     snapshot_seq = snap.sequence_num,
@@ -522,21 +530,21 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
             );
         }
 
-        // Full replay: load all events
-        let events = self.store.load_events(workflow_id).await?;
-
-        if events.is_empty() {
+        let event_count = self.store.count_events(workflow_id).await?;
+        if event_count == 0 {
             return Err(ExecutorError::WorkflowNotFound(workflow_id));
         }
 
-        // Check event limit
-        if events.len() > self.config.max_events_per_workflow {
+        if event_count > self.config.max_events_per_workflow {
             return Err(ExecutorError::TooManyEvents(
                 workflow_id,
-                events.len(),
+                event_count,
                 self.config.max_events_per_workflow,
             ));
         }
+
+        // Full replay: load all events only after passing the cap check
+        let events = self.store.load_events(workflow_id).await?;
 
         // Verify first event is WorkflowStarted
         if !matches!(&events[0].1, WorkflowEvent::WorkflowStarted { .. }) {
@@ -1312,9 +1320,146 @@ mod tests {
         executor
     }
 
+    fn test_executor(
+        max_events_per_workflow: usize,
+        snapshot_interval: i32,
+    ) -> WorkflowExecutor<InMemoryWorkflowEventStore> {
+        let config = ExecutorConfig {
+            max_events_per_workflow,
+            snapshot_interval,
+            ..Default::default()
+        };
+        let mut executor = WorkflowExecutor::with_config(InMemoryWorkflowEventStore::new(), config);
+        executor.register::<CounterWorkflow>();
+        executor.register::<SnapCounterWorkflow>();
+        executor
+    }
+
     // =================================================================
     // Snapshot tests
     // =================================================================
+
+    #[tokio::test]
+    async fn test_full_replay_rejects_oversized_history_before_loading_events() {
+        let executor = test_executor(2, 0);
+        let workflow_id = Uuid::now_v7();
+
+        executor
+            .store()
+            .create_workflow(
+                workflow_id,
+                <CounterWorkflow as crate::workflow::Workflow>::TYPE,
+                serde_json::json!({ "start": 0, "target": 10 }),
+                None,
+            )
+            .await
+            .unwrap();
+        executor
+            .store()
+            .append_events(
+                workflow_id,
+                0,
+                vec![
+                    WorkflowEvent::WorkflowStarted {
+                        input: serde_json::json!({ "start": 0, "target": 10 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-0".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 0 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                    WorkflowEvent::ActivityCompleted {
+                        activity_id: "increment-0".into(),
+                        result: serde_json::json!({ "value": 1 }),
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+
+        let result = executor.process_workflow(workflow_id).await;
+
+        assert!(matches!(
+            result,
+            Err(ExecutorError::TooManyEvents(id, 3, 2)) if id == workflow_id
+        ));
+        assert_eq!(executor.store().count_events_call_count(), 1);
+        assert_eq!(executor.store().load_events_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_replay_rejects_oversized_delta() {
+        let executor = test_executor(2, 0);
+        let workflow_id = Uuid::now_v7();
+
+        executor
+            .store()
+            .create_workflow(
+                workflow_id,
+                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
+                serde_json::json!({ "start": 0, "target": 10 }),
+                None,
+            )
+            .await
+            .unwrap();
+        executor
+            .store()
+            .append_events(
+                workflow_id,
+                0,
+                vec![
+                    WorkflowEvent::WorkflowStarted {
+                        input: serde_json::json!({ "start": 0, "target": 10 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-0".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 0 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                    WorkflowEvent::ActivityCompleted {
+                        activity_id: "increment-0".into(),
+                        result: serde_json::json!({ "value": 1 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-1".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 1 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                    WorkflowEvent::ActivityCompleted {
+                        activity_id: "increment-1".into(),
+                        result: serde_json::json!({ "value": 2 }),
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+        executor
+            .store()
+            .save_snapshot(
+                workflow_id,
+                1,
+                serde_json::to_vec(&SnapCounterState {
+                    current: 0,
+                    target: 10,
+                    completed: false,
+                    failed: false,
+                    error_message: None,
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let result = executor.process_workflow(workflow_id).await;
+
+        assert!(matches!(
+            result,
+            Err(ExecutorError::TooManyEvents(id, 3, 2)) if id == workflow_id
+        ));
+    }
 
     #[tokio::test]
     async fn test_snapshot_save_and_restore() {
