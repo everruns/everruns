@@ -478,19 +478,28 @@ mod tests {
         initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
 
         // Check that Generic harness has the expected capabilities
-        let generic = BUILT_IN_HARNESSES.iter().find(|h| h.name == "Generic").unwrap();
+        let generic = BUILT_IN_HARNESSES
+            .iter()
+            .find(|h| h.name == "Generic")
+            .unwrap();
         let caps = db.get_harness_capabilities(generic.seed_id).await.unwrap();
         let cap_ids: Vec<&str> = caps.iter().map(|c| c.capability_id.as_str()).collect();
+        let expected_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id).collect();
         assert_eq!(
-            cap_ids,
-            generic.capabilities,
+            cap_ids, expected_ids,
             "Generic harness capabilities should match definition"
         );
 
         // Base harness should have no capabilities
-        let base = BUILT_IN_HARNESSES.iter().find(|h| h.name == "Base").unwrap();
+        let base = BUILT_IN_HARNESSES
+            .iter()
+            .find(|h| h.name == "Base")
+            .unwrap();
         let base_caps = db.get_harness_capabilities(base.seed_id).await.unwrap();
-        assert!(base_caps.is_empty(), "Base harness should have no capabilities");
+        assert!(
+            base_caps.is_empty(),
+            "Base harness should have no capabilities"
+        );
     }
 
     #[tokio::test]
