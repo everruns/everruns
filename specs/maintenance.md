@@ -146,6 +146,10 @@ Verify [everruns/sdk](https://github.com/everruns/sdk) public documentation (`do
 5. Verify cloud agent start commands work
 6. Check commit convention matches `commitlint.config.js`
 7. Ensure tone/style guidance is clear and consistent
+8. Review skill boundaries for overlap and drift:
+   - Generic tool skills own install/setup and command reference
+   - Repo workflow skills link to the tool skill instead of copying the same instructions
+   - Merge or trim skills that trigger on the same tasks without a clear distinction
 
 ### 12. Additional Checks
 
