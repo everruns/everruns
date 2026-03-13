@@ -150,11 +150,11 @@ impl SeedResult {
 async fn sync_agent_capabilities(
     db: &StorageBackend,
     agent_id: Uuid,
-    desired: &[&str],
+    desired: &[SeedCapability],
 ) -> anyhow::Result<bool> {
     let current = db.get_agent_capabilities(agent_id).await?;
     let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
-    let desired_ids: Vec<&str> = desired.to_vec();
+    let desired_ids: Vec<&str> = desired.iter().map(|c| c.id).collect();
 
     if current_ids == desired_ids {
         return Ok(false);
@@ -163,7 +163,10 @@ async fn sync_agent_capabilities(
     let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
         .iter()
         .enumerate()
-        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+        .map(|(idx, cap)| {
+            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
+            (cap.id.to_string(), idx as i32, config)
+        })
         .collect();
     db.set_agent_capabilities(agent_id, cap_tuples).await?;
     Ok(true)
@@ -174,11 +177,11 @@ async fn sync_agent_capabilities(
 async fn sync_harness_capabilities(
     db: &StorageBackend,
     harness_id: Uuid,
-    desired: &[&str],
+    desired: &[SeedCapability],
 ) -> anyhow::Result<bool> {
     let current = db.get_harness_capabilities(harness_id).await?;
     let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
-    let desired_ids: Vec<&str> = desired.to_vec();
+    let desired_ids: Vec<&str> = desired.iter().map(|c| c.id).collect();
 
     if current_ids == desired_ids {
         return Ok(false);
@@ -187,7 +190,10 @@ async fn sync_harness_capabilities(
     let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
         .iter()
         .enumerate()
-        .map(|(idx, cap)| (cap.to_string(), idx as i32, serde_json::json!({})))
+        .map(|(idx, cap)| {
+            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
+            (cap.id.to_string(), idx as i32, config)
+        })
         .collect();
     db.set_harness_capabilities(harness_id, cap_tuples).await?;
     Ok(true)
@@ -277,14 +283,38 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
 // Harness Seeder
 // ============================================
 
-/// Seed harness definition
+/// Capability entry with optional per-capability config.
+struct SeedCapability {
+    id: &'static str,
+    config: Option<fn() -> serde_json::Value>,
+}
+
+impl SeedCapability {
+    const fn new(id: &'static str) -> Self {
+        Self { id, config: None }
+    }
+
+    const fn with_config(id: &'static str, config: fn() -> serde_json::Value) -> Self {
+        Self {
+            id,
+            config: Some(config),
+        }
+    }
+}
+
+impl std::fmt::Display for SeedCapability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.id)
+    }
+}
+
 struct SeedHarness {
     id: Uuid,
     name: &'static str,
     description: &'static str,
     system_prompt: &'static str,
     tags: &'static [&'static str],
-    capabilities: &'static [&'static str],
+    capabilities: &'static [SeedCapability],
 }
 
 /// Built-in seed harnesses
@@ -300,17 +330,21 @@ const SEED_HARNESSES: &[SeedHarness] = &[
     SeedHarness {
         id: seed_ids::GENERIC_HARNESS,
         name: "Generic",
-        description: "General-purpose harness with file system, bash, secrets, session management, and agent skills. Recommended default for most use cases.",
+        description: "General-purpose harness with file system, bash, web fetch, secrets, session management, and agent skills. Recommended default for most use cases.",
         system_prompt: "You are a helpful assistant.",
         tags: &["generic", "default", "seed"],
         capabilities: &[
-            "session_file_system",
-            "virtual_bash",
-            "session_storage",
-            "session",
-            "agent_instructions",
-            "skills",
-            "openai_tool_search",
+            SeedCapability::new("session_file_system"),
+            SeedCapability::new("virtual_bash"),
+            SeedCapability::with_config(
+                "web_fetch",
+                || serde_json::json!({"enable_file_download": true}),
+            ),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session"),
+            SeedCapability::new("agent_instructions"),
+            SeedCapability::new("skills"),
+            SeedCapability::new("openai_tool_search"),
         ],
     },
     SeedHarness {
@@ -320,14 +354,18 @@ const SEED_HARNESSES: &[SeedHarness] = &[
         system_prompt: "You are a helpful assistant on the Everruns platform.\n\nCapabilities are the primary way to extend agent functionality. Use `list_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.\n\nWhen creating agents, always use `list_capabilities` first to find relevant capability IDs to include.\n\n## Running agents\n\nWhen asked to \"run an agent\" or \"run X with agent Y\", follow these steps:\n1. Create a session for the agent (use `manage_sessions` with operation \"create\")\n2. Send the user's message/task to the session (use `session_interact` with operation \"send_message\")\n3. Wait for the turn to complete (use `session_interact` with operation \"wait_for_idle\")\n4. Retrieve and relay the results (use `session_interact` with operation \"get_messages\")\n\n## Harness creation\n\nAvoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `manage_harnesses` with operation \"list\") which already includes file system, bash, storage, session, agent instructions, and skills capabilities.\n\n## Confirmation guidelines\n\n- **Always confirm** before creating a harness or agent — these are reusable org-wide entities.\n- **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.",
         tags: &["chat", "seed"],
         capabilities: &[
-            "session_file_system",
-            "virtual_bash",
-            "session_storage",
-            "session",
-            "agent_instructions",
-            "skills",
-            "platform_management",
-            "openai_tool_search",
+            SeedCapability::new("session_file_system"),
+            SeedCapability::new("virtual_bash"),
+            SeedCapability::with_config(
+                "web_fetch",
+                || serde_json::json!({"enable_file_download": true}),
+            ),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session"),
+            SeedCapability::new("agent_instructions"),
+            SeedCapability::new("skills"),
+            SeedCapability::new("platform_management"),
+            SeedCapability::new("openai_tool_search"),
         ],
     },
 ];
@@ -389,7 +427,7 @@ struct SeedAgent {
     description: &'static str,
     system_prompt: &'static str,
     tags: &'static [&'static str],
-    capabilities: &'static [&'static str],
+    capabilities: &'static [SeedCapability],
     /// If true, only seed in dev environments (experimental features)
     dev_only: bool,
 }
@@ -415,7 +453,7 @@ Example jokes you might tell:
 - "I'm reading a book about anti-gravity. It's impossible to put down!"
 - "What do you call a fake noodle? An impasta!""#,
         tags: &["humor", "demo", "seed"],
-        capabilities: &["current_time"],
+        capabilities: &[SeedCapability::new("current_time")],
         dev_only: false,
     },
     SeedAgent {
@@ -465,7 +503,14 @@ Use this structure for organizing research:
   report.md     - Final synthesized report
 ```"#,
         tags: &["research", "example", "multi-capability"],
-        capabilities: &["stateless_todo_list", "web_fetch", "session_file_system"],
+        capabilities: &[
+            SeedCapability::new("stateless_todo_list"),
+            SeedCapability::with_config(
+                "web_fetch",
+                || serde_json::json!({"enable_file_download": true}),
+            ),
+            SeedCapability::new("session_file_system"),
+        ],
         dev_only: false,
     },
     SeedAgent {
@@ -502,7 +547,9 @@ You have access to Microsoft Learn MCP tools that allow you to:
 - Help users understand complex topics by breaking them down into simpler parts"#,
         tags: &["microsoft", "documentation", "mcp", "demo", "seed"],
         // MCP capability ID format: "mcp:{server_uuid}"
-        capabilities: &["mcp:01933b5a-0000-7000-8000-000000000501"],
+        capabilities: &[SeedCapability::new(
+            "mcp:01933b5a-0000-7000-8000-000000000501",
+        )],
         dev_only: false,
     },
     SeedAgent {
@@ -555,7 +602,7 @@ To write and run a Python script:
 - Ask clarifying questions if the task is ambiguous
 - Celebrate when things work! 🎉"#,
         tags: &["python", "coding", "docker", "demo", "seed"],
-        capabilities: &["docker_container"],
+        capabilities: &[SeedCapability::new("docker_container")],
         dev_only: true, // Experimental capability, only in dev environments
     },
     SeedAgent {
@@ -610,7 +657,10 @@ Files you create are stored in the session's virtual filesystem:
 - Read files with `read_file` or shell commands (`cat`, `head`, `tail`)
 - The filesystem starts empty but persists throughout the session"#,
         tags: &["shell", "bash", "scripting", "demo", "seed"],
-        capabilities: &["virtual_bash", "session_file_system"],
+        capabilities: &[
+            SeedCapability::new("virtual_bash"),
+            SeedCapability::new("session_file_system"),
+        ],
         dev_only: false,
     },
     SeedAgent {
@@ -654,9 +704,9 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
 - Databases persist for the session"#,
         tags: &["data", "sql", "analytics", "demo", "seed"],
         capabilities: &[
-            "session_sql_database",
-            "session_file_system",
-            "stateless_todo_list",
+            SeedCapability::new("session_sql_database"),
+            SeedCapability::new("session_file_system"),
+            SeedCapability::new("stateless_todo_list"),
         ],
         dev_only: false,
     },
@@ -679,7 +729,11 @@ Workflow:
 You can run multiple sandboxes in parallel for different tasks.
 Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
-        capabilities: &["daytona", "session_storage", "session_file_system"],
+        capabilities: &[
+            SeedCapability::new("daytona"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
         dev_only: false,
     },
     SeedAgent {
@@ -759,7 +813,11 @@ Verify each action by re-listing the affected resource type.
             "demo",
             "seed",
         ],
-        capabilities: &["fake_aws", "current_time", "session_file_system"],
+        capabilities: &[
+            SeedCapability::new("fake_aws"),
+            SeedCapability::new("current_time"),
+            SeedCapability::new("session_file_system"),
+        ],
         dev_only: false,
     },
     SeedAgent {
@@ -818,11 +876,11 @@ programmatically using the management tools available to you.
 All tool results include UI links so you can point users to the web interface."#,
         tags: &["platform", "management", "admin", "seed"],
         capabilities: &[
-            "platform_management",
-            "session_file_system",
-            "session_storage",
-            "session",
-            "current_time",
+            SeedCapability::new("platform_management"),
+            SeedCapability::new("session_file_system"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session"),
+            SeedCapability::new("current_time"),
         ],
         dev_only: false,
     },
@@ -866,7 +924,11 @@ Structure your responses with:
 Brave Search API key must be configured in Settings > Connections.
 Get a free key at https://brave.com/search/api/"#,
         tags: &["research", "search", "web", "demo", "seed"],
-        capabilities: &["brave_search", "stateless_todo_list", "current_time"],
+        capabilities: &[
+            SeedCapability::new("brave_search"),
+            SeedCapability::new("stateless_todo_list"),
+            SeedCapability::new("current_time"),
+        ],
         dev_only: true,
     },
     SeedAgent {
@@ -925,7 +987,7 @@ Get a token at https://cloud.browserless.io/"#,
             "demo",
             "seed",
         ],
-        capabilities: &["browserless"],
+        capabilities: &[SeedCapability::new("browserless")],
         dev_only: false,
     },
     SeedAgent {
@@ -964,7 +1026,7 @@ When asked "Show me a sales dashboard", respond with a mix of KPI cards,
 a bar chart of monthly revenue, and a table of recent orders — all composed
 in a single OpenUI code block using Card, BarChart, and Table components."#,
         tags: &["dashboard", "ui", "visualization", "openui", "demo", "seed"],
-        capabilities: &["openui"],
+        capabilities: &[SeedCapability::new("openui")],
         dev_only: false,
     },
 ];
@@ -1859,14 +1921,16 @@ mod tests {
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        assert_eq!(generic.capabilities.len(), 7);
-        assert!(generic.capabilities.contains(&"session_file_system"));
-        assert!(generic.capabilities.contains(&"virtual_bash"));
-        assert!(generic.capabilities.contains(&"session_storage"));
-        assert!(generic.capabilities.contains(&"session"));
-        assert!(generic.capabilities.contains(&"agent_instructions"));
-        assert!(generic.capabilities.contains(&"skills"));
-        assert!(generic.capabilities.contains(&"openai_tool_search"));
+        let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id).collect();
+        assert_eq!(cap_ids.len(), 8);
+        assert!(cap_ids.contains(&"session_file_system"));
+        assert!(cap_ids.contains(&"virtual_bash"));
+        assert!(cap_ids.contains(&"web_fetch"));
+        assert!(cap_ids.contains(&"session_storage"));
+        assert!(cap_ids.contains(&"session"));
+        assert!(cap_ids.contains(&"agent_instructions"));
+        assert!(cap_ids.contains(&"skills"));
+        assert!(cap_ids.contains(&"openai_tool_search"));
         assert!(generic.tags.contains(&"generic"));
         assert!(generic.tags.contains(&"default"));
     }
@@ -1883,11 +1947,11 @@ mod tests {
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        for cap_id in generic.capabilities {
+        for cap in generic.capabilities {
             assert!(
-                registry.has(cap_id),
+                registry.has(cap.id),
                 "Capability '{}' referenced by Generic harness must be registered",
-                cap_id
+                cap.id
             );
         }
     }

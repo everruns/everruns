@@ -36,14 +36,15 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 **Capabilities:**
 
-| Capability ID | Name | Purpose |
-|---------------|------|---------|
-| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` |
-| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
-| `session_storage` | Storage | Key/value store and encrypted secret storage |
-| `session` | Session | Session info access and title management |
-| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt |
-| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
+| Capability ID | Name | Purpose | Config |
+|---------------|------|---------|--------|
+| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` | |
+| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting | |
+| `web_fetch` | Web Fetch | Fetch web content with file download support | `{"enable_file_download": true}` |
+| `session_storage` | Storage | Key/value store and encrypted secret storage | |
+| `session` | Session | Session info access and title management | |
+| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
+| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
 
 **Use cases:**
 - Default harness for most agents
@@ -64,15 +65,16 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 
 **Capabilities:** Generic capabilities plus `platform_management`:
 
-| Capability ID | Name | Purpose |
-|---------------|------|---------|
-| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` |
-| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting |
-| `session_storage` | Storage | Key/value store and encrypted secret storage |
-| `session` | Session | Session info access and title management |
-| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt |
-| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem |
-| `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools |
+| Capability ID | Name | Purpose | Config |
+|---------------|------|---------|--------|
+| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` | |
+| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting | |
+| `web_fetch` | Web Fetch | Fetch web content with file download support | `{"enable_file_download": true}` |
+| `session_storage` | Storage | Key/value store and encrypted secret storage | |
+| `session` | Session | Session info access and title management | |
+| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
+| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
+| `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools | |
 
 **System prompt guidance includes:**
 - "Run agent" workflow: create session → send message → wait for idle → get results
