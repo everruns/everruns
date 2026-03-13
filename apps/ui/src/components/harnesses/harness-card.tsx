@@ -42,7 +42,9 @@ export function HarnessCard({
         </div>
         <div className="flex items-center gap-1">
           {harness.is_built_in && (
-            <Badge variant="outline" className="text-xs">Built-in</Badge>
+            <Badge variant="outline" className="text-xs">
+              Built-in
+            </Badge>
           )}
           <Badge variant={harness.status === "active" ? "default" : "secondary"}>
             {harness.status}

@@ -105,9 +105,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           <h1 className="text-2xl font-bold flex items-center gap-2">
             {harness.name}
             <CopyButton value={harness.id} />
-            {harness.is_built_in && (
-              <Badge variant="outline">Built-in</Badge>
-            )}
+            {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
             <Badge variant={harness.status === "active" ? "default" : "secondary"}>
               {harness.status}
             </Badge>
@@ -126,7 +124,11 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                   Edit
                 </Button>
               </Link>
-              <Button variant="destructive" onClick={handleDelete} disabled={deleteHarness.isPending}>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteHarness.isPending}
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
                 {deleteHarness.isPending ? "Deleting..." : "Delete"}
               </Button>
