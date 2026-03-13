@@ -1153,11 +1153,49 @@ pub async fn apply_capabilities(
 mod tests {
     use super::*;
     use crate::typed_id::SessionId;
+    use std::collections::BTreeSet;
     use uuid::Uuid;
 
     /// Test helper: dummy context with no file store
     fn test_ctx() -> SystemPromptContext {
         SystemPromptContext::without_file_store(SessionId::new())
+    }
+
+    fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
+        [
+            "agent_instructions",
+            "noop",
+            "current_time",
+            "research",
+            "platform_management",
+            "session_file_system",
+            "session_storage",
+            "session",
+            "session_sql_database",
+            "test_math",
+            "test_weather",
+            "stateless_todo_list",
+            "web_fetch",
+            "virtual_bash",
+            "session_schedule",
+            "infinity_context",
+            "openai_tool_search",
+            "skills",
+            "subagents",
+            "system_commands",
+            "openui",
+            "sample_data",
+            "fake_warehouse",
+            "fake_aws",
+            "fake_crm",
+            "fake_financial",
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {
+        registry.capabilities.keys().map(String::as_str).collect()
     }
 
     // =========================================================================
@@ -1174,73 +1212,16 @@ mod tests {
         // Dev mode includes all built-in capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
-        assert!(registry.has("agent_instructions"));
-        assert!(registry.has("noop"));
-        assert!(registry.has("current_time"));
-        assert!(registry.has("research"));
-        assert!(registry.has("session_file_system"));
-        assert!(registry.has("session_storage"));
-        assert!(registry.has("session"));
-        assert!(registry.has("session_sql_database"));
-        assert!(registry.has("test_math"));
-        assert!(registry.has("test_weather"));
-        assert!(registry.has("stateless_todo_list"));
-        assert!(registry.has("web_fetch"));
-        assert!(registry.has("virtual_bash"));
-        assert!(registry.has("sample_data"));
-        assert!(registry.has("fake_warehouse"));
-        assert!(registry.has("fake_aws"));
-        assert!(registry.has("fake_crm"));
-        assert!(registry.has("fake_financial"));
-        assert!(registry.has("skills"));
-        assert!(registry.has("session_schedule"));
-        assert!(registry.has("infinity_context"));
-        assert!(registry.has("platform_management"));
-        assert!(registry.has("system_commands"));
-        // 23 core built-in capabilities
-        // (integration plugins like docker_container, daytona add more when linked)
-        assert!(registry.len() >= 23);
+        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
     }
 
     #[test]
     fn test_capability_registry_with_builtins_prod() {
         // Prod mode excludes experimental capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
-        let expected_capabilities = [
-            "agent_instructions",
-            "noop",
-            "current_time",
-            "research",
-            "session_file_system",
-            "session_storage",
-            "session",
-            "session_sql_database",
-            "test_math",
-            "test_weather",
-            "stateless_todo_list",
-            "web_fetch",
-            "virtual_bash",
-            "sample_data",
-            "fake_warehouse",
-            "fake_aws",
-            "fake_crm",
-            "fake_financial",
-            "skills",
-            "session_schedule",
-            "infinity_context",
-            "platform_management",
-            "system_commands",
-            "openai_tool_search",
-            "openui",
-            "subagents",
-        ];
-
-        for capability in expected_capabilities {
-            assert!(registry.has(capability), "missing capability: {capability}");
-        }
+        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), expected_capabilities.len());
     }
 
     #[test]
