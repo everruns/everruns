@@ -29,6 +29,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       daytona: ${{ steps.filter.outputs.daytona }}
+      sdk_compat: ${{ steps.filter.outputs.sdk_compat }}
       ui: ${{ steps.filter.outputs.ui }}
       docs: ${{ steps.filter.outputs.docs }}
       docker: ${{ steps.filter.outputs.docker }}
@@ -48,6 +49,10 @@ jobs:
               - '.github/workflows/ci.yml'
             daytona:
               - 'integrations/daytona/**'
+            sdk_compat:
+              - 'crates/**'
+              - '.github/scripts/sdk-compat/**'
+              - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
               - '.github/workflows/ci.yml'
@@ -546,6 +551,100 @@ jobs:
         if: always()
         run: kill $SERVER_PID || true
 
+  sdk-compat-matrix:
+    name: SDK Compat Matrix
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.sdk_compat == 'true'
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve SDK version matrix
+        id: matrix
+        run: ./.github/scripts/sdk-compat/resolve-sdk-versions.sh
+
+  sdk-compat-test:
+    name: SDK Compat (${{ matrix.language }} / ${{ matrix.cohort }} / v${{ matrix.version }})
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - build-binaries
+      - sdk-compat-matrix
+    if: needs.changes.outputs.sdk_compat == 'true'
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.sdk-compat-matrix.outputs.matrix) }}
+
+    env:
+      RUSTC_WRAPPER: ""
+      DEV_MODE: "true"
+      AUTH_MODE: none
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      EVERRUNS_API_KEY: sdk-compat-test-key
+      EVERRUNS_BASE_URL: http://localhost:9000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.language == 'typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Rust toolchain
+        if: matrix.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-server
+          path: ./bin
+
+      - name: Make server binary executable
+        run: chmod +x ./bin/everruns-server
+
+      - name: Start server (DEV_MODE with in-process worker)
+        run: |
+          ./bin/everruns-server > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
+          echo "Server is ready"
+
+      - name: Run TypeScript SDK compatibility suite
+        if: matrix.language == 'typescript'
+        run: ./.github/scripts/sdk-compat/test-typescript.sh "${{ matrix.version }}" "$EVERRUNS_BASE_URL" "$EVERRUNS_API_KEY"
+
+      - name: Run Python SDK compatibility suite
+        if: matrix.language == 'python'
+        run: ./.github/scripts/sdk-compat/test-python.sh "${{ matrix.version }}" "$EVERRUNS_BASE_URL" "$EVERRUNS_API_KEY"
+
+      - name: Run Rust SDK compatibility suite
+        if: matrix.language == 'rust'
+        run: ./.github/scripts/sdk-compat/test-rust.sh "${{ matrix.version }}" "$EVERRUNS_BASE_URL" "$EVERRUNS_API_KEY"
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Server Logs ==="
+          cat /tmp/server.log || true
+
+      - name: Stop server
+        if: always()
+        run: kill $SERVER_PID || true
+
   # Reuses export-openapi binary from build-binaries instead of rebuilding
   openapi-check:
     name: OpenAPI Spec Freshness
@@ -706,6 +805,8 @@ jobs:
       - workflow-test
       - cli-e2e-test
       - openapi-check
+      - sdk-compat-matrix
+      - sdk-compat-test
       - ui-build
       - docs-build
       - docker-build
