@@ -112,7 +112,11 @@ export function ChatPanel() {
   // Commands autocomplete
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
+  const hasCommands = commands.length > 0;
   const [showCommands, setShowCommands] = useState(false);
+  const inputPlaceholder = hasCommands
+    ? "Type a message or / for commands... (Enter to send)"
+    : "Type a message... (Enter to send)";
 
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
@@ -165,6 +169,12 @@ export function ChatPanel() {
       setSelectedModelId(storedSelection);
     }
   }, [modelSelectionStorageKey]);
+
+  useEffect(() => {
+    if (!hasCommands && showCommands) {
+      setShowCommands(false);
+    }
+  }, [hasCommands, showCommands]);
 
   const selectedModel = useMemo(
     () => llmModels.find((model) => model.id === selectedModelId),
@@ -661,7 +671,7 @@ export function ChatPanel() {
               onChange={(e) => {
                 const val = e.target.value;
                 setInputValue(val);
-                setShowCommands(shouldShowCommandAutocomplete(val));
+                setShowCommands(hasCommands && shouldShowCommandAutocomplete(val));
               }}
               onKeyDown={handleKeyDown}
               onPaste={(e) => {
@@ -679,7 +689,7 @@ export function ChatPanel() {
                   addFiles(imageFiles);
                 }
               }}
-              placeholder="Type a message or / for commands... (Enter to send)"
+              placeholder={inputPlaceholder}
               className="min-h-[120px] max-h-[260px] w-full resize-none border-0 bg-transparent px-4 py-4 text-sm shadow-none focus-visible:ring-0"
             />
           </div>
