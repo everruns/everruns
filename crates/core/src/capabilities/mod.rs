@@ -1206,36 +1206,41 @@ mod tests {
     fn test_capability_registry_with_builtins_prod() {
         // Prod mode excludes experimental capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+        let expected_capabilities = [
+            "agent_instructions",
+            "noop",
+            "current_time",
+            "research",
+            "session_file_system",
+            "session_storage",
+            "session",
+            "session_sql_database",
+            "test_math",
+            "test_weather",
+            "stateless_todo_list",
+            "web_fetch",
+            "virtual_bash",
+            "sample_data",
+            "fake_warehouse",
+            "fake_aws",
+            "fake_crm",
+            "fake_financial",
+            "skills",
+            "session_schedule",
+            "infinity_context",
+            "platform_management",
+            "system_commands",
+            "openai_tool_search",
+            "openui",
+            "subagents",
+        ];
 
-        assert!(registry.has("agent_instructions"));
-        assert!(registry.has("noop"));
-        assert!(registry.has("current_time"));
-        assert!(registry.has("research"));
-        assert!(registry.has("session_file_system"));
-        assert!(registry.has("session_storage"));
-        assert!(registry.has("session"));
-        assert!(registry.has("session_sql_database"));
-        assert!(registry.has("test_math"));
-        assert!(registry.has("test_weather"));
-        assert!(registry.has("stateless_todo_list"));
-        assert!(registry.has("web_fetch"));
-        assert!(registry.has("virtual_bash"));
-        assert!(registry.has("sample_data"));
-        assert!(registry.has("fake_warehouse"));
-        assert!(registry.has("fake_aws"));
-        assert!(registry.has("fake_crm"));
-        assert!(registry.has("fake_financial"));
-        assert!(registry.has("skills"));
-        assert!(registry.has("session_schedule"));
-        assert!(registry.has("infinity_context"));
-        assert!(registry.has("platform_management"));
-        assert!(registry.has("system_commands"));
-        assert!(registry.has("openai_tool_search"));
-        assert!(registry.has("openui"));
-        assert!(registry.has("subagents"));
+        for capability in expected_capabilities {
+            assert!(registry.has(capability), "missing capability: {capability}");
+        }
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 25);
+        assert_eq!(registry.len(), expected_capabilities.len());
     }
 
     #[test]
