@@ -1,6 +1,6 @@
 # Toolkit Library Contract
 
-> Convention for external libraries (bashkit, fetchkit, future *-kit) that expose tools for everruns integration.
+> Convention for external `*kit` libraries (bashkit, fetchkit, future kits) that expose tools for everruns integration.
 > Not a shared crate — just a contract so all toolkit libraries feel the same to integrate.
 
 ## Problem
@@ -18,24 +18,37 @@ This means each new toolkit requires bespoke integration code in `crates/core/sr
 
 ## Contract
 
-### 1. `Tool` struct with builder
+### 1. `ToolBuilder` — the primary API for everruns
 
-Every toolkit library exposes a `Tool` struct constructed via builder:
+The `ToolBuilder` is the main integration surface. everruns constructs tool builders (often at init time), configures them, and calls metadata/execution methods directly on the builder or on the `Tool` it produces.
+
+Every `*kit` library exposes a `ToolBuilder` with kit-specific config methods:
 
 ```rust
-let tool = mykit::Tool::builder()
+let builder = mykit::ToolBuilder::new()
     // kit-specific config methods
-    .build();
+    .some_feature(true)
+    .some_limit(1000);
+
+// Metadata is available on the builder (no need to build first)
+let schema = builder.input_schema();
+let prompt = builder.system_prompt();
+
+// Build produces an immutable, executable Tool
+let tool = builder.build();
 ```
 
-Builder is the only public constructor. `Tool` is `Send + Sync`.
+`ToolBuilder` methods are chainable. `build()` consumes the builder and returns a `Tool`.
+
+Both `ToolBuilder` and `Tool` are `Send + Sync`.
 
 ### 2. Tool metadata methods
 
-Every `Tool` must provide these methods:
+Available on both `ToolBuilder` (for pre-build introspection) and `Tool` (post-build):
 
 ```rust
-impl Tool {
+// On ToolBuilder and Tool
+impl {
     /// Tool name for LLM invocation (e.g. "bash", "web_fetch").
     /// Snake_case, stable across versions.
     fn name(&self) -> &str;
@@ -56,11 +69,13 @@ impl Tool {
 }
 ```
 
-**Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All three metadata methods must live on the `Tool` so the consumer can delegate without duplication.
+**Why on builder too:** everruns needs metadata at capability-collection time to generate system prompts and tool definitions. The builder config affects metadata (e.g. `enable_save_to_file` changes the schema and description). Having metadata on the builder avoids building a throwaway `Tool` just to read the schema.
 
-### 3. Execution
+**Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on the builder/tool so the consumer can delegate without duplication.
 
-Every `Tool` provides an async execute method:
+### 3. `Tool` — execution
+
+`Tool` is the built, immutable, executable artifact. Every `Tool` provides an async execute method:
 
 ```rust
 impl Tool {
@@ -159,7 +174,7 @@ Toolkit crates re-export all types needed to implement adapter traits and handle
 
 ```rust
 // mykit/src/lib.rs
-pub use tool::{Tool, ToolBuilder, ToolOutput, ToolImage};
+pub use tool::{ToolBuilder, Tool, ToolOutput, ToolImage};
 pub use error::ToolError;
 pub use adapters::{AdapterTrait, AdapterError, DefaultAdapter};
 // Any types needed to implement AdapterTrait:
@@ -172,11 +187,13 @@ Toolkit crates must not depend on `everruns-core` or any everruns crate. They ar
 
 ```
 toolkit crate (standalone)     everruns-core
-├── Tool (builder, metadata)   ├── XxxCapability (implements Capability trait)
-├── execute()                  ├── XxxTool (implements everruns Tool trait)
-├── AdapterTrait               │   ├── delegates metadata to toolkit::Tool
-├── Error types                │   ├── delegates execution to toolkit::Tool
-└── Output types               │   └── maps errors/output to ToolExecutionResult
+├── ToolBuilder (config+meta)  ├── XxxCapability (implements Capability trait)
+├── Tool (execute)             │   ├── uses ToolBuilder for metadata + system prompt
+├── AdapterTrait               │   └── builds Tool for execution
+├── Error types                ├── XxxTool (implements everruns Tool trait)
+└── Output types               │   ├── delegates metadata to toolkit ToolBuilder/Tool
+                               │   ├── delegates execution to toolkit Tool
+                               │   └── maps errors/output to ToolExecutionResult
                                └── AdapterImpl (implements toolkit::AdapterTrait)
                                    └── bridges to SessionFileStore, etc.
 ```
@@ -195,26 +212,44 @@ pub struct XxxCapability;
 impl Capability for XxxCapability {
     fn id(&self) -> &str { "xxx" }
     fn name(&self) -> &str { "Xxx" }
-    fn description(&self) -> &str { mykit::TOOL_DESCRIPTION } // or constant
+    fn description(&self) -> &str { "..." }
 
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(XxxTool::new())]
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(XxxTool::new(config))]
     }
 
     fn system_prompt_preview(&self) -> Option<String> {
-        Some(mykit::Tool::builder().build().system_prompt())
+        // Builder metadata without building a Tool — preview with all features enabled
+        Some(mykit::ToolBuilder::new().some_feature(true).system_prompt())
     }
 
     async fn system_prompt_contribution_with_config(
         &self, _ctx: &SystemPromptContext, config: &Value,
     ) -> Option<String> {
-        let tool = build_from_config(config);
-        Some(format!("<capability id=\"{}\">\n{}\n</capability>", self.id(), tool.system_prompt()))
+        // Builder reads config, generates config-aware system prompt
+        let builder = builder_from_config(config);
+        Some(format!("<capability id=\"{}\">\n{}\n</capability>", self.id(), builder.system_prompt()))
     }
+}
+
+/// Helper: config JSON → ToolBuilder
+fn builder_from_config(config: &Value) -> mykit::ToolBuilder {
+    let feature = config.get("some_feature").and_then(|v| v.as_bool()).unwrap_or(false);
+    mykit::ToolBuilder::new().some_feature(feature)
 }
 
 pub struct XxxTool {
     kit_tool: mykit::Tool,
+    description: String,
+}
+
+impl XxxTool {
+    fn new(config: &Value) -> Self {
+        let builder = builder_from_config(config);
+        let description = builder.description();
+        let kit_tool = builder.build();
+        Self { kit_tool, description }
+    }
 }
 
 #[async_trait]
@@ -245,15 +280,17 @@ impl Tool for XxxTool {
 
 | Library | Gap | Migration |
 |---------|-----|-----------|
-| bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
+| bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
+| bashkit | No `input_schema()` on builder or Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `execute()` on Tool — uses separate `Bash` struct | Add `execute()` / `execute_with()` that wraps `Bash` internally |
 | bashkit | `system_prompt()` naming OK — fetchkit uses `llmtxt()` | Standardize on `system_prompt()` for both |
-| bashkit | No `name()` on Tool | Add; return `"bash"` |
+| bashkit | No `name()` on builder or Tool | Add; return `"bash"` |
 | bashkit | No structured `ToolOutput` — returns raw stdout/stderr | Wrap in `ToolOutput { result: json!({...}), images: vec![] }` |
+| fetchkit | `Tool::builder()` naming OK but returns unnamed builder type | Expose as `ToolBuilder` |
 | fetchkit | Uses `llmtxt()` instead of `system_prompt()` | Rename (or alias) to `system_prompt()` |
 | fetchkit | `execute()` takes `FetchRequest`, not `Value` | Add `Value`-based overload or keep `FetchRequest` and document parse step |
 | fetchkit | Error enum doesn't have `is_user_facing()` | Add method; currently all errors are user-facing |
-| fetchkit | No `name()` on Tool | Add; return `"web_fetch"` |
+| fetchkit | No `name()` on builder or Tool | Add; return `"web_fetch"` |
 | fetchkit | No structured `ToolOutput` | Wrap response in `ToolOutput` |
 
 ## Non-goals
