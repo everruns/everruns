@@ -11,7 +11,7 @@ Leased resources are the generic control-plane primitive for any provider-owned 
 
 ## Model
 
-See [`crates/core/src/leased_resource.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/leased_resource.rs) for the public domain type and [`crates/server/migrations/009_v0.8.6.sql`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/server/migrations/009_v0.8.6.sql) for persistence details.
+See [`crates/core/src/leased_resource.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/leased_resource.rs) for the public domain type and [`crates/server/migrations/010_v0.8.6.sql`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/server/migrations/010_v0.8.6.sql) for persistence details.
 
 Important constraints:
 
