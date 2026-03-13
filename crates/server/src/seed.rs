@@ -278,7 +278,6 @@ impl std::fmt::Display for SeedCapability {
         f.write_str(self.id)
     }
 }
-
 /// Seed agent definition
 struct SeedAgent {
     id: Uuid,
@@ -1789,7 +1788,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id).collect();
-        assert_eq!(cap_ids.len(), 8);
+        assert_eq!(cap_ids.len(), 9);
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"virtual_bash"));
         assert!(cap_ids.contains(&"web_fetch"));
@@ -1797,6 +1796,7 @@ mod tests {
         assert!(cap_ids.contains(&"session"));
         assert!(cap_ids.contains(&"agent_instructions"));
         assert!(cap_ids.contains(&"skills"));
+        assert!(cap_ids.contains(&"infinity_context"));
         assert!(cap_ids.contains(&"openai_tool_search"));
         assert!(generic.tags.contains(&"generic"));
         assert!(generic.tags.contains(&"default"));

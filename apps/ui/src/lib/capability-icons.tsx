@@ -18,6 +18,7 @@ import {
   Database,
   FileText,
   Container,
+  Infinity as InfinityIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -117,6 +118,7 @@ export const capabilityIconMap: Record<string, LucideIcon> = {
   database: Database,
   "file-text": FileText,
   container: Container,
+  infinity: InfinityIcon,
   // Additional capability icons
   cloud: Cloud,
   users: Users,

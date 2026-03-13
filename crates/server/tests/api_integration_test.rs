@@ -903,7 +903,7 @@ async fn test_get_generic_harness() {
     assert!(harness.tags.contains(&"generic".to_string()));
     assert!(harness.tags.contains(&"default".to_string()));
 
-    // Verify Generic harness has the expected 7 capabilities
+    // Verify Generic harness has the expected built-in defaults
     let cap_ids: Vec<&str> = harness
         .capabilities
         .iter()
@@ -911,8 +911,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        8,
-        "Generic harness should have 8 capabilities"
+        9,
+        "Generic harness should have 9 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -936,6 +936,10 @@ async fn test_get_generic_harness() {
         "Should have agent instructions"
     );
     assert!(cap_ids.contains(&"skills"), "Should have skills discovery");
+    assert!(
+        cap_ids.contains(&"infinity_context"),
+        "Should have infinity context"
+    );
     assert!(
         cap_ids.contains(&"openai_tool_search"),
         "Should have OpenAI tool search"
@@ -1108,11 +1112,11 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "Generic (copy)");
-    // Generic harness has 7 capabilities
+    // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        8,
-        "Copied harness should have same 8 capabilities"
+        9,
+        "Copied harness should have same 9 capabilities"
     );
 }
 
@@ -1135,6 +1139,12 @@ async fn test_list_capabilities() {
     assert!(
         !capabilities.is_empty(),
         "Should have built-in capabilities"
+    );
+    assert!(
+        capabilities
+            .iter()
+            .any(|cap| cap["id"] == "infinity_context"),
+        "Should expose infinity_context as a standard capability"
     );
 }
 
@@ -1816,8 +1826,12 @@ async fn test_chat_harness_has_platform_management() {
 
     assert_eq!(
         cap_ids.len(),
-        9,
-        "Platform Chat harness should have 9 capabilities (Generic + platform_management)"
+        10,
+        "Platform Chat harness should have 10 capabilities (Generic + platform_management)"
+    );
+    assert!(
+        cap_ids.contains(&"infinity_context"),
+        "Platform Chat harness should include infinity_context from Generic"
     );
     assert!(
         cap_ids.contains(&"platform_management"),

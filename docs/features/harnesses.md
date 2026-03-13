@@ -42,6 +42,7 @@ A general-purpose harness bundling the core capabilities most agents need. This 
 | **Virtual Bash** | Sandboxed bash shell for running commands, scripts, and text processing |
 | **Storage** | Key/value store for general data and encrypted secret storage for API keys and credentials |
 | **Session** | Access session metadata and manage session title |
+| **Infinity Context** | Keeps long sessions within prompt budget while exposing older history via `query_history` |
 
 ## Choosing a Harness
 
