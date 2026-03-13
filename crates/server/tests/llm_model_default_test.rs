@@ -220,3 +220,92 @@ async fn test_seed_upsert_sets_installed() {
         .expect("re-seed");
     assert!(reseed.is_none(), "no change on identical re-seed");
 }
+
+#[tokio::test]
+async fn test_get_default_model_returns_none_without_org_settings() {
+    let (db, pid) = setup().await;
+
+    // Create an installed model but don't set org settings
+    db.create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
+        .await
+        .expect("create model-a");
+
+    // No org settings → no default
+    let default = db
+        .get_default_llm_model(TEST_ORG_ID)
+        .await
+        .expect("get default model");
+    assert!(default.is_none(), "no default without org settings");
+}
+
+#[tokio::test]
+async fn test_org_settings_clear_default() {
+    let (db, pid) = setup().await;
+
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
+        .await
+        .expect("create model-a");
+
+    // Set default
+    db.upsert_organization_settings(TEST_ORG_ID, Some(m1.id.uuid()))
+        .await
+        .expect("set default");
+
+    // Clear default to None
+    let settings = db
+        .upsert_organization_settings(TEST_ORG_ID, None)
+        .await
+        .expect("clear default");
+    assert!(settings.default_model_id.is_none());
+
+    // get_default should return None
+    let default = db
+        .get_default_llm_model(TEST_ORG_ID)
+        .await
+        .expect("get default model");
+    assert!(default.is_none(), "default should be cleared");
+}
+
+#[tokio::test]
+async fn test_get_organization_settings_returns_none_initially() {
+    let db = InMemoryDatabase::default();
+
+    let settings = db
+        .get_organization_settings(TEST_ORG_ID)
+        .await
+        .expect("get org settings");
+    assert!(settings.is_none(), "no settings initially");
+}
+
+#[tokio::test]
+async fn test_delete_model_that_is_org_default() {
+    let (db, pid) = setup().await;
+
+    let m1 = db
+        .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
+        .await
+        .expect("create model-a");
+
+    // Set as org default
+    db.upsert_organization_settings(TEST_ORG_ID, Some(m1.id.uuid()))
+        .await
+        .expect("set default");
+
+    // Delete the model
+    let deleted = db
+        .delete_llm_model(TEST_ORG_ID, m1.id.into())
+        .await
+        .expect("delete model");
+    assert!(deleted);
+
+    // Default model should now return None (model is gone)
+    let default = db
+        .get_default_llm_model(TEST_ORG_ID)
+        .await
+        .expect("get default model");
+    assert!(
+        default.is_none(),
+        "default should be None after deleting the model"
+    );
+}
