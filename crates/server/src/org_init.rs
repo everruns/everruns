@@ -418,6 +418,105 @@ mod tests {
         let _ = org2; // silence unused
     }
 
+    #[tokio::test]
+    async fn test_default_org_uses_seed_ids() {
+        let db = make_db();
+        seed_default_org(&db).await;
+
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+        // Verify default org harnesses use the fixed seed UUIDs
+        for harness_def in BUILT_IN_HARNESSES {
+            let row = db
+                .get_harness(DEFAULT_ORG_ID, harness_def.seed_id.into())
+                .await
+                .unwrap();
+            assert!(
+                row.is_some(),
+                "Default org should have harness with seed ID for {}",
+                harness_def.name
+            );
+            assert_eq!(row.unwrap().name, harness_def.name);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_new_org_gets_different_ids() {
+        let db = make_db();
+        seed_default_org(&db).await;
+
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+        let org2 = db
+            .create_organization(crate::storage::models::CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000002".to_string(),
+                name: "Test Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        initialize_org_harnesses(&db, org2.org_id).await.unwrap();
+
+        // Non-default org should NOT use seed UUIDs
+        let h_org2 = db.list_harnesses(org2.org_id, None).await.unwrap();
+        let seed_ids: Vec<Uuid> = BUILT_IN_HARNESSES.iter().map(|h| h.seed_id).collect();
+        for h in &h_org2 {
+            assert!(
+                !seed_ids.contains(&h.id.uuid()),
+                "Non-default org harness {} should not use seed UUID",
+                h.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_capabilities_synced() {
+        let db = make_db();
+        seed_default_org(&db).await;
+
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+        // Check that Generic harness has the expected capabilities
+        let generic = BUILT_IN_HARNESSES.iter().find(|h| h.name == "Generic").unwrap();
+        let caps = db.get_harness_capabilities(generic.seed_id).await.unwrap();
+        let cap_ids: Vec<&str> = caps.iter().map(|c| c.capability_id.as_str()).collect();
+        assert_eq!(
+            cap_ids,
+            generic.capabilities,
+            "Generic harness capabilities should match definition"
+        );
+
+        // Base harness should have no capabilities
+        let base = BUILT_IN_HARNESSES.iter().find(|h| h.name == "Base").unwrap();
+        let base_caps = db.get_harness_capabilities(base.seed_id).await.unwrap();
+        assert!(base_caps.is_empty(), "Base harness should have no capabilities");
+    }
+
+    #[tokio::test]
+    async fn test_init_result_has_changes() {
+        let result = InitResult {
+            created: 1,
+            updated: 0,
+            unchanged: 0,
+        };
+        assert!(result.has_changes());
+
+        let result2 = InitResult {
+            created: 0,
+            updated: 1,
+            unchanged: 0,
+        };
+        assert!(result2.has_changes());
+
+        let result3 = InitResult {
+            created: 0,
+            updated: 0,
+            unchanged: 3,
+        };
+        assert!(!result3.has_changes());
+    }
+
     async fn seed_default_org(db: &StorageBackend) {
         use crate::storage::models::CreateOrganizationRow;
         use everruns_core::DEFAULT_ORG_PUBLIC_ID;
