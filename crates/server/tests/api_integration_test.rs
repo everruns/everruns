@@ -886,7 +886,7 @@ async fn test_get_base_harness() {
         "Base harness should have no capabilities"
     );
     assert!(harness.tags.contains(&"base".to_string()));
-    assert!(harness.tags.contains(&"seed".to_string()));
+    assert!(harness.tags.contains(&"built-in".to_string()));
 }
 
 #[tokio::test]
