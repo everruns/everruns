@@ -130,13 +130,6 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
 
-### Skills
-
-`.claude/skills/` contains development skills.
-
-- `no-docker-setup/` - PostgreSQL + Valkey setup for cloud agents
-- `ui-screenshots/` - agent-browser UI screenshots
-
 ### Test Cases
 
 `test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`.
