@@ -687,34 +687,10 @@ fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
 }
 ```
 
-## Current gaps
+## Existing implementations
 
-| Library | Gap | Migration |
-|---------|-----|-----------|
-| both | No `locale()` on builder | Add; default `"en-US"`, thread through to description/system_prompt/errors |
-| both | No `display_name()` on Tool | Add; return localized human-readable name |
-| both | No `version()` on Tool | Add; return `env!("CARGO_PKG_VERSION")` |
-| both | No `build_tool_definition()` | Add; return OpenAI function call JSON |
-| both | No `build_output_schema()` | Add; describe shape of result JSON |
-| both | No `build_service()` | Add; return `impl Service<Value>` for generic callable usage |
-| both | No `help()` on Tool | Add; render comprehensive Markdown |
-| both | No `ToolOutputMetadata` | Add; return duration + kit-specific extras |
-| both | Verbose descriptions/schemas | Trim per token budget rules |
-| both | Error messages expose internals | Rewrite to be actionable, no internal details |
-| bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
-| bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
-| bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
-| bashkit | `system_prompt()` naming OK — fetchkit uses `llmtxt()` | Standardize on `system_prompt()` for both |
-| bashkit | No `name()` on Tool | Add; return `"bash"` |
-| bashkit | No structured `ToolOutput` — returns raw stdout/stderr | Wrap in `ToolOutput { result: json!({...}), images: vec![] }` |
-| bashkit | Has natural cancel/stream support (interpreter is stateful) | Expose via `ToolExecution::cancel()` and `output_stream()` |
-| fetchkit | `Tool::builder()` naming OK but returns unnamed builder type | Expose as `ToolBuilder` |
-| fetchkit | Uses `llmtxt()` instead of `system_prompt()` | Rename (or alias) to `system_prompt()` |
-| fetchkit | `execute()` takes `FetchRequest`, not `Value` | Parse `Value` → `FetchRequest` inside `ToolExecution::execute()` |
-| fetchkit | Error enum doesn't have `is_user_facing()` | Add method; currently all errors are user-facing |
-| fetchkit | No `name()` on Tool | Add; return `"web_fetch"` |
-| fetchkit | No structured `ToolOutput` | Wrap response in `ToolOutput` |
-| fetchkit | No `ToolExecution` — `execute()` lives on `Tool` | Move to `ToolExecution`; streaming progress is a natural fit |
+- **bashkit** — `github.com/everruns/bashkit` (bash sandbox tool, cancel + streaming)
+- **fetchkit** — `crates.io/crates/fetchkit` (HTTP fetch tool, file saver adapter)
 
 ## Non-goals
 
