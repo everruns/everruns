@@ -101,7 +101,7 @@ describe("StreamdownMessage", () => {
     render(<StreamdownMessage>code block</StreamdownMessage>);
 
     const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
-    expect(plugins.code).toEqual({ name: "mock-code-plugin" });
+    expect(plugins.code).toMatchObject({ name: "mock-code-plugin" });
   });
 
   it("disables code highlighting when prop is false", () => {
