@@ -332,13 +332,10 @@ async fn test_exec_tool_missing_api_key() {
         .await;
 
     match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(
-                msg.contains("not configured") || msg.contains("Settings > Connections"),
-                "Got: {msg}"
-            );
+        ToolExecutionResult::ConnectionRequired { provider } => {
+            assert_eq!(provider, "daytona");
         }
-        other => panic!("Expected ToolError, got: {other:?}"),
+        other => panic!("Expected ConnectionRequired, got: {other:?}"),
     }
 }
 
