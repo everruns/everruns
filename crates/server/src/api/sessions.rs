@@ -3,6 +3,7 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::seed::GENERIC_HARNESS_ID;
 use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
@@ -30,8 +31,8 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
-    /// Auto-generated if omitted (backward compatibility with older SDKs).
-    #[serde(default = "HarnessId::new")]
+    /// Defaults to the Generic harness if omitted (backward compat with older SDKs).
+    #[serde(default = "default_harness_id")]
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: HarnessId,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
@@ -59,6 +60,11 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
+}
+
+/// Default harness_id for sessions: uses the built-in Generic harness.
+fn default_harness_id() -> HarnessId {
+    HarnessId::from_uuid(GENERIC_HARNESS_ID)
 }
 
 /// Response from cancel turn endpoint
@@ -200,7 +206,7 @@ pub async fn session_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     request_body = CreateSessionRequest,
     responses(
         (status = 201, description = "Session created successfully", body = Session),
-        (status = 400, description = "Invalid agent ID"),
+        (status = 404, description = "Harness, Agent, or Model not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -210,6 +216,24 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
+    // Validate harness exists and belongs to this org
+    state
+        .db
+        .get_harness(org.org_id, req.harness_id)
+        .await
+        .log_internal_error_json("resolve harness")?
+        .ok_or_not_found_json("Harness")?;
+
+    // Validate model exists and belongs to this org (if specified)
+    if let Some(ref model_id) = req.model_id {
+        state
+            .db
+            .get_llm_model(org.org_id, model_id.uuid())
+            .await
+            .log_internal_error_json("resolve model")?
+            .ok_or_not_found_json("Model")?;
+    }
+
     // Resolve agent public_id to internal UUID for FK storage (if agent specified)
     let (agent_internal_id, agent_public_id) = if let Some(ref agent_id) = req.agent_id {
         let agent_row = state
@@ -712,11 +736,12 @@ mod tests {
     }
 
     #[test]
-    fn test_create_session_request_missing_harness_id_auto_generates() {
-        // harness_id is optional — auto-generated for backward compat with older SDKs
+    fn test_create_session_request_missing_harness_id_defaults_to_generic() {
+        // harness_id defaults to Generic seed harness for backward compat with older SDKs
         let json = r#"{}"#;
         let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
-        assert!(req.harness_id.to_string().starts_with("harness_"));
+        let expected = HarnessId::from_uuid(crate::seed::GENERIC_HARNESS_ID);
+        assert_eq!(req.harness_id, expected);
     }
 
     #[test]

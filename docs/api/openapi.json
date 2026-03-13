@@ -2436,8 +2436,8 @@
               }
             }
           },
-          "400": {
-            "description": "Invalid agent ID"
+          "404": {
+            "description": "Harness, Agent, or Model not found"
           },
           "500": {
             "description": "Internal server error"
@@ -5217,7 +5217,7 @@
           },
           "harness_id": {
             "type": "string",
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nAuto-generated if omitted (backward compatibility with older SDKs).",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nDefaults to the Generic harness if omitted (backward compat with older SDKs).",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "model_id": {

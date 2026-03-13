@@ -22,6 +22,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Well-known UUID for the Generic harness (default for sessions without explicit harness)
+pub const GENERIC_HARNESS_ID: Uuid = org_init::GENERIC_HARNESS_ID;
+
 /// Well-known UUID for the Chat harness (used by global chat endpoint)
 pub const CHAT_HARNESS_ID: Uuid = org_init::CHAT_HARNESS_ID;
 
