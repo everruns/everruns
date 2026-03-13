@@ -1304,7 +1304,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_OPUS_4_6,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-opus-4-6-20260205",
+        model_id: "claude-opus-4-6",
         display_name: "Claude Opus 4.6",
         is_default: false,
         is_favorite: true, // Favorite model
@@ -1312,7 +1312,7 @@ const SEED_MODELS: &[SeedModel] = &[
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_4_6,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-sonnet-4-6-20260217",
+        model_id: "claude-sonnet-4-6",
         display_name: "Claude Sonnet 4.6",
         is_default: false,
         is_favorite: true, // Favorite model
