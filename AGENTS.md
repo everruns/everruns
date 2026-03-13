@@ -129,6 +129,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/browserless.md` - Browserless browser automation integration
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
+- `specs/toolkit-library-contract.md` - Convention for external toolkit libraries (bashkit, fetchkit, etc.)
 
 ### Test Cases
 
