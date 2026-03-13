@@ -10,21 +10,20 @@
  */
 
 import { Streamdown, type StreamdownProps } from "streamdown";
-import { createCodePlugin } from "@streamdown/code";
+import { code as baseCodePlugin } from "@streamdown/code";
 import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
 import type { ComponentType, AnchorHTMLAttributes } from "react";
 
-// Custom code plugin that skips "openui" language — OpenUI blocks are rendered
-// by OpenUIBlock, but during streaming incomplete fences may reach Streamdown.
-const code = (() => {
-  const plugin = createCodePlugin();
-  const orig = plugin.supportsLanguage;
+// Wrap the default code plugin to skip "openui" language — OpenUI blocks are
+// rendered by OpenUIBlock, but during streaming incomplete fences may reach Streamdown.
+const code = {
+  ...baseCodePlugin,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plugin.supportsLanguage = (lang: any) => (lang === "openui" ? false : orig(lang));
-  return plugin;
-})();
+  supportsLanguage: (lang: any) =>
+    lang === "openui" ? false : baseCodePlugin.supportsLanguage(lang),
+};
 
 /** Opens all markdown links in a new tab with noopener noreferrer. */
 const ExternalLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>> = ({
