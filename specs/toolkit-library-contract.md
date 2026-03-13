@@ -169,6 +169,12 @@ impl Tool {
 
     /// The locale this tool was built with (e.g. "en-US").
     fn locale(&self) -> &str;
+
+    /// Comprehensive help rendered as Markdown.
+    /// Includes: description, all parameters with types/defaults/constraints,
+    /// usage examples, adapter requirements, error cases, and version.
+    /// Localized per builder locale.
+    fn help(&self) -> String;
 }
 ```
 
@@ -176,11 +182,53 @@ impl Tool {
 
 **Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on `Tool` so the consumer can delegate without duplication.
 
+#### `help()` content
+
+`help()` returns a self-contained Markdown document. Expected sections:
+
+```markdown
+# Web Fetch
+
+Fetch content from a URL and return it as text or markdown.
+
+**Version:** 0.1.3
+**Name:** `web_fetch`
+
+## Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `url` | string | yes | — | URL to fetch (http/https) |
+| `method` | string | no | `"GET"` | HTTP method (`GET` or `HEAD`) |
+| `as_markdown` | boolean | no | `false` | Convert HTML to markdown |
+| `save_to_file` | string | no | — | Path to save response to |
+
+## Examples
+
+\```json
+{"url": "https://example.com", "as_markdown": true}
+\```
+
+## Adapters
+
+- **FileSaver** (optional): Required when `save_to_file` is set.
+  Without it, `save_to_file` returns an error.
+
+## Errors
+
+- `MissingUrl` — `url` parameter not provided
+- `BlockedUrl` — URL blocked by SSRF policy
+- `FirstByteTimeout` — server did not respond within 1 second
+```
+
+The exact sections vary by tool — the contract is that `help()` is comprehensive enough to use the tool without reading source code.
+
 #### Locale affects
 
 Locale controls the language of human-readable text:
 - `description()` — tool description sent to LLM
 - `display_name()` — UI label
+- `help()` — comprehensive help document
 - `system_prompt()` — LLM instructions
 - Error messages from `ToolError` (user-facing variants)
 
