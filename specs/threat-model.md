@@ -179,6 +179,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
 | TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
+| TM-TENANT-009 | Cross-org foreign reference injection | High | Several write paths accept org-scoped foreign IDs but persist them without resolving ownership first. DB FKs prove existence only, not same-org access. Affected surfaces include LLM model create (`provider_id`), agent/harness default model assignment (`default_model_id`), and session create (`harness_id`, `model_id`) | **OPEN** |
 
 ### Mitigation Details
 
@@ -206,6 +207,11 @@ ApiError::NotFound("Agent not found")    // ✓ No information leakage
 ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 ```
 
+**TM-TENANT-009 — Foreign Reference Ownership Must Be Resolved Before Persist (OPEN):**
+- Global foreign keys are insufficient for tenant isolation because tables such as `llm_models`, `agents`, `harnesses`, and `sessions` reference rows by UUID only.
+- Current affected code paths include `crates/server/src/services/llm_model.rs` + `crates/server/src/storage/repositories.rs` for provider-scoped model creation, `crates/server/src/services/agent.rs` / `crates/server/src/services/harness.rs` for `default_model_id`, and `crates/server/src/api/sessions.rs` + `crates/server/src/services/session.rs` for session `harness_id` / `model_id`.
+- Required invariant: every caller-supplied org-scoped foreign ID must be looked up with `WHERE org_id = $caller_org` before insert/update, and write-side joins should enforce same-org ownership where possible.
+
 ## 3b. Permissions / Authorization (TM-AUTHZ)
 
 | ID | Threat | Severity | Mitigation | Status |
@@ -214,6 +220,7 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-AUTHZ-002 | Policy bypass via internal Caller | Medium | `Caller::internal()` bypasses policies with Owner role; only used in gRPC service (worker ↔ server), not HTTP-accessible | MITIGATED |
 | TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
 | TM-AUTHZ-004 | Missing policy on service method | Medium | Compile-time enforcement via `#[policy]` macro; code review required to ensure coverage | MITIGATED |
+| TM-AUTHZ-005 | Nested subresource parent mismatch | Medium | Some nested routes authorize the child resource but do not prove it belongs to the parent path. `session_schedules` resolves `schedule_id` by org only and ignores `{session_id}` on get/update/delete/trigger | **OPEN** |
 
 ### Mitigation Details
 
@@ -222,6 +229,10 @@ Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no per
 
 **TM-AUTHZ-002 — Internal Caller:**
 `Caller::internal(org_id)` is used exclusively in `grpc_service.rs` for worker-to-server calls. The gRPC endpoint requires a bearer token in production (`TM-DURABLE-002`). HTTP handlers always construct `Caller` from `ResolvedOrg` with the user's actual role.
+
+**TM-AUTHZ-005 — Parent/Child Route Binding Must Be Enforced (OPEN):**
+- Nested resource endpoints must validate both ownership and containment: the child must belong to the parent named in the URL, not just to the same org.
+- Current affected surface: `crates/server/src/api/session_schedules.rs`, where handlers discard `{session_id}` and operate on `schedule_id` alone.
 
 ## 4. API Security (TM-API)
 
@@ -242,6 +253,7 @@ Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no per
 | TM-API-013 | LLM provider base URL SSRF | High | `url_validation::validate_url()` blocks private IPs, loopback, link-local, cloud metadata, non-HTTPS on provider create/update (EVE-69) | MITIGATED |
 | TM-API-014 | Search query SQL wildcard injection | Low | LIKE wildcards (`%`, `_`, `\`) in `?search=` input are escaped; tokens capped at 8 to prevent query amplification from long inputs | MITIGATED |
 | TM-API-015 | Provider secret leakage via leased-resource metadata | High | Leased-resource metadata is explicitly non-secret; cleanup reconstructs provider auth from user connections/session secrets, and session resources stay org/session scoped | MITIGATED |
+| TM-API-016 | Unvalidated foreign IDs collapse into 500s | Medium | Several mutations defer bad-ID detection to database FK failures or in-memory writes instead of returning a typed 404/400. This affects `provider_id`, `default_model_id`, `harness_id`, and `model_id` in the same surfaces as TM-TENANT-009 | **OPEN** |
 
 ### Mitigation Details
 
@@ -306,6 +318,13 @@ The session Resources API returns leased-resource metadata to users and the UI, 
 
 - Lease registration stores only non-secret metadata needed for cleanup and debugging.
 - Cleanup handlers reconstruct provider auth from the original user connection or session secret store at execution time.
+
+**TM-API-016 — Foreign-ID Validation Must Fail Before Storage (OPEN):**
+- Write APIs should convert caller-supplied foreign IDs into resolved internal rows before mutation. Today some handlers/services pass IDs through to storage and rely on DB constraints or raw in-memory mutation instead.
+- Expected behavior:
+  - nonexistent referenced resource: `404 Not Found` (or `400 Bad Request` for malformed IDs)
+  - referenced resource exists but belongs to another org: `404 Not Found`
+- Current behavior in affected paths can be `500 Internal Server Error` for missing rows, and successful cross-org linkage when the UUID exists globally.
 - Session resources are still gated by the existing org/session ownership check before rows are listed.
 
 Code references:
