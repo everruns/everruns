@@ -16,33 +16,39 @@ bashkit and fetchkit diverged in how they expose tool metadata and execution:
 
 This means each new toolkit requires bespoke integration code in `crates/core/src/capabilities/`. The contract below standardizes the public API shape so the integration side is predictable.
 
+## Contract overview
+
+Three objects with clear responsibilities:
+
+```
+ToolBuilder (config)  →  Tool (metadata)  →  ToolExecution (runtime)
+```
+
+- **`ToolBuilder`** — kit-specific configuration, produces a `Tool`
+- **`Tool`** — immutable metadata (name, description, schema, system prompt), produces a `ToolExecution`
+- **`ToolExecution`** — stateful, single-use execution of one tool call
+
 ## Contract
 
-### 1. `ToolBuilder` and `Tool`
+### 1. `ToolBuilder`
 
-Every `*kit` library exposes a `ToolBuilder` for configuration and a `Tool` as the built artifact.
+Every `*kit` library exposes a `ToolBuilder` for configuration:
 
 ```rust
-// ToolBuilder: config only
 let builder = mykit::ToolBuilder::new()
     .some_feature(true)
     .some_limit(1000);
 
-// build() produces an immutable Tool
 let tool = builder.build();
-
-// Metadata lives on Tool (not builder)
-let schema = tool.input_schema();
-let prompt = tool.system_prompt();
 ```
 
 `ToolBuilder` methods are chainable. `build()` consumes the builder and returns a `Tool`.
 
-`Tool` is `Send + Sync`. `ToolBuilder` need not be.
+`ToolBuilder` need not be `Send + Sync`.
 
-### 2. Tool metadata methods
+### 2. `Tool` — metadata
 
-All metadata lives on `Tool`:
+`Tool` is immutable and holds all metadata baked in from the builder config:
 
 ```rust
 impl Tool {
@@ -66,38 +72,92 @@ impl Tool {
 }
 ```
 
-Builder config bakes into `Tool` at `build()` time. The consumer builds the `Tool` once and reads metadata + executes from the same object.
+`Tool` is `Send + Sync` and cheap to clone (typically `Arc` internals or static data).
 
 **Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on `Tool` so the consumer can delegate without duplication.
 
-### 3. `Tool` — execution
+### 3. `ToolExecution` — runtime
 
-`Tool` is the built, immutable, executable artifact. Every `Tool` provides an async execute method:
-
-```rust
-impl Tool {
-    /// Execute the tool with JSON arguments matching `input_schema()`.
-    /// Returns a kit-specific result type (see §5).
-    async fn execute(&self, args: serde_json::Value) -> Result<ToolOutput, ToolError>;
-}
-```
-
-If the tool needs an adapter (filesystem, file saver, etc.), provide a second method:
+`ToolExecution` represents a single in-flight tool call. Created from `Tool`, it is stateful and single-use.
 
 ```rust
 impl Tool {
-    /// Execute with an injected adapter.
-    async fn execute_with<A: SomeAdapter>(
-        &self,
-        args: serde_json::Value,
-        adapter: &A,
-    ) -> Result<ToolOutput, ToolError>;
+    /// Create an execution for the given arguments.
+    /// Validates args against input_schema() before returning.
+    fn execution(&self, args: serde_json::Value) -> Result<ToolExecution, ToolError>;
 }
 ```
 
-The base `execute()` must work without adapters (returning an error or degraded result if the adapter-dependent feature is requested). This lets the consumer call `execute()` in context-free paths and `execute_with()` when context is available.
+#### Required: `execute()`
 
-**bashkit note:** bashkit currently uses a separate `Bash` interpreter struct for execution. Under this contract, `Tool::execute()` would create the interpreter internally. Per-execution config (filesystem adapter, working directory) flows through the args or through `execute_with()`.
+```rust
+impl ToolExecution {
+    /// Run to completion. Consumes the execution.
+    async fn execute(self) -> Result<ToolOutput, ToolError>;
+}
+```
+
+If the tool needs an adapter (filesystem, file saver, etc.), provide a variant:
+
+```rust
+impl ToolExecution {
+    /// Run to completion with an injected adapter.
+    async fn execute_with<A: SomeAdapter>(self, adapter: &A) -> Result<ToolOutput, ToolError>;
+}
+```
+
+The base `execute()` must work without adapters (returning an error if an adapter-dependent feature was requested in args). This lets the consumer call `execute()` in context-free paths and `execute_with()` when context is available.
+
+#### Optional: cancellation
+
+Toolkits with long-running operations (bash scripts, multi-step fetches) may support cancellation:
+
+```rust
+impl ToolExecution {
+    /// Cancel the running execution.
+    /// Returns partial results collected so far, or None if nothing was produced yet.
+    async fn cancel(&self) -> Option<ToolOutput>;
+}
+```
+
+Design rules:
+- `cancel()` is safe to call multiple times (idempotent)
+- `cancel()` is safe to call concurrently with `execute()` — it signals cancellation, `execute()` returns promptly
+- Partial output follows the same `ToolOutput` shape (e.g. bashkit returns stdout collected so far, exit code -1)
+- If the kit does not support cancellation, omit the method entirely — the consumer falls back to dropping the future
+
+**bashkit example:** bash command running for 30s, user cancels at 5s. `cancel()` returns `ToolOutput { result: json!({"stdout": "partial output...", "exit_code": -1, "cancelled": true}), images: vec![] }`.
+
+#### Optional: streaming
+
+Toolkits that produce incremental output may expose a stream:
+
+```rust
+impl ToolExecution {
+    /// Stream incremental output chunks during execution.
+    /// The stream completes when execution finishes.
+    /// Final result is still returned from execute().
+    fn output_stream(&self) -> impl Stream<Item = ToolOutputChunk>;
+}
+
+pub struct ToolOutputChunk {
+    /// Incremental content (e.g. stdout line, fetched bytes, progress update)
+    pub data: serde_json::Value,
+    /// Chunk type for consumer routing (e.g. "stdout", "stderr", "progress")
+    pub kind: String,
+}
+```
+
+Design rules:
+- Streaming is opt-in — if the kit doesn't support it, omit the method
+- `output_stream()` must be called **before** `execute()` — it returns a receiver, `execute()` drives the sender
+- The stream is informational — the consumer uses it for live UI updates (e.g. streaming bash output to the terminal panel)
+- The final `ToolOutput` from `execute()` is the authoritative result, not the concatenation of chunks
+- If `cancel()` is called, the stream ends and `execute()` returns the partial result
+
+**bashkit example:** streaming stdout/stderr line by line as the bash command runs.
+
+**fetchkit example:** streaming download progress (`{"bytes_received": 1024, "total": 50000}`).
 
 ### 4. Adapter traits
 
@@ -171,7 +231,7 @@ Toolkit crates re-export all types needed to implement adapter traits and handle
 
 ```rust
 // mykit/src/lib.rs
-pub use tool::{ToolBuilder, Tool, ToolOutput, ToolImage};
+pub use tool::{ToolBuilder, Tool, ToolExecution, ToolOutput, ToolOutputChunk, ToolImage};
 pub use error::ToolError;
 pub use adapters::{AdapterTrait, AdapterError, DefaultAdapter};
 // Any types needed to implement AdapterTrait:
@@ -183,15 +243,16 @@ pub use adapters::{SaveResult, Metadata, DirEntry, ...};
 Toolkit crates must not depend on `everruns-core` or any everruns crate. They are standalone libraries. The integration boundary is:
 
 ```
-toolkit crate (standalone)     everruns-core
-├── ToolBuilder (config)       ├── XxxCapability (implements Capability trait)
-├── Tool (metadata+execute)    │   └── builds Tool, reads metadata for system prompt
-├── AdapterTrait               ├── XxxTool (implements everruns Tool trait)
-├── Error types                │   ├── delegates metadata to toolkit Tool
-└── Output types               │   ├── delegates execution to toolkit Tool
-                               │   └── maps errors/output to ToolExecutionResult
-                               └── AdapterImpl (implements toolkit::AdapterTrait)
-                                   └── bridges to SessionFileStore, etc.
+toolkit crate (standalone)       everruns-core
+├── ToolBuilder (config)         ├── XxxCapability (implements Capability trait)
+├── Tool (metadata)              │   └── builds Tool, reads metadata for system prompt
+├── ToolExecution (runtime)      ├── XxxTool (implements everruns Tool trait)
+│   ├── execute()                │   ├── delegates metadata to toolkit Tool
+│   ├── cancel() [optional]      │   ├── creates ToolExecution per call
+│   └── output_stream() [opt]    │   ├── wires cancel/stream to everruns runtime
+├── AdapterTrait                 │   └── maps errors/output to ToolExecutionResult
+├── Error types                  └── AdapterImpl (implements toolkit::AdapterTrait)
+└── Output types                     └── bridges to SessionFileStore, etc.
 ```
 
 ## Consumer integration pattern
@@ -215,7 +276,6 @@ impl Capability for XxxCapability {
     }
 
     fn system_prompt_preview(&self) -> Option<String> {
-        // Build with all features enabled for preview
         let tool = mykit::ToolBuilder::new().some_feature(true).build();
         Some(tool.system_prompt())
     }
@@ -251,19 +311,42 @@ impl Tool for XxxTool {
     fn parameters_schema(&self) -> Value { self.kit_tool.input_schema() }
 
     async fn execute(&self, args: Value) -> ToolExecutionResult {
-        match self.kit_tool.execute(args).await {
-            Ok(output) => ToolExecutionResult::success(output.result),
-            Err(e) if e.is_user_facing() => ToolExecutionResult::tool_error(e.to_string()),
-            Err(e) => ToolExecutionResult::internal_error_msg(e.to_string()),
+        let execution = match self.kit_tool.execution(args) {
+            Ok(exec) => exec,
+            Err(e) => return map_error(e),
+        };
+        match execution.execute().await {
+            Ok(output) => map_output(output),
+            Err(e) => map_error(e),
         }
     }
 
     async fn execute_with_context(&self, args: Value, ctx: &ToolContext) -> ToolExecutionResult {
+        let execution = match self.kit_tool.execution(args) {
+            Ok(exec) => exec,
+            Err(e) => return map_error(e),
+        };
         let adapter = MyAdapter::from_context(ctx);
-        match self.kit_tool.execute_with(args, &adapter).await {
+        match execution.execute_with(&adapter).await {
             Ok(output) => map_output(output),
             Err(e) => map_error(e),
         }
+    }
+}
+
+fn map_output(output: mykit::ToolOutput) -> ToolExecutionResult {
+    if output.images.is_empty() {
+        ToolExecutionResult::success(output.result)
+    } else {
+        ToolExecutionResult::success_with_images(output.result, /* map images */)
+    }
+}
+
+fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
+    if e.is_user_facing() {
+        ToolExecutionResult::tool_error(e.to_string())
+    } else {
+        ToolExecutionResult::internal_error_msg(e.to_string())
     }
 }
 ```
@@ -274,16 +357,18 @@ impl Tool for XxxTool {
 |---------|-----|-----------|
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
 | bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
-| bashkit | No `execute()` on Tool — uses separate `Bash` struct | Add `execute()` / `execute_with()` that wraps `Bash` internally |
+| bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
 | bashkit | `system_prompt()` naming OK — fetchkit uses `llmtxt()` | Standardize on `system_prompt()` for both |
 | bashkit | No `name()` on Tool | Add; return `"bash"` |
 | bashkit | No structured `ToolOutput` — returns raw stdout/stderr | Wrap in `ToolOutput { result: json!({...}), images: vec![] }` |
+| bashkit | Has natural cancel/stream support (interpreter is stateful) | Expose via `ToolExecution::cancel()` and `output_stream()` |
 | fetchkit | `Tool::builder()` naming OK but returns unnamed builder type | Expose as `ToolBuilder` |
 | fetchkit | Uses `llmtxt()` instead of `system_prompt()` | Rename (or alias) to `system_prompt()` |
-| fetchkit | `execute()` takes `FetchRequest`, not `Value` | Add `Value`-based overload or keep `FetchRequest` and document parse step |
+| fetchkit | `execute()` takes `FetchRequest`, not `Value` | Parse `Value` → `FetchRequest` inside `ToolExecution::execute()` |
 | fetchkit | Error enum doesn't have `is_user_facing()` | Add method; currently all errors are user-facing |
 | fetchkit | No `name()` on Tool | Add; return `"web_fetch"` |
 | fetchkit | No structured `ToolOutput` | Wrap response in `ToolOutput` |
+| fetchkit | No `ToolExecution` — `execute()` lives on `Tool` | Move to `ToolExecution`; streaming progress is a natural fit |
 
 ## Non-goals
 
