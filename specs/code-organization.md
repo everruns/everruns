@@ -73,6 +73,10 @@ Config: `apps/ui/oxfmt.json` (100 char width, single quotes, trailing commas)
 just fmt  # Runs cargo fmt + oxfmt + oxlint --fix
 ```
 
+### Policy Enforcement
+
+All service methods MUST have `#[policy]` enforcement with a `Caller` parameter. Use `Caller::internal(org_id)` for gRPC/internal paths. See `specs/permissions.md` for the full policy model.
+
 ## Error Handling
 
 **API errors:**

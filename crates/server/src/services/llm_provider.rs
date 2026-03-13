@@ -11,11 +11,21 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::url_validation::validate_safe_url;
-use everruns_core::{LlmProviderStatus, LlmProviderType};
+use everruns_core::{Caller, LlmProviderStatus, LlmProviderType, Permission, Policy, Rule};
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+
+pub const LLM_PROVIDER_VIEW: Policy = Policy {
+    id: "llm_provider.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+};
+pub const LLM_PROVIDER_MANAGE: Policy = Policy {
+    id: "llm_provider.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+};
 
 pub struct LlmProviderService {
     db: Arc<StorageBackend>,
@@ -51,7 +61,12 @@ impl LlmProviderService {
         }
     }
 
-    pub async fn create(&self, org_id: i64, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
+    #[policy(LLM_PROVIDER_MANAGE)]
+    pub async fn create(
+        &self,
+        caller: &Caller,
+        req: CreateLlmProviderRequest,
+    ) -> Result<LlmProvider> {
         // SSRF prevention: validate base_url before persisting (EVE-69)
         if let Some(ref url) = req.base_url {
             validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
@@ -76,24 +91,27 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.create_llm_provider(org_id, input).await?;
-        self.invalidate_resolver_cache(org_id).await;
+        let row = self.db.create_llm_provider(caller.org_id, input).await?;
+        self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_provider(&row))
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProvider>> {
-        let row = self.db.get_llm_provider(org_id, id).await?;
+    #[policy(LLM_PROVIDER_VIEW)]
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<LlmProvider>> {
+        let row = self.db.get_llm_provider(caller.org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    pub async fn list(&self, org_id: i64) -> Result<Vec<LlmProvider>> {
-        let rows = self.db.list_llm_providers(org_id).await?;
+    #[policy(LLM_PROVIDER_VIEW)]
+    pub async fn list(&self, caller: &Caller) -> Result<Vec<LlmProvider>> {
+        let rows = self.db.list_llm_providers(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_provider).collect())
     }
 
+    #[policy(LLM_PROVIDER_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         req: UpdateLlmProviderRequest,
     ) -> Result<Option<LlmProvider>> {
@@ -125,17 +143,21 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.update_llm_provider(org_id, id, input).await?;
+        let row = self
+            .db
+            .update_llm_provider(caller.org_id, id, input)
+            .await?;
         if row.is_some() {
-            self.invalidate_resolver_cache(org_id).await;
+            self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let deleted = self.db.delete_llm_provider(org_id, id).await?;
+    #[policy(LLM_PROVIDER_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        let deleted = self.db.delete_llm_provider(caller.org_id, id).await?;
         if deleted {
-            self.invalidate_resolver_cache(org_id).await;
+            self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(deleted)
     }

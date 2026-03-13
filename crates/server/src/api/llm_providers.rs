@@ -2,6 +2,7 @@
 // Routes: /v1/llm-providers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::llm_provider::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService, SyncResult};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
@@ -13,12 +14,15 @@ use axum::{
 };
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ProviderId;
-use everruns_core::{DriverRegistry, LlmProviderStatus, LlmProviderType};
+use everruns_core::{
+    Caller, DriverRegistry, LlmProviderStatus, LlmProviderType, ResourceConfigResponse,
+    evaluate_policies,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -130,24 +134,12 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
-    let provider = state.service.create(org.org_id, req).await.map_err(|e| {
-        let error_msg = e.to_string();
-        if error_msg.contains("Encryption not configured") || error_msg.contains("Invalid base URL")
-        {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: error_msg }),
-            )
-        } else {
-            tracing::error!("Failed to create LLM provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        }
-    })?;
+    let caller = caller_from_org(&org);
+    let provider = state
+        .service
+        .create(&caller, req)
+        .await
+        .map_policy_or_internal("create LLM provider")?;
 
     Ok((StatusCode::CREATED, Json(provider)))
 }
@@ -165,15 +157,12 @@ pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let providers = state.service.list(org.org_id).await.map_err(|e| {
-        tracing::error!("Failed to list LLM providers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
+    let caller = caller_from_org(&org);
+    let providers = state
+        .service
+        .list(&caller)
+        .await
+        .map_policy_or_internal("list LLM providers")?;
 
     Ok(Json(ListResponse::new(providers)))
 }
@@ -206,27 +195,13 @@ pub async fn get_provider(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let provider = state
         .service
-        .get(org.org_id, provider_id.uuid())
+        .get(&caller, provider_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get LLM provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Provider not found".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("get LLM provider")?
+        .ok_or_not_found_json("Provider")?;
 
     Ok(Json(provider))
 }
@@ -261,37 +236,13 @@ pub async fn update_provider(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let provider = state
         .service
-        .update(org.org_id, provider_id.uuid(), req)
+        .update(&caller, provider_id.uuid(), req)
         .await
-        .map_err(|e| {
-            let error_msg = e.to_string();
-            if error_msg.contains("Encryption not configured")
-                || error_msg.contains("Invalid base URL")
-            {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: error_msg }),
-                )
-            } else {
-                tracing::error!("Failed to update LLM provider: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            }
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Provider not found".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("update LLM provider")?
+        .ok_or_not_found_json("Provider")?;
 
     Ok(Json(provider))
 }
@@ -324,29 +275,17 @@ pub async fn delete_provider(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let deleted = state
         .service
-        .delete(org.org_id, provider_id.uuid())
+        .delete(&caller, provider_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete LLM provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("delete LLM provider")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Provider not found".to_string(),
-            }),
-        ))
+        Err(ErrorResponse::not_found("Provider"))
     }
 }
 
@@ -431,8 +370,34 @@ pub async fn sync_models(
     Ok(Json(response))
 }
 
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
+
+/// GET /v1/llm-providers/config
+#[utoipa::path(
+    get,
+    path = "/v1/llm-providers/config",
+    responses(
+        (status = 200, description = "Resource config for LLM providers", body = ResourceConfigResponse),
+    ),
+    tag = "llm-providers"
+)]
+pub async fn llm_provider_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&LLM_PROVIDER_VIEW, &LLM_PROVIDER_MANAGE]);
+    Json(ResourceConfigResponse { policies })
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/llm-providers/config", get(llm_provider_config))
         .route(
             "/v1/llm-providers",
             post(create_provider).get(list_providers),

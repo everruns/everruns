@@ -3,7 +3,7 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE};
+use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -14,7 +14,7 @@ use axum::{
 };
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
-    AgentCapabilityConfig, Caller, Harness, HarnessStatus, PolicyConfigResponse, ToolDefinition,
+    AgentCapabilityConfig, Caller, Harness, HarnessStatus, ResourceConfigResponse, ToolDefinition,
     evaluate_policies,
 };
 
@@ -133,6 +133,7 @@ fn caller_from_org(org: &ResolvedOrg) -> Caller {
         org_public_id: org.public_id.clone(),
         user_id: org.user_id,
         role: org.role,
+        is_platform_user: false,
     }
 }
 
@@ -160,14 +161,17 @@ pub fn routes(state: AppState) -> Router {
     get,
     path = "/v1/harnesses/config",
     responses(
-        (status = 200, description = "Policy config for harnesses", body = PolicyConfigResponse),
+        (status = 200, description = "Resource config for harnesses", body = ResourceConfigResponse),
     ),
     tag = "harnesses"
 )]
-pub async fn harness_config(org: ResolvedOrg) -> Json<PolicyConfigResponse> {
+pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     let caller = caller_from_org(&org);
-    let policies = evaluate_policies(&caller, &[&HARNESS_MANAGE, &HARNESS_DANGEROUS]);
-    Json(PolicyConfigResponse { policies })
+    let policies = evaluate_policies(
+        &caller,
+        &[&HARNESS_VIEW, &HARNESS_MANAGE, &HARNESS_DANGEROUS],
+    );
+    Json(ResourceConfigResponse { policies })
 }
 
 /// POST /v1/harnesses

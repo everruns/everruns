@@ -253,8 +253,8 @@ pub use typed_id::{
 
 // Permissions re-exports
 pub use permissions::{
-    Caller, Permission, Policy, PolicyConfigResponse, PolicyError, Rule, evaluate_policies,
-    role_has_permission, role_permissions,
+    Caller, Permission, Policy, PolicyConfigResponse, PolicyError, ResourceConfigResponse, Rule,
+    evaluate_policies, role_has_permission, role_permissions,
 };
 
 // URL validation re-exports

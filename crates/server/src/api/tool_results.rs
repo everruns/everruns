@@ -25,9 +25,20 @@ use everruns_core::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse};
+use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
+
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
 
 /// Request to submit client-side tool results
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -141,9 +152,10 @@ pub async fn submit_tool_results(
     }
 
     // Get session and verify status
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&caller, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
@@ -209,12 +221,7 @@ pub async fn submit_tool_results(
     // Set session status back to active
     if let Err(e) = state
         .session_service
-        .update_status(
-            org.org_id,
-            &org.public_id,
-            session_id.uuid(),
-            "active".to_string(),
-        )
+        .update_status(&caller, session_id.uuid(), "active".to_string())
         .await
     {
         tracing::warn!(error = %e, "Failed to set session status to active");

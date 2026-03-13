@@ -1,7 +1,9 @@
 // App CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
+// Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::app::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -11,9 +13,11 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::{AgentId, AppId, HarnessId};
-use everruns_core::{App, AppStatus, ChannelType};
+use everruns_core::{
+    App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies,
+};
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -100,9 +104,21 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+/// Create Caller from ResolvedOrg
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
+
 /// Create app routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/apps/config", get(app_config))
         .route("/v1/apps", post(create_app).get(list_apps))
         .route(
             "/v1/apps/{app_id}",
@@ -111,6 +127,21 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/apps/{app_id}/publish", post(publish_app))
         .route("/v1/apps/{app_id}/unpublish", post(unpublish_app))
         .with_state(state)
+}
+
+/// GET /v1/apps/config
+#[utoipa::path(
+    get,
+    path = "/v1/apps/config",
+    responses(
+        (status = 200, description = "Resource config for apps", body = ResourceConfigResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn app_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&APP_VIEW, &APP_MANAGE, &APP_DANGEROUS]);
+    Json(ResourceConfigResponse { policies })
 }
 
 /// POST /v1/apps - Create a new app
@@ -130,14 +161,12 @@ pub async fn create_app(
     State(state): State<AppState>,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<App>), (StatusCode, Json<ErrorResponse>)> {
-    let app = state.service.create(org.org_id, req).await.map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("not found") {
-            return ErrorResponse::new(&msg).into_response(StatusCode::BAD_REQUEST);
-        }
-        tracing::error!("Failed to create app: {}", msg);
-        ErrorResponse::internal_error()
-    })?;
+    let caller = caller_from_org(&org);
+    let app = state
+        .service
+        .create(&caller, req)
+        .await
+        .map_policy_or_internal("create app")?;
 
     Ok((StatusCode::CREATED, Json(app)))
 }
@@ -157,12 +186,13 @@ pub async fn list_apps(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAppsQuery>,
-) -> Result<Json<ListResponse<App>>, StatusCode> {
+) -> Result<Json<ListResponse<App>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = caller_from_org(&org);
     let apps = state
         .service
-        .list(org.org_id, query.search.as_deref())
+        .list(&caller, query.search.as_deref())
         .await
-        .log_internal_error("list apps")?;
+        .map_policy_or_internal("list apps")?;
 
     Ok(Json(ListResponse::new(apps)))
 }
@@ -189,11 +219,12 @@ pub async fn get_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let app = state
         .service
-        .get_by_public_id(org.org_id, &app_id.to_string())
+        .get_by_public_id(&caller, &app_id.to_string())
         .await
-        .log_internal_error_json("get app")?
+        .map_policy_or_internal("get app")?
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))
@@ -223,18 +254,12 @@ pub async fn update_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let app = state
         .service
-        .update(org.org_id, &app_id.to_string(), req)
+        .update(&caller, &app_id.to_string(), req)
         .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("not found") {
-                return ErrorResponse::new(&msg).into_response(StatusCode::BAD_REQUEST);
-            }
-            tracing::error!("Failed to update app: {}", msg);
-            ErrorResponse::internal_error()
-        })?
+        .map_policy_or_internal("update app")?
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))
@@ -262,11 +287,12 @@ pub async fn delete_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let deleted = state
         .service
-        .delete(org.org_id, &app_id.to_string())
+        .delete(&caller, &app_id.to_string())
         .await
-        .log_internal_error_json("delete app")?;
+        .map_policy_or_internal("delete app")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -297,11 +323,12 @@ pub async fn publish_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let app = state
         .service
-        .publish(org.org_id, &app_id.to_string())
+        .publish(&caller, &app_id.to_string())
         .await
-        .log_internal_error_json("publish app")?
+        .map_policy_or_internal("publish app")?
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))
@@ -329,11 +356,12 @@ pub async fn unpublish_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let app = state
         .service
-        .unpublish(org.org_id, &app_id.to_string())
+        .unpublish(&caller, &app_id.to_string())
         .await
-        .log_internal_error_json("unpublish app")?
+        .map_policy_or_internal("unpublish app")?
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))

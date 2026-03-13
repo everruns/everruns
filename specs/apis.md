@@ -590,6 +590,37 @@ All entity list endpoints support an optional `?search=` query parameter for tok
 
 **Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive, tokenized). Empty or whitespace-only search values are treated as no filter.
 
+### Resource Config Endpoints
+
+Each resource exposes a config endpoint returning `ResourceConfigResponse` with the caller's evaluated policy results. UI uses these on load to show/hide controls.
+
+```
+GET /v1/{resource}/config → ResourceConfigResponse
+```
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /v1/harnesses/config` | Harness policies |
+| `GET /v1/agents/config` | Agent policies |
+| `GET /v1/apps/config` | App policies |
+| `GET /v1/sessions/config` | Session policies |
+| `GET /v1/mcp-servers/config` | MCP server policies |
+| `GET /v1/llm-providers/config` | LLM provider policies |
+| `GET /v1/llm-models/config` | LLM model policies |
+| `GET /v1/skills/config` | Skill policies |
+
+**Response:**
+```json
+{
+  "policies": {
+    "harness.manage": true,
+    "harness.dangerous": false
+  }
+}
+```
+
+See `specs/permissions.md` for the full policy model and `ResourceConfigResponse` details.
+
 ### Error Responses
 
 ```json

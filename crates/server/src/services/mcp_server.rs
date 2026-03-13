@@ -8,9 +8,10 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition, McpToolsListRequest,
-    McpToolsListResponse,
+    Caller, McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition,
+    McpToolsListRequest, McpToolsListResponse, Permission, Policy, Rule,
 };
+use everruns_macros::policy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +27,15 @@ const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 /// HTTP client timeout for MCP server calls
 const MCP_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
+pub const MCP_SERVER_VIEW: Policy = Policy {
+    id: "mcp_server.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+pub const MCP_SERVER_MANAGE: Policy = Policy {
+    id: "mcp_server.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
 pub struct McpServerService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
@@ -36,7 +46,8 @@ impl McpServerService {
         Self { db, encryption }
     }
 
-    pub async fn create(&self, org_id: i64, req: CreateMcpServerRequest) -> Result<McpServer> {
+    #[policy(MCP_SERVER_MANAGE)]
+    pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -60,23 +71,25 @@ impl McpServerService {
             settings: None,
         };
 
-        let row = self.db.create_mcp_server(org_id, input).await?;
+        let row = self.db.create_mcp_server(caller.org_id, input).await?;
         Ok(Self::row_to_mcp_server(&row))
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<McpServer>> {
-        let row = self.db.get_mcp_server(org_id, id).await?;
+    #[policy(MCP_SERVER_VIEW)]
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<McpServer>> {
+        let row = self.db.get_mcp_server(caller.org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
     /// Returns a map of server_id -> (McpServer, `Vec<McpToolDefinition>`).
+    #[policy(MCP_SERVER_VIEW)]
     pub async fn get_batch_with_tools(
         &self,
-        org_id: i64,
+        caller: &Caller,
         ids: &[Uuid],
     ) -> Result<HashMap<Uuid, (McpServer, Vec<McpToolDefinition>)>> {
-        let rows = self.db.get_mcp_servers_batch(org_id, ids).await?;
+        let rows = self.db.get_mcp_servers_batch(caller.org_id, ids).await?;
         Ok(rows
             .iter()
             .map(|row| {
@@ -88,14 +101,16 @@ impl McpServerService {
             .collect())
     }
 
-    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_mcp_servers(org_id, search).await?;
+    #[policy(MCP_SERVER_VIEW)]
+    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_mcp_servers(caller.org_id, search).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
+    #[policy(MCP_SERVER_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         req: UpdateMcpServerRequest,
     ) -> Result<Option<McpServer>> {
@@ -123,23 +138,26 @@ impl McpServerService {
             settings: None,
         };
 
-        let row = self.db.update_mcp_server(org_id, id, input).await?;
+        let row = self.db.update_mcp_server(caller.org_id, id, input).await?;
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_mcp_server(org_id, id).await
+    #[policy(MCP_SERVER_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        self.db.delete_mcp_server(caller.org_id, id).await
     }
 
     /// List active MCP servers (for capability listing)
-    pub async fn list_active(&self, org_id: i64) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_active_mcp_servers(org_id).await?;
+    #[policy(MCP_SERVER_VIEW)]
+    pub async fn list_active(&self, caller: &Caller) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
     /// List active MCP servers with their cached tools
-    pub async fn list_active_with_tools(&self, org_id: i64) -> Result<Vec<McpServerWithTools>> {
-        let rows = self.db.list_active_mcp_servers(org_id).await?;
+    #[policy(MCP_SERVER_VIEW)]
+    pub async fn list_active_with_tools(&self, caller: &Caller) -> Result<Vec<McpServerWithTools>> {
+        let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
         Ok(rows
             .iter()
             .map(Self::row_to_mcp_server_with_tools)
@@ -147,11 +165,12 @@ impl McpServerService {
     }
 
     /// Refresh cached tools for an MCP server by calling tools/list
-    pub async fn refresh_tools(&self, org_id: i64, id: Uuid) -> Result<Vec<McpToolDefinition>> {
+    #[policy(MCP_SERVER_MANAGE)]
+    pub async fn refresh_tools(&self, caller: &Caller, id: Uuid) -> Result<Vec<McpToolDefinition>> {
         // Get the MCP server
         let row = self
             .db
-            .get_mcp_server(org_id, id)
+            .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -180,22 +199,23 @@ impl McpServerService {
         // Cache tools in database
         let cached_tools = serde_json::to_value(&tools)?;
         self.db
-            .update_mcp_server_tools(org_id, id, UpdateMcpServerTools { cached_tools })
+            .update_mcp_server_tools(caller.org_id, id, UpdateMcpServerTools { cached_tools })
             .await?;
 
         Ok(tools)
     }
 
     /// Get cached tools for an MCP server, refreshing if stale
+    #[policy(MCP_SERVER_VIEW)]
     pub async fn get_tools(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         force_refresh: bool,
     ) -> Result<Vec<McpToolDefinition>> {
         let row = self
             .db
-            .get_mcp_server(org_id, id)
+            .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -215,24 +235,32 @@ impl McpServerService {
         }
 
         // Refresh tools
-        self.refresh_tools(org_id, id).await
+        self.refresh_tools(caller, id).await
     }
 
     /// Get cached tools for an MCP server without refreshing (for preview)
     /// Returns empty vec if server not found or no cached tools
-    pub async fn get_cached_tools(&self, org_id: i64, id: Uuid) -> Vec<McpToolDefinition> {
-        match self.db.get_mcp_server(org_id, id).await {
-            Ok(Some(row)) => serde_json::from_value(row.cached_tools.clone()).unwrap_or_default(),
-            _ => Vec::new(),
+    #[policy(MCP_SERVER_VIEW)]
+    pub async fn get_cached_tools(
+        &self,
+        caller: &Caller,
+        id: Uuid,
+    ) -> Result<Vec<McpToolDefinition>> {
+        match self.db.get_mcp_server(caller.org_id, id).await {
+            Ok(Some(row)) => {
+                Ok(serde_json::from_value(row.cached_tools.clone()).unwrap_or_default())
+            }
+            _ => Ok(Vec::new()),
         }
     }
 
     /// Decrypt API key for an MCP server by ID.
     /// Returns None if server has no API key set.
-    pub async fn decrypt_api_key(&self, org_id: i64, id: Uuid) -> Result<Option<String>> {
+    #[policy(MCP_SERVER_MANAGE)]
+    pub async fn decrypt_api_key(&self, caller: &Caller, id: Uuid) -> Result<Option<String>> {
         let row = self
             .db
-            .get_mcp_server(org_id, id)
+            .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
@@ -256,12 +284,13 @@ impl McpServerService {
     ///
     /// Used by both gRPC service and direct worker adapters to look up an MCP
     /// server by its sanitized name (lowercase, non-alphanumeric chars -> '_').
+    #[policy(MCP_SERVER_VIEW)]
     pub async fn resolve_by_prefix(
         &self,
-        org_id: i64,
+        caller: &Caller,
         server_prefix: &str,
     ) -> Result<Option<McpServerResolved>> {
-        let servers = self.list(org_id, None).await?;
+        let servers = self.list(caller, None).await?;
         let server_prefix_lower = server_prefix.to_lowercase();
 
         let server = servers.into_iter().find(|s| {
@@ -280,7 +309,7 @@ impl McpServerService {
         };
 
         let api_key = if server.api_key_set {
-            self.decrypt_api_key(org_id, server.id.uuid()).await?
+            self.decrypt_api_key(caller, server.id.uuid()).await?
         } else {
             None
         };
@@ -404,6 +433,17 @@ async fn fetch_mcp_tools(
 mod tests {
     use super::*;
     use crate::storage::{EncryptionService, StorageBackend, models::CreateMcpServerRow};
+    use everruns_core::OrgRole;
+
+    fn test_caller(org_id: i64) -> Caller {
+        Caller {
+            org_id,
+            org_public_id: format!("org_{org_id:032}"),
+            user_id: None,
+            role: OrgRole::Owner,
+            is_platform_user: false,
+        }
+    }
 
     fn test_encryption() -> Arc<EncryptionService> {
         Arc::new(
@@ -433,7 +473,10 @@ mod tests {
             .await
             .unwrap();
 
-        let result = svc.decrypt_api_key(1, row.id.uuid()).await.unwrap();
+        let result = svc
+            .decrypt_api_key(&test_caller(1), row.id.uuid())
+            .await
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -461,7 +504,10 @@ mod tests {
             .await
             .unwrap();
 
-        let result = svc.decrypt_api_key(1, row.id.uuid()).await.unwrap();
+        let result = svc
+            .decrypt_api_key(&test_caller(1), row.id.uuid())
+            .await
+            .unwrap();
         assert_eq!(result.as_deref(), Some("sk-secret-123"));
     }
 
@@ -490,7 +536,7 @@ mod tests {
 
         // Service WITHOUT encryption configured
         let svc = McpServerService::new(db, None);
-        let result = svc.decrypt_api_key(1, row.id.uuid()).await;
+        let result = svc.decrypt_api_key(&test_caller(1), row.id.uuid()).await;
         assert!(result.is_err());
     }
 
@@ -499,7 +545,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let svc = McpServerService::new(db, Some(test_encryption()));
 
-        let result = svc.decrypt_api_key(1, Uuid::new_v4()).await;
+        let result = svc.decrypt_api_key(&test_caller(1), Uuid::new_v4()).await;
         assert!(result.is_err());
     }
 
@@ -525,7 +571,10 @@ mod tests {
         .await
         .unwrap();
 
-        let resolved = svc.resolve_by_prefix(1, "my_cool_server").await.unwrap();
+        let resolved = svc
+            .resolve_by_prefix(&test_caller(1), "my_cool_server")
+            .await
+            .unwrap();
         assert!(resolved.is_some());
         let r = resolved.unwrap();
         assert_eq!(r.name, "My Cool Server");
@@ -538,7 +587,10 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let svc = McpServerService::new(db, Some(test_encryption()));
 
-        let resolved = svc.resolve_by_prefix(1, "nonexistent").await.unwrap();
+        let resolved = svc
+            .resolve_by_prefix(&test_caller(1), "nonexistent")
+            .await
+            .unwrap();
         assert!(resolved.is_none());
     }
 
@@ -564,7 +616,10 @@ mod tests {
         .await
         .unwrap();
 
-        let resolved = svc.resolve_by_prefix(1, "auth_server").await.unwrap();
+        let resolved = svc
+            .resolve_by_prefix(&test_caller(1), "auth_server")
+            .await
+            .unwrap();
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap().api_key.as_deref(), Some("sk-mcp-secret"));
     }
@@ -621,7 +676,7 @@ mod tests {
 
         // Service without encryption
         let svc = McpServerService::new(db, None);
-        let result = svc.resolve_by_prefix(1, "no_enc").await;
+        let result = svc.resolve_by_prefix(&test_caller(1), "no_enc").await;
         assert!(result.is_err());
     }
 }

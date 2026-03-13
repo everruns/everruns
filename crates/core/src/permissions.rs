@@ -16,6 +16,8 @@ use uuid::Uuid;
 /// Format: `org:<resource>:<action>`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Permission {
+    /// View harnesses (read-only)
+    OrgHarnessesView,
     /// CRUD on harnesses
     OrgHarnessesManage,
     /// Delete, reset, and other dangerous harness operations
@@ -24,10 +26,16 @@ pub enum Permission {
     OrgAgentsManage,
     /// CRUD on sessions
     OrgSessionsManage,
+    /// View LLM providers (read-only)
+    OrgLlmProvidersView,
     /// CRUD on LLM providers
     OrgLlmProvidersManage,
+    /// View organization settings (read-only)
+    OrgSettingsView,
     /// Organization settings
     OrgSettingsManage,
+    /// View members (read-only)
+    OrgMembersView,
     /// Invite/remove members
     OrgMembersManage,
     /// CRUD on API keys
@@ -38,12 +46,16 @@ impl Permission {
     /// String identifier for this permission.
     pub const fn as_str(&self) -> &'static str {
         match self {
+            Permission::OrgHarnessesView => "org:harnesses:view",
             Permission::OrgHarnessesManage => "org:harnesses:manage",
             Permission::OrgHarnessesDangerous => "org:harnesses:dangerous",
             Permission::OrgAgentsManage => "org:agents:manage",
             Permission::OrgSessionsManage => "org:sessions:manage",
+            Permission::OrgLlmProvidersView => "org:llm-providers:view",
             Permission::OrgLlmProvidersManage => "org:llm-providers:manage",
+            Permission::OrgSettingsView => "org:settings:view",
             Permission::OrgSettingsManage => "org:settings:manage",
+            Permission::OrgMembersView => "org:members:view",
             Permission::OrgMembersManage => "org:members:manage",
             Permission::OrgApiKeysManage => "org:api-keys:manage",
         }
@@ -51,12 +63,16 @@ impl Permission {
 
     /// All defined permissions.
     pub const ALL: &'static [Permission] = &[
+        Permission::OrgHarnessesView,
         Permission::OrgHarnessesManage,
         Permission::OrgHarnessesDangerous,
         Permission::OrgAgentsManage,
         Permission::OrgSessionsManage,
+        Permission::OrgLlmProvidersView,
         Permission::OrgLlmProvidersManage,
+        Permission::OrgSettingsView,
         Permission::OrgSettingsManage,
+        Permission::OrgMembersView,
         Permission::OrgMembersManage,
         Permission::OrgApiKeysManage,
     ];
@@ -74,30 +90,45 @@ impl fmt::Display for Permission {
 
 /// Permissions granted to Owner role.
 const OWNER_PERMISSIONS: &[Permission] = &[
+    Permission::OrgHarnessesView,
     Permission::OrgHarnessesManage,
     Permission::OrgHarnessesDangerous,
     Permission::OrgAgentsManage,
     Permission::OrgSessionsManage,
+    Permission::OrgLlmProvidersView,
     Permission::OrgLlmProvidersManage,
+    Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
+    Permission::OrgMembersView,
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
 ];
 
 /// Permissions granted to Admin role.
 const ADMIN_PERMISSIONS: &[Permission] = &[
+    Permission::OrgHarnessesView,
     Permission::OrgHarnessesManage,
     Permission::OrgAgentsManage,
     Permission::OrgSessionsManage,
+    Permission::OrgLlmProvidersView,
     Permission::OrgLlmProvidersManage,
+    Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
+    Permission::OrgMembersView,
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
 ];
 
 /// Permissions granted to Member role.
-const MEMBER_PERMISSIONS: &[Permission] =
-    &[Permission::OrgAgentsManage, Permission::OrgSessionsManage];
+/// Members can view all resources but only manage agents and sessions.
+const MEMBER_PERMISSIONS: &[Permission] = &[
+    Permission::OrgHarnessesView,
+    Permission::OrgAgentsManage,
+    Permission::OrgSessionsManage,
+    Permission::OrgLlmProvidersView,
+    Permission::OrgSettingsView,
+    Permission::OrgMembersView,
+];
 
 /// Check whether a role grants a specific permission.
 pub fn role_has_permission(role: OrgRole, permission: &Permission) -> bool {
@@ -130,6 +161,8 @@ pub enum Rule {
     UserHasPermission(Permission),
     /// Caller must have at least this OrgRole level.
     UserHasRole(OrgRole),
+    /// Caller must be a platform user (allowlisted email).
+    IsPlatformUser,
 }
 
 impl fmt::Display for Rule {
@@ -137,6 +170,7 @@ impl fmt::Display for Rule {
         match self {
             Rule::UserHasPermission(p) => write!(f, "UserHasPermission({})", p),
             Rule::UserHasRole(r) => write!(f, "UserHasRole({})", r),
+            Rule::IsPlatformUser => write!(f, "IsPlatformUser"),
         }
     }
 }
@@ -173,6 +207,11 @@ impl Policy {
                         return Err(PolicyError::denied(self.id, &format!("role:{}", required)));
                     }
                 }
+                Rule::IsPlatformUser => {
+                    if !caller.is_platform_user {
+                        return Err(PolicyError::denied(self.id, "platform_user"));
+                    }
+                }
             }
         }
         Ok(())
@@ -197,6 +236,8 @@ pub struct Caller {
     pub user_id: Option<Uuid>,
     /// User's role in the organization.
     pub role: OrgRole,
+    /// Whether the caller is a platform user (email allowlist).
+    pub is_platform_user: bool,
 }
 
 impl Caller {
@@ -211,6 +252,7 @@ impl Caller {
             org_public_id: crate::organization::org_public_id_from_internal(org_id),
             user_id: None,
             role: OrgRole::Owner,
+            is_platform_user: true,
         }
     }
 }
@@ -261,13 +303,19 @@ pub fn evaluate_policies(caller: &Caller, policies: &[&Policy]) -> HashMap<Strin
         .collect()
 }
 
-/// Response type for config endpoints.
+/// Response type for per-resource config endpoints.
+///
+/// Every resource exposes `GET /v1/{resource}/config` returning this type.
+/// UI uses it to gate controls (create/edit/delete buttons, admin panels).
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct PolicyConfigResponse {
+pub struct ResourceConfigResponse {
     /// Map of policy ID → whether the caller satisfies it.
     pub policies: HashMap<String, bool>,
 }
+
+/// Backwards compat alias — prefer `ResourceConfigResponse`.
+pub type PolicyConfigResponse = ResourceConfigResponse;
 
 // ============================================================================
 // Tests
@@ -283,6 +331,7 @@ mod tests {
             org_public_id: "org_00000000000000000000000000000001".to_string(),
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Owner,
+            is_platform_user: false,
         }
     }
 
@@ -292,6 +341,7 @@ mod tests {
             org_public_id: "org_00000000000000000000000000000001".to_string(),
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Admin,
+            is_platform_user: false,
         }
     }
 
@@ -301,6 +351,7 @@ mod tests {
             org_public_id: "org_00000000000000000000000000000001".to_string(),
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
+            is_platform_user: false,
         }
     }
 
@@ -460,9 +511,9 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 8);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 7);
-        assert_eq!(role_permissions(OrgRole::Member).len(), 2);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 12);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 11);
+        assert_eq!(role_permissions(OrgRole::Member).len(), 6);
     }
 
     // -- Caller --
@@ -474,6 +525,7 @@ mod tests {
             org_public_id: "org_00000000000000000000000000000001".to_string(),
             user_id: None,
             role: OrgRole::Admin,
+            is_platform_user: false,
         };
         // API key callers without user_id should still evaluate policies
         assert!(TEST_MANAGE.evaluate(&caller).is_ok());
@@ -527,14 +579,83 @@ mod tests {
         assert_eq!(downcasted.unwrap().policy_id, "test.policy");
     }
 
-    // -- PolicyConfigResponse serialization --
+    // -- View permissions --
 
     #[test]
-    fn policy_config_response_serializes() {
+    fn member_has_view_permissions() {
+        assert!(role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgHarnessesView
+        ));
+        assert!(role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgLlmProvidersView
+        ));
+        assert!(role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgSettingsView
+        ));
+        assert!(role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgMembersView
+        ));
+    }
+
+    #[test]
+    fn member_lacks_manage_for_restricted_resources() {
+        assert!(!role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgHarnessesManage
+        ));
+        assert!(!role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgLlmProvidersManage
+        ));
+        assert!(!role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgSettingsManage
+        ));
+        assert!(!role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgMembersManage
+        ));
+    }
+
+    // -- IsPlatformUser rule --
+
+    const TEST_PLATFORM: Policy = Policy {
+        id: "durable.manage",
+        rules: &[Rule::IsPlatformUser],
+    };
+
+    #[test]
+    fn platform_user_passes_platform_policy() {
+        let mut caller = owner_caller();
+        caller.is_platform_user = true;
+        assert!(TEST_PLATFORM.evaluate(&caller).is_ok());
+    }
+
+    #[test]
+    fn non_platform_user_fails_platform_policy() {
+        let caller = owner_caller(); // is_platform_user = false
+        assert!(TEST_PLATFORM.evaluate(&caller).is_err());
+    }
+
+    #[test]
+    fn internal_caller_is_platform_user() {
+        let caller = Caller::internal(1);
+        assert!(caller.is_platform_user);
+        assert!(TEST_PLATFORM.evaluate(&caller).is_ok());
+    }
+
+    // -- ResourceConfigResponse serialization --
+
+    #[test]
+    fn resource_config_response_serializes() {
         let mut policies = HashMap::new();
         policies.insert("harness.manage".to_string(), true);
         policies.insert("harness.dangerous".to_string(), false);
-        let response = PolicyConfigResponse { policies };
+        let response = ResourceConfigResponse { policies };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["policies"]["harness.manage"], true);
         assert_eq!(json["policies"]["harness.dangerous"], false);

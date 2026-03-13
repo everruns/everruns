@@ -154,6 +154,11 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
+  // Policy queries
+  policies: {
+    config: (resource: string) => ["policies", resource] as const,
+  },
+
   // Skill queries
   skills: {
     all: ["skills"] as const,

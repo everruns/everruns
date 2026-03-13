@@ -14,9 +14,12 @@ use axum::{
 };
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, OrgRole, ToolDefinition};
+use everruns_core::{
+    Agent, AgentCapabilityConfig, AgentStatus, Caller, OrgRole, ResourceConfigResponse,
+    ToolDefinition, evaluate_policies,
+};
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use super::validation::{
     validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
 };
@@ -168,6 +171,7 @@ struct AgentFile {
     pub capabilities: Vec<AgentFileCapability>,
 }
 
+use crate::services::agent::{AGENT_MANAGE, AGENT_VIEW};
 use crate::services::{AgentService, CapabilityService};
 
 /// Query parameters for listing agents.
@@ -205,10 +209,36 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
+
+/// GET /v1/agents/config
+#[utoipa::path(
+    get,
+    path = "/v1/agents/config",
+    responses(
+        (status = 200, description = "Resource config for agents", body = ResourceConfigResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn agent_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&AGENT_VIEW, &AGENT_MANAGE]);
+    Json(ResourceConfigResponse { policies })
+}
+
 /// Create agent routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agents", post(create_agent).get(list_agents))
+        .route("/v1/agents/config", get(agent_config))
         .route("/v1/agents/import", post(import_agent))
         .route("/v1/agents/preview", post(preview_agent))
         .route(
@@ -277,8 +307,9 @@ pub async fn create_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
+    let caller = caller_from_org(&org);
     let client_id = req.id;
-    let agent = match state.service.create(org.org_id, client_id, req).await {
+    let agent = match state.service.create(&caller, client_id, req).await {
         Ok(agent) => agent,
         Err(e) => {
             let msg = e.to_string();
@@ -308,12 +339,13 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> Result<Json<ListResponse<Agent>>, StatusCode> {
+) -> Result<Json<ListResponse<Agent>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = caller_from_org(&org);
     let agents = state
         .service
-        .list(org.org_id, query.search.as_deref())
+        .list(&caller, query.search.as_deref())
         .await
-        .log_internal_error("list agents")?;
+        .map_policy_or_internal("list agents")?;
 
     Ok(Json(ListResponse::new(agents)))
 }
@@ -347,11 +379,12 @@ pub async fn get_agent(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let agent = state
         .service
-        .get_by_public_id(org.org_id, &agent_id.to_string())
+        .get_by_public_id(&caller, &agent_id.to_string())
         .await
-        .log_internal_error_json("get agent")?
+        .map_policy_or_internal("get agent")?
         .ok_or_not_found_json("Agent")?;
 
     Ok(Json(agent))
@@ -401,11 +434,12 @@ pub async fn update_agent(
         require_admin_for_high_risk(&org, caps, &state.capability_service)?;
     }
 
+    let caller = caller_from_org(&org);
     let agent = state
         .service
-        .update(org.org_id, &agent_id.to_string(), req)
+        .update(&caller, &agent_id.to_string(), req)
         .await
-        .log_internal_error_json("update agent")?
+        .map_policy_or_internal("update agent")?
         .ok_or_not_found_json("Agent")?;
 
     Ok(Json(agent))
@@ -440,11 +474,12 @@ pub async fn delete_agent(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let deleted = state
         .service
-        .delete(org.org_id, &agent_id.to_string())
+        .delete(&caller, &agent_id.to_string())
         .await
-        .log_internal_error_json("delete agent")?;
+        .map_policy_or_internal("delete agent")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -490,11 +525,12 @@ pub async fn copy_agent(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let agent = state
         .service
-        .copy(org.org_id, &agent_id.to_string())
+        .copy(&caller, &agent_id.to_string())
         .await
-        .log_internal_error_json("copy agent")?
+        .map_policy_or_internal("copy agent")?
         .ok_or_not_found_json("Agent")?;
 
     Ok((StatusCode::CREATED, Json(agent)))
@@ -545,11 +581,12 @@ pub async fn upsert_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
+    let caller = caller_from_org(&org);
     let (agent, was_created) = state
         .service
-        .upsert(org.org_id, &agent_id.to_string(), req)
+        .upsert(&caller, &agent_id.to_string(), req)
         .await
-        .log_internal_error_json("upsert agent")?;
+        .map_policy_or_internal("upsert agent")?;
 
     let status = if was_created {
         StatusCode::CREATED
@@ -589,11 +626,12 @@ pub async fn export_agent(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let agent = state
         .service
-        .get_by_public_id(org.org_id, &agent_id.to_string())
+        .get_by_public_id(&caller, &agent_id.to_string())
         .await
-        .log_internal_error_json("get agent for export")?
+        .map_policy_or_internal("get agent for export")?
         .ok_or_not_found_json("Agent")?;
 
     let markdown = agent_to_markdown(&agent);
@@ -681,9 +719,10 @@ pub async fn import_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
+    let caller = caller_from_org(&org);
     let agent = state
         .service
-        .create(org.org_id, client_id, request)
+        .create(&caller, client_id, request)
         .await
         .map_err(|e| {
             let msg = e.to_string();

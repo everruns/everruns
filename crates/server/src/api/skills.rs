@@ -4,9 +4,10 @@
 // CRUD for Agent Skills (agentskills.io format).
 // Supports both SKILL.md text upload and ZIP archive upload.
 
-use crate::api::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use crate::api::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SkillService;
+use crate::services::skill::{SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -16,7 +17,10 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::Multipart;
-use everruns_core::{Skill, SkillContent, SkillId, SkillStatus, SkillValidationResult};
+use everruns_core::{
+    Caller, ResourceConfigResponse, Skill, SkillContent, SkillId, SkillStatus,
+    SkillValidationResult, evaluate_policies,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -93,12 +97,42 @@ impl FromRef<AppState> for AuthState {
 }
 
 // ============================================
+// Helpers
+// ============================================
+
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
+
+/// GET /v1/skills/config
+#[utoipa::path(
+    get,
+    path = "/v1/skills/config",
+    responses(
+        (status = 200, description = "Resource config for skills", body = ResourceConfigResponse),
+    ),
+    tag = "skills"
+)]
+pub async fn skill_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&SKILL_VIEW, &SKILL_MANAGE]);
+    Json(ResourceConfigResponse { policies })
+}
+
+// ============================================
 // Routes
 // ============================================
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/skills", post(create_skill).get(list_skills))
+        .route("/v1/skills/config", get(skill_config))
         .route(
             "/v1/skills/upload",
             post(upload_skill).layer(DefaultBodyLimit::max(MAX_ARCHIVE_UPLOAD)),
@@ -133,7 +167,8 @@ pub async fn create_skill(
     State(state): State<AppState>,
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<(StatusCode, Json<Skill>), (StatusCode, Json<ErrorResponse>)> {
-    let skill = state.service.create(org.org_id, req).await.map_err(|e| {
+    let caller = caller_from_org(&org);
+    let skill = state.service.create(&caller, req).await.map_err(|e| {
         let msg = e.to_string();
         if msg.contains("already exists") {
             ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
@@ -186,9 +221,10 @@ pub async fn upload_skill(
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let skill = state
         .service
-        .create_from_archive(org.org_id, data)
+        .create_from_archive(&caller, data)
         .await
         .map_err(|e| {
             let msg = e.to_string();
@@ -224,12 +260,13 @@ pub async fn list_skills(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
-) -> Result<Json<ListResponse<Skill>>, StatusCode> {
+) -> Result<Json<ListResponse<Skill>>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = caller_from_org(&org);
     let skills = state
         .service
-        .list(org.org_id, query.search.as_deref())
+        .list(&caller, query.search.as_deref())
         .await
-        .log_internal_error("list skills")?;
+        .map_policy_or_internal("list skills")?;
 
     Ok(Json(ListResponse::new(skills)))
 }
@@ -256,11 +293,12 @@ pub async fn get_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let skill = state
         .service
-        .get(org.org_id, skill_id.uuid())
+        .get(&caller, skill_id.uuid())
         .await
-        .log_internal_error_json("get skill")?
+        .map_policy_or_internal("get skill")?
         .ok_or_not_found_json("Skill")?;
 
     Ok(Json(skill))
@@ -288,11 +326,12 @@ pub async fn get_skill_content(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let content = state
         .service
-        .get_content(org.org_id, skill_id.uuid())
+        .get_content(&caller, skill_id.uuid())
         .await
-        .log_internal_error_json("get skill content")?
+        .map_policy_or_internal("get skill content")?
         .ok_or_not_found_json("Skill")?;
 
     Ok(Json(content))
@@ -321,9 +360,10 @@ pub async fn update_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let skill = state
         .service
-        .update(org.org_id, skill_id.uuid(), req)
+        .update(&caller, skill_id.uuid(), req)
         .await
         .map_err(|e| {
             let msg = e.to_string();
@@ -363,11 +403,12 @@ pub async fn delete_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    let caller = caller_from_org(&org);
     let deleted = state
         .service
-        .delete(org.org_id, skill_id.uuid())
+        .delete(&caller, skill_id.uuid())
         .await
-        .log_internal_error_json("delete skill")?;
+        .map_policy_or_internal("delete skill")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

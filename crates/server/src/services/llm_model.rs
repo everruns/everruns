@@ -10,13 +10,23 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
-    get_model_profile,
+    Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
+    Permission, Policy, Rule, get_model_profile,
 };
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
+
+pub const LLM_MODEL_VIEW: Policy = Policy {
+    id: "llm_model.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+};
+pub const LLM_MODEL_MANAGE: Policy = Policy {
+    id: "llm_model.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+};
 
 pub struct LlmModelService {
     db: Arc<StorageBackend>,
@@ -45,9 +55,10 @@ impl LlmModelService {
         }
     }
 
+    #[policy(LLM_MODEL_MANAGE)]
     pub async fn create(
         &self,
-        org_id: i64,
+        caller: &Caller,
         provider_id: Uuid,
         req: CreateLlmModelRequest,
     ) -> Result<LlmModel> {
@@ -62,45 +73,56 @@ impl LlmModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.create_llm_model(org_id, input).await?;
-        self.invalidate_resolver_cache(org_id).await;
+        let row = self.db.create_llm_model(caller.org_id, input).await?;
+        self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_model(&row))
     }
 
+    #[policy(LLM_MODEL_VIEW)]
     pub async fn get_with_provider(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProvider>> {
-        let row = self.db.get_llm_model_with_provider(org_id, id).await?;
+        let row = self
+            .db
+            .get_llm_model_with_provider(caller.org_id, id)
+            .await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
-    pub async fn list_for_provider(&self, org_id: i64, provider_id: Uuid) -> Result<Vec<LlmModel>> {
+    #[policy(LLM_MODEL_VIEW)]
+    pub async fn list_for_provider(
+        &self,
+        caller: &Caller,
+        provider_id: Uuid,
+    ) -> Result<Vec<LlmModel>> {
         let rows = self
             .db
-            .list_llm_models_for_provider(org_id, provider_id)
+            .list_llm_models_for_provider(caller.org_id, provider_id)
             .await?;
         Ok(rows.iter().map(Self::row_to_model).collect())
     }
 
-    pub async fn list_all(&self, org_id: i64) -> Result<Vec<LlmModelWithProvider>> {
-        let rows = self.db.list_all_llm_models(org_id).await?;
+    #[policy(LLM_MODEL_VIEW)]
+    pub async fn list_all(&self, caller: &Caller) -> Result<Vec<LlmModelWithProvider>> {
+        let rows = self.db.list_all_llm_models(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_model_with_provider).collect())
     }
 
     /// List all models with optional filters
+    #[policy(LLM_MODEL_VIEW)]
     pub async fn list_all_with_filters(
         &self,
-        org_id: i64,
+        caller: &Caller,
         source: Option<LlmModelSource>,
         include_stale: bool,
         favorites_only: bool,
     ) -> Result<Vec<LlmModelWithProvider>> {
-        let rows = self.db.list_all_llm_models(org_id).await?;
+        let rows = self.db.list_all_llm_models(caller.org_id).await?;
 
         // Get provider last_synced_at timestamps for stale detection
-        let providers = self.db.list_llm_providers(org_id).await?;
+        let providers = self.db.list_llm_providers(caller.org_id).await?;
         let provider_sync_times: std::collections::HashMap<
             Uuid,
             Option<chrono::DateTime<chrono::Utc>>,
@@ -152,9 +174,10 @@ impl LlmModelService {
         Ok(models)
     }
 
+    #[policy(LLM_MODEL_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         id: Uuid,
         req: UpdateLlmModelRequest,
     ) -> Result<Option<LlmModel>> {
@@ -172,37 +195,39 @@ impl LlmModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.update_llm_model(org_id, id, input).await?;
+        let row = self.db.update_llm_model(caller.org_id, id, input).await?;
 
         // If uninstalling a model, check if it was the org default and elect a new one
         if req.installed == Some(false)
             && let Some(ref row) = row
         {
-            self.maybe_elect_new_default(org_id, row.id.uuid()).await?;
+            self.maybe_elect_new_default(caller.org_id, row.id.uuid())
+                .await?;
         }
-
         if row.is_some() {
-            self.invalidate_resolver_cache(org_id).await;
+            self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(row.as_ref().map(Self::row_to_model))
     }
 
-    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    #[policy(LLM_MODEL_MANAGE)]
+    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         // Before deleting, check if this was the org default
-        let was_default = self.is_org_default(org_id, id).await?;
-        let deleted = self.db.delete_llm_model(org_id, id).await?;
+        let was_default = self.is_org_default(caller.org_id, id).await?;
+        let deleted = self.db.delete_llm_model(caller.org_id, id).await?;
         if deleted {
             if was_default {
-                self.elect_new_default(org_id).await?;
+                self.elect_new_default(caller.org_id).await?;
             }
-            self.invalidate_resolver_cache(org_id).await;
+            self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(deleted)
     }
 
     /// Get the default model
-    pub async fn get_default(&self, org_id: i64) -> Result<Option<LlmModelWithProvider>> {
-        let row = self.db.get_default_llm_model(org_id).await?;
+    #[policy(LLM_MODEL_VIEW)]
+    pub async fn get_default(&self, caller: &Caller) -> Result<Option<LlmModelWithProvider>> {
+        let row = self.db.get_default_llm_model(caller.org_id).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 

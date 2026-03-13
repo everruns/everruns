@@ -490,6 +490,7 @@ impl WorkerServiceImpl {
     }
 
     /// Get organization public_id from org_id
+    #[allow(dead_code)]
     async fn get_org_public_id(&self, org_id: i64) -> Result<String, Status> {
         self.db
             .get_organization(org_id)
@@ -558,7 +559,7 @@ impl WorkerServiceImpl {
         // Batch fetch all MCP servers with cached tools in one query
         let servers = match self
             .mcp_server_service
-            .get_batch_with_tools(org_id, &server_ids)
+            .get_batch_with_tools(&everruns_core::Caller::internal(org_id), &server_ids)
             .await
         {
             Ok(s) => s,
@@ -779,12 +780,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetTurnContextResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, &org_public_id, session_id, None)
+            .get(&internal_caller, session_id, None)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -795,7 +796,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get agent with capabilities via AgentService (optional)
         let agent = if let Some(agent_id) = session.agent_id {
             self.agent_service
-                .get(req.org_id, agent_id.uuid())
+                .get(&internal_caller, agent_id.uuid())
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to get agent: {}", e);
@@ -806,7 +807,6 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         // Load harness
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
             .get(&internal_caller, session.harness_id.uuid())
@@ -1018,9 +1018,10 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Get agent with capabilities via AgentService
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agent = self
             .agent_service
-            .get(req.org_id, agent_id)
+            .get(&internal_caller, agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
@@ -1056,12 +1057,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetSessionResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, &org_public_id, session_id, None)
+            .get(&internal_caller, session_id, None)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -1100,7 +1101,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Validate status value
         let valid_statuses = ["started", "active", "idle"];
@@ -1113,7 +1114,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let session = self
             .session_service
-            .update_status(req.org_id, &org_public_id, session_id, req.status)
+            .update_status(&internal_caller, session_id, req.status)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);
@@ -1151,13 +1152,12 @@ impl WorkerService for WorkerServiceImpl {
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         let session = self
             .session_service
             .update(
-                req.org_id,
-                &org_public_id,
+                &internal_caller,
                 session_id,
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
@@ -2572,9 +2572,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
         let req = request.into_inner();
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let resolved = self
             .mcp_server_service
-            .resolve_by_prefix(req.org_id, &req.server_prefix)
+            .resolve_by_prefix(&internal_caller, &req.server_prefix)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to resolve MCP server: {}", e);
@@ -3420,9 +3421,10 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListAgentsRequest>,
     ) -> Result<Response<PlatformListAgentsResponse>, Status> {
         let req = request.into_inner();
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agents = self
             .agent_service
-            .list(req.org_id, None)
+            .list(&internal_caller, None)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
 
@@ -3454,9 +3456,10 @@ impl WorkerService for WorkerServiceImpl {
             tools: vec![],
         };
 
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agent = self
             .agent_service
-            .create(req.org_id, None, create_req)
+            .create(&internal_caller, None, create_req)
             .await
             .map_err(|e| Status::internal(format!("Failed to create agent: {}", e)))?;
 
@@ -3473,9 +3476,10 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Resolve UUID to public_id for the service
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agent = self
             .agent_service
-            .get(req.org_id, agent_id)
+            .get(&internal_caller, agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
@@ -3493,7 +3497,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let updated = self
             .agent_service
-            .update(req.org_id, &agent.public_id.to_string(), update_req)
+            .update(&internal_caller, &agent.public_id.to_string(), update_req)
             .await
             .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
@@ -3511,15 +3515,16 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Resolve UUID to public_id for the service
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agent = self
             .agent_service
-            .get(req.org_id, agent_id)
+            .get(&internal_caller, agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
 
         self.agent_service
-            .delete(req.org_id, &agent.public_id.to_string())
+            .delete(&internal_caller, &agent.public_id.to_string())
             .await
             .map_err(|e| Status::internal(format!("Failed to delete agent: {}", e)))?;
 
@@ -3531,7 +3536,7 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListSessionsRequest>,
     ) -> Result<Response<PlatformListSessionsResponse>, Status> {
         let req = request.into_inner();
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         let limit = req.limit.unwrap_or(20);
         let agent_id = match req.agent_id {
@@ -3543,7 +3548,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let (sessions, _total) = self
             .session_service
-            .list(req.org_id, &org_public_id, agent_id, None, None, pagination)
+            .list(&internal_caller, agent_id, None, None, pagination)
             .await
             .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
 
@@ -3558,7 +3563,7 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformCreateSessionRequest>,
     ) -> Result<Response<PlatformCreateSessionResponse>, Status> {
         let req = request.into_inner();
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
         let agent_uuid = match req.agent_id {
@@ -3570,7 +3575,7 @@ impl WorkerService for WorkerServiceImpl {
         let agent_public_id = if let Some(aid) = agent_uuid {
             let agent = self
                 .agent_service
-                .get(req.org_id, aid)
+                .get(&internal_caller, aid)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
                 .ok_or_else(|| Status::not_found("Agent not found"))?;
@@ -3592,8 +3597,7 @@ impl WorkerService for WorkerServiceImpl {
         let session = self
             .session_service
             .create(
-                req.org_id,
-                &org_public_id,
+                &internal_caller,
                 harness_id,
                 agent_uuid,
                 create_req.agent_id,
@@ -3613,9 +3617,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<PlatformDeleteSessionResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         self.session_service
-            .delete(req.org_id, session_id)
+            .delete(&internal_caller, session_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to delete session: {}", e)))?;
 
@@ -3628,12 +3633,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<PlatformSendMessageResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Get session to find harness_id and agent_id
         let session = self
             .session_service
-            .get(req.org_id, &org_public_id, session_id, None)
+            .get(&internal_caller, session_id, None)
             .await
             .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
             .ok_or_else(|| Status::not_found("Session not found"))?;
@@ -3766,7 +3771,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<PlatformWaitForIdleResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let org_public_id = self.get_org_public_id(req.org_id).await?;
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let timeout_secs = req.timeout_secs.unwrap_or(120);
 
         let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
@@ -3774,7 +3779,7 @@ impl WorkerService for WorkerServiceImpl {
         loop {
             let session = self
                 .session_service
-                .get(req.org_id, &org_public_id, session_id, None)
+                .get(&internal_caller, session_id, None)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
                 .ok_or_else(|| Status::not_found("Session not found"))?;

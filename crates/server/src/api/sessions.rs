@@ -1,7 +1,9 @@
 // Session CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
+// Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
@@ -14,10 +16,12 @@ use axum::{
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
-use everruns_core::{Message, Session};
+use everruns_core::{Caller, Message, ResourceConfigResponse, Session, evaluate_policies};
 use everruns_worker::AgentRunner;
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -153,9 +157,22 @@ pub struct SessionStatsResponse {
     pub waiting_for_tool_results: u32,
 }
 
+/// Create Caller from ResolvedOrg
+fn caller_from_org(org: &ResolvedOrg) -> Caller {
+    Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: org.user_id,
+        role: org.role,
+        is_platform_user: false,
+    }
+}
+
 /// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        // Config endpoint (must be before /{session_id} to avoid conflict)
+        .route("/v1/sessions/config", get(session_config))
         // Global chat session (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/chat", post(get_or_create_chat_session))
         // Session stats (must be before /{session_id} to avoid conflict)
@@ -176,6 +193,13 @@ pub fn routes(state: AppState) -> Router {
         // Cancel turn endpoint
         .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
         .with_state(state)
+}
+
+/// GET /v1/sessions/config
+pub async fn session_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+    let caller = caller_from_org(&org);
+    let policies = evaluate_policies(&caller, &[&SESSION_VIEW, &SESSION_MANAGE]);
+    Json(ResourceConfigResponse { policies })
 }
 
 /// POST /v1/sessions - Create a new session
@@ -214,18 +238,18 @@ pub async fn create_session(
         (None, None)
     };
 
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
         .create(
-            org.org_id,
-            &org.public_id,
+            &caller,
             req.harness_id.uuid(),
             agent_internal_id,
             agent_public_id,
             req,
         )
         .await
-        .log_internal_error_json("create session")?;
+        .map_policy_or_internal("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
 }
@@ -251,16 +275,12 @@ pub async fn get_or_create_chat_session(
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
 
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
-        .get_or_create_chat_session(
-            org.org_id,
-            &org.public_id,
-            user_id,
-            crate::seed::CHAT_HARNESS_ID,
-        )
+        .get_or_create_chat_session(&caller, user_id, crate::seed::CHAT_HARNESS_ID)
         .await
-        .log_internal_error_json("get or create chat session")?;
+        .map_policy_or_internal("get or create chat session")?;
 
     Ok(Json(session))
 }
@@ -297,18 +317,18 @@ pub async fn list_sessions(
         None
     };
 
+    let caller = caller_from_org(&org);
     let (sessions, total) = state
         .session_service
         .list(
-            org.org_id,
-            &org.public_id,
+            &caller,
             agent_internal_id,
             org.user_id,
             query.search.as_deref(),
             pagination,
         )
         .await
-        .log_internal_error_json("list sessions")?;
+        .map_policy_or_internal("list sessions")?;
 
     Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
 }
@@ -326,12 +346,13 @@ pub async fn list_sessions(
 pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<SessionStatsResponse>, StatusCode> {
+) -> Result<Json<SessionStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = caller_from_org(&org);
     let stats = state
         .session_service
-        .stats(org.org_id)
+        .stats(&caller)
         .await
-        .log_internal_error("get session stats")?;
+        .map_policy_or_internal("get session stats")?;
 
     Ok(Json(SessionStatsResponse {
         total: stats.total,
@@ -371,12 +392,20 @@ pub async fn get_session(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), org.user_id)
+        .get(&caller, session_id.uuid(), org.user_id)
         .await
-        .log_internal_error_json("get session")?
-        .ok_or_not_found_json("Session")?;
+        .map_policy_or_internal("get session")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(session))
 }
@@ -412,12 +441,20 @@ pub async fn update_session(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
-        .update(org.org_id, &org.public_id, session_id.uuid(), req)
+        .update(&caller, session_id.uuid(), req)
         .await
-        .log_internal_error_json("update session")?
-        .ok_or_not_found_json("Session")?;
+        .map_policy_or_internal("update session")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(session))
 }
@@ -451,22 +488,14 @@ pub async fn delete_session(
         )
     })?;
 
-    let deleted = state
+    let caller = caller_from_org(&org);
+    state
         .session_service
-        .delete(org.org_id, session_id.uuid())
+        .delete(&caller, session_id.uuid())
         .await
-        .log_internal_error_json("delete session")?;
+        .map_policy_or_internal("delete session")?;
 
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Session not found".to_string(),
-            }),
-        ))
-    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// PUT /v1/sessions/{session_id}/pin - Pin session for current user
@@ -507,19 +536,12 @@ pub async fn pin_session(
         )
     })?;
 
-    // Verify session exists in this org
+    let caller = caller_from_org(&org);
     state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .pin(&caller, user_id, session_id.uuid())
         .await
-        .log_internal_error_json("get session for pin")?
-        .ok_or_not_found_json("Session")?;
-
-    state
-        .session_service
-        .pin(user_id, session_id.uuid(), org.org_id)
-        .await
-        .log_internal_error_json("pin session")?;
+        .map_policy_or_internal("pin session")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -562,11 +584,12 @@ pub async fn unpin_session(
         )
     })?;
 
+    let caller = caller_from_org(&org);
     state
         .session_service
-        .unpin(user_id, session_id.uuid())
+        .unpin(&caller, user_id, session_id.uuid())
         .await
-        .log_internal_error_json("unpin session")?;
+        .map_policy_or_internal("unpin session")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -597,16 +620,31 @@ pub async fn cancel_turn(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<CancelTurnResponse>, StatusCode> {
-    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<CancelTurnResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
 
     // Verify session exists
+    let caller = caller_from_org(&org);
     let session = state
         .session_service
-        .get(org.org_id, &org.public_id, session_id.uuid(), None)
+        .get(&caller, session_id.uuid(), None)
         .await
-        .log_internal_error("get session for cancel")?
-        .ok_or_not_found()?;
+        .map_policy_or_internal("get session for cancel")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
     // If session is not active, cancel is a no-op (idempotent)
     if session.status != everruns_core::SessionStatus::Active {

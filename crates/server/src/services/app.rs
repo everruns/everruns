@@ -7,11 +7,33 @@ use crate::storage::{
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, HarnessId};
-use everruns_core::{App, AppId, AppStatus, ChannelType};
+use everruns_core::{App, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule};
+use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::apps::{CreateAppRequest, UpdateAppRequest};
+
+/// Policy: View apps (read-only).
+pub const APP_VIEW: Policy = Policy {
+    id: "app.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
+/// Policy: Manage apps (create, update).
+pub const APP_MANAGE: Policy = Policy {
+    id: "app.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
+/// Policy: Dangerous app operations (delete, publish, unpublish).
+pub const APP_DANGEROUS: Policy = Policy {
+    id: "app.dangerous",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgSettingsManage),
+    ],
+};
 
 pub struct AppService {
     db: Arc<StorageBackend>,
@@ -22,19 +44,20 @@ impl AppService {
         Self { db }
     }
 
-    pub async fn create(&self, org_id: i64, req: CreateAppRequest) -> Result<App> {
+    #[policy(APP_MANAGE)]
+    pub async fn create(&self, caller: &Caller, req: CreateAppRequest) -> Result<App> {
         let internal_uuid = Uuid::now_v7();
         let public_id = AppId::from_uuid(internal_uuid);
 
         // Validate harness and agent exist
         let harness_row = self
             .db
-            .get_harness(org_id, req.harness_id)
+            .get_harness(caller.org_id, req.harness_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
         let agent_row = self
             .db
-            .get_agent_by_public_id(org_id, &req.agent_id.to_string())
+            .get_agent_by_public_id(caller.org_id, &req.agent_id.to_string())
             .await?
             .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
@@ -48,14 +71,18 @@ impl AppService {
             channel_config: req.channel_config.unwrap_or_default(),
         };
 
-        let row = self.db.create_app(org_id, input).await?;
-        Ok(self.row_to_app(row, org_id).await)
+        let row = self.db.create_app(caller.org_id, input).await?;
+        Ok(self.row_to_app(row, caller.org_id).await)
     }
 
-    pub async fn get_by_public_id(&self, org_id: i64, public_id: &str) -> Result<Option<App>> {
-        let row = self.db.get_app_by_public_id(org_id, public_id).await?;
+    #[policy(APP_VIEW)]
+    pub async fn get_by_public_id(&self, caller: &Caller, public_id: &str) -> Result<Option<App>> {
+        let row = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
         match row {
-            Some(row) => Ok(Some(self.row_to_app(row, org_id).await)),
+            Some(row) => Ok(Some(self.row_to_app(row, caller.org_id).await)),
             None => Ok(None),
         }
     }
@@ -73,22 +100,27 @@ impl AppService {
         }
     }
 
-    pub async fn list(&self, org_id: i64, search: Option<&str>) -> Result<Vec<App>> {
-        let rows = self.db.list_apps(org_id, search).await?;
+    #[policy(APP_VIEW)]
+    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<App>> {
+        let rows = self.db.list_apps(caller.org_id, search).await?;
         let mut apps = Vec::with_capacity(rows.len());
         for row in rows {
-            apps.push(self.row_to_app(row, org_id).await);
+            apps.push(self.row_to_app(row, caller.org_id).await);
         }
         Ok(apps)
     }
 
+    #[policy(APP_MANAGE)]
     pub async fn update(
         &self,
-        org_id: i64,
+        caller: &Caller,
         public_id: &str,
         req: UpdateAppRequest,
     ) -> Result<Option<App>> {
-        let existing = self.db.get_app_by_public_id(org_id, public_id).await?;
+        let existing = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = existing else {
             return Ok(None);
         };
@@ -97,7 +129,7 @@ impl AppService {
         let harness_id = if let Some(hid) = req.harness_id {
             let h = self
                 .db
-                .get_harness(org_id, hid)
+                .get_harness(caller.org_id, hid)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
             Some(h.id.uuid())
@@ -108,7 +140,7 @@ impl AppService {
         let agent_id = if let Some(aid) = req.agent_id {
             let a = self
                 .db
-                .get_agent_by_public_id(org_id, &aid.to_string())
+                .get_agent_by_public_id(caller.org_id, &aid.to_string())
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
             Some(a.id.uuid())
@@ -127,23 +159,34 @@ impl AppService {
             published_at: None,
         };
 
-        let row = self.db.update_app(org_id, existing.id, input).await?;
+        let row = self
+            .db
+            .update_app(caller.org_id, existing.id, input)
+            .await?;
         match row {
-            Some(row) => Ok(Some(self.row_to_app(row, org_id).await)),
+            Some(row) => Ok(Some(self.row_to_app(row, caller.org_id).await)),
             None => Ok(None),
         }
     }
 
-    pub async fn delete(&self, org_id: i64, public_id: &str) -> Result<bool> {
-        let existing = self.db.get_app_by_public_id(org_id, public_id).await?;
+    #[policy(APP_DANGEROUS)]
+    pub async fn delete(&self, caller: &Caller, public_id: &str) -> Result<bool> {
+        let existing = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = existing else {
             return Ok(false);
         };
-        self.db.delete_app(org_id, existing.id).await
+        self.db.delete_app(caller.org_id, existing.id).await
     }
 
-    pub async fn publish(&self, org_id: i64, public_id: &str) -> Result<Option<App>> {
-        let existing = self.db.get_app_by_public_id(org_id, public_id).await?;
+    #[policy(APP_DANGEROUS)]
+    pub async fn publish(&self, caller: &Caller, public_id: &str) -> Result<Option<App>> {
+        let existing = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = existing else {
             return Ok(None);
         };
@@ -154,15 +197,22 @@ impl AppService {
             ..Default::default()
         };
 
-        let row = self.db.update_app(org_id, existing.id, input).await?;
+        let row = self
+            .db
+            .update_app(caller.org_id, existing.id, input)
+            .await?;
         match row {
-            Some(row) => Ok(Some(self.row_to_app(row, org_id).await)),
+            Some(row) => Ok(Some(self.row_to_app(row, caller.org_id).await)),
             None => Ok(None),
         }
     }
 
-    pub async fn unpublish(&self, org_id: i64, public_id: &str) -> Result<Option<App>> {
-        let existing = self.db.get_app_by_public_id(org_id, public_id).await?;
+    #[policy(APP_DANGEROUS)]
+    pub async fn unpublish(&self, caller: &Caller, public_id: &str) -> Result<Option<App>> {
+        let existing = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
         let Some(existing) = existing else {
             return Ok(None);
         };
@@ -172,9 +222,12 @@ impl AppService {
             ..Default::default()
         };
 
-        let row = self.db.update_app(org_id, existing.id, input).await?;
+        let row = self
+            .db
+            .update_app(caller.org_id, existing.id, input)
+            .await?;
         match row {
-            Some(row) => Ok(Some(self.row_to_app(row, org_id).await)),
+            Some(row) => Ok(Some(self.row_to_app(row, caller.org_id).await)),
             None => Ok(None),
         }
     }
