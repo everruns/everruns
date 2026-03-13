@@ -100,16 +100,6 @@ impl FromRef<AppState> for AuthState {
 // Helpers
 // ============================================
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// GET /v1/skills/config
 #[utoipa::path(
     get,
@@ -120,7 +110,7 @@ fn caller_from_org(org: &ResolvedOrg) -> Caller {
     tag = "skills"
 )]
 pub async fn skill_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&SKILL_VIEW, &SKILL_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }
@@ -167,7 +157,7 @@ pub async fn create_skill(
     State(state): State<AppState>,
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<(StatusCode, Json<Skill>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let skill = state.service.create(&caller, req).await.map_err(|e| {
         let msg = e.to_string();
         if msg.contains("already exists") {
@@ -221,7 +211,7 @@ pub async fn upload_skill(
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let skill = state
         .service
         .create_from_archive(&caller, data)
@@ -261,7 +251,7 @@ pub async fn list_skills(
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
 ) -> Result<Json<ListResponse<Skill>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let skills = state
         .service
         .list(&caller, query.search.as_deref())
@@ -293,7 +283,7 @@ pub async fn get_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let skill = state
         .service
         .get(&caller, skill_id.uuid())
@@ -326,7 +316,7 @@ pub async fn get_skill_content(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let content = state
         .service
         .get_content(&caller, skill_id.uuid())
@@ -360,7 +350,7 @@ pub async fn update_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let skill = state
         .service
         .update(&caller, skill_id.uuid(), req)
@@ -403,7 +393,7 @@ pub async fn delete_skill(
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, skill_id.uuid())

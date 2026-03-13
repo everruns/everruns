@@ -124,17 +124,6 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create Caller from ResolvedOrg
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// Create MCP server routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -164,7 +153,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "mcp-servers"
 )]
 pub async fn mcp_server_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&MCP_SERVER_VIEW, &MCP_SERVER_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }
@@ -204,7 +193,7 @@ pub async fn create_mcp_server(
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let server = state
         .service
         .create(&caller, req)
@@ -230,7 +219,7 @@ pub async fn list_mcp_servers(
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
 ) -> Result<Json<ListResponse<McpServer>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let servers = state
         .service
         .list(&caller, query.search.as_deref())
@@ -269,7 +258,7 @@ pub async fn get_mcp_server(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let server = state
         .service
         .get(&caller, server_id.uuid())
@@ -333,7 +322,7 @@ pub async fn update_mcp_server(
         })?;
     }
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let server = state
         .service
         .update(&caller, server_id.uuid(), req)
@@ -373,7 +362,7 @@ pub async fn delete_mcp_server(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, server_id.uuid())

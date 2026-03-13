@@ -157,17 +157,6 @@ pub struct SessionStatsResponse {
     pub waiting_for_tool_results: u32,
 }
 
-/// Create Caller from ResolvedOrg
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -197,7 +186,7 @@ pub fn routes(state: AppState) -> Router {
 
 /// GET /v1/sessions/config
 pub async fn session_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&SESSION_VIEW, &SESSION_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }
@@ -238,7 +227,7 @@ pub async fn create_session(
         (None, None)
     };
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .create(
@@ -275,7 +264,7 @@ pub async fn get_or_create_chat_session(
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .get_or_create_chat_session(&caller, user_id, crate::seed::CHAT_HARNESS_ID)
@@ -317,7 +306,7 @@ pub async fn list_sessions(
         None
     };
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let (sessions, total) = state
         .session_service
         .list(
@@ -347,7 +336,7 @@ pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<SessionStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let stats = state
         .session_service
         .stats(&caller)
@@ -392,7 +381,7 @@ pub async fn get_session(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .get(&caller, session_id.uuid(), org.user_id)
@@ -441,7 +430,7 @@ pub async fn update_session(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .update(&caller, session_id.uuid(), req)
@@ -488,7 +477,7 @@ pub async fn delete_session(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     state
         .session_service
         .delete(&caller, session_id.uuid())
@@ -536,7 +525,7 @@ pub async fn pin_session(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     state
         .session_service
         .pin(&caller, user_id, session_id.uuid())
@@ -584,7 +573,7 @@ pub async fn unpin_session(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     state
         .session_service
         .unpin(&caller, user_id, session_id.uuid())
@@ -631,7 +620,7 @@ pub async fn cancel_turn(
     })?;
 
     // Verify session exists
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .get(&caller, session_id.uuid(), None)

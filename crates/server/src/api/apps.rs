@@ -104,17 +104,6 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create Caller from ResolvedOrg
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// Create app routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -139,7 +128,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "apps"
 )]
 pub async fn app_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&APP_VIEW, &APP_MANAGE, &APP_DANGEROUS]);
     Json(ResourceConfigResponse { policies })
 }
@@ -161,7 +150,7 @@ pub async fn create_app(
     State(state): State<AppState>,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<App>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let app = state
         .service
         .create(&caller, req)
@@ -187,7 +176,7 @@ pub async fn list_apps(
     State(state): State<AppState>,
     Query(query): Query<ListAppsQuery>,
 ) -> Result<Json<ListResponse<App>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let apps = state
         .service
         .list(&caller, query.search.as_deref())
@@ -219,7 +208,7 @@ pub async fn get_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let app = state
         .service
         .get_by_public_id(&caller, &app_id.to_string())
@@ -254,7 +243,7 @@ pub async fn update_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let app = state
         .service
         .update(&caller, &app_id.to_string(), req)
@@ -287,7 +276,7 @@ pub async fn delete_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, &app_id.to_string())
@@ -323,7 +312,7 @@ pub async fn publish_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let app = state
         .service
         .publish(&caller, &app_id.to_string())
@@ -356,7 +345,7 @@ pub async fn unpublish_app(
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let app = state
         .service
         .unpublish(&caller, &app_id.to_string())

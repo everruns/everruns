@@ -30,16 +30,6 @@ use everruns_core::Caller;
 
 use crate::services::{MessageService, SessionService};
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]
 pub use everruns_core::{
@@ -241,7 +231,7 @@ pub async fn create_message(
     })?;
 
     // Get session to retrieve agent_id
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .get(&caller, session_id.uuid(), None)
@@ -336,7 +326,7 @@ pub async fn list_messages(
     // Verify session exists
     let _session = state
         .session_service
-        .get(&caller_from_org(&org), session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

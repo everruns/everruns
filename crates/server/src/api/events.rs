@@ -28,15 +28,6 @@ use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use crate::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -257,7 +248,7 @@ pub async fn stream_sse(
     // Verify session exists
     let _session = state
         .session_service
-        .get(&caller_from_org(&org), session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -632,7 +623,7 @@ pub async fn list_events(
     // Verify session exists
     let _session = state
         .session_service
-        .get(&caller_from_org(&org), session_id.uuid(), None)
+        .get(&Caller::from(&org), session_id.uuid(), None)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

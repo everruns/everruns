@@ -30,16 +30,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// Request to submit client-side tool results
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SubmitToolResultsRequest {
@@ -152,7 +142,7 @@ pub async fn submit_tool_results(
     }
 
     // Get session and verify status
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let session = state
         .session_service
         .get(&caller, session_id.uuid(), None)

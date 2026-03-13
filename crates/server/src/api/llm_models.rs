@@ -151,7 +151,7 @@ pub async fn create_model(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let model = state
         .service
         .create(&caller, provider_id.uuid(), req)
@@ -188,7 +188,7 @@ pub async fn list_provider_models(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let models = state
         .service
         .list_for_provider(&caller, provider_id.uuid())
@@ -215,7 +215,7 @@ pub async fn list_all_models(
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let models = state
         .service
         .list_all_with_filters(
@@ -258,7 +258,7 @@ pub async fn get_model(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let model = state
         .service
         .get_with_provider(&caller, model_id.uuid())
@@ -299,7 +299,7 @@ pub async fn update_model(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let model = state
         .service
         .update(&caller, model_id.uuid(), req)
@@ -338,7 +338,7 @@ pub async fn delete_model(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, model_id.uuid())
@@ -352,16 +352,6 @@ pub async fn delete_model(
     }
 }
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// GET /v1/llm-models/config
 #[utoipa::path(
     get,
@@ -372,7 +362,7 @@ fn caller_from_org(org: &ResolvedOrg) -> Caller {
     tag = "llm-models"
 )]
 pub async fn llm_model_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&LLM_MODEL_VIEW, &LLM_MODEL_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }

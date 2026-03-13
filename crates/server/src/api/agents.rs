@@ -209,16 +209,6 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// GET /v1/agents/config
 #[utoipa::path(
     get,
@@ -229,7 +219,7 @@ fn caller_from_org(org: &ResolvedOrg) -> Caller {
     tag = "agents"
 )]
 pub async fn agent_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&AGENT_VIEW, &AGENT_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }
@@ -307,7 +297,7 @@ pub async fn create_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let client_id = req.id;
     let agent = match state.service.create(&caller, client_id, req).await {
         Ok(agent) => agent,
@@ -340,7 +330,7 @@ pub async fn list_agents(
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
 ) -> Result<Json<ListResponse<Agent>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agents = state
         .service
         .list(&caller, query.search.as_deref())
@@ -379,7 +369,7 @@ pub async fn get_agent(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agent = state
         .service
         .get_by_public_id(&caller, &agent_id.to_string())
@@ -434,7 +424,7 @@ pub async fn update_agent(
         require_admin_for_high_risk(&org, caps, &state.capability_service)?;
     }
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agent = state
         .service
         .update(&caller, &agent_id.to_string(), req)
@@ -474,7 +464,7 @@ pub async fn delete_agent(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, &agent_id.to_string())
@@ -525,7 +515,7 @@ pub async fn copy_agent(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agent = state
         .service
         .copy(&caller, &agent_id.to_string())
@@ -581,7 +571,7 @@ pub async fn upsert_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let (agent, was_created) = state
         .service
         .upsert(&caller, &agent_id.to_string(), req)
@@ -626,7 +616,7 @@ pub async fn export_agent(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agent = state
         .service
         .get_by_public_id(&caller, &agent_id.to_string())
@@ -719,7 +709,7 @@ pub async fn import_agent(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let agent = state
         .service
         .create(&caller, client_id, request)

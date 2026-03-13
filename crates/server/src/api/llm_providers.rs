@@ -134,7 +134,7 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let provider = state
         .service
         .create(&caller, req)
@@ -157,7 +157,7 @@ pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let providers = state
         .service
         .list(&caller)
@@ -195,7 +195,7 @@ pub async fn get_provider(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let provider = state
         .service
         .get(&caller, provider_id.uuid())
@@ -236,7 +236,7 @@ pub async fn update_provider(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let provider = state
         .service
         .update(&caller, provider_id.uuid(), req)
@@ -275,7 +275,7 @@ pub async fn delete_provider(
         )
     })?;
 
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let deleted = state
         .service
         .delete(&caller, provider_id.uuid())
@@ -370,16 +370,6 @@ pub async fn sync_models(
     Ok(Json(response))
 }
 
-fn caller_from_org(org: &ResolvedOrg) -> Caller {
-    Caller {
-        org_id: org.org_id,
-        org_public_id: org.public_id.clone(),
-        user_id: org.user_id,
-        role: org.role,
-        is_platform_user: false,
-    }
-}
-
 /// GET /v1/llm-providers/config
 #[utoipa::path(
     get,
@@ -390,7 +380,7 @@ fn caller_from_org(org: &ResolvedOrg) -> Caller {
     tag = "llm-providers"
 )]
 pub async fn llm_provider_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
-    let caller = caller_from_org(&org);
+    let caller = Caller::from(&org);
     let policies = evaluate_policies(&caller, &[&LLM_PROVIDER_VIEW, &LLM_PROVIDER_MANAGE]);
     Json(ResourceConfigResponse { policies })
 }
