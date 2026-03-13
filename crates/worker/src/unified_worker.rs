@@ -517,6 +517,8 @@ where
                                 EventContext::turn(turn_id, ti.input_message_id),
                                 everruns_core::ToolCallRequestedData {
                                     tool_calls: synthetic_tool_calls,
+                                    tool_summaries: vec![],
+                                    headline: None,
                                 },
                             );
                             if let Err(e) = adapters.emit_event(requested_event).await {
