@@ -476,6 +476,13 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn load_events(&self, workflow_id: Uuid)
     -> Result<Vec<(i32, WorkflowEvent)>, StoreError>;
 
+    /// Count events for a workflow without materializing the replay payload.
+    ///
+    /// Used to reject oversized full-history replays before fetching event data.
+    async fn count_events(&self, workflow_id: Uuid) -> Result<usize, StoreError> {
+        Ok(self.load_events(workflow_id).await?.len())
+    }
+
     /// Load events for a workflow starting after a given sequence number.
     ///
     /// Used for snapshot-based replay: load only events after the snapshot point.

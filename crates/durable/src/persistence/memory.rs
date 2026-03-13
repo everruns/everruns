@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicI32;
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -89,6 +91,10 @@ pub struct InMemoryWorkflowEventStore {
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
+    #[cfg(test)]
+    load_events_calls: AtomicUsize,
+    #[cfg(test)]
+    count_events_calls: AtomicUsize,
     max_pending_tasks_per_workflow: u32,
 }
 
@@ -106,6 +112,10 @@ impl InMemoryWorkflowEventStore {
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
+            #[cfg(test)]
+            load_events_calls: AtomicUsize::new(0),
+            #[cfg(test)]
+            count_events_calls: AtomicUsize::new(0),
             max_pending_tasks_per_workflow: super::store::max_pending_tasks_per_workflow_from_env(),
         }
     }
@@ -116,6 +126,16 @@ impl InMemoryWorkflowEventStore {
         let mut store = Self::new();
         store.max_pending_tasks_per_workflow = limit;
         store
+    }
+
+    #[cfg(test)]
+    pub fn load_events_call_count(&self) -> usize {
+        self.load_events_calls.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub fn count_events_call_count(&self) -> usize {
+        self.count_events_calls.load(Ordering::Relaxed)
     }
 
     /// Get the number of workflows
@@ -231,6 +251,9 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         &self,
         workflow_id: Uuid,
     ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError> {
+        #[cfg(test)]
+        self.load_events_calls.fetch_add(1, Ordering::Relaxed);
+
         let workflows = self.workflows.read();
         let workflow = workflows
             .get(&workflow_id)
@@ -242,6 +265,18 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .enumerate()
             .map(|(i, e)| (i as i32, e.clone()))
             .collect())
+    }
+
+    async fn count_events(&self, workflow_id: Uuid) -> Result<usize, StoreError> {
+        #[cfg(test)]
+        self.count_events_calls.fetch_add(1, Ordering::Relaxed);
+
+        let workflows = self.workflows.read();
+        let workflow = workflows
+            .get(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        Ok(workflow.events.len())
     }
 
     async fn load_events_after(

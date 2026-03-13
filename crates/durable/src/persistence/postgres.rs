@@ -275,6 +275,30 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn count_events(&self, workflow_id: Uuid) -> Result<usize, StoreError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM durable_workflow_events
+            WHERE workflow_id = $1
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to count events: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        usize::try_from(count).map_err(|_| {
+            StoreError::Database(format!(
+                "event count overflow for workflow {workflow_id}: {count}"
+            ))
+        })
+    }
+
+    #[instrument(skip(self))]
     async fn load_events_after(
         &self,
         workflow_id: Uuid,
