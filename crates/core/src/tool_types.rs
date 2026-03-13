@@ -213,6 +213,10 @@ pub struct ToolResult {
     pub images: Option<Vec<crate::tools::ToolResultImage>>,
     /// Error message (failure)
     pub error: Option<String>,
+    /// When set, indicates the tool requires a user connection for this provider.
+    /// The workflow should pause and prompt the user to configure the connection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_required: Option<String>,
 }
 
 #[cfg(test)]
@@ -279,6 +283,7 @@ mod tests {
             result: Some(serde_json::json!({"temperature": 72})),
             images: None,
             error: None,
+            connection_required: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

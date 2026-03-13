@@ -81,6 +81,17 @@ pub enum ToolExecutionResult {
     /// or other internal issues. The error details will be logged but replaced
     /// with a generic message when returned to the LLM.
     InternalError(ToolInternalError),
+
+    /// A user connection is required to execute this tool.
+    ///
+    /// Instead of returning an error, this signals that the workflow should
+    /// pause and ask the client to set up a connection for the given provider.
+    /// The UI renders an inline connection dialog; once the user saves (or
+    /// cancels), a tool result is submitted and execution resumes.
+    ConnectionRequired {
+        /// Connection provider id (e.g. "daytona", "brave_search")
+        provider: String,
+    },
 }
 
 impl ToolExecutionResult {
@@ -112,6 +123,13 @@ impl ToolExecutionResult {
         ToolExecutionResult::InternalError(ToolInternalError::from_message(message))
     }
 
+    /// Signal that a user connection is required before this tool can execute.
+    pub fn connection_required(provider: impl Into<String>) -> Self {
+        ToolExecutionResult::ConnectionRequired {
+            provider: provider.into(),
+        }
+    }
+
     /// Check if this is a successful result
     pub fn is_success(&self) -> bool {
         matches!(
@@ -122,7 +140,15 @@ impl ToolExecutionResult {
 
     /// Check if this is an error (either tool error or internal error)
     pub fn is_error(&self) -> bool {
-        !self.is_success()
+        matches!(
+            self,
+            ToolExecutionResult::ToolError(_) | ToolExecutionResult::InternalError(_)
+        )
+    }
+
+    /// Check if this requires a user connection setup
+    pub fn is_connection_required(&self) -> bool {
+        matches!(self, ToolExecutionResult::ConnectionRequired { .. })
     }
 
     /// Convert to a ToolResult for the agent loop
@@ -139,6 +165,7 @@ impl ToolExecutionResult {
                 result: Some(value),
                 images: None,
                 error: None,
+                connection_required: None,
             },
             ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
@@ -149,12 +176,14 @@ impl ToolExecutionResult {
                     Some(images)
                 },
                 error: None,
+                connection_required: None,
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(serde_json::json!({ "error": message })),
                 images: None,
                 error: None,
+                connection_required: None,
             },
             ToolExecutionResult::InternalError(err) => {
                 // Log the full error details for debugging
@@ -173,8 +202,18 @@ impl ToolExecutionResult {
                     })),
                     images: None,
                     error: None,
+                    connection_required: None,
                 }
             }
+            ToolExecutionResult::ConnectionRequired { ref provider } => ToolResult {
+                tool_call_id: tool_call_id.to_string(),
+                result: Some(serde_json::json!({
+                    "connection_required": provider,
+                })),
+                images: None,
+                error: None,
+                connection_required: Some(provider.clone()),
+            },
         }
     }
 }

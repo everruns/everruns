@@ -104,6 +104,25 @@ export async function unpinSession(sessionId: string): Promise<void> {
 }
 
 // ============================================
+// Client-Side Tool Results
+// ============================================
+
+/**
+ * Submit tool results for client-side tool calls.
+ * Resumes a session that is paused in `waiting_for_tool_results` status.
+ */
+export async function submitToolResults(
+  sessionId: string,
+  toolResults: Array<{ tool_call_id: string; result?: unknown; error?: string }>,
+): Promise<{ status: string; tool_results_count: number }> {
+  const response = await api.post<{ status: string; tool_results_count: number }>(
+    `/v1/sessions/${sessionId}/tool-results`,
+    { tool_results: toolResults },
+  );
+  return response.data;
+}
+
+// ============================================
 // Global Chat
 // ============================================
 

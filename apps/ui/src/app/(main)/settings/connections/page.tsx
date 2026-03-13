@@ -5,56 +5,27 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   useUserConnections,
   useDeleteUserConnection,
   useConnectionProviders,
-  useCreateApiKeyConnection,
   useVerifyConnection,
 } from "@/hooks/use-user-connections";
 import { getBackendUrl } from "@/lib/api/client";
 import {
   ExternalLink,
-  Github,
   LinkIcon,
   Trash2,
   Check,
   CheckCircle,
-  Cloud,
-  Search,
-  AlertCircle,
   ShieldCheck,
   XCircle,
   Loader2,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getCapabilityIcon } from "@/lib/capability-icons";
-
-/** Icon mapping — lucide icon name to component */
-const iconMap: Record<string, LucideIcon> = {
-  github: Github,
-  cloud: Cloud,
-  search: Search,
-  daytona: getCapabilityIcon("daytona"),
-};
-
-function ProviderIcon({ iconName, className }: { iconName: string; className?: string }) {
-  const Icon = iconMap[iconName] ?? LinkIcon;
-  return <Icon className={className} />;
-}
+import { ProviderIcon } from "@/components/connections/provider-icon";
+import { ApiKeyDialog } from "@/components/connections/api-key-dialog";
 
 function ConnectionRow({
   connection,
@@ -181,119 +152,6 @@ function AvailableProviderRow({
         Connect
       </Button>
     </div>
-  );
-}
-
-/** Dialog for entering an API key */
-function ApiKeyDialog({
-  provider,
-  open,
-  onOpenChange,
-}: {
-  provider: ConnectionProviderType | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const createConnection = useCreateApiKeyConnection();
-
-  // Reset form when dialog opens/closes
-  useEffect(() => {
-    if (open) {
-      setFormValues({});
-      setError(null);
-    }
-  }, [open]);
-
-  if (!provider?.form_schema) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const apiKey = formValues["api_key"] ?? "";
-    if (!apiKey.trim()) {
-      setError("API key is required");
-      return;
-    }
-
-    try {
-      await createConnection.mutateAsync({
-        provider: provider.provider_id,
-        apiKey,
-      });
-      onOpenChange(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save connection";
-      // Extract error message from API response if available
-      const apiError = (err as { response?: { data?: string } })?.response?.data;
-      setError(typeof apiError === "string" ? apiError : message);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
-            Connect {provider.display_name}
-          </DialogTitle>
-          <DialogDescription>{provider.description}</DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit}>
-          {/* Instructions */}
-          <InlineStreamdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
-            {provider.form_schema.instructions_markdown}
-          </InlineStreamdownMessage>
-
-          {/* Form fields */}
-          <div className="space-y-4 mb-4">
-            {provider.form_schema.fields.map((field) => (
-              <div key={field.name} className="space-y-2">
-                <Label htmlFor={field.name}>{field.label}</Label>
-                <Input
-                  id={field.name}
-                  type={field.field_type}
-                  required={field.required}
-                  placeholder={field.placeholder}
-                  value={formValues[field.name] ?? ""}
-                  onChange={(e) =>
-                    setFormValues((prev) => ({
-                      ...prev,
-                      [field.name]: e.target.value,
-                    }))
-                  }
-                  autoComplete="off"
-                />
-                {field.help_text && (
-                  <p className="text-xs text-muted-foreground">{field.help_text}</p>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="flex items-center gap-2 text-destructive text-sm mb-4">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createConnection.isPending}>
-              {createConnection.isPending ? "Validating..." : "Connect"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 

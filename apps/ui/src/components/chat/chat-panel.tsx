@@ -45,6 +45,7 @@ import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
 import { MessageContent } from "@/components/chat/message-content";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
+import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
 import {
   ToolActivityTimelineGroup,
   type TimelineToolRow,
@@ -609,14 +610,33 @@ export function ChatPanel() {
                   }
                 }
 
+                // Check for setup_connection tool calls (inline connection prompt)
+                const connectionCalls = reqData.tool_calls.filter(
+                  (tc) => tc.name === "setup_connection",
+                );
+                const otherCalls = reqData.tool_calls.filter(
+                  (tc) => tc.name !== "setup_connection",
+                );
+
                 return (
                   <div key={event.id} className="space-y-3">
                     <div className="ml-9 space-y-1">
-                      <ToolActivityGroup
-                        toolCalls={reqData.tool_calls}
-                        toolResultsMap={toolResultsMap}
-                        mode="client"
-                      />
+                      {connectionCalls.map((tc) => (
+                        <SetupConnectionToolCall
+                          key={tc.id}
+                          sessionId={sessionId}
+                          toolCallId={tc.id}
+                          provider={(tc.arguments as { provider?: string })?.provider ?? "unknown"}
+                          toolResultsMap={toolResultsMap}
+                        />
+                      ))}
+                      {otherCalls.length > 0 && (
+                        <ToolActivityGroup
+                          toolCalls={otherCalls}
+                          toolResultsMap={toolResultsMap}
+                          mode="client"
+                        />
+                      )}
                     </div>
                     {renderTurnDivider(event.id)}
                   </div>
