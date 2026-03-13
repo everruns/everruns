@@ -5,6 +5,7 @@
 //
 // Run with: cargo test -p everruns-core --test reason_atom_test
 
+use async_trait::async_trait;
 use everruns_core::AgentId;
 use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
@@ -24,7 +25,10 @@ use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
+use futures::stream;
 use serde_json::json;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 /// Create a basic test setup with in-memory stores
@@ -146,6 +150,46 @@ fn create_context(session_id: Uuid) -> AtomContext {
     let turn_id = TurnId::new();
     let input_message_id = MessageId::new();
     AtomContext::new(SessionId::from_uuid(session_id), turn_id, input_message_id)
+}
+
+#[derive(Clone, Debug)]
+struct FlakyStreamDriver {
+    attempts: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl everruns_core::LlmDriver for FlakyStreamDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+
+        if attempt == 0 {
+            return Ok(Box::pin(stream::iter(vec![Ok(
+                everruns_core::LlmStreamEvent::Error(
+                    "server_error: transient upstream failure".to_string(),
+                ),
+            )])));
+        }
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                "Recovered after retry.".to_string(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(8),
+                    prompt_tokens: Some(5),
+                    completion_tokens: Some(3),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
 }
 
 #[tokio::test]
@@ -890,6 +934,86 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     // Check for llm.generation event
     let has_llm_generation = events.iter().any(|e| e.event_type == "llm.generation");
     assert!(has_llm_generation, "Should emit llm.generation event");
+}
+
+#[tokio::test]
+async fn test_reason_atom_retries_transient_stream_error_before_first_token() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_registry = Arc::clone(&attempts);
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(FlakyStreamDriver {
+            attempts: Arc::clone(&attempts_for_registry),
+        })
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed after retry");
+
+    assert!(result.success, "Transient stream error should be retried");
+    assert_eq!(result.text, "Recovered after retry.");
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+    let events = event_emitter.events().await;
+    let llm_event = events
+        .iter()
+        .find(|e| e.event_type == "llm.generation")
+        .expect("llm.generation event should be emitted");
+
+    if let everruns_core::EventData::LlmGeneration(data) = &llm_event.data {
+        let retry = data
+            .metadata
+            .retry
+            .as_ref()
+            .expect("retry metadata should be present");
+        assert_eq!(retry.attempts, 1);
+        assert!(data.metadata.success);
+    } else {
+        panic!("Expected llm.generation event data");
+    }
 }
 
 #[tokio::test]

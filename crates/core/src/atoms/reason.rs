@@ -37,6 +37,7 @@ use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
 };
+use crate::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error_message};
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
@@ -87,6 +88,41 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     }
 
     result
+}
+
+fn should_retry_stream_error(
+    err: &str,
+    retry_attempts: u32,
+    max_retries: u32,
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[ToolCall],
+) -> bool {
+    retry_attempts < max_retries
+        && text.is_empty()
+        && thinking.is_empty()
+        && thinking_signature.is_none()
+        && tool_calls.is_empty()
+        && is_transient_error_message(err)
+}
+
+fn merge_retry_metadata(
+    existing: Option<RetryMetadata>,
+    additional: &RetryMetadata,
+) -> Option<RetryMetadata> {
+    if !additional.had_retries() {
+        return existing;
+    }
+
+    let mut merged = existing.unwrap_or_default();
+    merged.attempts += additional.attempts;
+    merged.total_retry_wait += additional.total_retry_wait;
+    if additional.last_rate_limit_info.is_some() {
+        merged.last_rate_limit_info = additional.last_rate_limit_info.clone();
+    }
+
+    Some(merged)
 }
 
 // ============================================================================
@@ -798,336 +834,397 @@ where
         // Track LLM call timing
         let llm_start = Instant::now();
 
-        // Try LLM call with automatic compaction on RequestTooLarge
+        // Try LLM call with automatic compaction on RequestTooLarge.
+        // Stream-level provider errors can still arrive inside a 200/SSE response, so
+        // we also allow a bounded retry before any output is emitted.
+        let retry_config = LlmRetryConfig::default();
+        let mut stream_retry_metadata = RetryMetadata::default();
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
-
-        let mut stream = match llm_driver
-            .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
-            .await
-        {
-            Ok(stream) => stream,
-            Err(e) if e.is_request_too_large() && llm_driver.supports_compact() => {
-                // Context too large - try compacting
-                tracing::info!(
-                    session_id = %session_id,
-                    turn_id = %context.turn_id,
-                    "ReasonAtom: context too large, attempting compaction"
-                );
-
-                let compact_start = Instant::now();
-
-                // Convert messages to compact input format
-                // Skip the system message (index 0) as it's passed separately as instructions
-                let messages_to_compact = if has_system_prompt {
-                    &llm_messages_for_call[1..]
-                } else {
-                    &llm_messages_for_call[..]
-                };
-
-                let compact_input = messages_to_compact_input(messages_to_compact);
-                let input_count = compact_input.len();
-
-                // Build compact request
-                let compact_request = CompactRequest {
-                    model: runtime_agent.model.clone(),
-                    input: compact_input,
-                    previous_response_id: previous_response_id.clone(),
-                    instructions: if has_system_prompt {
-                        Some(runtime_agent.system_prompt.clone())
-                    } else {
-                        None
-                    },
-                };
-
-                // Call compact endpoint
-                let compact_response =
-                    llm_driver.compact(compact_request).await?.ok_or_else(|| {
-                        AgentLoopError::llm("Compaction failed: driver returned None".to_string())
-                    })?;
-
-                let compact_duration_ms = compact_start.elapsed().as_millis() as u64;
-
-                // Convert compacted output to messages
-                let (compacted_messages, compaction_items) =
-                    compact_output_to_messages(&compact_response.output);
-
-                // Track compaction token usage
-                let input_tokens_after = compact_response
-                    .usage
-                    .as_ref()
-                    .and_then(|u| u.output_tokens);
-
-                tracing::info!(
-                    session_id = %session_id,
-                    turn_id = %context.turn_id,
-                    input_items = input_count,
-                    output_items = compact_response.output.len(),
-                    compaction_items = compaction_items.len(),
-                    duration_ms = compact_duration_ms,
-                    "ReasonAtom: compaction completed"
-                );
-
-                // Record compaction info for event
-                compaction_info = Some(LlmCompactionInfo::new(
-                    Some(input_count as u32),
-                    input_tokens_after,
-                    Some(compact_duration_ms),
-                ));
-
-                // Rebuild messages for retry
-                // Start with system prompt if present
-                let mut compacted_llm_messages = Vec::new();
-                if has_system_prompt {
-                    compacted_llm_messages.push(llm_messages_for_call[0].clone());
-                }
-
-                // Add compacted messages
-                compacted_llm_messages.extend(compacted_messages);
-
-                // Add compaction items as a special message if present
-                // These contain encrypted context that the model needs
-                for item in compaction_items {
-                    if let CompactInputItem::Compaction { encrypted_content } = item {
-                        // Add as a system message containing the encrypted context
-                        // This preserves the latent context for the model
-                        compacted_llm_messages.push(LlmMessage {
-                            role: LlmMessageRole::System,
-                            content: LlmMessageContent::Text(format!(
-                                "[COMPACTED_CONTEXT:{}]",
-                                encrypted_content
-                            )),
-                            tool_calls: None,
-                            tool_call_id: None,
-                            phase: None,
-                            thinking: None,
-                            thinking_signature: None,
-                        });
-                    }
-                }
-
-                llm_messages_for_call = compacted_llm_messages;
-
-                // Retry with compacted messages
-                tracing::info!(
-                    session_id = %session_id,
-                    turn_id = %context.turn_id,
-                    message_count = llm_messages_for_call.len(),
-                    "ReasonAtom: retrying LLM call with compacted context"
-                );
-
-                llm_driver
-                    .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
-                    .await?
-            }
-            Err(e) => return Err(e),
-        };
 
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
-        let mut text = String::new();
-        let mut thinking = String::new();
-        let mut thinking_signature: Option<String> = None;
-        let mut tool_calls = Vec::new();
-        let mut completion_metadata: Option<LlmCompletionMetadata> = None;
-        let mut pending_delta = String::new();
-        let mut pending_thinking_delta = String::new();
-        let mut last_delta_emit = Instant::now();
-        let mut last_thinking_delta_emit = Instant::now();
-        let mut time_to_first_token_ms: Option<u64> = None;
+        let (
+            text,
+            thinking,
+            thinking_signature,
+            tool_calls,
+            mut completion_metadata,
+            time_to_first_token_ms,
+        ) = 'stream_attempt: loop {
+            let mut stream = match llm_driver
+                .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                .await
+            {
+                Ok(stream) => stream,
+                Err(e) if e.is_request_too_large() && llm_driver.supports_compact() => {
+                    // Context too large - try compacting
+                    tracing::info!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        "ReasonAtom: context too large, attempting compaction"
+                    );
 
-        while let Some(event) = stream.next().await {
-            match event? {
-                LlmStreamEvent::TextDelta(delta) => {
-                    // Track time-to-first-token on first non-empty delta
-                    if time_to_first_token_ms.is_none() && !delta.is_empty() {
-                        let ttft = llm_start.elapsed().as_millis() as u64;
-                        time_to_first_token_ms = Some(ttft);
-                        tracing::info!(
-                            session_id = %session_id,
-                            time_to_first_token_ms = ttft,
-                            "ReasonAtom: received first token from LLM"
-                        );
+                    let compact_start = Instant::now();
+
+                    // Convert messages to compact input format
+                    // Skip the system message (index 0) as it's passed separately as instructions
+                    let messages_to_compact = if has_system_prompt {
+                        &llm_messages_for_call[1..]
+                    } else {
+                        &llm_messages_for_call[..]
+                    };
+
+                    let compact_input = messages_to_compact_input(messages_to_compact);
+                    let input_count = compact_input.len();
+
+                    // Build compact request
+                    let compact_request = CompactRequest {
+                        model: runtime_agent.model.clone(),
+                        input: compact_input,
+                        previous_response_id: previous_response_id.clone(),
+                        instructions: if has_system_prompt {
+                            Some(runtime_agent.system_prompt.clone())
+                        } else {
+                            None
+                        },
+                    };
+
+                    // Call compact endpoint
+                    let compact_response =
+                        llm_driver.compact(compact_request).await?.ok_or_else(|| {
+                            AgentLoopError::llm(
+                                "Compaction failed: driver returned None".to_string(),
+                            )
+                        })?;
+
+                    let compact_duration_ms = compact_start.elapsed().as_millis() as u64;
+
+                    // Convert compacted output to messages
+                    let (compacted_messages, compaction_items) =
+                        compact_output_to_messages(&compact_response.output);
+
+                    // Track compaction token usage
+                    let input_tokens_after = compact_response
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.output_tokens);
+
+                    tracing::info!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        input_items = input_count,
+                        output_items = compact_response.output.len(),
+                        compaction_items = compaction_items.len(),
+                        duration_ms = compact_duration_ms,
+                        "ReasonAtom: compaction completed"
+                    );
+
+                    // Record compaction info for event
+                    compaction_info = Some(LlmCompactionInfo::new(
+                        Some(input_count as u32),
+                        input_tokens_after,
+                        Some(compact_duration_ms),
+                    ));
+
+                    // Rebuild messages for retry
+                    // Start with system prompt if present
+                    let mut compacted_llm_messages = Vec::new();
+                    if has_system_prompt {
+                        compacted_llm_messages.push(llm_messages_for_call[0].clone());
                     }
-                    text.push_str(&delta);
-                    pending_delta.push_str(&delta);
 
-                    // Emit batched delta if interval elapsed
-                    if last_delta_emit.elapsed().as_millis() as u64 >= DELTA_BATCH_INTERVAL_MS
-                        && !pending_delta.is_empty()
-                    {
-                        if let Err(e) = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                streaming_event_context.clone(),
-                                OutputMessageDeltaData {
-                                    turn_id: context.turn_id,
-                                    delta: pending_delta.clone(),
-                                    accumulated: text.clone(),
-                                },
-                            ))
-                            .await
+                    // Add compacted messages
+                    compacted_llm_messages.extend(compacted_messages);
+
+                    // Add compaction items as a special message if present
+                    // These contain encrypted context that the model needs
+                    for item in compaction_items {
+                        if let CompactInputItem::Compaction { encrypted_content } = item {
+                            // Add as a system message containing the encrypted context
+                            // This preserves the latent context for the model
+                            compacted_llm_messages.push(LlmMessage {
+                                role: LlmMessageRole::System,
+                                content: LlmMessageContent::Text(format!(
+                                    "[COMPACTED_CONTEXT:{}]",
+                                    encrypted_content
+                                )),
+                                tool_calls: None,
+                                tool_call_id: None,
+                                phase: None,
+                                thinking: None,
+                                thinking_signature: None,
+                            });
+                        }
+                    }
+
+                    llm_messages_for_call = compacted_llm_messages;
+
+                    // Retry with compacted messages
+                    tracing::info!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        message_count = llm_messages_for_call.len(),
+                        "ReasonAtom: retrying LLM call with compacted context"
+                    );
+
+                    llm_driver
+                        .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                        .await?
+                }
+                Err(e) => return Err(e),
+            };
+
+            let mut text = String::new();
+            let mut thinking = String::new();
+            let mut thinking_signature: Option<String> = None;
+            let mut tool_calls = Vec::new();
+            let mut completion_metadata: Option<LlmCompletionMetadata> = None;
+            let mut pending_delta = String::new();
+            let mut pending_thinking_delta = String::new();
+            let mut last_delta_emit = Instant::now();
+            let mut last_thinking_delta_emit = Instant::now();
+            let mut time_to_first_token_ms: Option<u64> = None;
+
+            while let Some(event) = stream.next().await {
+                match event? {
+                    LlmStreamEvent::TextDelta(delta) => {
+                        // Track time-to-first-token on first non-empty delta
+                        if time_to_first_token_ms.is_none() && !delta.is_empty() {
+                            let ttft = llm_start.elapsed().as_millis() as u64;
+                            time_to_first_token_ms = Some(ttft);
+                            tracing::info!(
+                                session_id = %session_id,
+                                time_to_first_token_ms = ttft,
+                                "ReasonAtom: received first token from LLM"
+                            );
+                        }
+                        text.push_str(&delta);
+                        pending_delta.push_str(&delta);
+
+                        // Emit batched delta if interval elapsed
+                        if last_delta_emit.elapsed().as_millis() as u64 >= DELTA_BATCH_INTERVAL_MS
+                            && !pending_delta.is_empty()
+                        {
+                            if let Err(e) = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    streaming_event_context.clone(),
+                                    OutputMessageDeltaData {
+                                        turn_id: context.turn_id,
+                                        delta: pending_delta.clone(),
+                                        accumulated: text.clone(),
+                                    },
+                                ))
+                                .await
+                            {
+                                tracing::warn!(
+                                    session_id = %session_id,
+                                    error = %e,
+                                    "ReasonAtom: failed to emit output.message.delta event"
+                                );
+                            }
+                            pending_delta.clear();
+                            last_delta_emit = Instant::now();
+                        }
+                    }
+                    LlmStreamEvent::ThinkingDelta(delta) => {
+                        // Accumulate thinking content from extended thinking models
+                        thinking.push_str(&delta);
+                        pending_thinking_delta.push_str(&delta);
+                        tracing::debug!(
+                            session_id = %session_id,
+                            delta_len = delta.len(),
+                            total_thinking_len = thinking.len(),
+                            "ReasonAtom: received ThinkingDelta from LLM"
+                        );
+
+                        // Emit batched thinking delta if interval elapsed
+                        if last_thinking_delta_emit.elapsed().as_millis() as u64
+                            >= DELTA_BATCH_INTERVAL_MS
+                            && !pending_thinking_delta.is_empty()
+                        {
+                            if let Err(e) = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    streaming_event_context.clone(),
+                                    ReasonThinkingDeltaData {
+                                        turn_id: context.turn_id,
+                                        delta: pending_thinking_delta.clone(),
+                                        accumulated: thinking.clone(),
+                                    },
+                                ))
+                                .await
+                            {
+                                tracing::warn!(
+                                    session_id = %session_id,
+                                    error = %e,
+                                    "ReasonAtom: failed to emit reason.thinking.delta event"
+                                );
+                            }
+                            pending_thinking_delta.clear();
+                            last_thinking_delta_emit = Instant::now();
+                        }
+                    }
+                    LlmStreamEvent::ThinkingSignature(signature) => {
+                        // Capture the cryptographic signature for thinking content (required to send it back)
+                        tracing::debug!(
+                            session_id = %session_id,
+                            signature_len = signature.len(),
+                            "ReasonAtom: received ThinkingSignature from LLM"
+                        );
+                        thinking_signature = Some(signature);
+                    }
+                    LlmStreamEvent::ToolCalls(calls) => {
+                        tool_calls = calls;
+                    }
+                    LlmStreamEvent::Done(metadata) => {
+                        // Emit any remaining pending delta before completing
+                        if !pending_delta.is_empty()
+                            && let Err(e) = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    streaming_event_context.clone(),
+                                    OutputMessageDeltaData {
+                                        turn_id: context.turn_id,
+                                        delta: pending_delta.clone(),
+                                        accumulated: text.clone(),
+                                    },
+                                ))
+                                .await
                         {
                             tracing::warn!(
                                 session_id = %session_id,
                                 error = %e,
-                                "ReasonAtom: failed to emit output.message.delta event"
+                                "ReasonAtom: failed to emit final output.message.delta event"
                             );
                         }
-                        pending_delta.clear();
-                        last_delta_emit = Instant::now();
-                    }
-                }
-                LlmStreamEvent::ThinkingDelta(delta) => {
-                    // Accumulate thinking content from extended thinking models
-                    thinking.push_str(&delta);
-                    pending_thinking_delta.push_str(&delta);
-                    tracing::debug!(
-                        session_id = %session_id,
-                        delta_len = delta.len(),
-                        total_thinking_len = thinking.len(),
-                        "ReasonAtom: received ThinkingDelta from LLM"
-                    );
 
-                    // Emit batched thinking delta if interval elapsed
-                    if last_thinking_delta_emit.elapsed().as_millis() as u64
-                        >= DELTA_BATCH_INTERVAL_MS
-                        && !pending_thinking_delta.is_empty()
-                    {
-                        if let Err(e) = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                streaming_event_context.clone(),
-                                ReasonThinkingDeltaData {
-                                    turn_id: context.turn_id,
-                                    delta: pending_thinking_delta.clone(),
-                                    accumulated: thinking.clone(),
-                                },
-                            ))
-                            .await
+                        // Emit any remaining pending thinking delta before completing
+                        if !pending_thinking_delta.is_empty()
+                            && let Err(e) = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    streaming_event_context.clone(),
+                                    ReasonThinkingDeltaData {
+                                        turn_id: context.turn_id,
+                                        delta: pending_thinking_delta.clone(),
+                                        accumulated: thinking.clone(),
+                                    },
+                                ))
+                                .await
                         {
                             tracing::warn!(
                                 session_id = %session_id,
                                 error = %e,
-                                "ReasonAtom: failed to emit reason.thinking.delta event"
+                                "ReasonAtom: failed to emit final reason.thinking.delta event"
                             );
                         }
-                        pending_thinking_delta.clear();
-                        last_thinking_delta_emit = Instant::now();
-                    }
-                }
-                LlmStreamEvent::ThinkingSignature(signature) => {
-                    // Capture the cryptographic signature for thinking content (required to send it back)
-                    tracing::debug!(
-                        session_id = %session_id,
-                        signature_len = signature.len(),
-                        "ReasonAtom: received ThinkingSignature from LLM"
-                    );
-                    thinking_signature = Some(signature);
-                }
-                LlmStreamEvent::ToolCalls(calls) => {
-                    tool_calls = calls;
-                }
-                LlmStreamEvent::Done(metadata) => {
-                    // Emit any remaining pending delta before completing
-                    if !pending_delta.is_empty()
-                        && let Err(e) = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                streaming_event_context.clone(),
-                                OutputMessageDeltaData {
-                                    turn_id: context.turn_id,
-                                    delta: pending_delta.clone(),
-                                    accumulated: text.clone(),
-                                },
-                            ))
-                            .await
-                    {
-                        tracing::warn!(
-                            session_id = %session_id,
-                            error = %e,
-                            "ReasonAtom: failed to emit final output.message.delta event"
-                        );
-                    }
 
-                    // Emit any remaining pending thinking delta before completing
-                    if !pending_thinking_delta.is_empty()
-                        && let Err(e) = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                streaming_event_context.clone(),
-                                ReasonThinkingDeltaData {
-                                    turn_id: context.turn_id,
-                                    delta: pending_thinking_delta.clone(),
-                                    accumulated: thinking.clone(),
-                                },
-                            ))
-                            .await
-                    {
-                        tracing::warn!(
-                            session_id = %session_id,
-                            error = %e,
-                            "ReasonAtom: failed to emit final reason.thinking.delta event"
-                        );
+                        // Emit reason.thinking.completed if we had any thinking content
+                        if !thinking.is_empty()
+                            && let Err(e) = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    streaming_event_context.clone(),
+                                    ReasonThinkingCompletedData {
+                                        turn_id: context.turn_id,
+                                        thinking: thinking.clone(),
+                                    },
+                                ))
+                                .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "ReasonAtom: failed to emit reason.thinking.completed event"
+                            );
+                        }
+                        completion_metadata = Some(*metadata);
+                        break;
                     }
+                    LlmStreamEvent::Error(err) => {
+                        if should_retry_stream_error(
+                            &err,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                            &text,
+                            &thinking,
+                            thinking_signature.as_deref(),
+                            &tool_calls,
+                        ) {
+                            let wait_duration =
+                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                attempt = stream_retry_metadata.attempts + 1,
+                                max_retries = retry_config.max_retries,
+                                wait_secs = wait_duration.as_secs_f64(),
+                                error = %err,
+                                "ReasonAtom: transient stream error before first token, retrying"
+                            );
+                            stream_retry_metadata.record_retry(wait_duration, None);
+                            tokio::time::sleep(wait_duration).await;
+                            continue 'stream_attempt;
+                        }
 
-                    // Emit reason.thinking.completed if we had any thinking content
-                    if !thinking.is_empty()
-                        && let Err(e) = self
+                        // Emit llm.generation failure event (child of reason span)
+                        let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
+                        let event_context = EventContext::from_atom_context(context).with_span(
+                            trace_id.to_string(),
+                            Uuid::now_v7().to_string(),
+                            Some(reason_span_id.to_string()),
+                        );
+                        let tools_summary: Vec<ToolDefinitionSummary> =
+                            runtime_agent.tools.iter().map(|t| t.into()).collect();
+                        let mut generation_data = LlmGenerationData::failure(
+                            messages_for_event.clone(),
+                            tools_summary,
+                            runtime_agent.model.clone(),
+                            Some(model_with_provider.provider_type.to_string()),
+                            err.clone(),
+                            Some(llm_duration_ms),
+                            time_to_first_token_ms,
+                        );
+                        if stream_retry_metadata.had_retries() {
+                            generation_data = generation_data.with_retry(LlmRetryInfo {
+                                attempts: stream_retry_metadata.attempts,
+                                total_wait_ms: stream_retry_metadata.total_retry_wait.as_millis()
+                                    as u64,
+                            });
+                        }
+                        let _ = self
                             .event_emitter
                             .emit(EventRequest::new(
                                 session_id,
-                                streaming_event_context.clone(),
-                                ReasonThinkingCompletedData {
-                                    turn_id: context.turn_id,
-                                    thinking: thinking.clone(),
-                                },
+                                event_context,
+                                generation_data,
                             ))
-                            .await
-                    {
-                        tracing::warn!(
-                            session_id = %session_id,
-                            error = %e,
-                            "ReasonAtom: failed to emit reason.thinking.completed event"
-                        );
+                            .await;
+                        return Err(AgentLoopError::llm(err));
                     }
-                    completion_metadata = Some(*metadata);
-                    break;
-                }
-                LlmStreamEvent::Error(err) => {
-                    // Emit llm.generation failure event (child of reason span)
-                    let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
-                    let event_context = EventContext::from_atom_context(context).with_span(
-                        trace_id.to_string(),
-                        Uuid::now_v7().to_string(),
-                        Some(reason_span_id.to_string()),
-                    );
-                    let tools_summary: Vec<ToolDefinitionSummary> =
-                        runtime_agent.tools.iter().map(|t| t.into()).collect();
-                    let _ = self
-                        .event_emitter
-                        .emit(EventRequest::new(
-                            session_id,
-                            event_context,
-                            LlmGenerationData::failure(
-                                messages_for_event.clone(),
-                                tools_summary,
-                                runtime_agent.model.clone(),
-                                Some(model_with_provider.provider_type.to_string()),
-                                err.clone(),
-                                Some(llm_duration_ms),
-                                time_to_first_token_ms,
-                            ),
-                        ))
-                        .await;
-                    return Err(AgentLoopError::llm(err));
                 }
             }
+            break 'stream_attempt (
+                text,
+                thinking,
+                thinking_signature,
+                tool_calls,
+                completion_metadata,
+                time_to_first_token_ms,
+            );
+        };
+
+        if let Some(metadata) = completion_metadata.as_mut() {
+            metadata.retry_metadata =
+                merge_retry_metadata(metadata.retry_metadata.take(), &stream_retry_metadata);
         }
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
