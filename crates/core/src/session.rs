@@ -164,7 +164,8 @@ pub struct Session {
     pub active_schedule_count: Option<u32>,
     /// Aggregated UI features from all active capabilities (harness + agent + session).
     /// Computed at read time from the capability registry.
-    /// Known features: "file_system", "schedules", "secrets", "key_value", "sql_database".
+    /// Known features: "file_system", "schedules", "secrets", "key_value",
+    /// "sql_database", "leased_resources".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
 

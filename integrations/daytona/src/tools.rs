@@ -10,7 +10,7 @@ use tracing::{debug, warn};
 use crate::client::DaytonaClient;
 use crate::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
-    required_str, save_sandbox_state,
+    release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
 };
 use crate::{AUTO_STOP_INTERVAL_MINUTES, EXEC_TIMEOUT_MS};
 
@@ -155,6 +155,9 @@ impl Tool for DaytonaCreateSandboxTool {
         if let Err(e) = save_sandbox_state(context, &state).await {
             return e;
         }
+        if let Err(e) = touch_sandbox_lease(context, &state, Some(title.to_string())).await {
+            return e;
+        }
 
         // Optionally upload files
         let mut uploaded_count = 0;
@@ -285,19 +288,24 @@ impl Tool for DaytonaExecTool {
             Ok(k) => k,
             Err(e) => return e,
         };
-        // Verify sandbox exists in state
-        if let Err(e) = get_sandbox_state(context, sandbox_id).await {
-            return e;
-        }
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(state) => state,
+            Err(e) => return e,
+        };
 
         let client = DaytonaClient::new(api_key);
 
         debug!("Executing in sandbox {sandbox_id}: {command}");
         match client.exec(sandbox_id, command, cwd, Some(timeout)).await {
-            Ok(result) => ToolExecutionResult::success(json!({
-                "exit_code": result.exit_code,
-                "output": result.result
-            })),
+            Ok(result) => {
+                if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+                    return e;
+                }
+                ToolExecutionResult::success(json!({
+                    "exit_code": result.exit_code,
+                    "output": result.result
+                }))
+            }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
     }
@@ -365,14 +373,18 @@ impl Tool for DaytonaReadFileTool {
             Ok(k) => k,
             Err(e) => return e,
         };
-        if let Err(e) = get_sandbox_state(context, sandbox_id).await {
-            return e;
-        }
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(state) => state,
+            Err(e) => return e,
+        };
 
         let client = DaytonaClient::new(api_key);
 
         match client.file_download(sandbox_id, path).await {
             Ok(bytes) => {
+                if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+                    return e;
+                }
                 let content = String::from_utf8_lossy(&bytes).to_string();
                 ToolExecutionResult::success(json!({
                     "path": path,
@@ -454,9 +466,10 @@ impl Tool for DaytonaWriteFileTool {
             Ok(k) => k,
             Err(e) => return e,
         };
-        if let Err(e) = get_sandbox_state(context, sandbox_id).await {
-            return e;
-        }
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(state) => state,
+            Err(e) => return e,
+        };
 
         let client = DaytonaClient::new(api_key);
 
@@ -464,10 +477,15 @@ impl Tool for DaytonaWriteFileTool {
             .file_upload(sandbox_id, path, content.as_bytes())
             .await
         {
-            Ok(()) => ToolExecutionResult::success(json!({
-                "path": path,
-                "success": true
-            })),
+            Ok(()) => {
+                if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+                    return e;
+                }
+                ToolExecutionResult::success(json!({
+                    "path": path,
+                    "success": true
+                }))
+            }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
     }
@@ -639,6 +657,10 @@ impl Tool for DaytonaDownloadWorkspaceTool {
             result["errors"] = json!(errors);
         }
 
+        if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+            return e;
+        }
+
         ToolExecutionResult::success(result)
     }
 
@@ -768,10 +790,10 @@ impl Tool for DaytonaManageSandboxTool {
             Ok(k) => k,
             Err(e) => return e,
         };
-        // Verify sandbox exists in state
-        if let Err(e) = get_sandbox_state(context, sandbox_id).await {
-            return e;
-        }
+        let state = match get_sandbox_state(context, sandbox_id).await {
+            Ok(state) => state,
+            Err(e) => return e,
+        };
 
         let client = DaytonaClient::new(api_key);
 
@@ -780,6 +802,7 @@ impl Tool for DaytonaManageSandboxTool {
                 let r = client.delete_sandbox(sandbox_id).await;
                 if r.is_ok() {
                     let _ = delete_sandbox_state(context, sandbox_id).await;
+                    let _ = release_sandbox_lease(context, sandbox_id).await;
                 }
                 r
             }
@@ -792,11 +815,18 @@ impl Tool for DaytonaManageSandboxTool {
         };
 
         match result {
-            Ok(()) => ToolExecutionResult::success(json!({
-                "sandbox_id": sandbox_id,
-                "action": action,
-                "success": true
-            })),
+            Ok(()) => {
+                if action == "stop"
+                    && let Err(e) = touch_sandbox_lease(context, &state, None).await
+                {
+                    return e;
+                }
+                ToolExecutionResult::success(json!({
+                    "sandbox_id": sandbox_id,
+                    "action": action,
+                    "success": true
+                }))
+            }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
     }
@@ -958,6 +988,10 @@ impl Tool for DaytonaGitCloneTool {
             _ => "unknown".to_string(),
         };
 
+        if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+            return e;
+        }
+
         ToolExecutionResult::success(json!({
             "sandbox_id": sandbox_id,
             "repo_url": repo_url,
@@ -1026,7 +1060,7 @@ impl Tool for DaytonaGitCredentialsTool {
             Ok(k) => k,
             Err(e) => return e,
         };
-        let _state = match get_sandbox_state(context, sandbox_id).await {
+        let state = match get_sandbox_state(context, sandbox_id).await {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -1079,6 +1113,9 @@ impl Tool for DaytonaGitCredentialsTool {
         }
 
         debug!("Configured git credentials in sandbox {sandbox_id}");
+        if let Err(e) = touch_sandbox_lease(context, &state, None).await {
+            return e;
+        }
 
         ToolExecutionResult::success(json!({
             "sandbox_id": sandbox_id,

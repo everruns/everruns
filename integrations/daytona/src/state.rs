@@ -1,10 +1,11 @@
 //! Daytona API types and session state management.
 
+use everruns_core::UpsertLeasedResource;
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::ToolContext;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tracing::{error, warn};
 
 use crate::DAYTONA_SANDBOX_SECRET_PREFIX;
@@ -42,6 +43,13 @@ pub struct SandboxState {
     pub workspace_path: String,
     pub started_at: String,
 }
+
+/// Everruns lease duration for Daytona sandboxes.
+///
+/// Daytona's own auto-stop handles the fast inactivity path. The leased-resource
+/// cleanup deadline is intentionally longer so the control plane deletes stopped
+/// sandboxes after a wider inactivity window.
+pub const DAYTONA_SANDBOX_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 
 // ============================================================================
 // State Management Helpers
@@ -172,6 +180,76 @@ pub async fn list_sandbox_states(
     }
 
     Ok(states)
+}
+
+/// Register or refresh the Daytona sandbox lease for generic cleanup.
+pub async fn touch_sandbox_lease(
+    context: &ToolContext,
+    state: &SandboxState,
+    display_name: Option<String>,
+) -> Result<(), ToolExecutionResult> {
+    let Some(store) = context.leased_resource_store.as_ref() else {
+        return Ok(());
+    };
+
+    let owner_user_id = if let Some(resolver) = context.connection_resolver.as_ref() {
+        resolver
+            .get_connection_user(context.session_id, "daytona")
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    store
+        .upsert_resource(UpsertLeasedResource {
+            session_id: context.session_id,
+            provider: "daytona".to_string(),
+            resource_type: "sandbox".to_string(),
+            external_id: state.sandbox_id.clone(),
+            display_name,
+            owner_user_id,
+            lease_duration_seconds: DAYTONA_SANDBOX_LEASE_DURATION_SECONDS,
+            // THREAT[TM-API-015]: leased-resource metadata is API-visible.
+            // Keep only non-secret workspace/debug fields here and continue to
+            // resolve Daytona credentials from the user connection for cleanup.
+            metadata: json!({
+                "workspace_path": state.workspace_path,
+                "started_at": state.started_at,
+            }),
+        })
+        .await
+        .map_err(|e| {
+            error!("Failed to upsert Daytona sandbox lease: {e}");
+            ToolExecutionResult::internal_error_msg(format!(
+                "Failed to update Daytona sandbox lease: {e}"
+            ))
+        })?;
+
+    Ok(())
+}
+
+/// Release the Daytona sandbox lease after explicit deletion.
+pub async fn release_sandbox_lease(
+    context: &ToolContext,
+    sandbox_id: &str,
+) -> Result<(), ToolExecutionResult> {
+    let Some(store) = context.leased_resource_store.as_ref() else {
+        return Ok(());
+    };
+
+    store
+        .release_resource(context.session_id, "daytona", "sandbox", sandbox_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to release Daytona sandbox lease: {e}");
+            ToolExecutionResult::internal_error_msg(format!(
+                "Failed to release Daytona sandbox lease: {e}"
+            ))
+        })?;
+
+    Ok(())
 }
 
 /// Extract a required string parameter from tool arguments.

@@ -136,6 +136,11 @@ export const queryKeys = {
       ["session-schedule", sessionId, scheduleId] as const,
   },
 
+  sessionResources: {
+    all: ["session-resources"] as const,
+    list: (sessionId: string) => ["session-resources", sessionId] as const,
+  },
+
   // Command queries
   commands: {
     all: ["commands"] as const,

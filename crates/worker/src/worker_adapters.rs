@@ -11,9 +11,12 @@ use everruns_core::capabilities::{
 };
 use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{ImageResolver, ResolvedImage};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
+use everruns_core::traits::{ImageResolver, LeasedResourceStore, ResolvedImage};
+use everruns_core::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
+};
 use everruns_core::{
     Agent, DriverRegistry, Harness, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
 };
@@ -240,9 +243,47 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
 
+    /// Get the leased-resource store for tool-side registration/touch/release.
+    fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
+
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
+
+    /// Claim due leased resources for cleanup work.
+    ///
+    /// This is the control-plane entry point used by the durable cleanup
+    /// activity. Implementations must coordinate across workers so one claim
+    /// wins per resource until the claim becomes stale.
+    async fn claim_due_leased_resources(
+        &self,
+        limit: u32,
+        stale_after_seconds: u32,
+    ) -> Result<Vec<LeasedResource>>;
+
+    /// Mark a claimed leased resource as released.
+    ///
+    /// `expected_cleanup_started_at` is a compare-and-set guard. Cleanup code
+    /// must pass the timestamp from the original claim so a stale worker cannot
+    /// overwrite a newer lease refresh or retry claim.
+    async fn mark_leased_resource_released(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool>;
+
+    /// Mark a claimed leased resource cleanup as failed.
+    ///
+    /// Like `mark_leased_resource_released`, this is guarded by the claim
+    /// timestamp to preserve correctness when multiple workers race or a lease
+    /// is refreshed while cleanup is in flight.
+    async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+        retry_after_seconds: u32,
+        error: &str,
+    ) -> Result<bool>;
 }
 
 // =============================================================================

@@ -129,6 +129,17 @@ service WorkerService {
     // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
     // Server-side decrypts stored tokens or mints fresh GitHub App tokens
     rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
+    rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
+    rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
+
+    // === Leased resource operations ===
+    // Generic resource leases for provider-owned remote state that needs cleanup.
+    rpc UpsertLeasedResource(UpsertLeasedResourceRequest) returns (UpsertLeasedResourceResponse);
+    rpc ReleaseLeasedResource(ReleaseLeasedResourceRequest) returns (ReleaseLeasedResourceResponse);
+    rpc ListSessionLeasedResources(ListSessionLeasedResourcesRequest) returns (ListSessionLeasedResourcesResponse);
+    rpc ClaimDueLeasedResources(ClaimDueLeasedResourcesRequest) returns (ClaimDueLeasedResourcesResponse);
+    rpc MarkLeasedResourceReleased(MarkLeasedResourceReleasedRequest) returns (MarkLeasedResourceReleasedResponse);
+    rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
 
     // === Session schedule operations ===
     // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
@@ -1060,6 +1071,112 @@ message GetConnectionTokenRequest {
 
 message GetConnectionTokenResponse {
     optional string token = 1;  // Decrypted token, or None if not connected
+}
+
+message GetConnectionUserRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+}
+
+message GetConnectionUserResponse {
+    optional Uuid user_id = 1;
+}
+
+message GetConnectionTokenForUserRequest {
+    Uuid user_id = 1;
+    string provider = 2;
+}
+
+message GetConnectionTokenForUserResponse {
+    optional string token = 1;
+}
+
+// ============================================================================
+// Leased resource types
+// ============================================================================
+
+message LeasedResourceProto {
+    Uuid id = 1;
+    optional Uuid session_id = 2;
+    string provider = 3;
+    string resource_type = 4;
+    string external_id = 5;
+    optional string display_name = 6;
+    string status = 7;
+    optional Uuid owner_user_id = 8;
+    uint32 lease_duration_seconds = 9;
+    Timestamp last_touched_at = 10;
+    Timestamp lease_expires_at = 11;
+    optional Timestamp cleanup_started_at = 12;
+    optional Timestamp cleanup_completed_at = 13;
+    uint32 cleanup_attempts = 14;
+    optional string last_cleanup_error = 15;
+    optional google.protobuf.Struct metadata = 16;
+    Timestamp created_at = 17;
+    Timestamp updated_at = 18;
+}
+
+message UpsertLeasedResourceRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string resource_type = 3;
+    string external_id = 4;
+    optional string display_name = 5;
+    optional Uuid owner_user_id = 6;
+    uint32 lease_duration_seconds = 7;
+    optional google.protobuf.Struct metadata = 8;
+}
+
+message UpsertLeasedResourceResponse {
+    LeasedResourceProto resource = 1;
+}
+
+message ReleaseLeasedResourceRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string resource_type = 3;
+    string external_id = 4;
+}
+
+message ReleaseLeasedResourceResponse {
+    optional LeasedResourceProto resource = 1;
+}
+
+message ListSessionLeasedResourcesRequest {
+    Uuid session_id = 1;
+}
+
+message ListSessionLeasedResourcesResponse {
+    repeated LeasedResourceProto resources = 1;
+}
+
+message ClaimDueLeasedResourcesRequest {
+    uint32 limit = 1;
+    uint32 stale_after_seconds = 2;
+}
+
+message ClaimDueLeasedResourcesResponse {
+    repeated LeasedResourceProto resources = 1;
+}
+
+message MarkLeasedResourceReleasedRequest {
+    Uuid resource_id = 1;
+    Timestamp expected_cleanup_started_at = 2;
+}
+
+message MarkLeasedResourceReleasedResponse {
+    bool updated = 1;
+}
+
+message MarkLeasedResourceCleanupFailedRequest {
+    Uuid resource_id = 1;
+    Timestamp expected_cleanup_started_at = 2;
+    uint32 retry_after_seconds = 3;
+    string error = 4;
+}
+
+message MarkLeasedResourceCleanupFailedResponse {
+    bool updated = 1;
 }
 
 // ============================================================================

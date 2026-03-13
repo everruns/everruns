@@ -6,6 +6,7 @@
 //! Decision: Each tool call reconnects → does work → calls reconnect → disconnects.
 //!   No long-lived WebSocket connections. The browser stays alive on Browserless servers.
 
+use everruns_core::UpsertLeasedResource;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -15,9 +16,83 @@ use tracing::{debug, warn};
 
 use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS};
 use crate::state::{
-    BrowserSessionState, delete_browser_session, get_api_token, get_browser_session,
-    save_browser_session,
+    BrowserSessionState, browser_session_external_id, delete_browser_session, get_api_token,
+    get_browser_session, save_browser_session,
 };
+
+const BROWSER_SESSION_LEASE_DURATION_SECONDS: u32 = 20 * 60;
+
+async fn upsert_browser_session_lease(
+    context: &ToolContext,
+    state: &BrowserSessionState,
+) -> Result<(), ToolExecutionResult> {
+    let Some(store) = context.leased_resource_store.as_ref() else {
+        return Ok(());
+    };
+
+    let owner_user_id = if let Some(resolver) = context.connection_resolver.as_ref() {
+        resolver
+            .get_connection_user(context.session_id, "browserless")
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    store
+        .upsert_resource(UpsertLeasedResource {
+            session_id: context.session_id,
+            provider: "browserless".to_string(),
+            resource_type: "browser_session".to_string(),
+            external_id: browser_session_external_id(&state.ws_endpoint),
+            display_name: Some("Persistent browser session".to_string()),
+            owner_user_id,
+            lease_duration_seconds: BROWSER_SESSION_LEASE_DURATION_SECONDS,
+            // THREAT[TM-API-015]: leased-resource metadata is exposed via API/UI.
+            // Persist only the tokenless reconnect endpoint and timestamps here;
+            // the Browserless API token is resolved from the user connection
+            // during cleanup instead of being stored with the lease.
+            metadata: json!({
+                "ws_endpoint": state.ws_endpoint,
+                "created_at": state.created_at,
+                "last_active_at": state.last_active_at,
+            }),
+        })
+        .await
+        .map_err(|e| {
+            ToolExecutionResult::internal_error_msg(format!(
+                "Failed to update Browserless browser lease: {e}"
+            ))
+        })?;
+
+    Ok(())
+}
+
+async fn release_browser_session_lease(
+    context: &ToolContext,
+    state: &BrowserSessionState,
+) -> Result<(), ToolExecutionResult> {
+    let Some(store) = context.leased_resource_store.as_ref() else {
+        return Ok(());
+    };
+
+    store
+        .release_resource(
+            context.session_id,
+            "browserless",
+            "browser_session",
+            &browser_session_external_id(&state.ws_endpoint),
+        )
+        .await
+        .map_err(|e| {
+            ToolExecutionResult::internal_error_msg(format!(
+                "Failed to release Browserless browser lease: {e}"
+            ))
+        })?;
+
+    Ok(())
+}
 
 // ============================================================================
 // BrowserlessOpenBrowserTool
@@ -89,6 +164,10 @@ impl Tool for BrowserlessOpenBrowserTool {
                             if let Err(e) = save_browser_session(context, &state).await {
                                 warn!("Failed to update session state: {e:?}");
                             }
+                            if let Err(e) = upsert_browser_session_lease(context, &state).await {
+                                session.disconnect().await;
+                                return e;
+                            }
                             session.disconnect().await;
 
                             return ToolExecutionResult::Success(json!({
@@ -147,6 +226,10 @@ impl Tool for BrowserlessOpenBrowserTool {
         // Save state (only WS endpoint, no token)
         let state = BrowserSessionState::new(ws_endpoint);
         if let Err(e) = save_browser_session(context, &state).await {
+            session.disconnect().await;
+            return e;
+        }
+        if let Err(e) = upsert_browser_session_lease(context, &state).await {
             session.disconnect().await;
             return e;
         }
@@ -238,6 +321,9 @@ impl Tool for BrowserlessCloseBrowserTool {
         if let Err(e) = delete_browser_session(context).await {
             return e;
         }
+        if let Err(e) = release_browser_session_lease(context, &session_state).await {
+            return e;
+        }
 
         ToolExecutionResult::Success(json!({
             "status": "closed",
@@ -283,6 +369,7 @@ pub async fn keep_session_alive(context: &ToolContext, session: &mut CdpSession)
                 state.ws_endpoint = new_endpoint;
                 state.last_active_at = chrono::Utc::now().to_rfc3339();
                 let _ = save_browser_session(context, &state).await;
+                let _ = upsert_browser_session_lease(context, &state).await;
             }
         }
         Err(e) => {

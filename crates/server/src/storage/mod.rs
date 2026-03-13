@@ -14,6 +14,7 @@ pub mod backend;
 pub mod connection_resolver;
 pub mod encryption;
 pub mod harness_store;
+pub mod leased_resource_store;
 pub mod llm_provider_store;
 pub mod memory;
 pub mod message_store;
@@ -36,6 +37,9 @@ pub use encryption::{
     generate_encryption_key,
 };
 pub use harness_store::{DbHarnessStore, create_db_harness_store};
+pub use leased_resource_store::{
+    DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
+};
 pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};

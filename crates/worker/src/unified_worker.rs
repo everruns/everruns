@@ -67,6 +67,7 @@ impl Default for TaskWorkerConfig {
                 "process_input".to_string(),
                 "reason".to_string(),
                 "act".to_string(),
+                "leased_resource_cleanup".to_string(),
             ],
             max_concurrent_tasks: 10,
             poll_interval: Duration::from_millis(100),
@@ -443,6 +444,15 @@ where
             let res = execute_act_activity(adapters, &act_input).await;
             (res, Some(turn_input))
         }
+        "leased_resource_cleanup" => {
+            let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
+                serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
+            let res =
+                crate::leased_resource_cleanup::execute_cleanup_activity(adapters, &cleanup_input)
+                    .await;
+            (res, None)
+        }
         _ => (
             Err(anyhow::anyhow!(
                 "Unknown activity type: {}",
@@ -806,6 +816,7 @@ async fn execute_act_activity<A: WorkerAdapters>(
         .with_sqldb_store(adapters.sqldb_store())
         .with_storage_store(adapters.storage_store())
         .with_connection_resolver(adapters.connection_resolver())
+        .with_leased_resource_store(adapters.leased_resource_store())
         .with_schedule_store(adapters.schedule_store(org_id))
         .with_platform_store(adapters.platform_store(org_id));
 

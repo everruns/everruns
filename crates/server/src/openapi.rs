@@ -9,10 +9,10 @@ use crate::api::{ListResponse, PaginatedResponse};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
-    GrepMatch, GrepResult, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus,
-    LlmProviderType, McpServer, McpServerStatus, McpServerTransportType, Session, SessionFile,
-    SessionStatus, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus,
-    SkillValidationResult, ToolCall,
+    GrepMatch, GrepResult, LeasedResource, LlmModel, LlmModelStatus, LlmModelWithProvider,
+    LlmProviderStatus, LlmProviderType, McpServer, McpServerStatus, McpServerTransportType,
+    Session, SessionFile, SessionStatus, Skill, SkillContent, SkillFileEntry, SkillSourceType,
+    SkillStatus, SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -72,6 +72,7 @@ use utoipa::OpenApi;
         api::session_files::copy_file,
         api::session_files::grep_files,
         api::session_files::stat_file,
+        api::session_resources::list_resources,
         api::mcp_servers::create_mcp_server,
         api::mcp_servers::list_mcp_servers,
         api::mcp_servers::get_mcp_server,
@@ -165,6 +166,7 @@ use utoipa::OpenApi;
             api::users::ListUsersQuery,
             ListResponse<api::users::User>,
             SessionFile, FileInfo, FileStat, GrepMatch, GrepResult,
+            LeasedResource,
             api::session_files::CreateFileRequest, api::session_files::UpdateFileRequest,
             api::session_files::MoveFileRequest, api::session_files::CopyFileRequest,
             api::session_files::GrepRequest, api::session_files::DeleteResponse,
@@ -216,6 +218,7 @@ use utoipa::OpenApi;
         (name = "capabilities", description = "Capability management endpoints"),
         (name = "users", description = "User management endpoints"),
         (name = "filesystem", description = "Session virtual filesystem endpoints"),
+        (name = "session-resources", description = "Session leased-resource visibility endpoints"),
         (name = "mcp-servers", description = "MCP Server management endpoints"),
         (name = "durable-schedules", description = "Durable scheduled tasks management endpoints"),
         (name = "organizations", description = "Organization management endpoints"),

@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, EventId, HarnessId, ImageId, McpServerId, MessageId, ModelId, NotificationId,
-    ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId,
+    NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -1009,6 +1009,57 @@ pub struct UpdateSessionScheduleRow {
     pub next_trigger_at: Option<Option<DateTime<Utc>>>,
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub trigger_count_increment: bool,
+}
+
+// ============================================
+// Leased resource models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct LeasedResourceRow {
+    pub id: LeasedResourceId,
+    pub public_id: String,
+    pub org_id: i64,
+    pub session_id: Option<SessionId>,
+    pub provider: String,
+    pub resource_type: String,
+    pub external_id: String,
+    pub display_name: Option<String>,
+    pub status: String,
+    pub owner_user_id: Option<Uuid>,
+    pub lease_duration_seconds: i32,
+    pub last_touched_at: DateTime<Utc>,
+    pub lease_expires_at: DateTime<Utc>,
+    pub cleanup_started_at: Option<DateTime<Utc>>,
+    pub cleanup_completed_at: Option<DateTime<Utc>>,
+    pub cleanup_attempts: i32,
+    pub last_cleanup_error: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertLeasedResourceRow {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub provider: String,
+    pub resource_type: String,
+    pub external_id: String,
+    pub display_name: Option<String>,
+    pub owner_user_id: Option<Uuid>,
+    pub lease_duration_seconds: i32,
+    pub lease_expires_at: DateTime<Utc>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReleaseLeasedResourceRow {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub provider: String,
+    pub resource_type: String,
+    pub external_id: String,
 }
 
 // ============================================

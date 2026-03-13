@@ -815,6 +815,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
     }
 
+    fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+        Arc::new(crate::storage::DbLeasedResourceStore::new(self.db.clone()))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::storage::DbSessionScheduleStore::new(
             self.db.clone(),
@@ -829,6 +833,58 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.event_service.clone(),
             self.runner.clone(),
         ))
+    }
+
+    async fn claim_due_leased_resources(
+        &self,
+        limit: u32,
+        stale_after_seconds: u32,
+    ) -> Result<Vec<everruns_core::LeasedResource>> {
+        let rows = self
+            .db
+            .claim_due_leased_resources(limit as i32, stale_after_seconds as i32)
+            .await
+            .map_err(|e| store_error(format!("Failed to claim leased resources: {e}")))?;
+        rows.iter()
+            .map(crate::storage::leased_resource_row_to_domain)
+            .collect()
+    }
+
+    async fn mark_leased_resource_released(
+        &self,
+        resource_id: everruns_core::LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool> {
+        Ok(self
+            .db
+            .mark_leased_resource_released(resource_id, expected_cleanup_started_at)
+            .await
+            .map_err(|e| store_error(format!("Failed to mark leased resource released: {e}")))?
+            .is_some())
+    }
+
+    async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: everruns_core::LeasedResourceId,
+        expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+        retry_after_seconds: u32,
+        error: &str,
+    ) -> Result<bool> {
+        Ok(self
+            .db
+            .mark_leased_resource_cleanup_failed(
+                resource_id,
+                expected_cleanup_started_at,
+                retry_after_seconds as i32,
+                error,
+            )
+            .await
+            .map_err(|e| {
+                store_error(format!(
+                    "Failed to mark leased resource cleanup failed: {e}"
+                ))
+            })?
+            .is_some())
     }
 
     async fn build_tool_registry(&self, _org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {

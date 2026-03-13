@@ -21,6 +21,7 @@ import {
   Check,
   X,
   CalendarClock,
+  Wrench,
 } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -151,6 +152,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
     if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/storage")) return "storage";
+    if (pathname.endsWith("/resources")) return "resources";
     if (pathname.endsWith("/schedules")) return "schedules";
     return "chat"; // Default to chat (includes /chat and base path)
   };
@@ -289,6 +291,15 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
             <Link href={`${basePath}/storage`} className={getTabClassName(activeTab === "storage")}>
               <Database className="icon-sharp h-4 w-4" />
               Storage
+            </Link>
+          )}
+          {hasFeature("leased_resources") && (
+            <Link
+              href={`${basePath}/resources`}
+              className={getTabClassName(activeTab === "resources")}
+            >
+              <Wrench className="icon-sharp h-4 w-4" />
+              Resources
             </Link>
           )}
           {hasFeature("schedules") && (

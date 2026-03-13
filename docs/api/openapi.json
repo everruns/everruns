@@ -3570,6 +3570,33 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/resources": {
+      "get": {
+        "tags": [
+          "session-resources"
+        ],
+        "summary": "List lifecycle-managed resources for a session.",
+        "operationId": "list_resources",
+        "responses": {
+          "200": {
+            "description": "Session leased resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LeasedResource"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sse": {
       "get": {
         "tags": [
@@ -5983,6 +6010,135 @@
           }
         }
       },
+      "LeasedResource": {
+        "type": "object",
+        "description": "A lifecycle-managed external resource owned by a session-capable workflow.",
+        "required": [
+          "id",
+          "provider",
+          "resource_type",
+          "external_id",
+          "status",
+          "lease_duration_seconds",
+          "last_touched_at",
+          "lease_expires_at",
+          "cleanup_attempts",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "cleanup_attempts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of cleanup attempts so far.",
+            "minimum": 0
+          },
+          "cleanup_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Cleanup completion time for released resources."
+          },
+          "cleanup_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Cleanup attempt start time when the resource is currently claimed."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional user-facing label."
+          },
+          "external_id": {
+            "type": "string",
+            "description": "Stable provider identifier for cleanup calls."
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier (format: resource_{32-hex}).",
+            "example": "resource_01933b5a00007000800000000000001"
+          },
+          "last_cleanup_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last cleanup error message, if any."
+          },
+          "last_touched_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last successful touch from tool activity."
+          },
+          "lease_duration_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Lease duration used when refreshing the lease.",
+            "minimum": 0
+          },
+          "lease_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Absolute deadline after which cleanup becomes due."
+          },
+          "metadata": {
+            "description": "Provider-specific non-secret metadata for UI/debugging.\nTHREAT[TM-API-015]: This field is returned by the session resources API\nand rendered in the UI, so providers must never persist bearer tokens or\nother secrets here."
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "User connection owner used for provider cleanup, if known."
+          },
+          "provider": {
+            "type": "string",
+            "description": "External provider responsible for the resource (e.g. \"daytona\")."
+          },
+          "resource_type": {
+            "type": "string",
+            "description": "Provider-specific resource type (e.g. \"sandbox\", \"browser_session\")."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session that currently owns the resource, if still attached.",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LeasedResourceStatus",
+            "description": "Current lifecycle status."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LeasedResourceStatus": {
+        "type": "string",
+        "description": "Runtime status for a leased resource.",
+        "enum": [
+          "active",
+          "cleaning",
+          "released",
+          "cleanup_failed"
+        ]
+      },
       "ListExecutionsQuery": {
         "type": "object",
         "properties": {
@@ -8201,7 +8357,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\", \"sql_database\"."
+                  "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
                 },
                 "finished_at": {
                   "type": [
@@ -8989,7 +9145,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\", \"sql_database\"."
+            "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
           },
           "finished_at": {
             "type": [
@@ -10636,6 +10792,10 @@
     {
       "name": "filesystem",
       "description": "Session virtual filesystem endpoints"
+    },
+    {
+      "name": "session-resources",
+      "description": "Session leased-resource visibility endpoints"
     },
     {
       "name": "mcp-servers",

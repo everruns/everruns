@@ -8,7 +8,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
-    AgentId, EventId, HarnessId, MessageId, NotificationId, ScheduleId, SessionId,
+    AgentId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId, ScheduleId, SessionId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -1304,12 +1304,36 @@ impl StorageBackend {
         dispatch!(self, get_connection_token_for_session, session_id, provider)
     }
 
+    pub async fn get_connection_user_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Uuid>> {
+        dispatch!(self, get_connection_user_for_session, session_id, provider)
+    }
+
+    pub async fn get_connection_token_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        dispatch!(self, get_connection_token_for_user, user_id, provider)
+    }
+
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<i64>> {
         dispatch!(self, get_installation_id_for_session, session_id, provider)
+    }
+
+    pub async fn get_installation_id_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<i64>> {
+        dispatch!(self, get_installation_id_for_user, user_id, provider)
     }
 
     // ============================================
@@ -1362,6 +1386,73 @@ impl StorageBackend {
 
     pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
         dispatch!(self, claim_due_session_schedules, limit)
+    }
+
+    // ============================================
+    // Leased Resources
+    // ============================================
+
+    pub async fn get_session_organization_id(&self, session_id: SessionId) -> Result<Option<i64>> {
+        dispatch!(self, get_session_organization_id, session_id)
+    }
+
+    pub async fn upsert_leased_resource(
+        &self,
+        input: UpsertLeasedResourceRow,
+    ) -> Result<LeasedResourceRow> {
+        dispatch!(self, upsert_leased_resource, input)
+    }
+
+    pub async fn release_leased_resource(
+        &self,
+        input: ReleaseLeasedResourceRow,
+    ) -> Result<Option<LeasedResourceRow>> {
+        dispatch!(self, release_leased_resource, input)
+    }
+
+    pub async fn list_session_leased_resources(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Vec<LeasedResourceRow>> {
+        dispatch!(self, list_session_leased_resources, session_id)
+    }
+
+    pub async fn claim_due_leased_resources(
+        &self,
+        limit: i32,
+        stale_after_seconds: i32,
+    ) -> Result<Vec<LeasedResourceRow>> {
+        dispatch!(self, claim_due_leased_resources, limit, stale_after_seconds)
+    }
+
+    pub async fn mark_leased_resource_released(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: DateTime<Utc>,
+    ) -> Result<Option<LeasedResourceRow>> {
+        dispatch!(
+            self,
+            mark_leased_resource_released,
+            resource_id,
+            expected_cleanup_started_at
+        )
+    }
+
+    pub async fn mark_leased_resource_cleanup_failed(
+        &self,
+        resource_id: LeasedResourceId,
+        expected_cleanup_started_at: DateTime<Utc>,
+        retry_after_seconds: i32,
+        error: &str,
+    ) -> Result<Option<LeasedResourceRow>> {
+        dispatch!(
+            self,
+            mark_leased_resource_cleanup_failed,
+            resource_id,
+            expected_cleanup_started_at,
+            retry_after_seconds,
+            error
+        )
     }
 
     // ============================================

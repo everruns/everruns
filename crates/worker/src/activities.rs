@@ -24,9 +24,9 @@ use std::sync::Arc;
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageResolver, GrpcLlmProviderStore, GrpcMessageRetriever, GrpcPlatformStore,
-    GrpcScheduleStore, GrpcSessionFileStore, GrpcSessionMutator, GrpcSessionSqlDbStore,
-    GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever,
+    GrpcPlatformStore, GrpcScheduleStore, GrpcSessionFileStore, GrpcSessionMutator,
+    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -368,6 +368,8 @@ pub async fn act_activity(
         Arc::new(GrpcAgentStore::new(grpc_client.clone(), org_id));
     let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef =
         Arc::new(GrpcSessionSqlDbStore::new(grpc_client.clone()));
+    let leased_resource_store: Arc<dyn everruns_core::traits::LeasedResourceStore> =
+        Arc::new(GrpcLeasedResourceStore::new(grpc_client.clone()));
     let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
         Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
     let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
@@ -380,6 +382,7 @@ pub async fn act_activity(
         .with_session_mutator(session_mutator)
         .with_agent_store(agent_store)
         .with_sqldb_store(sqldb_store)
+        .with_leased_resource_store(leased_resource_store)
         .with_schedule_store(schedule_store)
         .with_platform_store(platform_store);
 
