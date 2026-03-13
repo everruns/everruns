@@ -3,6 +3,7 @@
 // can take over as the last visible item when embedded tool calls are hidden.
 
 import type {
+  ActStartedData,
   Event,
   InputMessageData,
   OutputMessageCompletedData,
@@ -47,6 +48,11 @@ function isVisibleChatEvent(event: Event, clientRequestedToolCallIds: Set<string
 
   if (event.type === "tool.call_requested") {
     const data = event.data as ToolCallRequestedData;
+    return (data.tool_calls?.length ?? 0) > 0;
+  }
+
+  if (event.type === "act.started") {
+    const data = event.data as ActStartedData;
     return (data.tool_calls?.length ?? 0) > 0;
   }
 

@@ -696,9 +696,10 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         let requested_event = EventRequest::new(
             session_id,
             EventContext::turn(turn_id, input_message_id),
-            everruns_core::ToolCallRequestedData {
-                tool_calls: client_tool_calls.into_iter().cloned().collect(),
-            },
+            everruns_core::ToolCallRequestedData::with_definitions(
+                &client_tool_calls.into_iter().cloned().collect::<Vec<_>>(),
+                &result.tool_definitions,
+            ),
         );
         if let Err(e) = adapters.emit_event(requested_event).await {
             warn!(error = %e, "Failed to emit tool.call_requested event");

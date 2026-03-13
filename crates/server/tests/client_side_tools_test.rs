@@ -227,6 +227,8 @@ fn test_tool_call_requested_data_serialization() {
                 arguments: json!({"selector": "#input", "text": "hello"}),
             },
         ],
+        tool_summaries: vec![],
+        headline: None,
     };
 
     let json = serde_json::to_value(&data).unwrap();
@@ -250,6 +252,8 @@ fn test_tool_call_requested_data_roundtrip() {
             name: "deploy_staging".to_string(),
             arguments: json!({"env": "staging", "version": "1.2.3"}),
         }],
+        tool_summaries: vec![],
+        headline: None,
     };
 
     let json_str = serde_json::to_string(&original).unwrap();
@@ -265,7 +269,11 @@ fn test_tool_call_requested_data_roundtrip() {
 fn test_tool_call_requested_data_empty_tool_calls() {
     use everruns_core::events::ToolCallRequestedData;
 
-    let data = ToolCallRequestedData { tool_calls: vec![] };
+    let data = ToolCallRequestedData {
+        tool_calls: vec![],
+        tool_summaries: vec![],
+        headline: None,
+    };
 
     let json = serde_json::to_value(&data).unwrap();
     assert_eq!(json["tool_calls"].as_array().unwrap().len(), 0);

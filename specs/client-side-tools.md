@@ -150,7 +150,16 @@ data: {
         "name": "lookup_crm",
         "arguments": { "customer_id": "CUST-42" }
       }
-    ]
+    ],
+    "tool_summaries": [
+      {
+        "id": "call_abc123",
+        "name": "lookup_crm",
+        "display_name": "Lookup CRM",
+        "narration": "Looking up customer CUST-42"
+      }
+    ],
+    "headline": "Looking up customer CUST-42"
   }
 }
 ```
@@ -243,6 +252,8 @@ Emitted when the LLM requests one or more client-side tool calls. The agent loop
 | `tool_calls[].id` | string | Unique tool call ID (from LLM response) |
 | `tool_calls[].name` | string | Tool name |
 | `tool_calls[].arguments` | object | Tool arguments (parsed JSON) |
+| `tool_summaries` | array | Optional server-authored display summaries for timeline UIs |
+| `headline` | string | Optional server-authored readable summary for the requested batch |
 
 ### Session Status: `waiting_for_tool_results`
 

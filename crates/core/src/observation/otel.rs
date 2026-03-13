@@ -1126,7 +1126,10 @@ mod tests {
         let session_id = make_session_id();
         let act_span_id = "act_001";
 
-        let started = ActStartedData { tool_calls: vec![] };
+        let started = ActStartedData {
+            tool_calls: vec![],
+            headline: None,
+        };
         let event = event_with_context(
             session_id,
             turn_id,
@@ -1142,6 +1145,7 @@ mod tests {
             success_count: 2,
             error_count: 0,
             duration_ms: Some(300),
+            headline: None,
         };
         let event = event_with_context(
             session_id,
@@ -1170,6 +1174,7 @@ mod tests {
                 arguments: json!({"x": 42}),
             },
             display_name: None,
+            narration: None,
         };
         listener
             .on_event(&Event::new(
@@ -1189,6 +1194,7 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(100),
+            narration: None,
         };
         listener
             .on_event(&Event::new(
@@ -1213,6 +1219,7 @@ mod tests {
             result: None,
             error: Some("Connection timeout".to_string()),
             duration_ms: None,
+            narration: None,
         };
         // Should not panic
         listener
@@ -1238,6 +1245,7 @@ mod tests {
                     arguments: json!({}),
                 },
                 display_name: None,
+                narration: None,
             };
             listener
                 .on_event(&Event::new(
@@ -1260,6 +1268,7 @@ mod tests {
                 result: None,
                 error: None,
                 duration_ms: Some(50),
+                narration: None,
             };
             listener
                 .on_event(&Event::new(
@@ -1555,6 +1564,7 @@ mod tests {
                 arguments: json!({"query": "rust programming", "limit": 10}),
             },
             display_name: None,
+            narration: None,
         };
         listener
             .on_event(&Event::new(
@@ -1573,6 +1583,7 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(200),
+            narration: None,
         };
         listener
             .on_event(&Event::new(
@@ -1756,7 +1767,10 @@ mod tests {
                 turn_id,
                 Some(a1),
                 Some(&turn_id.to_string()),
-                EventData::ActStarted(ActStartedData { tool_calls: vec![] }),
+                EventData::ActStarted(ActStartedData {
+                    tool_calls: vec![],
+                    headline: None,
+                }),
             ))
             .await;
         listener
@@ -1770,6 +1784,7 @@ mod tests {
                     success_count: 1,
                     error_count: 0,
                     duration_ms: Some(50),
+                    headline: None,
                 }),
             ))
             .await;
@@ -1930,7 +1945,10 @@ mod tests {
                 turn_id,
                 Some(a1),
                 Some(&turn_key),
-                EventData::ActStarted(ActStartedData { tool_calls: vec![] }),
+                EventData::ActStarted(ActStartedData {
+                    tool_calls: vec![],
+                    headline: None,
+                }),
             ))
             .await;
 
@@ -1948,6 +1966,7 @@ mod tests {
                         arguments: json!({"query": "rust documentation"}),
                     },
                     display_name: None,
+                    narration: None,
                 }),
             ))
             .await;
@@ -1968,6 +1987,7 @@ mod tests {
                     result: None,
                     error: None,
                     duration_ms: Some(200),
+                    narration: None,
                 }),
             ))
             .await;
@@ -1984,6 +2004,7 @@ mod tests {
                     success_count: 1,
                     error_count: 0,
                     duration_ms: Some(250),
+                    headline: None,
                 }),
             ))
             .await;

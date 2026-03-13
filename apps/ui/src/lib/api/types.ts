@@ -545,11 +545,14 @@ export interface ToolCallSummary {
   name: string;
   /** Human-readable display name for UI rendering */
   display_name?: string;
+  /** Human-readable narration for timeline rendering */
+  narration?: string;
 }
 
 /** Data for act.started event */
 export interface ActStartedData {
   tool_calls: ToolCallSummary[];
+  headline?: string;
 }
 
 /** Data for act.completed event */
@@ -558,6 +561,7 @@ export interface ActCompletedData {
   success_count: number;
   error_count: number;
   duration_ms?: number;
+  headline?: string;
 }
 
 /** Tool call from LLM response */
@@ -572,6 +576,8 @@ export interface ToolStartedData {
   tool_call: ToolCall;
   /** Human-readable display name for UI rendering */
   display_name?: string;
+  /** Human-readable narration for timeline rendering */
+  narration?: string;
 }
 
 /** Data for tool.call_requested event (client-side tool calls awaiting results) */
@@ -581,6 +587,8 @@ export interface ToolCallRequestedData {
     name: string;
     arguments: Record<string, unknown>;
   }>;
+  tool_summaries?: ToolCallSummary[];
+  headline?: string;
 }
 
 /** Data for tool.completed event */
@@ -594,6 +602,7 @@ export interface ToolCompletedData {
   result?: ContentPart[];
   error?: string;
   duration_ms?: number;
+  narration?: string;
 }
 
 /** LLM generation output */

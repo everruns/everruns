@@ -121,6 +121,10 @@ jest.mock("@/components/chat/tool-activity-group", () => ({
   ToolActivityGroup: () => null,
 }));
 
+jest.mock("@/components/chat/tool-activity-timeline-group", () => ({
+  ToolActivityTimelineGroup: () => null,
+}));
+
 beforeAll(() => {
   Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
     configurable: true,

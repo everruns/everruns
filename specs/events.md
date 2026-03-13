@@ -487,8 +487,14 @@ ActAtom lifecycle - tool batch execution.
   "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_calls": [
-      { "id": "call_123", "name": "get_weather", "display_name": "Get Weather" }
-    ]
+      {
+        "id": "call_123",
+        "name": "get_weather",
+        "display_name": "Get Weather",
+        "narration": "Checking weather for Tokyo"
+      }
+    ],
+    "headline": "Checking weather for Tokyo"
   }
 }
 ```
@@ -501,10 +507,13 @@ ActAtom lifecycle - tool batch execution.
   "data": {
     "completed": true,
     "success_count": 2,
-    "error_count": 0
+    "error_count": 0,
+    "headline": "Checked weather for Tokyo"
   }
 }
 ```
+
+**`headline`** (optional, string): Server-authored readable summary for the tool batch. UI should render this directly when present instead of synthesizing group copy from tool names.
 
 #### `tool.started` / `tool.completed`
 
@@ -521,7 +530,8 @@ Individual tool execution within ActAtom.
       "name": "get_weather",
       "arguments": { "city": "Tokyo" }
     },
-    "display_name": "Get Weather"
+    "display_name": "Get Weather",
+    "narration": "Checking weather for Tokyo"
   }
 }
 ```
@@ -537,12 +547,15 @@ Individual tool execution within ActAtom.
     "display_name": "Get Weather",
     "success": true,
     "status": "success",
+    "narration": "Checked weather for Tokyo",
     "result": [
       { "type": "text", "text": "Temperature: 22C, Sunny" }
     ]
   }
 }
 ```
+
+**`narration`** (optional, string): Server-authored readable summary for an individual tool step. Intended for transcript/timeline rendering. Clients may fall back to local formatting when absent.
 
 For failed tool calls:
 

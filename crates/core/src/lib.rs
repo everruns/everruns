@@ -28,6 +28,7 @@ pub mod feature_flags;
 
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;
+pub mod tool_narration;
 
 // Event listeners (pluggable observability backends)
 pub mod event_listeners;
