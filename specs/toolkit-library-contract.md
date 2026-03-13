@@ -18,44 +18,41 @@ This means each new toolkit requires bespoke integration code in `crates/core/sr
 
 ## Contract
 
-### 1. `ToolBuilder` — the primary API for everruns
+### 1. `ToolBuilder` and `Tool`
 
-The `ToolBuilder` is the main integration surface. everruns constructs tool builders (often at init time), configures them, and calls metadata/execution methods directly on the builder or on the `Tool` it produces.
-
-Every `*kit` library exposes a `ToolBuilder` with kit-specific config methods:
+Every `*kit` library exposes a `ToolBuilder` for configuration and a `Tool` as the built artifact.
 
 ```rust
+// ToolBuilder: config only
 let builder = mykit::ToolBuilder::new()
-    // kit-specific config methods
     .some_feature(true)
     .some_limit(1000);
 
-// Metadata is available on the builder (no need to build first)
-let schema = builder.input_schema();
-let prompt = builder.system_prompt();
-
-// Build produces an immutable, executable Tool
+// build() produces an immutable Tool
 let tool = builder.build();
+
+// Metadata lives on Tool (not builder)
+let schema = tool.input_schema();
+let prompt = tool.system_prompt();
 ```
 
 `ToolBuilder` methods are chainable. `build()` consumes the builder and returns a `Tool`.
 
-Both `ToolBuilder` and `Tool` are `Send + Sync`.
+`Tool` is `Send + Sync`. `ToolBuilder` need not be.
 
 ### 2. Tool metadata methods
 
-Available on both `ToolBuilder` (for pre-build introspection) and `Tool` (post-build):
+All metadata lives on `Tool`:
 
 ```rust
-// On ToolBuilder and Tool
-impl {
+impl Tool {
     /// Tool name for LLM invocation (e.g. "bash", "web_fetch").
     /// Snake_case, stable across versions.
     fn name(&self) -> &str;
 
     /// Human-readable description of the tool for the LLM.
-    /// May vary based on builder config (e.g. enabled features change the description).
-    fn description(&self) -> String;
+    /// Baked in at build() time from builder config.
+    fn description(&self) -> &str;
 
     /// JSON Schema for the tool's input parameters.
     /// Must be a valid JSON Schema object with `"type": "object"`.
@@ -69,9 +66,9 @@ impl {
 }
 ```
 
-**Why on builder too:** everruns needs metadata at capability-collection time to generate system prompts and tool definitions. The builder config affects metadata (e.g. `enable_save_to_file` changes the schema and description). Having metadata on the builder avoids building a throwaway `Tool` just to read the schema.
+Builder config bakes into `Tool` at `build()` time. The consumer builds the `Tool` once and reads metadata + executes from the same object.
 
-**Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on the builder/tool so the consumer can delegate without duplication.
+**Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on `Tool` so the consumer can delegate without duplication.
 
 ### 3. `Tool` — execution
 
@@ -187,12 +184,11 @@ Toolkit crates must not depend on `everruns-core` or any everruns crate. They ar
 
 ```
 toolkit crate (standalone)     everruns-core
-├── ToolBuilder (config+meta)  ├── XxxCapability (implements Capability trait)
-├── Tool (execute)             │   ├── uses ToolBuilder for metadata + system prompt
-├── AdapterTrait               │   └── builds Tool for execution
-├── Error types                ├── XxxTool (implements everruns Tool trait)
-└── Output types               │   ├── delegates metadata to toolkit ToolBuilder/Tool
-                               │   ├── delegates execution to toolkit Tool
+├── ToolBuilder (config)       ├── XxxCapability (implements Capability trait)
+├── Tool (metadata+execute)    │   └── builds Tool, reads metadata for system prompt
+├── AdapterTrait               ├── XxxTool (implements everruns Tool trait)
+├── Error types                │   ├── delegates metadata to toolkit Tool
+└── Output types               │   ├── delegates execution to toolkit Tool
                                │   └── maps errors/output to ToolExecutionResult
                                └── AdapterImpl (implements toolkit::AdapterTrait)
                                    └── bridges to SessionFileStore, etc.
@@ -219,43 +215,39 @@ impl Capability for XxxCapability {
     }
 
     fn system_prompt_preview(&self) -> Option<String> {
-        // Builder metadata without building a Tool — preview with all features enabled
-        Some(mykit::ToolBuilder::new().some_feature(true).system_prompt())
+        // Build with all features enabled for preview
+        let tool = mykit::ToolBuilder::new().some_feature(true).build();
+        Some(tool.system_prompt())
     }
 
     async fn system_prompt_contribution_with_config(
         &self, _ctx: &SystemPromptContext, config: &Value,
     ) -> Option<String> {
-        // Builder reads config, generates config-aware system prompt
-        let builder = builder_from_config(config);
-        Some(format!("<capability id=\"{}\">\n{}\n</capability>", self.id(), builder.system_prompt()))
+        let tool = tool_from_config(config);
+        Some(format!("<capability id=\"{}\">\n{}\n</capability>", self.id(), tool.system_prompt()))
     }
 }
 
-/// Helper: config JSON → ToolBuilder
-fn builder_from_config(config: &Value) -> mykit::ToolBuilder {
+/// Helper: config JSON → built Tool
+fn tool_from_config(config: &Value) -> mykit::Tool {
     let feature = config.get("some_feature").and_then(|v| v.as_bool()).unwrap_or(false);
-    mykit::ToolBuilder::new().some_feature(feature)
+    mykit::ToolBuilder::new().some_feature(feature).build()
 }
 
 pub struct XxxTool {
     kit_tool: mykit::Tool,
-    description: String,
 }
 
 impl XxxTool {
     fn new(config: &Value) -> Self {
-        let builder = builder_from_config(config);
-        let description = builder.description();
-        let kit_tool = builder.build();
-        Self { kit_tool, description }
+        Self { kit_tool: tool_from_config(config) }
     }
 }
 
 #[async_trait]
 impl Tool for XxxTool {
     fn name(&self) -> &str { self.kit_tool.name() }
-    fn description(&self) -> &str { &self.description }
+    fn description(&self) -> &str { self.kit_tool.description() }
     fn parameters_schema(&self) -> Value { self.kit_tool.input_schema() }
 
     async fn execute(&self, args: Value) -> ToolExecutionResult {
@@ -281,16 +273,16 @@ impl Tool for XxxTool {
 | Library | Gap | Migration |
 |---------|-----|-----------|
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
-| bashkit | No `input_schema()` on builder or Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
+| bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `execute()` on Tool — uses separate `Bash` struct | Add `execute()` / `execute_with()` that wraps `Bash` internally |
 | bashkit | `system_prompt()` naming OK — fetchkit uses `llmtxt()` | Standardize on `system_prompt()` for both |
-| bashkit | No `name()` on builder or Tool | Add; return `"bash"` |
+| bashkit | No `name()` on Tool | Add; return `"bash"` |
 | bashkit | No structured `ToolOutput` — returns raw stdout/stderr | Wrap in `ToolOutput { result: json!({...}), images: vec![] }` |
 | fetchkit | `Tool::builder()` naming OK but returns unnamed builder type | Expose as `ToolBuilder` |
 | fetchkit | Uses `llmtxt()` instead of `system_prompt()` | Rename (or alias) to `system_prompt()` |
 | fetchkit | `execute()` takes `FetchRequest`, not `Value` | Add `Value`-based overload or keep `FetchRequest` and document parse step |
 | fetchkit | Error enum doesn't have `is_user_facing()` | Add method; currently all errors are user-facing |
-| fetchkit | No `name()` on builder or Tool | Add; return `"web_fetch"` |
+| fetchkit | No `name()` on Tool | Add; return `"web_fetch"` |
 | fetchkit | No structured `ToolOutput` | Wrap response in `ToolOutput` |
 
 ## Non-goals
