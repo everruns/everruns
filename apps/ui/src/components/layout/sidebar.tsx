@@ -395,22 +395,20 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
         </div>
       )}
 
-      {/* Search trigger (gated by global_search feature flag) */}
-      {featureFlags.global_search && (
-        <div className="px-3 py-2">
-          <button
-            type="button"
-            onClick={() => openCommandPalette(true)}
-            className="flex w-full items-center gap-3 border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
-          >
-            <Search className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left">Search...</span>
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium">
-              <span className="text-xs">⌘</span>K
-            </kbd>
-          </button>
-        </div>
-      )}
+      {/* Search trigger */}
+      <div className="px-3 py-2">
+        <button
+          type="button"
+          onClick={() => openCommandPalette(true)}
+          className="flex w-full items-center gap-3 border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">Search...</span>
+          <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </button>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 bg-background py-4">

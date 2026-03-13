@@ -25,6 +25,7 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   session: "Sessions",
   harness: "Harnesses",
   skill: "Skills",
+  capability: "Capabilities",
   mcp_server: "MCP Servers",
   id: "Go to",
 };
@@ -36,6 +37,7 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "session",
   "harness",
   "skill",
+  "capability",
   "mcp_server",
 ];
 

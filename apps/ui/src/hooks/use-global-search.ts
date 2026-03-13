@@ -8,7 +8,8 @@
  * 4. Harnesses (client-side filter over cached list)
  * 5. Skills (client-side filter over cached list)
  * 6. MCP Servers (client-side filter over cached list)
- * 7. ID-based lookup (detects prefixed IDs and provides direct navigation)
+ * 7. Capabilities (client-side filter over cached list)
+ * 8. ID-based lookup (detects prefixed IDs and provides direct navigation)
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -39,6 +40,7 @@ import { useSessions } from "@/hooks/use-sessions";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { useSkills } from "@/hooks/use-skills";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
+import { useCapabilities } from "@/hooks/use-capabilities";
 
 export type SearchResultCategory =
   | "navigation"
@@ -47,6 +49,7 @@ export type SearchResultCategory =
   | "harness"
   | "skill"
   | "mcp_server"
+  | "capability"
   | "id";
 
 export interface SearchResult {
@@ -159,12 +162,14 @@ export function useGlobalSearch(query: string) {
   const { data: harnessesData } = useHarnesses();
   const { data: skillsData } = useSkills();
   const { data: mcpServersData } = useMcpServers();
+  const { data: capabilitiesData } = useCapabilities();
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
   const harnesses = harnessesData ?? EMPTY_ARRAY;
   const skills = skillsData ?? EMPTY_ARRAY;
   const mcpServers = mcpServersData ?? EMPTY_ARRAY;
+  const capabilities = capabilitiesData ?? EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -319,6 +324,32 @@ export function useGlobalSearch(query: string) {
       }
     }
 
+    // 8. Capabilities
+    let capabilityCount = 0;
+    for (const capability of capabilities) {
+      if (capabilityCount >= MAX_PER_CATEGORY) break;
+      if (
+        matchesTokens(
+          tokens,
+          capability.name,
+          capability.description,
+          capability.id,
+          capability.category,
+          "capability",
+        )
+      ) {
+        results.push({
+          id: `capability:${capability.id}`,
+          category: "capability",
+          icon: Puzzle,
+          title: capability.name,
+          subtitle: `Capabilities > ${capability.name}`,
+          href: `/capabilities/${capability.id}`,
+        });
+        capabilityCount++;
+      }
+    }
+
     return results;
-  }, [query, agents, sessions, harnesses, skills, mcpServers]);
+  }, [query, agents, sessions, harnesses, skills, mcpServers, capabilities]);
 }
