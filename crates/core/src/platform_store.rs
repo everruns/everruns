@@ -112,6 +112,7 @@ pub trait PlatformStore: Send + Sync {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         title: Option<&str>,
+        locale: Option<&str>,
     ) -> Result<Session>;
 
     /// Get a session by ID.
@@ -231,6 +232,7 @@ pub mod tests {
                     harness_id: HarnessId::new(),
                     agent_id: None,
                     title: Some("Test Session".to_string()),
+                    locale: None,
                     preview: None,
                     output_preview: None,
                     tags: vec![],
@@ -341,9 +343,11 @@ pub mod tests {
             _hid: HarnessId,
             _aid: Option<crate::typed_id::AgentId>,
             title: Option<&str>,
+            locale: Option<&str>,
         ) -> Result<Session> {
             let mut s = self.session.clone();
             s.title = title.map(|t| t.to_string());
+            s.locale = locale.map(|value| value.to_string());
             Ok(s)
         }
         async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {

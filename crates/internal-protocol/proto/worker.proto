@@ -353,6 +353,8 @@ message Session {
     repeated string capabilities = 9;
     // Harness ID (required for sessions)
     optional Uuid harness_id = 10;
+    // Session locale (BCP 47, e.g. "uk-UA")
+    string locale = 11;
 }
 
 message GetSessionRequest {
@@ -1472,6 +1474,7 @@ message PlatformCreateSessionRequest {
     Uuid harness_id = 2;
     optional Uuid agent_id = 3;
     optional string title = 4;
+    optional string locale = 5;
 }
 
 message PlatformCreateSessionResponse {

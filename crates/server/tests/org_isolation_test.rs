@@ -824,6 +824,7 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             harness_id: None,
             agent_id: None,
             title: Some("Test Session".to_string()),
+            locale: None,
             tags: vec![],
             model_id: None,
             capabilities: serde_json::json!([]),

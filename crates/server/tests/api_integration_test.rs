@@ -253,7 +253,8 @@ async fn test_create_session() {
             json!({
                 "harness_id": SEED_BASE_HARNESS_ID,
                 "agent_id": agent.public_id,
-                "title": "Test Session"
+                "title": "Test Session",
+                "locale": "uk-UA"
             }),
         )
         .await
@@ -262,6 +263,14 @@ async fn test_create_session() {
 
     assert_eq!(session.agent_id, Some(agent.public_id));
     assert_eq!(session.title.as_deref(), Some("Test Session"));
+    assert_eq!(session.locale.as_deref(), Some("uk-UA"));
+
+    let fetched: Session = server
+        .get(&format!("/v1/sessions/{}", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(fetched.locale.as_deref(), Some("uk-UA"));
 }
 
 #[tokio::test]

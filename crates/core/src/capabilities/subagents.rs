@@ -235,6 +235,7 @@ impl Tool for SpawnSubagentTool {
                 parent_session.harness_id,
                 parent_session.agent_id,
                 Some(&name),
+                parent_session.locale.as_deref(),
             )
             .await
         {

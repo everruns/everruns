@@ -80,6 +80,7 @@ impl SessionStore for DbSessionStore {
                     harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                     agent_id: row.agent_id,
                     title: row.title,
+                    locale: row.locale,
                     preview: None,
                     output_preview: None,
                     tags: row.tags,

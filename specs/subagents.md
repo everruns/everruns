@@ -81,11 +81,12 @@ Creates a child session and sends the task as the first user message. In foregro
 
 **Behavior:**
 1. Creates child session with `parent_session_id` set to current session
-2. Sets `subagent_name`, `subagent_task`, `subagent_status = Spawning`
-3. Sends `task` as first user message → status transitions to `Running`
-4. Blocks on `wait_for_idle` (foreground mode)
-5. On child idle: returns last assistant message, status → `Completed`
-6. On child failure: returns error, status → `Failed`
+2. Inherits the parent session locale when present
+3. Sets `subagent_name`, `subagent_task`, `subagent_status = Spawning`
+4. Sends `task` as first user message → status transitions to `Running`
+5. Blocks on `wait_for_idle` (foreground mode)
+6. On child idle: returns last assistant message, status → `Completed`
+7. On child failure: returns error, status → `Failed`
 
 ### get_subagents
 

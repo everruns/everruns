@@ -863,6 +863,7 @@ impl InMemoryDatabase {
             harness_id: input.harness_id,
             agent_id: input.agent_id,
             title: input.title,
+            locale: input.locale,
             tags: input.tags,
             model_id: input.model_id,
             capabilities: input.capabilities,
@@ -1005,6 +1006,9 @@ impl InMemoryDatabase {
         if let Some(session) = sessions.get_mut(&id) {
             if let Some(title) = input.title {
                 session.title = Some(title);
+            }
+            if let Some(locale) = input.locale {
+                session.locale = Some(locale);
             }
             if let Some(tags) = input.tags {
                 session.tags = tags;
@@ -4549,6 +4553,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: Some("Test Session".to_string()),
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -4595,6 +4600,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: Some("Test Session".to_string()),
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -4656,6 +4662,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: None,
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -4714,6 +4721,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: None,
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -5187,6 +5195,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: None,
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -5231,6 +5240,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: Some(format!("Session {}", i)),
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -5314,6 +5324,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: Some(format!("Session {}", i)),
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),
@@ -5796,6 +5807,7 @@ mod tests {
             harness_id: None,
             agent_id: Some(agent.id),
             title: Some("Debug production memory leak".to_string()),
+            locale: None,
             tags: vec![],
             model_id: None,
             capabilities: serde_json::json!([]),
@@ -5809,6 +5821,7 @@ mod tests {
             harness_id: None,
             agent_id: Some(agent.id),
             title: Some("Refactor auth module".to_string()),
+            locale: None,
             tags: vec![],
             model_id: None,
             capabilities: serde_json::json!([]),
@@ -5838,6 +5851,7 @@ mod tests {
             harness_id: None,
             agent_id: Some(agent1.id),
             title: Some("Shared keyword session".to_string()),
+            locale: None,
             tags: vec![],
             model_id: None,
             capabilities: serde_json::json!([]),
@@ -5851,6 +5865,7 @@ mod tests {
             harness_id: None,
             agent_id: Some(agent2.id),
             title: Some("Shared keyword session".to_string()),
+            locale: None,
             tags: vec![],
             model_id: None,
             capabilities: serde_json::json!([]),
@@ -6046,6 +6061,7 @@ mod tests {
                 harness_id: None,
                 agent_id: Some(agent.id),
                 title: None,
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::json!([]),

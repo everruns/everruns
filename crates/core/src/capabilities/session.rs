@@ -182,6 +182,7 @@ impl Tool for GetSessionInfoTool {
         ToolExecutionResult::success(json!({
             "session_id": session.id.to_string(),
             "title": session.title,
+            "locale": session.locale,
             "agent_name": agent_name,
         }))
     }
@@ -247,6 +248,7 @@ mod tests {
             harness_id: HarnessId::new(),
             agent_id,
             title: Some("Old title".to_string()),
+            locale: None,
             preview: None,
             output_preview: None,
             tags: vec![],

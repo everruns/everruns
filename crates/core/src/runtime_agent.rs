@@ -235,6 +235,20 @@ impl RuntimeAgentBuilder {
         self
     }
 
+    /// Prepend locale instructions for session-aware localization.
+    pub fn with_locale(self, locale: Option<&str>) -> Self {
+        let Some(locale) = locale.map(str::trim).filter(|value| !value.is_empty()) else {
+            return self;
+        };
+
+        self.prepend_system_prompt(format!(
+            "<locale preference=\"{locale}\">\n\
+             Default locale for this session: {locale}.\n\
+             Unless the user explicitly asks otherwise, respond in this locale and use its language, spelling, and regional formatting conventions for dates, times, numbers, and currency.\n\
+             </locale>"
+        ))
+    }
+
     /// Set the model
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.runtime_agent.model = model.into();
@@ -384,6 +398,18 @@ mod tests {
             .build();
 
         assert_eq!(runtime_agent.system_prompt, "Base prompt.");
+    }
+
+    #[test]
+    fn test_builder_with_locale_prepends_locale_instructions() {
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_locale(Some("uk-UA"))
+            .build();
+
+        assert!(runtime_agent.system_prompt.contains("<locale"));
+        assert!(runtime_agent.system_prompt.contains("uk-UA"));
+        assert!(runtime_agent.system_prompt.contains("Base prompt."));
     }
 
     #[tokio::test]

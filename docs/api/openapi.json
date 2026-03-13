@@ -5248,6 +5248,14 @@
             "description": "ID of the harness for this session (format: harness_{32-hex}).\nDefaults to the Generic harness if omitted (backward compat with older SDKs).",
             "example": "harness_01933b5a00007000800000000000001"
           },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session locale (BCP 47, e.g. `uk-UA`).",
+            "example": "uk-UA"
+          },
           "model_id": {
             "type": [
               "string",
@@ -8446,6 +8454,13 @@
                   ],
                   "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
                 },
+                "locale": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+                },
                 "model_id": {
                   "type": [
                     "string",
@@ -9233,6 +9248,13 @@
               "null"
             ],
             "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
           },
           "model_id": {
             "type": [
@@ -10757,6 +10779,14 @@
         "type": "object",
         "description": "Request to update a session. Only provided fields will be updated.",
         "properties": {
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session locale (BCP 47, e.g. `uk-UA`).",
+            "example": "uk-UA"
+          },
           "tags": {
             "type": [
               "array",

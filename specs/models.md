@@ -35,8 +35,12 @@ An instance of agentic loop execution. Sessions are top-level entities under org
 
 See `crates/core/src/session.rs` for full field definitions.
 
+See `specs/localization.md` for locale/timezone resolution and durable preference rules.
+
 Key design points:
 - Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
+- `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.
 - `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.
 - `capabilities` allows session-level capabilities additive to the agent's. Agent capabilities applied first, then session capabilities.
 - Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
@@ -52,6 +56,17 @@ Key design points:
 - Messages stored as events with types `input.message`, `output.message.completed`. Tool calls embedded in `output.message.completed` via `ContentPart::ToolCall`. Tool results from `tool.completed` events.
 - System messages handled internally, not persisted.
 - `ContentPart` variants: `text`, `image`, `image_file`, `tool_call`, `tool_result`. Users can only send `text`, `image`, `image_file` via API.
+- `metadata.locale` and `metadata.timezone` are reserved for one-turn execution-context overrides. See `specs/localization.md`.
+
+### User Profile
+
+Users should carry durable defaults for:
+- `locale`
+- `timezone`
+
+These values are fallbacks for session creation and turn resolution. They are not substitutes for live browser timezone on interactive requests.
+
+See `specs/localization.md` for precedence rules.
 
 **Controls:**
 

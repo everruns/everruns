@@ -185,6 +185,8 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 pub struct SystemPromptContext {
     /// The current session ID
     pub session_id: SessionId,
+    /// Optional locale for localized prompts and tool behavior.
+    pub locale: Option<String>,
     /// Optional file store for reading session files (e.g., AGENTS.md)
     pub file_store: Option<Arc<dyn SessionFileStore>>,
 }
@@ -194,6 +196,7 @@ impl SystemPromptContext {
     pub fn without_file_store(session_id: SessionId) -> Self {
         Self {
             session_id,
+            locale: None,
             file_store: None,
         }
     }

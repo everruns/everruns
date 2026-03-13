@@ -336,6 +336,8 @@ pub struct SessionRow {
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub title: Option<String>,
+    #[sqlx(default)]
+    pub locale: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
     /// Session-level capabilities (JSONB in DB)
@@ -378,6 +380,7 @@ pub struct CreateSessionRow {
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub title: Option<String>,
+    pub locale: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
     /// Session-level capabilities (additive to agent capabilities)
@@ -389,6 +392,7 @@ pub struct CreateSessionRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub title: Option<String>,
+    pub locale: Option<String>,
     pub tags: Option<Vec<String>>,
     pub model_id: Option<ModelId>,
     pub status: Option<String>,

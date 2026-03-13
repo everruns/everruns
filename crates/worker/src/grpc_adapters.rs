@@ -675,6 +675,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         agent_id: agent_id.map(|u| u.into()),
         harness_id: harness_id.into(),
         title: non_empty_string(proto_session.title),
+        locale: non_empty_string(proto_session.locale),
         preview: None,
         output_preview: None,
         tags: vec![],
@@ -2104,6 +2105,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
         harness_id: everruns_core::HarnessId,
         agent_id: Option<AgentId>,
         title: Option<&str>,
+        locale: Option<&str>,
     ) -> Result<Session> {
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -2112,6 +2114,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 harness_id: Some(uuid_to_proto(harness_id.uuid())),
                 agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
                 title: title.map(|s| s.to_string()),
+                locale: locale.map(|value| value.to_string()),
             })
             .await
             .map_err(|e| grpc_error(format!("gRPC platform_create_session failed: {}", e)))?;

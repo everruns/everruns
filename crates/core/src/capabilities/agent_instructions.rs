@@ -325,6 +325,7 @@ mod tests {
         });
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
+            locale: None,
             file_store: Some(store),
         };
 
@@ -340,6 +341,7 @@ mod tests {
         let store = Arc::new(MockFileStore { content: None });
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
+            locale: None,
             file_store: Some(store),
         };
 
@@ -362,6 +364,7 @@ mod tests {
         });
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
+            locale: None,
             file_store: Some(store),
         };
 

@@ -139,6 +139,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
 - `specs/toolkit-library-contract.md` - Convention for external toolkit libraries (bashkit, fetchkit, etc.)
+- `specs/localization.md` - Locale/timezone resolution and backend localization rules
 
 ### Test Cases
 

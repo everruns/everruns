@@ -4,6 +4,8 @@
 
 Scheduled tasks extend the durable execution engine with cron-based scheduling capabilities. Users can define recurring tasks that automatically trigger workflows or activities at specified intervals. This feature integrates seamlessly with existing durable infrastructure—sharing the same reliability guarantees, observability, and management APIs.
 
+See `specs/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution.
+
 ## Goals
 
 1. **Cron-based scheduling**: Support standard cron expressions for flexible scheduling
@@ -104,6 +106,13 @@ Examples:
 - `0 */6 * * *` - Every 6 hours
 - `0 9 * * MON-FRI` - 9 AM on weekdays
 - `0 0 1 * *` - First day of each month at midnight
+
+## Timezone Semantics
+
+- `schedule.timezone` is authoritative for cron interpretation.
+- When a schedule fires, `schedule.timezone` becomes the default execution timezone for that scheduled turn.
+- `session.timezone` is still relevant as a fallback if a scheduled trigger lacks a specific timezone in the future, but it must not override cron interpretation for an existing schedule.
+- Interactive browser timezone is never used for already-running background schedules.
 
 ## API Endpoints
 
