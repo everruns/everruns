@@ -152,18 +152,21 @@ impl Tool {
     /// Consumer can use this for diagnostics, logging, or compatibility checks.
     fn version(&self) -> &str;
 
-    /// Human-readable description of the tool for the LLM.
-    /// Baked in at build() time from builder config. Localized per builder locale.
+    /// Short, token-efficient description for the LLM.
+    /// One sentence. No filler. Localized per builder locale.
     fn description(&self) -> &str;
 
     /// JSON Schema for the tool's input parameters.
     /// Must be a valid JSON Schema object with `"type": "object"`.
     /// Adapts to builder config (e.g. optional params appear/disappear).
+    /// See §2a for schema authoring rules.
     fn input_schema(&self) -> serde_json::Value;
 
-    /// System prompt content (LLM instructions for using this tool).
+    /// Terse system prompt addition for the LLM.
+    /// Must start with tool name (e.g. "web_fetch: ..."). No title/header.
+    /// Minimal tokens — only behavior the LLM can't infer from the schema.
     /// Returned as plain text — the consumer wraps it in XML tags.
-    /// Returns empty string if no system prompt contribution.
+    /// Empty string if no system prompt contribution needed.
     /// Localized per builder locale.
     fn system_prompt(&self) -> String;
 
@@ -181,6 +184,66 @@ impl Tool {
 `Tool` is `Send + Sync` and cheap to clone (typically `Arc` internals or static data).
 
 **Rationale:** `input_schema()` was missing from bashkit, forcing the consumer to hardcode the schema and keep it in sync manually. All metadata methods must live on `Tool` so the consumer can delegate without duplication.
+
+#### Token budget rules
+
+Every token in `description()` and `system_prompt()` costs money on every LLM call. Be ruthless.
+
+**`description()`** — one sentence, no articles, no filler:
+- Good: `"Fetch a URL and return content as text or markdown"`
+- Bad: `"This tool allows you to fetch content from a specified URL and return it in various formats including plain text or markdown"`
+
+**`system_prompt()`** — starts with tool name, no markdown headers, only what the LLM can't infer from the schema:
+- Good: `"web_fetch: returns truncated content if response exceeds 50KB. Use as_markdown for HTML pages. Blocked: private IPs, cloud metadata endpoints."`
+- Bad: `"# Web Fetch Tool\n\nThe web_fetch tool is used to fetch content from URLs. It supports GET and HEAD methods.\n\n## Usage\n..."`
+
+If the schema is self-explanatory, `system_prompt()` can return `""`.
+
+#### 2a. Input schema authoring rules
+
+The schema is sent to the LLM on every call. Minimize token cost:
+
+1. **Argument names carry intent** — if the name is clear, omit `description`. `url`, `command`, `timeout_ms` need no description. `as_markdown` needs no description.
+
+2. **Use `enum` for fixed values** — don't describe allowed values in text:
+   ```json
+   // Good
+   {"method": {"type": "string", "enum": ["GET", "HEAD"]}}
+   // Bad
+   {"method": {"type": "string", "description": "HTTP method. Must be GET or HEAD."}}
+   ```
+
+3. **Specify `default` in schema** — don't describe defaults in text:
+   ```json
+   // Good
+   {"timeout_ms": {"type": "integer", "default": 30000}}
+   // Bad
+   {"timeout_ms": {"type": "integer", "description": "Timeout in milliseconds. Defaults to 30000."}}
+   ```
+
+4. **Short descriptions only when needed** — format, constraints, non-obvious behavior:
+   ```json
+   {"working_dir": {"type": "string", "default": "/workspace", "description": "Absolute path"}}
+   ```
+
+5. **Use `format` for known types** — `"format": "uri"`, `"format": "date-time"`, etc.
+
+**fetchkit example** (before/after):
+```json
+// Before (verbose)
+{
+  "url": {"type": "string", "description": "The URL to fetch content from. Must start with http:// or https://."},
+  "method": {"type": "string", "description": "HTTP method to use. Supported: GET, HEAD. Default: GET."},
+  "as_markdown": {"type": "boolean", "description": "If true, converts HTML content to markdown format. Default: false."}
+}
+
+// After (token-efficient)
+{
+  "url": {"type": "string", "format": "uri"},
+  "method": {"type": "string", "enum": ["GET", "HEAD"], "default": "GET"},
+  "as_markdown": {"type": "boolean", "default": false}
+}
+```
 
 #### `help()` content
 
@@ -358,21 +421,22 @@ Rules:
 
 ### 5. Error types
 
-Every toolkit defines its own error enum:
+Every toolkit defines its own error enum. Errors must be **actionable** (tell the LLM/user what to do differently) and **never expose internals** (no stack traces, no internal paths, no library names).
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
-    /// Errors safe to show to the LLM (validation, not found, etc.)
+    /// Errors safe to show to the LLM — actionable, no internal details.
+    /// Localized per builder locale.
     #[error("...")]
     UserFacing(String),
 
-    /// Errors that should be hidden from the LLM (internal failures)
+    /// Internal failures — logged by consumer, never shown to LLM.
+    /// Not localized (English-only, for operator logs).
     #[error("...")]
     Internal(String),
 
-    // Kit-specific variants are fine, but must be classifiable as
-    // user-facing or internal via a method:
+    // Kit-specific variants are fine, but must be classifiable:
 }
 
 impl ToolError {
@@ -383,25 +447,104 @@ impl ToolError {
 
 The consumer maps these to `ToolExecutionResult::ToolError` or `ToolExecutionResult::InternalError` using `is_user_facing()`.
 
+#### Error message rules
+
+**User-facing errors** (shown to LLM):
+- Actionable: say what went wrong and how to fix it
+- No internal details: no file paths, no library names, no stack traces
+- Localized per builder locale
+- Short — one sentence
+
+```
+// Good
+"url is required"
+"URL scheme must be http or https"
+"Server did not respond within 1s. Retry or try a different URL."
+"Cannot save file: save_to_file requires the FileSaver adapter"
+
+// Bad
+"reqwest::Error: connection refused at 10.0.0.1:443"
+"NullPointerException in FetchHandler.java:142"
+"Error: Os { code: 2, kind: NotFound, message: \"No such file\" }"
+```
+
+**Internal errors** (logged, hidden from LLM):
+- Full details for debugging (stack traces, internal paths, etc.)
+- Always English (operator logs)
+- Consumer replaces with generic message before returning to LLM
+
 ### 6. Output type
 
-Execution returns a structured output:
+Execution returns a structured output with a clear split between what goes to the LLM and what stays with the consumer:
 
 ```rust
 pub struct ToolOutput {
-    /// JSON result value
+    /// JSON result sent to the LLM.
     pub result: serde_json::Value,
-    /// Optional images (base64 + media type)
+
+    /// Optional images sent to the LLM as native image content blocks.
     pub images: Vec<ToolImage>,
+
+    /// Metadata for the consumer/platform — never sent to the LLM.
+    /// Toolkits attach diagnostics, metrics, and operational data here.
+    pub metadata: ToolOutputMetadata,
 }
 
 pub struct ToolImage {
     pub base64: String,
     pub media_type: String,
 }
+
+/// Operational metadata that stays with the consumer.
+/// None of this reaches the LLM context window.
+pub struct ToolOutputMetadata {
+    /// Execution wall-clock duration.
+    pub duration: std::time::Duration,
+
+    /// Kit-specific metadata as JSON.
+    /// Examples: HTTP status code, response headers, bytes transferred,
+    /// commands executed, exit codes, filesystem operations count.
+    pub extra: serde_json::Value,
+}
 ```
 
 If the tool never returns images, `images` is always empty. The consumer maps `ToolOutput` to `ToolExecutionResult::Success` or `ToolExecutionResult::SuccessWithImages`.
+
+**Metadata contract:** `metadata` is for the consumer (logging, billing, UI, analytics) — never serialized into the LLM tool result. The consumer decides what to do with it:
+
+```rust
+// Consumer side — metadata goes to tracing/events, not to LLM
+fn map_output(output: mykit::ToolOutput) -> ToolExecutionResult {
+    tracing::info!(
+        duration_ms = output.metadata.duration.as_millis(),
+        extra = %output.metadata.extra,
+        "tool execution complete"
+    );
+    // Only result + images go to the LLM
+    ToolExecutionResult::success(output.result)
+}
+```
+
+**Kit-specific metadata examples:**
+
+```rust
+// fetchkit
+json!({
+    "http_status": 200,
+    "content_type": "text/html",
+    "content_length": 48230,
+    "redirects": 1,
+    "truncated": true
+})
+
+// bashkit
+json!({
+    "exit_code": 0,
+    "commands_executed": 3,
+    "fs_reads": 5,
+    "fs_writes": 2
+})
+```
 
 ### 7. Re-exports
 
@@ -523,6 +666,11 @@ impl Tool for XxxTool {
 }
 
 fn map_output(output: mykit::ToolOutput) -> ToolExecutionResult {
+    // Metadata stays with consumer — log, emit events, never send to LLM
+    tracing::debug!(
+        duration_ms = output.metadata.duration.as_millis(),
+        extra = %output.metadata.extra,
+    );
     if output.images.is_empty() {
         ToolExecutionResult::success(output.result)
     } else {
@@ -543,14 +691,16 @@ fn map_error(e: mykit::ToolError) -> ToolExecutionResult {
 
 | Library | Gap | Migration |
 |---------|-----|-----------|
-| Library | Gap | Migration |
-|---------|-----|-----------|
 | both | No `locale()` on builder | Add; default `"en-US"`, thread through to description/system_prompt/errors |
 | both | No `display_name()` on Tool | Add; return localized human-readable name |
 | both | No `version()` on Tool | Add; return `env!("CARGO_PKG_VERSION")` |
 | both | No `build_tool_definition()` | Add; return OpenAI function call JSON |
 | both | No `build_output_schema()` | Add; describe shape of result JSON |
 | both | No `build_service()` | Add; return `impl Service<Value>` for generic callable usage |
+| both | No `help()` on Tool | Add; render comprehensive Markdown |
+| both | No `ToolOutputMetadata` | Add; return duration + kit-specific extras |
+| both | Verbose descriptions/schemas | Trim per token budget rules |
+| both | Error messages expose internals | Rewrite to be actionable, no internal details |
 | bashkit | No `ToolBuilder` — uses `BashTool::builder()` (naming) | Rename to `ToolBuilder` for consistency |
 | bashkit | No `input_schema()` on Tool | Add method; remove hardcoded schema from `virtual_bash.rs` |
 | bashkit | No `ToolExecution` — uses separate `Bash` struct | Wrap `Bash` in `ToolExecution`; `execute()` creates interpreter internally |
