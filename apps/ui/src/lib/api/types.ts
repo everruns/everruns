@@ -197,8 +197,8 @@ export interface SessionStats {
 }
 
 export interface CreateSessionRequest {
-  /** Harness ID for this session (required) */
-  harness_id: string;
+  /** Harness ID for this session. If omitted, org base harness is used. */
+  harness_id?: string;
   /** Agent ID to work in this session (optional) */
   agent_id?: string;
   title?: string;
@@ -846,6 +846,8 @@ export interface OrganizationMembership {
 export interface Organization {
   id: string;
   name: string;
+  default_harness_id: string | null;
+  base_harness_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -858,6 +860,8 @@ export interface CreateOrganizationRequest {
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   name?: string;
+  default_harness_id?: string;
+  base_harness_id?: string;
 }
 
 export interface UserInfoResponse {

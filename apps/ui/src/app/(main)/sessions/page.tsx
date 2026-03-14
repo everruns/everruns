@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 import { getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
 
@@ -43,6 +44,7 @@ export default function SessionsPage() {
   const offset = page * PAGE_SIZE;
 
   const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
+  const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
     selectedAgentId || undefined, // Pass undefined to get all sessions
@@ -78,9 +80,9 @@ export default function SessionsPage() {
   }, [agents]);
 
   const handleOpenNewSessionDialog = () => {
-    // Pre-select the Generic harness, falling back to the first harness
+    const defaultHarnessId = organization?.default_harness_id;
     const genericHarness = harnesses?.find((h) => h.name === "Generic");
-    setNewSessionHarnessId(genericHarness?.id || harnesses?.[0]?.id || "");
+    setNewSessionHarnessId(defaultHarnessId || genericHarness?.id || harnesses?.[0]?.id || "");
     // Pre-select the filtered agent if one is selected, otherwise leave empty (optional)
     setNewSessionAgentId(selectedAgentId || "");
     setNewSessionDialogOpen(true);

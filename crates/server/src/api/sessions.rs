@@ -3,7 +3,7 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::seed::GENERIC_HARNESS_ID;
+use crate::org_init::BASE_HARNESS_ID;
 use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
@@ -32,10 +32,10 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
-    /// Defaults to the Generic harness if omitted (backward compat with older SDKs).
-    #[serde(default = "default_harness_id")]
-    #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
-    pub harness_id: HarnessId,
+    /// If omitted, the org base harness is used. New orgs default that to Base.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
+    pub harness_id: Option<HarnessId>,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
@@ -65,11 +65,6 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
-}
-
-/// Default harness_id for sessions: uses the built-in Generic harness.
-fn default_harness_id() -> HarnessId {
-    HarnessId::from_uuid(GENERIC_HARNESS_ID)
 }
 
 /// Response from cancel turn endpoint
@@ -228,10 +223,15 @@ pub async fn create_session(
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
+    let harness_id = resolve_session_harness_id(&state.db, org.org_id, req.harness_id)
+        .await
+        .log_internal_error_json("resolve session harness fallback")?;
+    req.harness_id = Some(harness_id);
+
     // Validate harness exists and belongs to this org
     state
         .db
-        .get_harness(org.org_id, req.harness_id)
+        .get_harness(org.org_id, harness_id)
         .await
         .log_internal_error_json("resolve harness")?
         .ok_or_not_found_json("Harness")?;
@@ -270,7 +270,7 @@ pub async fn create_session(
         .session_service
         .create(
             &caller,
-            req.harness_id.uuid(),
+            harness_id.uuid(),
             agent_internal_id,
             agent_public_id,
             req,
@@ -279,6 +279,28 @@ pub async fn create_session(
         .map_policy_or_internal("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
+}
+
+async fn resolve_session_harness_id(
+    db: &StorageBackend,
+    org_id: i64,
+    requested_harness_id: Option<HarnessId>,
+) -> anyhow::Result<HarnessId> {
+    if let Some(harness_id) = requested_harness_id {
+        return Ok(harness_id);
+    }
+
+    let settings = db.get_organization_settings(org_id).await?;
+    if let Some(harness_id) = settings.and_then(|row| row.base_harness_id) {
+        return Ok(harness_id);
+    }
+
+    let harnesses = db.list_harnesses(org_id, Some("Base"), false).await?;
+    Ok(harnesses
+        .into_iter()
+        .find(|h| h.is_built_in && h.name == "Base")
+        .map(|h| h.id)
+        .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)))
 }
 
 /// POST /v1/sessions/chat - Get or create global chat session
@@ -733,16 +755,16 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
 
     const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
     const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
 
     #[test]
     fn test_create_session_request_minimal() {
-        // Test with only required harness_id
         let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(req.harness_id.to_string(), TEST_HARNESS_ID);
+        assert_eq!(req.harness_id.unwrap().to_string(), TEST_HARNESS_ID);
         assert_eq!(req.agent_id, None);
         assert_eq!(req.title, None);
         assert_eq!(req.locale, None);
@@ -752,12 +774,10 @@ mod tests {
     }
 
     #[test]
-    fn test_create_session_request_missing_harness_id_defaults_to_generic() {
-        // harness_id defaults to Generic seed harness for backward compat with older SDKs
+    fn test_create_session_request_missing_harness_id_is_none() {
         let json = r#"{}"#;
         let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
-        let expected = HarnessId::from_uuid(crate::seed::GENERIC_HARNESS_ID);
-        assert_eq!(req.harness_id, expected);
+        assert_eq!(req.harness_id, None);
     }
 
     #[test]
@@ -852,5 +872,32 @@ mod tests {
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, None);
         assert_eq!(req.tags, Some(vec!["new-tag".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_defaults_to_base() {
+        let db = StorageBackend::in_memory();
+
+        let harness_id = resolve_session_harness_id(&db, 42, None).await.unwrap();
+        assert_eq!(harness_id.uuid(), BASE_HARNESS_ID);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_uses_org_base_harness() {
+        let db = StorageBackend::in_memory();
+        let base_harness_id: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+
+        db.patch_organization_settings(
+            42,
+            UpdateOrganizationSettings {
+                base_harness_id: Some(Some(base_harness_id)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let harness_id = resolve_session_harness_id(&db, 42, None).await.unwrap();
+        assert_eq!(harness_id, base_harness_id);
     }
 }

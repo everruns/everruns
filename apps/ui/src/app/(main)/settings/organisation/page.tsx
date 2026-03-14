@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/ui/copy-button";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import {
   Dialog,
   DialogContent,
@@ -20,42 +21,65 @@ import {
   useUpdateOrganization,
   useCreateOrganization,
 } from "@/hooks/use-organizations";
+import { useHarnesses } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
 import { Building2, Save, AlertCircle, Plus, Check } from "lucide-react";
 
 export default function OrganisationPage() {
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
+  const { data: harnesses = [] } = useHarnesses();
   const updateOrganization = useUpdateOrganization();
   const createOrganization = useCreateOrganization();
 
   const [name, setName] = useState("");
+  const [defaultHarnessId, setDefaultHarnessId] = useState("");
+  const [baseHarnessId, setBaseHarnessId] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
 
-  // Sync name from fetched organization data
+  const syncHasChanges = (nextName: string, nextDefaultHarnessId: string, nextBaseHarnessId: string) => {
+    setHasChanges(
+      nextName !== (organization?.name || "") ||
+        nextDefaultHarnessId !== (organization?.default_harness_id || "") ||
+        nextBaseHarnessId !== (organization?.base_harness_id || ""),
+    );
+  };
+
   useEffect(() => {
-    if (organization?.name) {
-      setName(organization.name);
-      setHasChanges(false);
+    if (!organization) {
+      return;
     }
-  }, [organization?.name]);
+
+    const genericHarnessId = harnesses.find((h) => h.name === "Generic")?.id || "";
+    const baseHarnessFallbackId = harnesses.find((h) => h.name === "Base")?.id || "";
+
+    setName(organization.name);
+    setDefaultHarnessId(organization.default_harness_id || genericHarnessId);
+    setBaseHarnessId(organization.base_harness_id || baseHarnessFallbackId);
+    setHasChanges(false);
+  }, [organization, harnesses]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setName(e.target.value);
-    setHasChanges(e.target.value !== organization?.name);
+    const nextName = e.target.value;
+    setName(nextName);
+    syncHasChanges(nextName, defaultHarnessId, baseHarnessId);
   };
 
   const handleSave = async () => {
-    if (!hasChanges || !name.trim()) return;
+    if (!hasChanges || !name.trim() || !defaultHarnessId || !baseHarnessId) return;
 
-    await updateOrganization.mutateAsync({ name: name.trim() });
+    await updateOrganization.mutateAsync({
+      name: name.trim(),
+      default_harness_id: defaultHarnessId,
+      base_harness_id: baseHarnessId,
+    });
     setHasChanges(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && hasChanges && name.trim()) {
+    if (e.key === "Enter" && hasChanges && name.trim() && defaultHarnessId && baseHarnessId) {
       handleSave();
     }
   };
@@ -123,37 +147,77 @@ export default function OrganisationPage() {
             </div>
 
             <div className="space-y-6 max-w-md">
-              {/* Organisation Name */}
               <div className="space-y-2">
                 <Label htmlFor="org-name">Organisation Name</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="org-name"
-                    value={name}
-                    onChange={handleNameChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Organisation name"
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={handleSave}
-                    disabled={!hasChanges || !name.trim() || updateOrganization.isPending}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    {updateOrganization.isPending ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-                {updateOrganization.isError && (
-                  <p className="text-sm text-destructive">
-                    Failed to update: {updateOrganization.error.message}
-                  </p>
-                )}
-                {updateOrganization.isSuccess && !hasChanges && (
-                  <p className="text-sm text-green-600">Saved successfully</p>
+                <Input
+                  id="org-name"
+                  value={name}
+                  onChange={handleNameChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Organisation name"
+                  className="flex-1"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="default-harness">Default Harness</Label>
+                <HarnessSelect
+                  value={defaultHarnessId}
+                  onValueChange={(value) => {
+                    setDefaultHarnessId(value);
+                    syncHasChanges(name, value, baseHarnessId);
+                  }}
+                  placeholder="Select default harness"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used as the normal starting harness in the UI. New orgs default this to Generic.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="base-harness">Base Harness</Label>
+                <HarnessSelect
+                  value={baseHarnessId}
+                  onValueChange={(value) => {
+                    setBaseHarnessId(value);
+                    syncHasChanges(name, defaultHarnessId, value);
+                  }}
+                  placeholder="Select base harness"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used only when a session starts without an explicit harness. New orgs default this
+                  to Base.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleSave}
+                  disabled={
+                    !hasChanges ||
+                    !name.trim() ||
+                    !defaultHarnessId ||
+                    !baseHarnessId ||
+                    updateOrganization.isPending
+                  }
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {updateOrganization.isPending ? "Saving..." : "Save"}
+                </Button>
+                {harnesses.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Harnesses will appear after org init.</p>
                 )}
               </div>
 
-              {/* Organisation ID */}
+              {updateOrganization.isError && (
+                <p className="text-sm text-destructive">
+                  Failed to update: {updateOrganization.error.message}
+                </p>
+              )}
+              {updateOrganization.isSuccess && !hasChanges && (
+                <p className="text-sm text-green-600">Saved successfully</p>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="org-id">Organisation ID</Label>
                 <div className="flex items-center gap-2">

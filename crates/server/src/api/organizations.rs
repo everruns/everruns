@@ -4,7 +4,7 @@
 // because they manage organizations themselves.
 
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
-use crate::storage::StorageBackend;
+use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
@@ -55,6 +55,14 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]
     pub name: Option<String>,
+    /// Default harness to preselect in the UI for new sessions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
+    pub default_harness_id: Option<everruns_core::HarnessId>,
+    /// Base harness to use when a session is started without an explicit harness_id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000601")]
+    pub base_harness_id: Option<everruns_core::HarnessId>,
 }
 
 /// Response for organization operations
@@ -64,21 +72,16 @@ pub struct OrganizationResponse {
     pub id: String,
     /// Display name
     pub name: String,
+    /// Default harness to preselect in the UI.
+    #[schema(value_type = Option<String>)]
+    pub default_harness_id: Option<everruns_core::HarnessId>,
+    /// Base harness used when session creation omits harness_id.
+    #[schema(value_type = Option<String>)]
+    pub base_harness_id: Option<everruns_core::HarnessId>,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<Organization> for OrganizationResponse {
-    fn from(org: Organization) -> Self {
-        Self {
-            id: org.public_id,
-            name: org.name,
-            created_at: org.created_at,
-            updated_at: org.updated_at,
-        }
-    }
 }
 
 /// Build organization routes
@@ -125,6 +128,8 @@ pub async fn list_organizations(
         .map(|m| OrganizationResponse {
             id: m.public_id.clone(),
             name: m.name.clone(),
+            default_harness_id: None,
+            base_harness_id: None,
             // These timestamps are not available in OrgMembership, use placeholder
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -203,14 +208,8 @@ pub async fn create_organization(
         );
     }
 
-    let org = Organization {
-        public_id: row.public_id,
-        name: row.name,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    };
-
-    Ok((StatusCode::CREATED, Json(OrganizationResponse::from(org))))
+    let response = build_organization_response(&state.db, row.org_id, row).await?;
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// GET /v1/orgs/:org - Get organization details
@@ -253,14 +252,9 @@ pub async fn get_organization(
         .log_internal_error_json("get organization")?
         .ok_or_not_found_json("Organization")?;
 
-    let org = Organization {
-        public_id: row.public_id,
-        name: row.name,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    };
-
-    Ok(Json(OrganizationResponse::from(org)))
+    Ok(Json(
+        build_organization_response(&state.db, row.org_id, row).await?,
+    ))
 }
 
 /// PATCH /v1/orgs/:org - Update organization
@@ -333,8 +327,31 @@ pub async fn update_organization(
         ));
     }
 
+    let UpdateOrganizationRequest {
+        name,
+        default_harness_id,
+        base_harness_id,
+    } = req;
+
+    if let Some(default_harness_id) = default_harness_id {
+        state
+            .db
+            .get_harness(org_row.org_id, default_harness_id)
+            .await
+            .log_internal_error_json("resolve default harness")?
+            .ok_or_not_found_json("Harness")?;
+    }
+    if let Some(base_harness_id) = base_harness_id {
+        state
+            .db
+            .get_harness(org_row.org_id, base_harness_id)
+            .await
+            .log_internal_error_json("resolve base harness")?
+            .ok_or_not_found_json("Harness")?;
+    }
+
     // Update organization
-    let input = UpdateOrganization { name: req.name };
+    let input = UpdateOrganization { name };
 
     let row = state
         .db
@@ -343,6 +360,36 @@ pub async fn update_organization(
         .log_internal_error_json("update organization")?
         .ok_or_not_found_json("Organization")?;
 
+    if default_harness_id.is_some() || base_harness_id.is_some() {
+        state
+            .db
+            .patch_organization_settings(
+                org_row.org_id,
+                UpdateOrganizationSettings {
+                    default_harness_id: default_harness_id.map(Some),
+                    base_harness_id: base_harness_id.map(Some),
+                    ..Default::default()
+                },
+            )
+            .await
+            .log_internal_error_json("update organization settings")?;
+    }
+
+    Ok(Json(
+        build_organization_response(&state.db, row.org_id, row).await?,
+    ))
+}
+
+async fn build_organization_response(
+    db: &StorageBackend,
+    org_id: i64,
+    row: crate::storage::OrganizationRow,
+) -> Result<OrganizationResponse, (StatusCode, Json<ErrorResponse>)> {
+    let settings = db
+        .get_organization_settings(org_id)
+        .await
+        .log_internal_error_json("get organization settings")?;
+
     let org = Organization {
         public_id: row.public_id,
         name: row.name,
@@ -350,7 +397,14 @@ pub async fn update_organization(
         updated_at: row.updated_at,
     };
 
-    Ok(Json(OrganizationResponse::from(org)))
+    Ok(OrganizationResponse {
+        id: org.public_id,
+        name: org.name,
+        default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
+        base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
+        created_at: org.created_at,
+        updated_at: org.updated_at,
+    })
 }
 
 // ============================================================================
@@ -651,17 +705,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_organization_response_from() {
-        let org = Organization {
-            public_id: "org_00000000000000000000000000000001".to_string(),
+    fn test_organization_response_fields() {
+        let response = OrganizationResponse {
+            id: "org_00000000000000000000000000000001".to_string(),
             name: "Test Org".to_string(),
+            default_harness_id: Some("harness_01933b5a000070008000000000000602".parse().unwrap()),
+            base_harness_id: Some("harness_01933b5a000070008000000000000601".parse().unwrap()),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
 
-        let response = OrganizationResponse::from(org.clone());
-        assert_eq!(response.id, org.public_id);
-        assert_eq!(response.name, org.name);
+        assert_eq!(response.id, "org_00000000000000000000000000000001");
+        assert_eq!(response.name, "Test Org");
+        assert!(response.default_harness_id.is_some());
+        assert!(response.base_harness_id.is_some());
     }
 
     #[test]
@@ -683,9 +740,17 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
         assert!(req.name.is_none());
+        assert!(req.default_harness_id.is_none());
+        assert!(req.base_harness_id.is_none());
 
-        let json = r#"{"name": "New Name"}"#;
+        let json = r#"{
+            "name": "New Name",
+            "default_harness_id": "harness_01933b5a000070008000000000000602",
+            "base_harness_id": "harness_01933b5a000070008000000000000601"
+        }"#;
         let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.name.unwrap(), "New Name");
+        assert!(req.default_harness_id.is_some());
+        assert!(req.base_harness_id.is_some());
     }
 }

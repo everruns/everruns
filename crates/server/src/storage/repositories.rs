@@ -2351,7 +2351,7 @@ impl Database {
         org_id: i64,
     ) -> Result<Option<OrganizationSettingsRow>> {
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
-            "SELECT org_id, default_model_id, created_at, updated_at FROM organization_settings WHERE org_id = $1",
+            "SELECT org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at FROM organization_settings WHERE org_id = $1",
         )
         .bind(org_id)
         .fetch_optional(&self.pool)
@@ -2372,11 +2372,49 @@ impl Database {
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = EXCLUDED.default_model_id,
                 updated_at = NOW()
-            RETURNING org_id, default_model_id, created_at, updated_at
+            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at
             "#,
         )
         .bind(org_id)
         .bind(default_model_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn patch_organization_settings(
+        &self,
+        org_id: i64,
+        input: UpdateOrganizationSettings,
+    ) -> Result<OrganizationSettingsRow> {
+        let row = sqlx::query_as::<_, OrganizationSettingsRow>(
+            r#"
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id)
+            VALUES ($1, $2, $4, $6)
+            ON CONFLICT (org_id) DO UPDATE SET
+                default_model_id = CASE
+                    WHEN $3 THEN $2
+                    ELSE organization_settings.default_model_id
+                END,
+                default_harness_id = CASE
+                    WHEN $5 THEN $4
+                    ELSE organization_settings.default_harness_id
+                END,
+                base_harness_id = CASE
+                    WHEN $7 THEN $6
+                    ELSE organization_settings.base_harness_id
+                END,
+                updated_at = NOW()
+            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(input.default_model_id.flatten().map(|id| id.uuid()))
+        .bind(input.default_model_id.is_some())
+        .bind(input.default_harness_id.flatten().map(|id| id.uuid()))
+        .bind(input.default_harness_id.is_some())
+        .bind(input.base_harness_id.flatten().map(|id| id.uuid()))
+        .bind(input.base_harness_id.is_some())
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

@@ -686,6 +686,14 @@ impl StorageBackend {
         dispatch!(self, upsert_organization_settings, org_id, default_model_id)
     }
 
+    pub async fn patch_organization_settings(
+        &self,
+        org_id: i64,
+        input: UpdateOrganizationSettings,
+    ) -> Result<OrganizationSettingsRow> {
+        dispatch!(self, patch_organization_settings, org_id, input)
+    }
+
     pub async fn create_llm_model(
         &self,
         org_id: i64,

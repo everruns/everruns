@@ -1793,10 +1793,44 @@ impl InMemoryDatabase {
             .or_insert_with(|| OrganizationSettingsRow {
                 org_id,
                 default_model_id: None,
+                default_harness_id: None,
+                base_harness_id: None,
                 created_at: now,
                 updated_at: now,
             });
         row.default_model_id = default_model_id.map(ModelId::from_uuid);
+        row.updated_at = now;
+        Ok(row.clone())
+    }
+
+    pub async fn patch_organization_settings(
+        &self,
+        org_id: i64,
+        input: UpdateOrganizationSettings,
+    ) -> Result<OrganizationSettingsRow> {
+        let now = Self::now();
+        let mut settings = self.org_settings.write();
+        let row = settings
+            .entry(org_id)
+            .or_insert_with(|| OrganizationSettingsRow {
+                org_id,
+                default_model_id: None,
+                default_harness_id: None,
+                base_harness_id: None,
+                created_at: now,
+                updated_at: now,
+            });
+
+        if let Some(default_model_id) = input.default_model_id {
+            row.default_model_id = default_model_id;
+        }
+        if let Some(default_harness_id) = input.default_harness_id {
+            row.default_harness_id = default_harness_id;
+        }
+        if let Some(base_harness_id) = input.base_harness_id {
+            row.base_harness_id = base_harness_id;
+        }
+
         row.updated_at = now;
         Ok(row.clone())
     }

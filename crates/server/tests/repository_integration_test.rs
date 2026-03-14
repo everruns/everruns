@@ -17,11 +17,12 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use everruns_server::api::common::Pagination;
+use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateImageRow, CreateLlmModelRow,
     CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow, CreateSessionFileRow,
     CreateSessionRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel, UpdateLlmProvider,
-    UpdateOrganization, UpdateSession, UpdateSessionFile,
+    UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -1018,6 +1019,53 @@ async fn test_organization_crud() {
         .await
         .expect("Failed to delete organization");
     assert!(deleted);
+}
+
+#[tokio::test]
+async fn test_organization_settings_harness_roundtrip() {
+    let backend = create_test_backend().await;
+
+    let public_id = format!("org_{}", Uuid::now_v7().simple());
+    let org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id,
+            name: format!("Test Org {}", Uuid::now_v7()),
+            created_by: None,
+        })
+        .await
+        .expect("Failed to create organization");
+
+    org_init::initialize_org_harnesses(&backend, org.org_id)
+        .await
+        .expect("Failed to initialize org harnesses");
+
+    let harnesses = backend
+        .list_harnesses(org.org_id, None, false)
+        .await
+        .expect("Failed to list harnesses");
+    let generic_id = harnesses.iter().find(|h| h.name == "Generic").unwrap().id;
+    let base_id = harnesses.iter().find(|h| h.name == "Base").unwrap().id;
+
+    backend
+        .patch_organization_settings(
+            org.org_id,
+            UpdateOrganizationSettings {
+                default_harness_id: Some(Some(generic_id)),
+                base_harness_id: Some(Some(base_id)),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to patch organization settings");
+
+    let settings = backend
+        .get_organization_settings(org.org_id)
+        .await
+        .expect("Failed to get organization settings")
+        .expect("Organization settings not found");
+
+    assert_eq!(settings.default_harness_id, Some(generic_id));
+    assert_eq!(settings.base_harness_id, Some(base_id));
 }
 
 // ============================================

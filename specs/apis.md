@@ -34,6 +34,21 @@ All endpoints are prefixed with `/v1/`.
 
 See [authentication.md](authentication.md) for full authentication specification.
 
+### Organizations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/orgs` | List organizations for current user |
+| POST | `/v1/orgs` | Create organization |
+| GET | `/v1/orgs/{org}` | Get organization details |
+| PATCH | `/v1/orgs/{org}` | Update organization name and harness defaults |
+
+Organization details include two org-scoped harness settings:
+- `default_harness_id` - the harness the UI should preselect for normal new-session flows
+- `base_harness_id` - the harness used when `POST /v1/sessions` omits `harness_id`
+
+New organizations initialize these to the built-in `Generic` and `Base` harnesses respectively. Initialization fills missing values but does not overwrite user-selected values.
+
 ### Agents
 
 | Method | Path | Description |
@@ -138,6 +153,7 @@ See `specs/localization.md` for locale/timezone precedence and execution-context
 ```json
 POST /v1/sessions
 {
+  "harness_id": "harness_01234567-...",
   "agent_id": "agent_01234567-...",
   "title": "Optional title",
   "locale": "uk-UA",
@@ -150,7 +166,9 @@ POST /v1/sessions
 }
 ```
 
-The `agent_id` field is required and specifies which agent will work in this session.
+The `harness_id` field is optional. When omitted, the server uses the organization's `base_harness_id`. New organizations default that setting to the built-in `Base` harness.
+
+The `agent_id` field is optional and specifies which agent will work in this session when present.
 
 The optional `locale` field sets the session's default locale for agent responses and regional formatting. It is persisted on the session and reused across worker turns.
 The session API should also support an optional `timezone` field with an IANA timezone value. This is the durable fallback for unattended execution and scheduled/background turns.

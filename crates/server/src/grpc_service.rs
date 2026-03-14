@@ -3596,7 +3596,7 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         let create_req = crate::api::sessions::CreateSessionRequest {
-            harness_id: everruns_core::HarnessId::from_uuid(harness_id),
+            harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             agent_id: agent_public_id,
             title: req.title,
             locale: req.locale,

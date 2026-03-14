@@ -28,6 +28,7 @@ import { AgentSelect } from "@/components/agent/agent-select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { useOrganization } from "@/hooks/use-organizations";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const { data: sessionStats } = useSessionStats();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
 
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -51,7 +53,7 @@ export default function DashboardPage() {
   };
 
   const handleCreateSession = async () => {
-    const harnessId = harnesses?.[0]?.id;
+    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
     if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({

@@ -7,6 +7,7 @@
 // (additive behavior).
 
 use crate::api::common::Pagination;
+use crate::org_init::BASE_HARNESS_ID;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::storage::{
     StorageBackend,
@@ -611,7 +612,9 @@ impl SessionService {
         Session {
             id: row.id,
             organization_id: org_public_id.to_string(),
-            harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
+            harness_id: row
+                .harness_id
+                .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
             agent_id: row.agent_id,
             title: row.title,
             locale: row.locale,
@@ -736,7 +739,7 @@ mod tests {
                 Some(agent.internal_id),
                 Some(agent.public_id),
                 CreateSessionRequest {
-                    harness_id: harness.id,
+                    harness_id: Some(harness.id),
                     agent_id: Some(agent.public_id),
                     title: Some("Starter files".to_string()),
                     locale: None,
@@ -829,7 +832,7 @@ mod tests {
                 Some(agent.internal_id),
                 Some(agent.public_id),
                 CreateSessionRequest {
-                    harness_id: harness.id,
+                    harness_id: Some(harness.id),
                     agent_id: Some(agent.public_id),
                     title: Some("Archived harness".to_string()),
                     locale: None,
@@ -874,7 +877,7 @@ mod tests {
                 Some(agent.internal_id),
                 Some(agent.public_id),
                 CreateSessionRequest {
-                    harness_id: harness.id,
+                    harness_id: Some(harness.id),
                     agent_id: Some(agent.public_id),
                     title: Some("Archived agent".to_string()),
                     locale: None,
