@@ -138,13 +138,14 @@ impl SessionService {
         let mut session = Self::row_to_session(row, org_public_id);
 
         // Populate features before overriding agent_id (needs internal UUID)
-        self.populate_features(&mut session).await?;
+        self.populate_features(org_id, &mut session).await?;
 
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
         // Apply capability mounts (harness + agent + session capabilities)
         self.apply_capability_mounts(
+            org_id,
             harness_id.uuid(),
             agent_id.map(|a| a.uuid()),
             &req.capabilities,
@@ -168,6 +169,7 @@ impl SessionService {
     /// Collects mounts from harness + agent + session capabilities.
     async fn apply_capability_mounts(
         &self,
+        org_id: i64,
         harness_id: Uuid,
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
@@ -176,7 +178,7 @@ impl SessionService {
         let session_id = session_id.into();
 
         let capability_ids = self
-            .collect_session_capability_ids(harness_id, agent_id, session_capabilities)
+            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
 
         if capability_ids.is_empty() {
@@ -317,7 +319,7 @@ impl SessionService {
             Some(r) => {
                 let mut session = Self::row_to_session(r, &caller.org_public_id);
                 // Populate features before resolving agent_id (needs internal UUID)
-                self.populate_features(&mut session).await?;
+                self.populate_features(caller.org_id, &mut session).await?;
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 // Populate is_pinned if user context available
@@ -376,7 +378,7 @@ impl SessionService {
 
         // Populate features before resolving agent IDs (needs internal UUIDs)
         for session in &mut sessions {
-            self.populate_features(session).await?;
+            self.populate_features(org_id, session).await?;
         }
 
         // Resolve agent internal UUIDs to public IDs
@@ -485,7 +487,7 @@ impl SessionService {
         // Look for existing chat session
         if let Some(row) = self.db.find_session_by_tags(org_id, &tags).await? {
             let mut session = Self::row_to_session(row, org_public_id);
-            self.populate_features(&mut session).await?;
+            self.populate_features(caller.org_id, &mut session).await?;
             self.resolve_session_agent_id(org_id, &mut session).await?;
             return Ok(session);
         }
@@ -506,10 +508,10 @@ impl SessionService {
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
         let mut session = Self::row_to_session(row, org_public_id);
-        self.populate_features(&mut session).await?;
+        self.populate_features(org_id, &mut session).await?;
 
         // Apply capability mounts
-        self.apply_capability_mounts(harness_id, None, &[], session_id)
+        self.apply_capability_mounts(org_id, harness_id, None, &[], session_id)
             .await?;
 
         Ok(session)
@@ -554,17 +556,35 @@ impl SessionService {
     /// Deduplicates while preserving order: harness first, then agent, then session.
     async fn collect_session_capability_ids(
         &self,
+        org_id: i64,
         harness_id: Uuid,
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
     ) -> Result<Vec<String>> {
-        let harness_cap_rows = self.db.get_harness_capabilities(harness_id).await?;
-        let mut capability_ids: Vec<String> = harness_cap_rows
-            .iter()
-            .map(|r| r.capability_id.clone())
-            .collect();
+        let mut capability_ids = Vec::new();
 
-        if let Some(agent_id) = agent_id {
+        if self
+            .db
+            .get_harness(org_id, HarnessId::from_uuid(harness_id))
+            .await?
+            .is_some()
+        {
+            capability_ids.extend(
+                self.db
+                    .get_harness_capabilities(harness_id)
+                    .await?
+                    .into_iter()
+                    .map(|row| row.capability_id),
+            );
+        }
+
+        if let Some(agent_id) = agent_id
+            && self
+                .db
+                .get_agent(org_id, AgentId::from_uuid(agent_id))
+                .await?
+                .is_some()
+        {
             let agent_cap_rows = self.db.get_agent_capabilities(agent_id).await?;
             for r in &agent_cap_rows {
                 if !capability_ids.contains(&r.capability_id) {
@@ -588,12 +608,17 @@ impl SessionService {
     ///
     /// Must be called BEFORE `resolve_session_agent_id()` because the session's
     /// agent_id at that point is still the internal UUID needed for DB lookups.
-    async fn populate_features(&self, session: &mut Session) -> Result<()> {
+    async fn populate_features(&self, org_id: i64, session: &mut Session) -> Result<()> {
         let harness_id = session.harness_id.uuid();
         let agent_internal_id = session.agent_id.map(|a| a.uuid());
 
         let capability_ids = self
-            .collect_session_capability_ids(harness_id, agent_internal_id, &session.capabilities)
+            .collect_session_capability_ids(
+                org_id,
+                harness_id,
+                agent_internal_id,
+                &session.capabilities,
+            )
             .await?;
 
         session.features = compute_features(&capability_ids, &self.capability_registry);
@@ -1029,5 +1054,171 @@ mod tests {
 
         let not_found = err.downcast_ref::<ResourceNotFoundError>().unwrap();
         assert_eq!(not_found.resource(), "Model");
+    }
+
+    #[tokio::test]
+    async fn get_skips_foreign_harness_and_agent_capability_features() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let agent_service = AgentService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+
+        let other_harness = harness_service
+            .create(
+                &Caller::internal(other_org_id),
+                CreateHarnessRequest {
+                    name: "Other Harness".to_string(),
+                    description: None,
+                    system_prompt: "Other".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let other_agent = agent_service
+            .create(
+                &Caller::internal(other_org_id),
+                None,
+                CreateAgentRequest {
+                    id: None,
+                    name: "Other Agent".to_string(),
+                    description: None,
+                    system_prompt: "Other".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+                    initial_files: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let session_row = db
+            .create_session(CreateSessionRow {
+                org_id: caller.org_id,
+                harness_id: Some(other_harness.id),
+                agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
+                title: Some("Corrupt Session".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::to_value(vec![AgentCapabilityConfig::new(
+                    "session_sql_database",
+                )])
+                .unwrap(),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        let session = session_service
+            .get(&caller, session_row.id.uuid(), None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            session.features.contains(&"sql_database".to_string()),
+            "session capability should still apply: {:?}",
+            session.features
+        );
+        assert!(
+            !session.features.contains(&"file_system".to_string()),
+            "foreign harness capability should not contribute features: {:?}",
+            session.features
+        );
+        assert!(
+            !session.features.contains(&"schedules".to_string()),
+            "foreign agent capability should not contribute features: {:?}",
+            session.features
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let agent_service = AgentService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let file_service = SessionFileService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+
+        let other_harness = harness_service
+            .create(
+                &Caller::internal(other_org_id),
+                CreateHarnessRequest {
+                    name: "Other Harness".to_string(),
+                    description: None,
+                    system_prompt: "Other".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let other_agent = agent_service
+            .create(
+                &Caller::internal(other_org_id),
+                None,
+                CreateAgentRequest {
+                    id: None,
+                    name: "Other Agent".to_string(),
+                    description: None,
+                    system_prompt: "Other".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+                    initial_files: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let session_row = db
+            .create_session(CreateSessionRow {
+                org_id: caller.org_id,
+                harness_id: Some(HarnessId::from_uuid(BASE_HARNESS_ID)),
+                agent_id: None,
+                title: Some("Mount Test".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        session_service
+            .apply_capability_mounts(
+                caller.org_id,
+                other_harness.id.uuid(),
+                Some(other_agent.internal_id),
+                &[],
+                session_row.id.uuid(),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            file_service
+                .read_file(session_row.id.uuid(), "/samples/users.json")
+                .await
+                .unwrap()
+                .is_none(),
+            "foreign harness/agent capabilities should not mount files"
+        );
     }
 }
