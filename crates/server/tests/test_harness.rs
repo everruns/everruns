@@ -26,7 +26,7 @@ use axum::{
 use http_body_util::BodyExt;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 
 use everruns_durable::{
@@ -87,9 +87,11 @@ impl TestServer {
             TestMode::InMemory => {
                 let db = Arc::new(StorageBackend::in_memory());
                 let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-                // For in-memory mode, we still need a pool for the return type
-                // but we won't use it - create a dummy connection
-                let pool = create_test_pool().await;
+                // In-memory tests do not use PostgreSQL; keep a lazy pool only
+                // to satisfy the test harness return type.
+                let pool = PgPoolOptions::new()
+                    .connect_lazy(&get_database_url())
+                    .expect("Failed to create lazy PostgreSQL pool");
                 (
                     db,
                     pool,

@@ -4,6 +4,7 @@
 // Agent creation events are not yet implemented but would be handled
 // by event listeners rather than direct spans.
 
+use crate::errors::ResourceNotFoundError;
 use crate::storage::{
     AgentRow, StorageBackend,
     models::{CreateAgentRow, UpdateAgent},
@@ -63,6 +64,9 @@ impl AgentService {
     ) -> Result<Agent> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        let default_model_id = self
+            .validate_default_model_id(caller.org_id, req.default_model_id)
+            .await?;
 
         // When no client_id, generate internal UUID and derive public_id from it.
         // This keeps public_id == AgentId::from_uuid(internal_id), so session FKs
@@ -74,7 +78,7 @@ impl AgentService {
                 name: req.name.clone(),
                 description: req.description.clone(),
                 system_prompt: req.system_prompt.clone(),
-                default_model_id: req.default_model_id,
+                default_model_id,
                 tags: req.tags.clone(),
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -90,7 +94,7 @@ impl AgentService {
                 name: req.name.clone(),
                 description: req.description.clone(),
                 system_prompt: req.system_prompt.clone(),
-                default_model_id: req.default_model_id,
+                default_model_id,
                 tags: req.tags.clone(),
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -207,12 +211,15 @@ impl AgentService {
             )),
             None => None,
         };
+        let default_model_id = self
+            .validate_default_model_id(caller.org_id, req.default_model_id)
+            .await?;
 
         let input = UpdateAgent {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id,
+            default_model_id,
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
             initial_files: req
@@ -353,6 +360,23 @@ impl AgentService {
             .collect())
     }
 
+    async fn validate_default_model_id(
+        &self,
+        org_id: i64,
+        default_model_id: Option<everruns_core::ModelId>,
+    ) -> Result<Option<everruns_core::ModelId>> {
+        let Some(model_id) = default_model_id else {
+            return Ok(None);
+        };
+
+        self.db
+            .get_llm_model(org_id, model_id.uuid())
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
+
+        Ok(Some(model_id))
+    }
+
     fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
@@ -397,5 +421,137 @@ impl AgentService {
             updated_at: row.updated_at,
             usage,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow};
+    use everruns_core::DEFAULT_ORG_ID;
+
+    fn build_create_request(
+        default_model_id: Option<everruns_core::ModelId>,
+    ) -> CreateAgentRequest {
+        CreateAgentRequest {
+            id: None,
+            name: "Test Agent".to_string(),
+            description: None,
+            system_prompt: "Test".to_string(),
+            default_model_id,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+        }
+    }
+
+    fn build_update_request(
+        default_model_id: Option<everruns_core::ModelId>,
+    ) -> UpdateAgentRequest {
+        UpdateAgentRequest {
+            name: None,
+            description: None,
+            system_prompt: None,
+            default_model_id,
+            tags: None,
+            capabilities: None,
+            initial_files: None,
+            status: None,
+            tools: None,
+        }
+    }
+
+    async fn create_second_org(db: &StorageBackend) -> i64 {
+        db.create_organization_with_id(
+            2,
+            CreateOrganizationRow {
+                public_id: "org_2".to_string(),
+                name: "Org 2".to_string(),
+                created_by: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .org_id
+    }
+
+    async fn create_model(
+        db: &StorageBackend,
+        org_id: i64,
+        model_id: &str,
+    ) -> everruns_core::ModelId {
+        let provider = db
+            .create_llm_provider(
+                org_id,
+                CreateLlmProviderRow {
+                    name: format!("Provider {org_id}"),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.create_llm_model(
+            org_id,
+            CreateLlmModelRow {
+                provider_id: provider.id,
+                model_id: model_id.to_string(),
+                display_name: model_id.to_string(),
+                capabilities: vec![],
+                installed: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn create_rejects_default_model_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+        let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
+
+        let err = service
+            .create(&caller, None, build_create_request(Some(other_model_id)))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Model not found");
+    }
+
+    #[tokio::test]
+    async fn update_rejects_default_model_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+        let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
+
+        let agent = service
+            .create(&caller, None, build_create_request(None))
+            .await
+            .unwrap();
+
+        let err = service
+            .update(
+                &caller,
+                &agent.public_id.to_string(),
+                build_update_request(Some(other_model_id)),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Model not found");
     }
 }

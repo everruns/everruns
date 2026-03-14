@@ -2,6 +2,7 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -314,6 +315,9 @@ pub async fn create_agent(
             let msg = e.to_string();
             if msg.contains("duplicate key") || msg.contains("already exists") {
                 return Err(ErrorResponse::conflict("Agent with this ID already exists"));
+            }
+            if let Some(not_found) = e.downcast_ref::<ResourceNotFoundError>() {
+                return Err(ErrorResponse::not_found(not_found.resource()));
             }
             tracing::error!("Failed to create agent: {}", msg);
             return Err(ErrorResponse::internal_error());
