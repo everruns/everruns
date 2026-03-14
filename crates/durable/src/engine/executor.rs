@@ -234,10 +234,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         // Get workflow info including type and status
         let workflow_info = self.store.get_workflow_info(workflow_id).await?;
 
-        if matches!(
-            workflow_info.status,
-            WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled
-        ) {
+        if workflow_info.status.is_terminal() {
             debug!(%workflow_id, status = ?workflow_info.status, "workflow already in terminal state");
             return Ok(ProcessResult {
                 completed: true,
@@ -371,10 +368,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         // Verify workflow exists
         let status = self.store.get_workflow_status(workflow_id).await?;
 
-        if matches!(
-            status,
-            WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled
-        ) {
+        if status.is_terminal() {
             warn!(%workflow_id, ?status, "cannot send signal to completed workflow");
             return Err(ExecutorError::WorkflowCompleted(workflow_id));
         }
@@ -476,6 +470,60 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         self.process_workflow(workflow_id).await
     }
 
+    /// Continue a workflow as a new workflow (history rollover).
+    ///
+    /// Snapshots the current workflow state, creates a new workflow from it,
+    /// and marks the old workflow as `ContinuedAsNew`. The new workflow starts
+    /// with a fresh event log but carries forward the serialized state.
+    ///
+    /// Returns the new workflow ID.
+    #[instrument(skip(self))]
+    pub async fn continue_as_new(&self, workflow_id: Uuid) -> Result<Uuid, ExecutorError> {
+        let workflow_info = self.store.get_workflow_info(workflow_id).await?;
+
+        if workflow_info.status.is_terminal() {
+            return Err(ExecutorError::WorkflowCompleted(workflow_id));
+        }
+
+        // Load and replay to get current state
+        let (workflow, events, snapshot_seq) = self
+            .load_workflow_state(workflow_id, &workflow_info)
+            .await?;
+
+        // Replay events to rebuild state
+        let mut workflow = workflow;
+        for (_seq, event) in &events {
+            self.replay_event(&mut *workflow, event)?;
+        }
+
+        // Serialize current state — required for continue-as-new
+        let snapshot_data = workflow.serialize_state().ok_or_else(|| {
+            ExecutorError::ReplayError(
+                "workflow does not support snapshots, cannot continue-as-new".to_string(),
+            )
+        })?;
+
+        let new_workflow_id = self
+            .store
+            .continue_as_new(
+                workflow_id,
+                &workflow_info.workflow_type,
+                workflow_info.input.clone(),
+                snapshot_data,
+            )
+            .await?;
+
+        info!(
+            %workflow_id,
+            %new_workflow_id,
+            snapshot_seq,
+            events_replayed = events.len(),
+            "continued workflow as new"
+        );
+
+        Ok(new_workflow_id)
+    }
+
     // =========================================================================
     // Internal Methods
     // =========================================================================
@@ -499,19 +547,35 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                 workflow_info.input.clone(),
                 &snap.snapshot_data,
             ) {
-                // Load only events after the snapshot
+                // Count events after snapshot BEFORE loading them into memory
+                let event_count = self
+                    .store
+                    .count_events_after(workflow_id, snap.sequence_num)
+                    .await?;
+
+                if event_count > self.config.max_events_per_workflow {
+                    // Delete the stale snapshot so future attempts fall through
+                    // to full replay (which will also fail with TooManyEvents)
+                    warn!(
+                        %workflow_id,
+                        snapshot_seq = snap.sequence_num,
+                        event_count,
+                        max = self.config.max_events_per_workflow,
+                        "stale snapshot: too many events after snapshot, deleting"
+                    );
+                    let _ = self.store.delete_snapshots(workflow_id).await;
+                    return Err(ExecutorError::TooManyEvents(
+                        workflow_id,
+                        event_count,
+                        self.config.max_events_per_workflow,
+                    ));
+                }
+
+                // Now safe to load events into memory
                 let events = self
                     .store
                     .load_events_after(workflow_id, snap.sequence_num)
                     .await?;
-
-                if events.len() > self.config.max_events_per_workflow {
-                    return Err(ExecutorError::TooManyEvents(
-                        workflow_id,
-                        events.len(),
-                        self.config.max_events_per_workflow,
-                    ));
-                }
 
                 debug!(
                     %workflow_id,
@@ -1897,6 +1961,235 @@ mod tests {
             all_events.len() > 20,
             "should have many events (got {})",
             all_events.len()
+        );
+    }
+
+    // =================================================================
+    // Snapshot path pre-load count check + stale snapshot deletion
+    // =================================================================
+
+    #[tokio::test]
+    async fn test_snapshot_path_rejects_before_loading_events() {
+        // max_events = 2, snapshot at seq 1 with 3 events after it (indices 2,3,4)
+        let executor = test_executor(2, 0);
+        let workflow_id = Uuid::now_v7();
+
+        executor
+            .store()
+            .create_workflow(
+                workflow_id,
+                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
+                serde_json::json!({ "start": 0, "target": 10 }),
+                None,
+            )
+            .await
+            .unwrap();
+        executor
+            .store()
+            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+        executor
+            .store()
+            .append_events(
+                workflow_id,
+                0,
+                vec![
+                    WorkflowEvent::WorkflowStarted {
+                        input: serde_json::json!({ "start": 0, "target": 10 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-0".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 0 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                    WorkflowEvent::ActivityCompleted {
+                        activity_id: "increment-0".into(),
+                        result: serde_json::json!({ "value": 1 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-1".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 1 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                    WorkflowEvent::ActivityCompleted {
+                        activity_id: "increment-1".into(),
+                        result: serde_json::json!({ "value": 2 }),
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+        // Snapshot at seq 1 (very stale — 3 events after it)
+        executor
+            .store()
+            .save_snapshot(
+                workflow_id,
+                1,
+                serde_json::to_vec(&SnapCounterState {
+                    current: 0,
+                    target: 10,
+                    completed: false,
+                    failed: false,
+                    error_message: None,
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let result = executor.process_workflow(workflow_id).await;
+
+        // Should reject with TooManyEvents (3 events after snapshot > max 2)
+        assert!(
+            matches!(
+                &result,
+                Err(ExecutorError::TooManyEvents(id, 3, 2)) if *id == workflow_id
+            ),
+            "expected TooManyEvents(_, 3, 2), got: {:?}",
+            result
+        );
+
+        // Stale snapshot should have been deleted
+        let snapshot = executor
+            .store()
+            .load_latest_snapshot(workflow_id)
+            .await
+            .unwrap();
+        assert!(
+            snapshot.is_none(),
+            "stale snapshot should be deleted on rejection"
+        );
+    }
+
+    // =================================================================
+    // Continue-as-new tests
+    // =================================================================
+
+    #[tokio::test]
+    async fn test_continue_as_new_roundtrip() {
+        let store = InMemoryWorkflowEventStore::new();
+        let executor = snap_executor(store, 3);
+
+        let input = CounterInput {
+            start: 0,
+            target: 10,
+        };
+        let workflow_id = executor
+            .start_workflow::<SnapCounterWorkflow>(input, None)
+            .await
+            .unwrap();
+
+        // Advance workflow to value 5
+        for i in 0..5 {
+            executor
+                .on_activity_completed(
+                    workflow_id,
+                    &format!("increment-{}", i),
+                    serde_json::json!({ "value": i + 1 }),
+                )
+                .await
+                .unwrap();
+        }
+
+        // Continue as new
+        let new_workflow_id = executor.continue_as_new(workflow_id).await.unwrap();
+
+        // Old workflow should be terminal with ContinuedAsNew status
+        let old_info = executor
+            .store()
+            .get_workflow_info(workflow_id)
+            .await
+            .unwrap();
+        assert_eq!(old_info.status, WorkflowStatus::ContinuedAsNew);
+        assert_eq!(old_info.continued_as_new_id, Some(new_workflow_id));
+        assert!(old_info.status.is_terminal());
+
+        // New workflow should be running
+        let new_info = executor
+            .store()
+            .get_workflow_info(new_workflow_id)
+            .await
+            .unwrap();
+        assert_eq!(new_info.status, WorkflowStatus::Running);
+
+        // New workflow should have a snapshot
+        let snapshot = executor
+            .store()
+            .load_latest_snapshot(new_workflow_id)
+            .await
+            .unwrap();
+        assert!(snapshot.is_some(), "new workflow should have a snapshot");
+
+        // New workflow should be processable — continue from value 5 to 10
+        for i in 5..10 {
+            executor
+                .on_activity_completed(
+                    new_workflow_id,
+                    &format!("increment-{}", i),
+                    serde_json::json!({ "value": i + 1 }),
+                )
+                .await
+                .unwrap();
+        }
+
+        let final_status = executor
+            .store()
+            .get_workflow_status(new_workflow_id)
+            .await
+            .unwrap();
+        assert_eq!(final_status, WorkflowStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn test_continue_as_new_rejects_non_snapshot_workflow() {
+        let store = InMemoryWorkflowEventStore::new();
+        let config = ExecutorConfig {
+            snapshot_interval: 0,
+            ..Default::default()
+        };
+        let mut executor = WorkflowExecutor::with_config(store, config);
+        executor.register::<CounterWorkflow>();
+
+        let input = CounterInput {
+            start: 0,
+            target: 10,
+        };
+        let workflow_id = executor
+            .start_workflow::<CounterWorkflow>(input, None)
+            .await
+            .unwrap();
+
+        let result = executor.continue_as_new(workflow_id).await;
+
+        assert!(
+            matches!(result, Err(ExecutorError::ReplayError(_))),
+            "should fail for workflows without snapshot support"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_continue_as_new_rejects_terminal_workflow() {
+        let store = InMemoryWorkflowEventStore::new();
+        let executor = snap_executor(store, 3);
+
+        let input = CounterInput {
+            start: 10,
+            target: 5,
+        };
+        // Workflow completes immediately (start >= target)
+        let workflow_id = executor
+            .start_workflow::<SnapCounterWorkflow>(input, None)
+            .await
+            .unwrap();
+
+        let result = executor.continue_as_new(workflow_id).await;
+
+        assert!(
+            matches!(result, Err(ExecutorError::WorkflowCompleted(_))),
+            "should reject continue-as-new on completed workflow"
         );
     }
 }

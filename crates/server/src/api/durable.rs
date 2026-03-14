@@ -896,6 +896,7 @@ pub async fn list_workflows(
         "completed" => Some(WorkflowStatus::Completed),
         "failed" => Some(WorkflowStatus::Failed),
         "cancelled" => Some(WorkflowStatus::Cancelled),
+        "continued_as_new" => Some(WorkflowStatus::ContinuedAsNew),
         _ => None,
     });
 
