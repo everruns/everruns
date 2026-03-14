@@ -922,35 +922,37 @@ impl DurableWorker {
         let result = reason_activity(grpc_client, input.org_id, reason_input).await;
 
         // Record circuit breaker outcome
+        // LLM failures are wrapped as Ok(ReasonResult { success: false }) by the atom,
+        // so we must check result.success to detect them for the circuit breaker.
         {
             let mut store_guard = store.lock().await;
-            match &result {
-                Ok(_) => {
-                    if let Err(e) = store_guard
-                        .record_circuit_breaker_success(circuit_key)
-                        .await
-                    {
-                        warn!(error = %e, "Failed to record circuit breaker success");
-                    }
-                }
-                Err(_) => {
-                    match store_guard
-                        .record_circuit_breaker_failure(circuit_key)
-                        .await
-                    {
-                        Ok(failure_result) => {
-                            if failure_result.circuit_opened {
-                                warn!(
-                                    circuit_key = circuit_key,
-                                    "Circuit breaker opened due to LLM failures"
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            warn!(error = %e, "Failed to record circuit breaker failure");
+            let is_llm_failure = match &result {
+                Ok(reason_result) => !reason_result.success,
+                Err(_) => true,
+            };
+
+            if is_llm_failure {
+                match store_guard
+                    .record_circuit_breaker_failure(circuit_key)
+                    .await
+                {
+                    Ok(failure_result) => {
+                        if failure_result.circuit_opened {
+                            warn!(
+                                circuit_key = circuit_key,
+                                "Circuit breaker opened due to LLM failures"
+                            );
                         }
                     }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to record circuit breaker failure");
+                    }
                 }
+            } else if let Err(e) = store_guard
+                .record_circuit_breaker_success(circuit_key)
+                .await
+            {
+                warn!(error = %e, "Failed to record circuit breaker success");
             }
         }
 
