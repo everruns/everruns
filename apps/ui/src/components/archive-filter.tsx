@@ -33,19 +33,14 @@ export function ArchiveFilter({
         <Filter className="size-3.5" />
         Filter
         {showArchived && (
-          <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">
-            1
-          </span>
+          <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">1</span>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-56">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Filters</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem
-              checked={showArchived}
-              onCheckedChange={onShowArchivedChange}
-            >
+            <DropdownMenuCheckboxItem checked={showArchived} onCheckedChange={onShowArchivedChange}>
               {label}
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
