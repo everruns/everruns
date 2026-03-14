@@ -542,7 +542,36 @@ impl DurableWorker {
 
                     // Report failure to store
                     let mut store = worker.store.lock().await;
-                    let _ = store.fail_task(task.id, &e.to_string()).await;
+                    match store.fail_task(task.id, &e.to_string()).await {
+                        Ok(will_retry) => {
+                            if !will_retry {
+                                // Task exhausted all retries (DLQ). Mark workflow as
+                                // completed so the session doesn't get stuck.
+                                if let Some(wf_id) = task.workflow_id {
+                                    warn!(
+                                        task_id = %task.id,
+                                        workflow_id = %wf_id,
+                                        "Task moved to DLQ, completing workflow with failure"
+                                    );
+                                    let _ = store
+                                        .update_workflow_status(
+                                            wf_id,
+                                            WorkflowStatus::Completed,
+                                            None,
+                                            Some(e.to_string()),
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
+                        Err(fail_err) => {
+                            error!(
+                                task_id = %task.id,
+                                error = %fail_err,
+                                "Failed to report task failure"
+                            );
+                        }
+                    }
                 }
 
                 // Release slot when done (success or failure)
@@ -922,39 +951,56 @@ impl DurableWorker {
         let result = reason_activity(grpc_client, input.org_id, reason_input).await;
 
         // Record circuit breaker outcome
+        // LLM failures are wrapped as Ok(ReasonResult { success: false }) by the atom,
+        // so we must check result.success to detect them for the circuit breaker.
         {
             let mut store_guard = store.lock().await;
-            match &result {
-                Ok(_) => {
-                    if let Err(e) = store_guard
-                        .record_circuit_breaker_success(circuit_key)
-                        .await
-                    {
-                        warn!(error = %e, "Failed to record circuit breaker success");
-                    }
-                }
-                Err(_) => {
-                    match store_guard
-                        .record_circuit_breaker_failure(circuit_key)
-                        .await
-                    {
-                        Ok(failure_result) => {
-                            if failure_result.circuit_opened {
-                                warn!(
-                                    circuit_key = circuit_key,
-                                    "Circuit breaker opened due to LLM failures"
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            warn!(error = %e, "Failed to record circuit breaker failure");
+            let is_llm_failure = match &result {
+                Ok(reason_result) => !reason_result.success,
+                Err(_) => true,
+            };
+
+            if is_llm_failure {
+                match store_guard
+                    .record_circuit_breaker_failure(circuit_key)
+                    .await
+                {
+                    Ok(failure_result) => {
+                        if failure_result.circuit_opened {
+                            warn!(
+                                circuit_key = circuit_key,
+                                "Circuit breaker opened due to LLM failures"
+                            );
                         }
                     }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to record circuit breaker failure");
+                    }
                 }
+            } else if let Err(e) = store_guard
+                .record_circuit_breaker_success(circuit_key)
+                .await
+            {
+                warn!(error = %e, "Failed to record circuit breaker success");
             }
         }
 
         let result = result?;
+
+        // Transient LLM failures (server errors, rate limits, timeouts) should be
+        // retried at the durable task level, not just swallowed as "normal" failures.
+        // The atom's internal retries handle short-lived blips; the durable engine's
+        // task retries (with longer exponential backoff) handle sustained outages.
+        if !result.success
+            && let Some(ref error_msg) = result.error
+            && everruns_core::llm_retry::is_transient_error_message(error_msg)
+        {
+            return Err(anyhow::anyhow!(
+                "Transient LLM error (will retry at task level): {}",
+                error_msg
+            ));
+        }
+
         Ok(serde_json::to_value(&result)?)
     }
 
