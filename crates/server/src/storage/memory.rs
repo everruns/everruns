@@ -1747,6 +1747,9 @@ impl InMemoryDatabase {
         if let Some(model) = models.get(&default_model_id)
             && model.org_id == org_id
             && let Some(provider) = providers.get(&model.provider_id)
+            && provider.org_id == org_id
+            && model.status == "active"
+            && provider.status == "active"
         {
             return Ok(Some(LlmModelWithProviderRow {
                 id: model.id,
@@ -1939,6 +1942,7 @@ impl InMemoryDatabase {
         if let Some(model) = models.get(&id)
             && model.org_id == org_id
             && let Some(provider) = providers.get(&model.provider_id)
+            && provider.org_id == org_id
         {
             return Ok(Some(LlmModelWithProviderRow {
                 id: model.id,
@@ -1984,10 +1988,11 @@ impl InMemoryDatabase {
 
         let mut result: Vec<_> = models
             .values()
-            .filter(|model| model.org_id == org_id)
+            .filter(|model| model.org_id == org_id && model.status == "active")
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
+                    .filter(|provider| provider.org_id == org_id && provider.status == "active")
                     .map(|provider| LlmModelWithProviderRow {
                         id: model.id,
                         org_id: model.org_id,
@@ -2074,7 +2079,10 @@ impl InMemoryDatabase {
         for model in models.values() {
             if model.model_id == model_id
                 && model.org_id == org_id
+                && model.status == "active"
                 && let Some(provider) = providers.get(&model.provider_id)
+                && provider.org_id == org_id
+                && provider.status == "active"
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,

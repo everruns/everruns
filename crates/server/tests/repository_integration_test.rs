@@ -1562,6 +1562,94 @@ async fn test_llm_model_org_isolation_postgres() {
 }
 
 #[tokio::test]
+async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgres() {
+    let backend = create_test_backend().await;
+    let org2 = create_test_org(&backend, "Cross-org Provider Isolation Org").await;
+
+    let foreign_provider = backend
+        .create_llm_provider(
+            org2,
+            CreateLlmProviderRow {
+                name: format!("Prov-{}", Uuid::now_v7()),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create foreign provider");
+
+    let corrupt_model = backend
+        .create_llm_model(
+            TEST_ORG_ID,
+            CreateLlmModelRow {
+                provider_id: foreign_provider.id,
+                model_id: format!("cross-org-model-{}", Uuid::now_v7()),
+                display_name: "Corrupt Model".to_string(),
+                capabilities: vec![],
+                installed: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .expect("create corrupt model");
+
+    backend
+        .upsert_organization_settings(TEST_ORG_ID, Some(corrupt_model.id.uuid()))
+        .await
+        .expect("set default model");
+
+    assert!(
+        backend
+            .get_llm_model(TEST_ORG_ID, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_llm_model_with_provider(TEST_ORG_ID, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .list_all_llm_models(TEST_ORG_ID)
+            .await
+            .unwrap()
+            .into_iter()
+            .all(|model| model.id != corrupt_model.id)
+    );
+    assert!(
+        backend
+            .get_llm_model_by_model_id(TEST_ORG_ID, &corrupt_model.model_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_default_llm_model(TEST_ORG_ID)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    backend
+        .delete_llm_model(TEST_ORG_ID, corrupt_model.id.uuid())
+        .await
+        .unwrap();
+    backend
+        .delete_llm_provider(org2, foreign_provider.id.uuid())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn test_image_org_isolation_postgres() {
     let backend = create_test_backend().await;
     let org2 = create_test_org(&backend, "Image Isolation Org").await;
