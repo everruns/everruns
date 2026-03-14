@@ -679,7 +679,8 @@ impl Database {
         org_id: i64,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<AgentRow>> {
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<AgentRow>, u32)> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
         let status_sql = if include_archived {
@@ -687,18 +688,40 @@ impl Database {
         } else {
             " AND status = 'active'"
         };
+        let param_idx = 1 + patterns.len();
+
+        // Count query
+        let count_sql = format!(
+            "SELECT COUNT(*) as count FROM agents WHERE org_id = $1{status_sql}{search_sql}"
+        );
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql).bind(org_id);
+        for pat in &patterns {
+            count_query = count_query.bind(pat);
+        }
+        let total: (i64,) = count_query.fetch_one(&self.pool).await?;
+
+        // Data query with pagination
+        let limit_idx = param_idx + 1;
+        let offset_idx = param_idx + 2;
         let sql = format!(
             r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
-                ORDER BY created_at DESC"#
+                ORDER BY created_at DESC
+                LIMIT ${limit_idx} OFFSET ${offset_idx}"#
         );
         let mut query = sqlx::query_as::<_, AgentRow>(&sql).bind(org_id);
         for pat in &patterns {
             query = query.bind(pat);
         }
-        Ok(query.fetch_all(&self.pool).await?)
+        let rows = query
+            .bind(pagination.limit as i64)
+            .bind(pagination.offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok((rows, total.0 as u32))
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {

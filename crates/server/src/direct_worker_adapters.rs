@@ -1446,9 +1446,10 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     // =========================================================================
 
     async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
-        let rows = self
+        let pagination = crate::api::common::Pagination::new(0, 1000);
+        let (rows, _total) = self
             .db
-            .list_agents(self.org_id, None, false)
+            .list_agents(self.org_id, None, false, pagination)
             .await
             .map_err(|e| store_error(format!("Failed to list agents: {e}")))?;
 

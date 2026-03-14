@@ -20,7 +20,9 @@ use everruns_core::{
     ResourceConfigResponse, ToolDefinition, evaluate_policies,
 };
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ErrorResponse, PaginatedResponse, Pagination,
+};
 use super::validation::{
     validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
 };
@@ -190,7 +192,18 @@ pub struct ListAgentsQuery {
     pub search: Option<String>,
     /// Include archived agents. Deleted agents never appear in lists.
     pub include_archived: Option<bool>,
+    /// Pagination offset (default 0).
+    #[param(minimum = 0, default = 0)]
+    pub offset: Option<u32>,
+    /// Maximum items to return (default 20, max 100).
+    #[param(minimum = 1, maximum = 100, default = 20)]
+    pub limit: Option<u32>,
 }
+
+/// Default limit for agent listing
+const DEFAULT_LIMIT: u32 = 20;
+/// Maximum allowed limit for agent listing
+const MAX_LIMIT: u32 = 100;
 
 /// App state for agents routes
 #[derive(Clone)]
@@ -336,7 +349,7 @@ pub async fn create_agent(
     path = "/v1/agents",
     params(ListAgentsQuery),
     responses(
-        (status = 200, description = "List of agents", body = ListResponse<Agent>),
+        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<Agent>),
         (status = 500, description = "Internal server error")
     ),
     tag = "agents"
@@ -345,19 +358,24 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> Result<Json<ListResponse<Agent>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<PaginatedResponse<Agent>>, (StatusCode, Json<ErrorResponse>)> {
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let pagination = Pagination::new(offset, limit);
+
     let caller = Caller::from(&org);
-    let agents = state
+    let (agents, total) = state
         .service
         .list(
             &caller,
             query.search.as_deref(),
             query.include_archived.unwrap_or(false),
+            pagination,
         )
         .await
         .map_policy_or_internal("list agents")?;
 
-    Ok(Json(ListResponse::new(agents)))
+    Ok(Json(PaginatedResponse::new(agents, total, offset, limit)))
 }
 
 /// GET /v1/agents/{agent_id} - Get agent by ID

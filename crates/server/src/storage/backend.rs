@@ -211,8 +211,16 @@ impl StorageBackend {
         org_id: i64,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<AgentRow>> {
-        dispatch!(self, list_agents, org_id, search, include_archived)
+        pagination: Pagination,
+    ) -> Result<(Vec<AgentRow>, u32)> {
+        dispatch!(
+            self,
+            list_agents,
+            org_id,
+            search,
+            include_archived,
+            pagination
+        )
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {

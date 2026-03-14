@@ -3430,9 +3430,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<PlatformListAgentsResponse>, Status> {
         let req = request.into_inner();
         let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let agents = self
+        let pagination = crate::api::common::Pagination::new(0, 1000);
+        let (agents, _total) = self
             .agent_service
-            .list(&internal_caller, None, false)
+            .list(&internal_caller, None, false, pagination)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
 

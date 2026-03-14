@@ -47,15 +47,46 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset (default 0).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 0,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return (default 20, max 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of agents",
+            "description": "Paginated list of agents",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_Agent"
+                  "$ref": "#/components/schemas/PaginatedResponse_Agent"
                 }
               }
             }
@@ -8483,6 +8514,151 @@
             "type": "string",
             "description": "Turn ID this output belongs to",
             "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "PaginatedResponse_Agent": {
+        "type": "object",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
+              "required": [
+                "id",
+                "name",
+                "system_prompt",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was archived."
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentCapabilityConfig"
+                  },
+                  "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was created."
+                },
+                "default_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
+                  "example": "model_01933b5a00007000800000000000001"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was deleted."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description of what the agent does."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
+                  "example": "agent_01933b5a000070008000000000000001"
+                },
+                "initial_files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitialFile"
+                  },
+                  "description": "Starter files copied into each new session for this agent."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name of the agent."
+                },
+                "status": {
+                  "$ref": "#/components/schemas/AgentStatus",
+                  "description": "Current lifecycle status of the agent."
+                },
+                "system_prompt": {
+                  "type": "string",
+                  "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for organizing and filtering agents."
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ToolDefinition"
+                  },
+                  "description": "Client-side tools registered for this agent.\nThese tools are executed by the client, not the server."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was last updated."
+                },
+                "usage": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TokenUsage",
+                      "description": "Cumulative token usage across all sessions for this agent."
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum number of items per page.",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Current offset (starting position).",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of items matching the query (across all pages).",
+            "minimum": 0
           }
         }
       },
