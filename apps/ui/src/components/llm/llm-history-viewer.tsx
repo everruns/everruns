@@ -1,8 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Bot,
   User,
@@ -12,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   ChevronRight,
+  ChevronDown,
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,6 +30,7 @@ import type {
   LlmGenerationData,
   LlmGenerationOutput,
   LlmGenerationMetadata,
+  ToolDefinitionSummary,
   TokenUsage,
 } from "@/lib/api/types";
 
@@ -335,6 +344,70 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
 }
 
 // ============================================
+// Tools Section
+// ============================================
+
+function ToolItem({ tool }: { tool: ToolDefinitionSummary }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 px-2 rounded hover:bg-muted/50 transition-colors">
+        {open ? (
+          <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+        )}
+        <Wrench className="w-3 h-3 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium">{tool.display_name || tool.name}</span>
+        {tool.display_name && tool.display_name !== tool.name && (
+          <span className="text-xs text-muted-foreground font-mono">({tool.name})</span>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="ml-8 pl-2 border-l py-1">
+          <p className="text-xs text-muted-foreground whitespace-pre-wrap">{tool.description}</p>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function ToolsSection({ tools }: { tools: ToolDefinitionSummary[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader className="pb-2">
+          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
+            {open ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            <CardTitle className="text-sm">
+              Tools ({tools.length})
+            </CardTitle>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="p-0">
+            <ScrollArea className="max-h-[40vh] px-4 pb-4">
+              <div className="space-y-0.5">
+                {tools.map((tool) => (
+                  <ToolItem key={tool.name} tool={tool} />
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+// ============================================
 // Main Component
 // ============================================
 
@@ -355,7 +428,7 @@ export function LlmHistoryViewer({
   timestamp,
   compact = false,
 }: LlmHistoryViewerProps) {
-  const { messages, output, metadata } = data;
+  const { messages, tools, output, metadata } = data;
 
   if (compact) {
     return (
@@ -400,8 +473,9 @@ export function LlmHistoryViewer({
               llm.generation
             </Badge>
             {eventId && (
-              <span className="text-xs text-muted-foreground font-mono">
+              <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
                 {eventId.slice(0, 8)}...
+                <CopyButton value={eventId} />
               </span>
             )}
           </div>
@@ -415,6 +489,9 @@ export function LlmHistoryViewer({
 
       {/* Metadata */}
       <MetadataSection metadata={metadata} />
+
+      {/* Tools */}
+      {tools && tools.length > 0 && <ToolsSection tools={tools} />}
 
       {/* Input Messages - capped height with internal scroll */}
       <Card>
