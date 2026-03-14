@@ -966,6 +966,24 @@ async fn test_llm_model_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+#[tokio::test]
+async fn test_create_llm_model_missing_provider_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post(
+            "/v1/llm-providers/provider_019563a3000070008000000000000001/models",
+            json!({
+                "model_id": "missing-provider-model",
+                "display_name": "Missing Provider Model",
+                "capabilities": ["chat"],
+                "installed": true
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
 // ============================================
 // Session Model Inheritance Tests
 // ============================================

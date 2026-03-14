@@ -132,6 +132,7 @@ pub struct UpdateLlmModelRequest {
     responses(
         (status = 201, description = "Model created", body = LlmModel),
         (status = 400, description = "Invalid provider ID"),
+        (status = 404, description = "Provider not found"),
         (status = 500, description = "Internal error")
     ),
     tag = "llm-models"
