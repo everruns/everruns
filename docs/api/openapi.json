@@ -8541,6 +8541,14 @@
                 "updated_at"
               ],
               "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was archived."
+                },
                 "capabilities": {
                   "type": "array",
                   "items": {
@@ -8560,6 +8568,14 @@
                   ],
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                   "example": "model_01933b5a00007000800000000000001"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was deleted."
                 },
                 "description": {
                   "type": [
