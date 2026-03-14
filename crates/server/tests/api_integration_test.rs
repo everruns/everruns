@@ -13,11 +13,14 @@
 mod test_harness;
 
 use axum::http::StatusCode;
+use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
+use everruns_core::typed_id::ScheduleId;
 use everruns_core::{Agent, Harness, LlmModel, Session, SessionFile};
+use everruns_server::storage::models::CreateSessionScheduleRow;
 
 /// Seed harness ID from seed.rs (BASE_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
 const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
@@ -463,6 +466,144 @@ async fn test_create_session_nonexistent_agent_returns_404() {
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+async fn create_schedule_test_session(server: &TestServer, title: &str) -> Session {
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "title": title
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json()
+}
+
+async fn seed_session_schedule(server: &TestServer, session: &Session) -> ScheduleId {
+    let scheduled_at = Utc::now() + Duration::hours(1);
+    let row = server
+        .db
+        .create_session_schedule(CreateSessionScheduleRow {
+            org_id: 1,
+            session_id: session.id,
+            description: "Mismatch test schedule".to_string(),
+            cron_expression: None,
+            scheduled_at: Some(scheduled_at),
+            timezone: "UTC".to_string(),
+            next_trigger_at: Some(scheduled_at),
+        })
+        .await
+        .unwrap();
+    row.id
+}
+
+// ============================================
+// Session Schedule API Tests
+// ============================================
+
+#[tokio::test]
+async fn test_get_session_schedule_wrong_parent_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let session = create_schedule_test_session(&server, "Schedule Owner").await;
+    let other_session = create_schedule_test_session(&server, "Wrong Parent").await;
+    let schedule_id = seed_session_schedule(&server, &session).await;
+
+    let body: Value = server
+        .get(&format!(
+            "/v1/sessions/{}/schedules/{}",
+            other_session.id, schedule_id
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+
+    assert_eq!(body["error"], "Schedule not found");
+}
+
+#[tokio::test]
+async fn test_update_session_schedule_wrong_parent_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let session = create_schedule_test_session(&server, "Schedule Owner").await;
+    let other_session = create_schedule_test_session(&server, "Wrong Parent").await;
+    let schedule_id = seed_session_schedule(&server, &session).await;
+
+    let body: Value = server
+        .patch(
+            &format!(
+                "/v1/sessions/{}/schedules/{}",
+                other_session.id, schedule_id
+            ),
+            json!({ "enabled": false }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(body["error"], "Schedule not found");
+
+    let persisted = server
+        .db
+        .get_session_schedule(1, schedule_id)
+        .await
+        .unwrap();
+    assert!(persisted.unwrap().enabled);
+}
+
+#[tokio::test]
+async fn test_delete_session_schedule_wrong_parent_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let session = create_schedule_test_session(&server, "Schedule Owner").await;
+    let other_session = create_schedule_test_session(&server, "Wrong Parent").await;
+    let schedule_id = seed_session_schedule(&server, &session).await;
+
+    let body: Value = server
+        .delete(&format!(
+            "/v1/sessions/{}/schedules/{}",
+            other_session.id, schedule_id
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(body["error"], "Schedule not found");
+
+    let persisted = server
+        .db
+        .get_session_schedule(1, schedule_id)
+        .await
+        .unwrap();
+    assert!(persisted.is_some());
+}
+
+#[tokio::test]
+async fn test_trigger_session_schedule_wrong_parent_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let session = create_schedule_test_session(&server, "Schedule Owner").await;
+    let other_session = create_schedule_test_session(&server, "Wrong Parent").await;
+    let schedule_id = seed_session_schedule(&server, &session).await;
+
+    let body: Value = server
+        .post(
+            &format!(
+                "/v1/sessions/{}/schedules/{}/trigger",
+                other_session.id, schedule_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(body["error"], "Schedule not found");
+
+    let persisted = server
+        .db
+        .get_session_schedule(1, schedule_id)
+        .await
+        .unwrap();
+    let persisted = persisted.unwrap();
+    assert_eq!(persisted.trigger_count, 0);
+    assert!(persisted.last_triggered_at.is_none());
 }
 
 #[tokio::test]

@@ -201,6 +201,10 @@ impl TestServer {
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+        let session_schedules_state = api::session_schedules::AppState::new(
+            Arc::new(services::SessionScheduleService::new(db.clone())),
+            auth_state.clone(),
+        );
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
                 notification_service: Arc::new(services::NotificationService::new(db.clone())),
@@ -250,6 +254,7 @@ impl TestServer {
             .merge(api::skills::routes(skills_state))
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::slack_events::routes(slack_state))
