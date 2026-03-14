@@ -4,11 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   Bot,
@@ -381,14 +377,8 @@ function ToolsSection({ tools }: { tools: ToolDefinitionSummary[] }) {
       <Collapsible open={open} onOpenChange={setOpen}>
         <CardHeader className="pb-2">
           <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
-            {open ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-            <CardTitle className="text-sm">
-              Tools ({tools.length})
-            </CardTitle>
+            {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            <CardTitle className="text-sm">Tools ({tools.length})</CardTitle>
           </CollapsibleTrigger>
         </CardHeader>
         <CollapsibleContent>
