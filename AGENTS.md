@@ -107,7 +107,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/events-contract.md` - SSE event format contract
-- `specs/maintenance.md` - Pre-release maintenance checklist
+- `specs/maintenance.md` - Goal-oriented maintenance and release-readiness guidance
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
@@ -202,6 +202,10 @@ How to achieve it:
 - use the smallest set of steps that gives high confidence, then expand if signals are weak
 
 Use the [`/ship`](.claude/commands/ship.md) command to execute the canonical shipping workflow. It is outcome-oriented: it defines the required results and common hints, while leaving flexibility in ordering and tactics. When asked to "fix and ship", implement the fix first, then run `/ship`.
+
+### Maintenance
+
+Use [`/maintenance`](.claude/skills/maintenance/SKILL.md) for repo maintenance and release-readiness work. It is an invokable skill and intentionally goal-oriented: start from the risk surface, fix the highest-value issues first, and gather evidence instead of walking a rigid checklist.
 
 ### Pre-PR Checklist
 
