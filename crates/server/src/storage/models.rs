@@ -76,8 +76,17 @@ pub struct UpdateOrganization {
 pub struct OrganizationSettingsRow {
     pub org_id: i64,
     pub default_model_id: Option<ModelId>,
+    pub default_harness_id: Option<HarnessId>,
+    pub base_harness_id: Option<HarnessId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateOrganizationSettings {
+    pub default_model_id: Option<Option<ModelId>>,
+    pub default_harness_id: Option<Option<HarnessId>>,
+    pub base_harness_id: Option<Option<HarnessId>>,
 }
 
 /// Input for creating an organization member

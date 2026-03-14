@@ -2070,6 +2070,20 @@ mod tests {
 
         assert!(result.created > 0, "first run should create items");
         assert_eq!(result.updated, 0, "first run should not update anything");
+
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.default_harness_id.unwrap().uuid(),
+            org_init::GENERIC_HARNESS_ID
+        );
+        assert_eq!(
+            settings.base_harness_id.unwrap().uuid(),
+            org_init::BASE_HARNESS_ID
+        );
     }
 
     #[tokio::test]

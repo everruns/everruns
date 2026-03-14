@@ -28,6 +28,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { useOrganization } from "@/hooks/use-organizations";
 
 // Helper function to format token counts in a compact way
 function formatTokens(tokens: number): string {
@@ -60,6 +61,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const { data: organization } = useOrganization();
   const exportAgent = useExportAgent();
   const copyAgent = useCopyAgent();
   const { data: harnesses } = useHarnesses();
@@ -74,7 +76,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
 
   const handleNewSession = async () => {
-    const harnessId = harnesses?.[0]?.id;
+    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
     if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({

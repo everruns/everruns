@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::org_init::BASE_HARNESS_ID;
 use crate::services::{EventService, LlmResolverService, McpServerService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentCapabilityRow, UpdateSession};
@@ -1248,7 +1249,9 @@ impl DirectPlatformStore {
         Session {
             id: row.id,
             organization_id: everruns_core::org_public_id_from_internal(self.org_id),
-            harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
+            harness_id: row
+                .harness_id
+                .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
             agent_id: row.agent_id,
             title: row.title,
             locale: row.locale,

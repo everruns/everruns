@@ -150,6 +150,7 @@ const mockUseLlmModels = jest.fn();
 const mockUseExportAgent = jest.fn();
 const mockUseCopyAgent = jest.fn();
 const mockUseHarnesses = jest.fn();
+const mockUseOrganization = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -160,6 +161,10 @@ jest.mock("@/hooks", () => ({
   useExportAgent: () => mockUseExportAgent(),
   useCopyAgent: () => mockUseCopyAgent(),
   useHarnesses: () => mockUseHarnesses(),
+}));
+
+jest.mock("@/hooks/use-organizations", () => ({
+  useOrganization: () => mockUseOrganization(),
 }));
 
 // Helper to render with Suspense for React.use()
@@ -190,6 +195,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
+    mockUseOrganization.mockReturnValue({ data: null });
   });
 
   it("renders agent page structure", async () => {

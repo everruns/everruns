@@ -4,9 +4,13 @@
 // Decision: New orgs get built-in harnesses during creation
 // Decision: Reconciliation ensures all orgs stay up-to-date with built-in definitions
 // Decision: Default org uses fixed seed UUIDs for backward compat; other orgs get fresh UUIDs
+// Decision: Org settings keep separate default and base harness pointers
 
-use crate::storage::{StorageBackend, models::CreateHarnessRow};
-use anyhow::Result;
+use crate::storage::{
+    StorageBackend,
+    models::{CreateHarnessRow, UpdateOrganizationSettings},
+};
+use anyhow::{Context, Result};
 use uuid::Uuid;
 
 /// Capability entry with optional per-capability config for built-in harnesses.
@@ -53,8 +57,11 @@ mod harness_ids {
     pub const CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 }
 
-/// Well-known UUID for the Generic harness (default for sessions without explicit harness)
+/// Well-known UUID for the Generic harness (org default harness for new orgs)
 pub const GENERIC_HARNESS_ID: Uuid = harness_ids::GENERIC;
+
+/// Well-known UUID for the Base harness (session fallback when no harness is provided)
+pub const BASE_HARNESS_ID: Uuid = harness_ids::BASE;
 
 /// Well-known UUID for the Chat harness (used by global chat endpoint)
 pub const CHAT_HARNESS_ID: Uuid = harness_ids::CHAT;
@@ -223,6 +230,8 @@ pub async fn initialize_org_harnesses(db: &StorageBackend, org_id: i64) -> Resul
         }
     }
 
+    sync_org_harness_settings(db, org_id).await?;
+
     Ok(result)
 }
 
@@ -255,6 +264,57 @@ pub async fn reconcile_built_in_harnesses(db: &StorageBackend) -> Result<InitRes
     );
 
     Ok(total)
+}
+
+/// Ensure org settings point at built-in default/base harnesses without overriding user changes.
+pub async fn sync_org_harness_settings(db: &StorageBackend, org_id: i64) -> Result<()> {
+    let settings = db.get_organization_settings(org_id).await?;
+    let needs_default = settings
+        .as_ref()
+        .and_then(|s| s.default_harness_id)
+        .is_none();
+    let needs_base = settings.as_ref().and_then(|s| s.base_harness_id).is_none();
+
+    if !needs_default && !needs_base {
+        return Ok(());
+    }
+
+    let harnesses = db.list_harnesses(org_id, None, false).await?;
+    let default_harness_id = harnesses
+        .iter()
+        .find(|h| h.is_built_in && h.name == "Generic")
+        .map(|h| h.id);
+    let base_harness_id = harnesses
+        .iter()
+        .find(|h| h.is_built_in && h.name == "Base")
+        .map(|h| h.id);
+
+    let default_harness_id = if needs_default {
+        Some(Some(default_harness_id.context(
+            "missing built-in Generic harness during org init",
+        )?))
+    } else {
+        None
+    };
+    let base_harness_id = if needs_base {
+        Some(Some(
+            base_harness_id.context("missing built-in Base harness during org init")?,
+        ))
+    } else {
+        None
+    };
+
+    db.patch_organization_settings(
+        org_id,
+        UpdateOrganizationSettings {
+            default_harness_id,
+            base_harness_id,
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    Ok(())
 }
 
 /// Sync capabilities for a harness, only writing if the set actually changed.
@@ -308,6 +368,7 @@ impl InitResult {
 mod tests {
     use super::*;
     use crate::storage::StorageBackend;
+    use crate::storage::models::UpdateOrganizationSettings;
     use everruns_core::DEFAULT_ORG_ID;
 
     fn make_db() -> StorageBackend {
@@ -359,6 +420,17 @@ mod tests {
         for h in &harnesses {
             assert!(h.is_built_in, "Harness {} should be built-in", h.name);
         }
+
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.default_harness_id.unwrap().uuid(),
+            GENERIC_HARNESS_ID
+        );
+        assert_eq!(settings.base_harness_id.unwrap().uuid(), BASE_HARNESS_ID);
     }
 
     #[tokio::test]
@@ -398,6 +470,61 @@ mod tests {
         for h in &h_org2 {
             assert!(h.is_built_in);
         }
+
+        let generic_id = h_org2.iter().find(|h| h.name == "Generic").unwrap().id;
+        let base_id = h_org2.iter().find(|h| h.name == "Base").unwrap().id;
+        let settings = db
+            .get_organization_settings(org2.org_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.default_harness_id, Some(generic_id));
+        assert_eq!(settings.base_harness_id, Some(base_id));
+    }
+
+    #[tokio::test]
+    async fn test_initialize_does_not_override_existing_org_harness_settings() {
+        let db = make_db();
+        seed_default_org(&db).await;
+
+        let org2 = db
+            .create_organization(crate::storage::models::CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000002".to_string(),
+                name: "Test Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        initialize_org_harnesses(&db, org2.org_id).await.unwrap();
+
+        let harnesses = db.list_harnesses(org2.org_id, None, false).await.unwrap();
+        let chat_id = harnesses
+            .iter()
+            .find(|h| h.name == "Platform Chat")
+            .unwrap()
+            .id;
+
+        db.patch_organization_settings(
+            org2.org_id,
+            UpdateOrganizationSettings {
+                default_harness_id: Some(Some(chat_id)),
+                base_harness_id: Some(Some(chat_id)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        initialize_org_harnesses(&db, org2.org_id).await.unwrap();
+
+        let settings = db
+            .get_organization_settings(org2.org_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.default_harness_id, Some(chat_id));
+        assert_eq!(settings.base_harness_id, Some(chat_id));
     }
 
     #[tokio::test]

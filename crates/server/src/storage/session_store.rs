@@ -6,6 +6,7 @@
 // Decision: org_id and org_public_id are baked into the struct at
 // construction time, matching the Grpc/Adapter store pattern.
 
+use crate::org_init::BASE_HARNESS_ID;
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, HarnessId, Result, SessionId, TokenUsage,
@@ -77,7 +78,9 @@ impl SessionStore for DbSessionStore {
                 Ok(Some(Session {
                     id: row.id,
                     organization_id: self.org_public_id.clone(),
-                    harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
+                    harness_id: row
+                        .harness_id
+                        .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
                     agent_id: row.agent_id,
                     title: row.title,
                     locale: row.locale,

@@ -5328,8 +5328,11 @@
             "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
           },
           "harness_id": {
-            "type": "string",
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nDefaults to the Generic harness if omitted (backward compat with older SDKs).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org base harness is used. New orgs default that to Base.",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "locale": {
@@ -7225,10 +7228,24 @@
                 "updated_at"
               ],
               "properties": {
+                "base_harness_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Base harness used when session creation omits harness_id."
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
                   "description": "When the organization was created"
+                },
+                "default_harness_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default harness to preselect in the UI."
                 },
                 "id": {
                   "type": "string",
@@ -8408,10 +8425,24 @@
           "updated_at"
         ],
         "properties": {
+          "base_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base harness used when session creation omits harness_id."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "description": "When the organization was created"
+          },
+          "default_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default harness to preselect in the UI."
           },
           "id": {
             "type": "string",
@@ -11001,6 +11032,22 @@
         "type": "object",
         "description": "Request to update an organization",
         "properties": {
+          "base_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base harness to use when a session is started without an explicit harness_id.",
+            "example": "harness_01933b5a000070008000000000000601"
+          },
+          "default_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default harness to preselect in the UI for new sessions.",
+            "example": "harness_01933b5a000070008000000000000602"
+          },
           "name": {
             "type": [
               "string",

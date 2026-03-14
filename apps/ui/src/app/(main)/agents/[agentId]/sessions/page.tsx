@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SessionCard } from "@/components/session/session-card";
 import { ArrowLeft, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider } from "@/lib/api/types";
+import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
 
@@ -26,6 +27,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   });
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
 
   const sessions = sessionsResponse?.data ?? [];
@@ -39,7 +41,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   }, [llmModels]);
 
   const handleNewSession = async () => {
-    const harnessId = harnesses?.[0]?.id;
+    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
     if (!harnessId) return;
     try {
       const session = await createSession.mutateAsync({
