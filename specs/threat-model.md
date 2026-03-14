@@ -403,9 +403,10 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-012 | Skill archive zip bomb | High | Decompressed size capped at 10 MB; file count capped at 100; individual file size capped at 1 MB | MITIGATED |
 | TM-TOOL-013 | Skill name collision across orgs | Medium | Skill names are unique per organization; capability IDs include UUID for global uniqueness | MITIGATED |
 | TM-TOOL-014 | Disabled skill still activatable | Medium | `CapabilityService.list_all()` filters out disabled skills; disabled skills not included in `<available_skills>` | MITIGATED |
-| TM-TOOL-015 | Browserless SSRF via tool URL | Medium | URL scheme validation: only `http://` and `https://` allowed; `file://`, `javascript:`, internal IPs blocked at URL level | MITIGATED |
+| TM-TOOL-015 | Browserless SSRF via tool URL | Medium | Shared `validate_safe_url()` blocks private/internal hosts for all Browserless navigation entry points, including interaction-step redirects | MITIGATED |
 | TM-TOOL-016 | Browserless timeout DoS | Medium | All wait/timeout values capped at 120s; prevents unbounded resource consumption | MITIGATED |
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
+| TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
 
 ### Mitigation Details
 
@@ -431,6 +432,25 @@ ZIP archive extraction in `SkillService::create_from_archive()` enforces:
 3. Per-file size limit: 1 MB per individual file
 4. Total decompressed size limit: 10 MB
 5. Files extracted into `skill_files` table as individual rows (no runtime ZIP extraction)
+
+**TM-TOOL-015 — Browserless URL Validation (MITIGATED):**
+Browserless tools now reuse the shared `validate_safe_url()` policy from core. This blocks:
+- loopback and `localhost`
+- RFC1918 private ranges
+- link-local and cloud metadata endpoints
+- IPv6 loopback/link-local/private ranges
+
+Validation runs for:
+- direct Browserless tool URLs (`navigate`, `content`, `screenshot`, `scrape`)
+- `browserless_open_browser` initial navigation
+- nested `navigate` actions inside `browserless_interact`
+
+**TM-TOOL-018 — MCP Server SSRF (MITIGATED):**
+MCP server URLs are validated twice:
+1. On create/update in the control plane to reject unsafe configuration
+2. Again in the worker just before execution to catch TOCTOU or stale cached configuration
+
+The shared validator blocks loopback, RFC1918, link-local, and cloud metadata targets. This prevents an MCP capability from being used to probe worker-local or cluster-internal HTTP services via a malicious server URL.
 
 ## 8. LLM Integration (TM-LLM)
 
@@ -596,6 +616,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
 | TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
+| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` provides full network access by design; `docker_container` uses host networking in dev mode; both rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 
 ### Mitigation Details
 
@@ -675,6 +696,17 @@ An agent influenced by prompt injection (via tool results or user messages) coul
   4. Log all outbound `web_fetch` calls with URL + payload size for audit
 - **Complements:** fetchkit's DnsPolicy already blocks private IPs (TM-API-008). This adds application-layer URL policy on top.
 - **Priority:** Medium
+
+**TM-AGENT-019 — Internal Network Probing via High-Risk Execution Capabilities (ACCEPTED):**
+Some execution capabilities intentionally originate network traffic outside the worker process:
+- `daytona` sandboxes have full Linux and network access by design
+- `docker_container` uses host networking and is experimental/dev-only
+
+This means an agent with one of these capabilities can probe whatever network the sandbox/container can reach. Current mitigations are:
+- Admin-only assignment for high-risk capabilities (TM-AGENT-005)
+- `docker_container` is gated to development-grade deployments
+
+Residual risk remains with the deployment topology. Production operators must enforce egress filtering and network segmentation for any execution environment that can reach internal services.
 
 ## 14. Bash Sandbox (TM-BASH)
 
@@ -875,6 +907,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-AGENT-002 | Indirect prompt injection via tool results | Tool results role-separated; no complete defense exists |
 | TM-AGENT-003 | MCP tool description poisoning | MCP servers org-configured; descriptions used as schemas only |
 | TM-AGENT-013 | Data exfiltration via web_fetch | Opt-in capability; org members trusted; intended functionality |
+| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High-risk capabilities are Admin-gated; residual exposure depends on deployment network isolation |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
 
@@ -890,10 +923,11 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
 | Secure OTLP endpoint | TM-OBS-003 | Use trusted internal infrastructure only |
 | OAuth provider trust | TM-AUTH-012 | Verify email ownership at OAuth providers |
-| Review agent capabilities | TM-AGENT-005, TM-AGENT-013 | High-risk capabilities require Admin role; audit capability assignments for org admin accounts |
+| Review agent capabilities | TM-AGENT-005, TM-AGENT-013, TM-AGENT-019 | High-risk capabilities require Admin role; audit capability assignments for org admin accounts |
 | System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
 | Block cloud metadata | TM-API-009 | Defense-in-depth: enable IMDSv2 (AWS), metadata concealment (GCP), or equivalent; fetchkit v0.1.2 blocks 169.254.0.0/16 at application level |
 | Worker network isolation | TM-API-008, TM-API-010, TM-API-011 | Defense-in-depth: restrict worker container egress; fetchkit v0.1.2 blocks private IPs at application level |
+| Sandbox/container egress isolation | TM-AGENT-019 | Restrict Daytona sandbox and any Docker-backed execution environment from reaching internal networks unless explicitly intended |
 | Review GitHub App permissions | TM-DAYTONA-003 | Audit which repositories the GitHub App installation can access; Everruns does not enforce per-repo restrictions |
 
 ## Security Controls Matrix

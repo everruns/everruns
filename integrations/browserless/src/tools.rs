@@ -21,6 +21,7 @@ use tracing::debug;
 use crate::client::BrowserlessClient;
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{get_api_token, required_str};
+use crate::validation::{validate_browserless_url, validate_interaction_steps};
 
 const MAX_HTML_BYTES: usize = 100_000;
 const MAX_WAIT_MS: u64 = 120_000;
@@ -45,15 +46,8 @@ fn truncate_html(html: String) -> (String, bool) {
     }
 }
 
-/// Validate that a URL uses http or https scheme. // THREAT[TM-TOOL-015]
 fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        Ok(())
-    } else {
-        Err(ToolExecutionResult::tool_error(
-            "Invalid URL scheme. Only http:// and https:// URLs are allowed.",
-        ))
-    }
+    validate_browserless_url(url)
 }
 
 /// Cap a wait/timeout value to MAX_WAIT_MS. // THREAT[TM-TOOL-016]
@@ -675,6 +669,9 @@ impl Tool for BrowserlessInteractTool {
                 );
             }
         };
+        if let Err(e) = validate_interaction_steps(&steps) {
+            return e;
+        }
 
         let return_screenshot = arguments
             .get("return_screenshot")
@@ -1012,7 +1009,61 @@ impl Tool for BrowserlessNavigateTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::validation::validate_interaction_steps;
     use everruns_core::capabilities::Capability;
+
+    #[test]
+    fn test_validate_url_accepts_public_https_url() {
+        assert!(validate_url("https://example.com").is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_rejects_localhost() {
+        let err = validate_url("http://localhost:3000").unwrap_err();
+        match err {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("blocked"));
+            }
+            other => panic!("Expected ToolError, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_validate_url_rejects_private_ip() {
+        let err = validate_url("http://10.0.0.5/admin").unwrap_err();
+        match err {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("blocked"));
+            }
+            other => panic!("Expected ToolError, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_validate_url_rejects_cloud_metadata_ip() {
+        let err = validate_url("http://169.254.169.254/latest/meta-data/").unwrap_err();
+        match err {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("blocked"));
+            }
+            other => panic!("Expected ToolError, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_validate_interaction_steps_rejects_blocked_navigate_url() {
+        let steps = vec![json!({
+            "action": "navigate",
+            "value": "http://127.0.0.1:8080"
+        })];
+        let err = validate_interaction_steps(&steps).unwrap_err();
+        match err {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("blocked"));
+            }
+            other => panic!("Expected ToolError, got: {other:?}"),
+        }
+    }
 
     #[test]
     fn test_screenshot_tool_metadata() {
