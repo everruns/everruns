@@ -2,7 +2,7 @@
 
 ## Overview
 
-Fine-grained permission system built on top of existing OrgRole hierarchy. Roles grant default permission sets. Policies (sets of rules) enforce access at the service layer. Policy results are exposed to UI via per-resource config endpoints.
+Fine-grained permission system built on top of existing OrgRole hierarchy. Roles grant default permission sets through `DefaultPermissionResolver`. Policies (sets of rules) enforce access at the service layer. Policy results are exposed to UI via per-resource config endpoints. Downstream consumers can override permission resolution with `PermissionResolver` without changing policy definitions.
 
 ## Concepts
 
@@ -66,7 +66,7 @@ Policy {
 
 ## Role → Permission Mapping
 
-Hardcoded. No DB storage (phase 1).
+Default OSS mapping is hardcoded. No DB storage (phase 1).
 
 | Permission | Owner | Admin | Member |
 |------------|-------|-------|--------|
@@ -86,6 +86,22 @@ Hardcoded. No DB storage (phase 1).
 Owner inherits all Admin permissions. Admin inherits all Member permissions.
 
 **Default role:** `Owner` (phase 1). All users get full permissions by default. Future phases will assign roles via invitation/admin UI.
+
+## Permission Resolver Contract
+
+`PermissionResolver` is the extensibility contract between policy evaluation and the source of truth for caller permissions.
+
+- `DefaultPermissionResolver` preserves current OSS behavior by delegating to the hardcoded role map in `crates/core/src/permissions.rs`.
+- Downstream consumers can provide a custom resolver to enforce subscription limits, per-user grants, or external RBAC decisions while reusing the same `Policy` and `Rule` types.
+- Implementations must fail closed: `has_permission()` returns `true` only for real grants.
+- Implementations must stay consistent: if `has_permission(caller, p)` is `true`, then `caller_permissions(caller)` must include `p`.
+- Implementations must be `Send + Sync` so request handlers can share them safely.
+
+Example custom resolvers:
+
+- Billing-tier aware resolver that removes dangerous or premium permissions for lower plans
+- Resolver backed by a per-user grants table
+- Adapter that maps external RBAC roles into OSS `Permission` values
 
 ## Enforcement
 
@@ -123,10 +139,19 @@ pub struct Policy {
 impl Policy {
     /// Returns Ok(()) or Err(PolicyDenied).
     pub fn evaluate(&self, caller: &Caller) -> Result<(), PolicyError> {
+        self.evaluate_with(&DefaultPermissionResolver, caller)
+    }
+
+    /// Evaluate with a custom resolver.
+    pub fn evaluate_with(
+        &self,
+        resolver: &dyn PermissionResolver,
+        caller: &Caller,
+    ) -> Result<(), PolicyError> {
         for rule in self.rules {
             match rule {
                 Rule::UserHasPermission(perm) => {
-                    if !caller.role.has_permission(perm) {
+                    if !resolver.has_permission(caller, perm) {
                         return Err(PolicyError::denied(self.id, rule));
                     }
                 }
@@ -141,6 +166,8 @@ impl Policy {
     }
 }
 ```
+
+Config endpoints can use `evaluate_policies_with(resolver, caller, policies)` when they need policy results derived from a custom resolver instead of the default role map.
 
 ### Declarative Enforcement via `#[policy]` Macro
 
@@ -204,6 +231,8 @@ The proc macro:
 2. Scans the function signature for a parameter with type `&Caller` — extracts its name (usually `caller`)
 3. Prepends `#policy_path.evaluate(#caller_ident)?;` to the function body
 4. Compile error if no `&Caller` parameter found
+
+The macro continues to call `Policy::evaluate()`, which uses `DefaultPermissionResolver`. Custom resolvers are opt-in at explicit call sites; the macro behavior does not change.
 
 ```rust
 // crates/macros/src/lib.rs
