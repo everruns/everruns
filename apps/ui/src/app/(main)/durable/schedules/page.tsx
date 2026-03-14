@@ -101,7 +101,9 @@ function ScheduleRow({
     <TableRow>
       <TableCell>
         <div className="flex items-center gap-2 min-w-0">
-          <Clock className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`} />
+          <Clock
+            className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
+          />
           <div className="min-w-0">
             <Link
               href={`/durable/schedules/${schedule.id}`}
@@ -126,7 +128,9 @@ function ScheduleRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2 min-w-0">
-          <Badge variant="outline" className="shrink-0">{schedule.target.type}</Badge>
+          <Badge variant="outline" className="shrink-0">
+            {schedule.target.type}
+          </Badge>
           <span className="text-sm truncate">{schedule.target.name}</span>
         </div>
       </TableCell>
