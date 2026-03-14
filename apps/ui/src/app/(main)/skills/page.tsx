@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,11 +16,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSkills, useCreateSkill, useDeleteSkill, useUploadSkill } from "@/hooks/use-skills";
-import { Plus, BookOpen, Trash2, Upload, FileText, Archive } from "lucide-react";
+import {
+  useSkills,
+  useCreateSkill,
+  useDestroySkill,
+  useUpdateSkill,
+  useUploadSkill,
+} from "@/hooks/use-skills";
+import { usePolicies } from "@/hooks/use-policies";
+import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
 import type { Skill } from "@/lib/api/types";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
-function SkillCard({ skill, onDelete }: { skill: Skill; onDelete: (id: string) => void }) {
+function SkillCard({
+  skill,
+  canDestroy,
+  onDelete,
+}: {
+  skill: Skill;
+  canDestroy: boolean;
+  onDelete: (skill: Skill) => void;
+}) {
+  const updateSkill = useUpdateSkill(skill.id);
+  const isArchived = skill.status === "archived";
+  const isDeleted = skill.status === "deleted";
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -32,18 +53,13 @@ function SkillCard({ skill, onDelete }: { skill: Skill; onDelete: (id: string) =
             )}
           </div>
           <div>
-            <CardTitle className="text-lg">{skill.name}</CardTitle>
+            <CardTitle className={`text-lg ${getEntityNameClassName(skill.status)}`}>
+              {skill.name}
+            </CardTitle>
             <CardDescription className="text-sm">{skill.description}</CardDescription>
           </div>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            skill.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-          }
-        >
-          {skill.status}
-        </Badge>
+        <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
       </CardHeader>
       <CardContent>
         <div className="space-y-2 text-sm">
@@ -59,14 +75,23 @@ function SkillCard({ skill, onDelete }: { skill: Skill; onDelete: (id: string) =
           )}
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => onDelete(skill.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {!isArchived && !isDeleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateSkill.mutate({ status: "archived" })}
+              disabled={updateSkill.isPending}
+            >
+              <Archive className="h-4 w-4 mr-1" />
+              {updateSkill.isPending ? "Archiving..." : "Archive"}
+            </Button>
+          )}
+          {isArchived && canDestroy && (
+            <Button variant="destructive" size="sm" onClick={() => onDelete(skill)}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -208,22 +233,32 @@ function SkillCardSkeleton() {
 }
 
 export default function SkillsPage() {
-  const { data: skills = [], isLoading, error } = useSkills();
-  const deleteSkillMutation = useDeleteSkill();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: skills = [], isLoading, error } = useSkills({ includeArchived: showArchived });
+  const destroySkillMutation = useDestroySkill();
+  const { can: canPolicies } = usePolicies("skills");
+  const canDestroy = canPolicies("skill.dangerous");
 
   const [addSkillOpen, setAddSkillOpen] = useState(false);
   const [uploadSkillOpen, setUploadSkillOpen] = useState(false);
+  const [pendingDeleteSkill, setPendingDeleteSkill] = useState<Skill | null>(null);
 
-  const handleDeleteSkill = async (id: string) => {
-    if (confirm("Are you sure you want to delete this skill?")) {
-      await deleteSkillMutation.mutateAsync(id);
-    }
+  const handleDeleteSkill = async () => {
+    if (!pendingDeleteSkill) return;
+    await destroySkillMutation.mutateAsync(pendingDeleteSkill.id);
+    setPendingDeleteSkill(null);
   };
 
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Skills</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Skills</h1>
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
+            Show archived skills
+          </label>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -266,13 +301,46 @@ export default function SkillsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {skills.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} onDelete={handleDeleteSkill} />
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              canDestroy={canDestroy}
+              onDelete={setPendingDeleteSkill}
+            />
           ))}
         </div>
       )}
 
       <AddSkillDialog open={addSkillOpen} onOpenChange={setAddSkillOpen} />
       <UploadSkillDialog open={uploadSkillOpen} onOpenChange={setUploadSkillOpen} />
+      <Dialog
+        open={pendingDeleteSkill !== null}
+        onOpenChange={(open) => !open && setPendingDeleteSkill(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Skill</DialogTitle>
+            <DialogDescription>
+              Permanently delete the archived skill{" "}
+              <span className="font-medium">{pendingDeleteSkill?.name}</span>? Existing references
+              will render as deleted tombstones.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDeleteSkill(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSkill}
+              disabled={destroySkillMutation.isPending}
+            >
+              <Box className="h-4 w-4 mr-1" />
+              {destroySkillMutation.isPending ? "Deleting..." : "Delete Skill"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

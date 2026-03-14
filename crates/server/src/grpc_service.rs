@@ -3293,7 +3293,7 @@ impl WorkerService for WorkerServiceImpl {
         let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harnesses = self
             .harness_service
-            .list(&internal_caller, None)
+            .list(&internal_caller, None, false)
             .await
             .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
 
@@ -3432,7 +3432,7 @@ impl WorkerService for WorkerServiceImpl {
         let internal_caller = everruns_core::Caller::internal(req.org_id);
         let agents = self
             .agent_service
-            .list(&internal_caller, None)
+            .list(&internal_caller, None, false)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
 

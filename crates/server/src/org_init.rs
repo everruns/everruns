@@ -172,7 +172,7 @@ pub async fn initialize_org_harnesses(db: &StorageBackend, org_id: i64) -> Resul
             }
         } else {
             // Non-default org: check if built-in harness already exists by name
-            let existing = db.list_harnesses(org_id, Some(harness.name)).await?;
+            let existing = db.list_harnesses(org_id, Some(harness.name), false).await?;
             let already_exists = existing
                 .iter()
                 .any(|h| h.name == harness.name && h.is_built_in);
@@ -349,7 +349,10 @@ mod tests {
         assert_eq!(result.created, BUILT_IN_HARNESSES.len());
 
         // All harnesses should be listed
-        let harnesses = db.list_harnesses(DEFAULT_ORG_ID, None).await.unwrap();
+        let harnesses = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
         assert_eq!(harnesses.len(), BUILT_IN_HARNESSES.len());
 
         // All should be marked as built-in
@@ -390,7 +393,7 @@ mod tests {
         assert_eq!(result.created, BUILT_IN_HARNESSES.len());
 
         // Verify harnesses exist for org 2
-        let h_org2 = db.list_harnesses(org2.org_id, None).await.unwrap();
+        let h_org2 = db.list_harnesses(org2.org_id, None, false).await.unwrap();
         assert_eq!(h_org2.len(), BUILT_IN_HARNESSES.len());
         for h in &h_org2 {
             assert!(h.is_built_in);
@@ -465,7 +468,7 @@ mod tests {
         initialize_org_harnesses(&db, org2.org_id).await.unwrap();
 
         // Non-default org should NOT use seed UUIDs
-        let h_org2 = db.list_harnesses(org2.org_id, None).await.unwrap();
+        let h_org2 = db.list_harnesses(org2.org_id, None, false).await.unwrap();
         let seed_ids: Vec<Uuid> = BUILT_IN_HARNESSES.iter().map(|h| h.seed_id).collect();
         for h in &h_org2 {
             assert!(

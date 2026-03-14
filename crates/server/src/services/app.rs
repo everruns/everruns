@@ -31,7 +31,7 @@ pub const APP_DANGEROUS: Policy = Policy {
     id: "app.dangerous",
     rules: &[
         Rule::UserHasPermission(Permission::OrgAgentsManage),
-        Rule::UserHasPermission(Permission::OrgSettingsManage),
+        Rule::UserHasPermission(Permission::OrgAppsDangerous),
     ],
 };
 
@@ -55,11 +55,17 @@ impl AppService {
             .get_harness(caller.org_id, req.harness_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+        if harness_row.status != "active" {
+            anyhow::bail!("Archived or deleted harnesses cannot be assigned");
+        }
         let agent_row = self
             .db
             .get_agent_by_public_id(caller.org_id, &req.agent_id.to_string())
             .await?
             .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+        if agent_row.status != "active" {
+            anyhow::bail!("Archived or deleted agents cannot be assigned");
+        }
 
         let input = CreateAppRow {
             public_id: public_id.to_string(),
@@ -82,8 +88,11 @@ impl AppService {
             .get_app_by_public_id(caller.org_id, public_id)
             .await?;
         match row {
-            Some(row) => Ok(Some(self.row_to_app(row, caller.org_id).await)),
+            Some(row) if row.status != "deleted" => {
+                Ok(Some(self.row_to_app(row, caller.org_id).await))
+            }
             None => Ok(None),
+            Some(_) => Ok(None),
         }
     }
 
@@ -92,17 +101,26 @@ impl AppService {
     pub async fn get_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<App>> {
         let row = self.db.get_app_by_public_id_unscoped(public_id).await?;
         match row {
-            Some(row) => {
+            Some(row) if row.status != "deleted" => {
                 let org_id = row.org_id;
                 Ok(Some(self.row_to_app(row, org_id).await))
             }
             None => Ok(None),
+            Some(_) => Ok(None),
         }
     }
 
     #[policy(APP_VIEW)]
-    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<App>> {
-        let rows = self.db.list_apps(caller.org_id, search).await?;
+    pub async fn list(
+        &self,
+        caller: &Caller,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<App>> {
+        let rows = self
+            .db
+            .list_apps(caller.org_id, search, include_archived)
+            .await?;
         let mut apps = Vec::with_capacity(rows.len());
         for row in rows {
             apps.push(self.row_to_app(row, caller.org_id).await);
@@ -124,6 +142,9 @@ impl AppService {
         let Some(existing) = existing else {
             return Ok(None);
         };
+        if !matches!(existing.status.as_str(), "draft" | "published") {
+            anyhow::bail!("Archived or deleted apps cannot be edited");
+        }
 
         // Resolve harness/agent IDs if provided
         let harness_id = if let Some(hid) = req.harness_id {
@@ -132,6 +153,9 @@ impl AppService {
                 .get_harness(caller.org_id, hid)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            if h.status != "active" {
+                anyhow::bail!("Archived or deleted harnesses cannot be assigned");
+            }
             Some(h.id.uuid())
         } else {
             None
@@ -143,6 +167,9 @@ impl AppService {
                 .get_agent_by_public_id(caller.org_id, &aid.to_string())
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+            if a.status != "active" {
+                anyhow::bail!("Archived or deleted agents cannot be assigned");
+            }
             Some(a.id.uuid())
         } else {
             None
@@ -179,6 +206,21 @@ impl AppService {
             return Ok(false);
         };
         self.db.delete_app(caller.org_id, existing.id).await
+    }
+
+    #[policy(APP_DANGEROUS)]
+    pub async fn destroy(&self, caller: &Caller, public_id: &str) -> Result<bool> {
+        let existing = self
+            .db
+            .get_app_by_public_id(caller.org_id, public_id)
+            .await?;
+        let Some(existing) = existing else {
+            return Ok(false);
+        };
+        if existing.status != "archived" {
+            anyhow::bail!("App must be archived before deletion");
+        }
+        self.db.destroy_app(caller.org_id, existing.id).await
     }
 
     #[policy(APP_DANGEROUS)]
@@ -266,6 +308,8 @@ impl AppService {
             published_at: row.published_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
         }
     }
 }

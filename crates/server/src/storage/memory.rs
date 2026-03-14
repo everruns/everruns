@@ -463,6 +463,8 @@ impl InMemoryDatabase {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
             total_input_tokens: 0,
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
@@ -524,6 +526,8 @@ impl InMemoryDatabase {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
             total_input_tokens: 0,
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
@@ -555,11 +559,23 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentRow>> {
         let agents = self.agents.read();
         let mut result: Vec<_> = agents
             .values()
-            .filter(|a| a.org_id == org_id && a.status == "active")
+            .filter(|a| {
+                a.org_id == org_id
+                    && if include_archived {
+                        a.status != "deleted"
+                    } else {
+                        a.status == "active"
+                    }
+            })
             .filter(|a| {
                 matches_search_tokens(search, &[&a.name, a.description.as_deref().unwrap_or("")])
             })
@@ -617,18 +633,29 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
-        // Delete capabilities first
-        {
-            let mut caps = self.agent_capabilities.write();
-            let to_remove: Vec<_> = caps.keys().filter(|(aid, _)| *aid == id).cloned().collect();
-            for key in to_remove {
-                caps.remove(&key);
-            }
-        }
-        // Only delete if org_id matches
         let mut agents = self.agents.write();
-        if agents.get(&id).map(|a| a.org_id) == Some(org_id) {
-            return Ok(agents.remove(&id).is_some());
+        if let Some(agent) = agents.get_mut(&id) {
+            if agent.org_id != org_id || agent.status != "active" {
+                return Ok(false);
+            }
+            agent.status = "archived".to_string();
+            agent.archived_at = Some(Self::now());
+            agent.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub async fn destroy_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
+        let mut agents = self.agents.write();
+        if let Some(agent) = agents.get_mut(&id) {
+            if agent.org_id != org_id || agent.status != "archived" {
+                return Ok(false);
+            }
+            agent.status = "deleted".to_string();
+            agent.deleted_at = Some(Self::now());
+            agent.updated_at = Self::now();
+            return Ok(true);
         }
         Ok(false)
     }
@@ -674,6 +701,8 @@ impl InMemoryDatabase {
                 status: "active".to_string(),
                 created_at: now,
                 updated_at: now,
+                archived_at: None,
+                deleted_at: None,
                 total_input_tokens: 0,
                 total_output_tokens: 0,
                 total_cache_read_tokens: 0,
@@ -714,6 +743,8 @@ impl InMemoryDatabase {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
         self.harnesses.write().insert(id, row.clone());
         Ok(row)
@@ -766,6 +797,8 @@ impl InMemoryDatabase {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
         harnesses.insert(id, row.clone());
         Ok(Some(row))
@@ -784,11 +817,19 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<HarnessRow>> {
         let harnesses = self.harnesses.read();
         let mut result: Vec<_> = harnesses
             .values()
-            .filter(|h| h.org_id == org_id && h.status == "active")
+            .filter(|h| {
+                h.org_id == org_id
+                    && if include_archived {
+                        h.status != "deleted"
+                    } else {
+                        h.status == "active"
+                    }
+            })
             .filter(|h| {
                 matches_search_tokens(search, &[&h.name, h.description.as_deref().unwrap_or("")])
             })
@@ -834,18 +875,29 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
-        // Delete capabilities first
-        {
-            let mut caps = self.harness_capabilities.write();
-            let to_remove: Vec<_> = caps.keys().filter(|(hid, _)| *hid == id).cloned().collect();
-            for key in to_remove {
-                caps.remove(&key);
-            }
-        }
-        // Only delete if org_id matches
         let mut harnesses = self.harnesses.write();
-        if harnesses.get(&id).map(|h| h.org_id) == Some(org_id) {
-            return Ok(harnesses.remove(&id).is_some());
+        if let Some(harness) = harnesses.get_mut(&id) {
+            if harness.org_id != org_id || harness.status != "active" {
+                return Ok(false);
+            }
+            harness.status = "archived".to_string();
+            harness.archived_at = Some(Self::now());
+            harness.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub async fn destroy_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        let mut harnesses = self.harnesses.write();
+        if let Some(harness) = harnesses.get_mut(&id) {
+            if harness.org_id != org_id || harness.status != "archived" {
+                return Ok(false);
+            }
+            harness.status = "deleted".to_string();
+            harness.deleted_at = Some(Self::now());
+            harness.updated_at = Self::now();
+            return Ok(true);
         }
         Ok(false)
     }
@@ -2499,6 +2551,8 @@ impl InMemoryDatabase {
             tools_cached_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
 
         self.mcp_servers.write().insert(id, row.clone());
@@ -2556,6 +2610,8 @@ impl InMemoryDatabase {
             tools_cached_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
 
         servers.insert(id, row.clone());
@@ -2607,12 +2663,20 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<McpServerRow>> {
         let mut servers: Vec<_> = self
             .mcp_servers
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| {
+                if include_archived {
+                    s.status != "deleted"
+                } else {
+                    s.status != "archived" && s.status != "deleted"
+                }
+            })
             .filter(|s| {
                 matches_search_tokens(search, &[&s.name, s.description.as_deref().unwrap_or("")])
             })
@@ -2678,14 +2742,31 @@ impl InMemoryDatabase {
 
     pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let mut servers = self.mcp_servers.write();
-        if let Some(server) = servers.get(&id) {
-            if server.org_id != org_id {
+        if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id || !matches!(server.status.as_str(), "active" | "disabled") {
                 return Ok(false);
             }
-        } else {
-            return Ok(false);
+            server.status = "archived".to_string();
+            server.archived_at = Some(Self::now());
+            server.updated_at = Self::now();
+            return Ok(true);
         }
-        Ok(servers.remove(&id).is_some())
+        Ok(false)
+    }
+
+    pub async fn destroy_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let id = McpServerId::from_uuid(id);
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id || server.status != "archived" {
+                return Ok(false);
+            }
+            server.status = "deleted".to_string();
+            server.deleted_at = Some(Self::now());
+            server.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     // ============================================
@@ -2903,6 +2984,8 @@ impl InMemoryDatabase {
             version: input.version,
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
 
         self.skills.write().insert(id, row.clone());
@@ -2928,12 +3011,24 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+    pub async fn list_skills(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<SkillRow>> {
         let mut skills: Vec<_> = self
             .skills
             .read()
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| {
+                if include_archived {
+                    s.status != "deleted"
+                } else {
+                    s.status != "archived" && s.status != "deleted"
+                }
+            })
             .filter(|s| matches_search_tokens(search, &[&s.name, &s.description]))
             .cloned()
             .collect();
@@ -2995,13 +3090,28 @@ impl InMemoryDatabase {
     pub async fn delete_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let skill_id = SkillId::from_uuid(id);
         let mut skills = self.skills.write();
-        if let Some(skill) = skills.get(&skill_id) {
-            if skill.org_id != org_id {
+        if let Some(skill) = skills.get_mut(&skill_id) {
+            if skill.org_id != org_id || !matches!(skill.status.as_str(), "active" | "disabled") {
                 return Ok(false);
             }
-            skills.remove(&skill_id);
-            // Also remove associated files
-            self.skill_files.write().retain(|f| f.skill_id != id);
+            skill.status = "archived".to_string();
+            skill.archived_at = Some(Self::now());
+            skill.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub async fn destroy_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let skill_id = SkillId::from_uuid(id);
+        let mut skills = self.skills.write();
+        if let Some(skill) = skills.get_mut(&skill_id) {
+            if skill.org_id != org_id || skill.status != "archived" {
+                return Ok(false);
+            }
+            skill.status = "deleted".to_string();
+            skill.deleted_at = Some(Self::now());
+            skill.updated_at = Self::now();
             return Ok(true);
         }
         Ok(false)
@@ -4401,6 +4511,8 @@ impl InMemoryDatabase {
             published_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
+            deleted_at: None,
         };
         self.apps.write().insert(id, row.clone());
         Ok(row)
@@ -4424,11 +4536,23 @@ impl InMemoryDatabase {
         Ok(apps.values().find(|a| a.public_id == public_id).cloned())
     }
 
-    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
+    pub async fn list_apps(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AppRow>> {
         let apps = self.apps.read();
         let mut result: Vec<AppRow> = apps
             .values()
-            .filter(|a| a.org_id == org_id && a.status != "archived")
+            .filter(|a| {
+                a.org_id == org_id
+                    && if include_archived {
+                        a.status != "deleted"
+                    } else {
+                        a.status != "archived" && a.status != "deleted"
+                    }
+            })
             .filter(|a| {
                 matches_search_tokens(search, &[&a.name, a.description.as_deref().unwrap_or("")])
             })
@@ -4484,10 +4608,25 @@ impl InMemoryDatabase {
         let Some(app) = apps.get_mut(&id) else {
             return Ok(false);
         };
-        if app.org_id != org_id || app.status == "archived" {
+        if app.org_id != org_id || !matches!(app.status.as_str(), "draft" | "published") {
             return Ok(false);
         }
         app.status = "archived".to_string();
+        app.archived_at = Some(Self::now());
+        app.updated_at = Self::now();
+        Ok(true)
+    }
+
+    pub async fn destroy_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let mut apps = self.apps.write();
+        let Some(app) = apps.get_mut(&id) else {
+            return Ok(false);
+        };
+        if app.org_id != org_id || app.status != "archived" {
+            return Ok(false);
+        }
+        app.status = "deleted".to_string();
+        app.deleted_at = Some(Self::now());
         app.updated_at = Self::now();
         Ok(true)
     }
@@ -5624,7 +5763,7 @@ mod tests {
         create_test_agent(&db, "Alpha", None).await;
         create_test_agent(&db, "Beta", None).await;
 
-        let results = db.list_agents(DEFAULT_ORG_ID, None).await.unwrap();
+        let results = db.list_agents(DEFAULT_ORG_ID, None, false).await.unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -5633,7 +5772,10 @@ mod tests {
         let db = InMemoryDatabase::new();
         create_test_agent(&db, "Alpha", None).await;
 
-        let results = db.list_agents(DEFAULT_ORG_ID, Some("")).await.unwrap();
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some(""), false)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -5644,7 +5786,7 @@ mod tests {
         create_test_agent(&db, "Code Reviewer", None).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer"))
+            .list_agents(DEFAULT_ORG_ID, Some("customer"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5657,7 +5799,7 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"))
+            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5670,7 +5812,7 @@ mod tests {
         create_test_agent(&db, "Customer Feedback Analyzer", None).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer bot"))
+            .list_agents(DEFAULT_ORG_ID, Some("customer bot"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5683,7 +5825,7 @@ mod tests {
         create_test_agent(&db, "Helper", Some("Handles billing inquiries")).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("billing"))
+            .list_agents(DEFAULT_ORG_ID, Some("billing"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5697,7 +5839,7 @@ mod tests {
 
         // "daytona" in name, "sandbox" in description → both must match
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("daytona sandbox"))
+            .list_agents(DEFAULT_ORG_ID, Some("daytona sandbox"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5709,7 +5851,7 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("zzz_nonexistent"))
+            .list_agents(DEFAULT_ORG_ID, Some("zzz_nonexistent"), false)
             .await
             .unwrap();
         assert!(results.is_empty());
@@ -5727,7 +5869,10 @@ mod tests {
                     these memories I shall forever keep. \
                     Through winding roads and starlit nights, \
                     we chase our dreams to greater heights.";
-        let results = db.list_agents(DEFAULT_ORG_ID, Some(poem)).await.unwrap();
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some(poem), false)
+            .await
+            .unwrap();
         // No agent should match a poem
         assert!(results.is_empty());
     }
@@ -5741,7 +5886,7 @@ mod tests {
         // Query with >MAX_SEARCH_TOKENS words — only first 8 tokens used
         let long_query = "roses are red violets are blue sugar is sweet and so are you forever";
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some(long_query))
+            .list_agents(DEFAULT_ORG_ID, Some(long_query), false)
             .await
             .unwrap();
         // First 8 tokens: "roses are red violets are blue sugar is"
@@ -5755,7 +5900,10 @@ mod tests {
         create_test_agent(&db, "Agent v2.0 (beta)", None).await;
         create_test_agent(&db, "my-agent_v1", None).await;
 
-        let results = db.list_agents(DEFAULT_ORG_ID, Some("v2.0")).await.unwrap();
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("v2.0"), false)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Agent v2.0 (beta)");
     }
@@ -5767,7 +5915,7 @@ mod tests {
         create_test_agent(&db, "English Agent", None).await;
 
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("日本語"))
+            .list_agents(DEFAULT_ORG_ID, Some("日本語"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5780,7 +5928,10 @@ mod tests {
         create_test_agent(&db, "🤖 Robot Helper", None).await;
         create_test_agent(&db, "Normal Agent", None).await;
 
-        let results = db.list_agents(DEFAULT_ORG_ID, Some("🤖")).await.unwrap();
+        let results = db
+            .list_agents(DEFAULT_ORG_ID, Some("🤖"), false)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -5791,7 +5942,7 @@ mod tests {
 
         // Extra spaces, tabs, etc.
         let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("  customer   bot  "))
+            .list_agents(DEFAULT_ORG_ID, Some("  customer   bot  "), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5970,7 +6121,7 @@ mod tests {
         .unwrap();
 
         let results = db
-            .list_skills(DEFAULT_ORG_ID, Some("scraper"))
+            .list_skills(DEFAULT_ORG_ID, Some("scraper"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5978,7 +6129,7 @@ mod tests {
 
         // Cross-field: "code prettier"
         let results = db
-            .list_skills(DEFAULT_ORG_ID, Some("code prettier"))
+            .list_skills(DEFAULT_ORG_ID, Some("code prettier"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -6021,13 +6172,16 @@ mod tests {
         .await
         .unwrap();
 
-        let results = db.list_apps(DEFAULT_ORG_ID, Some("slack")).await.unwrap();
+        let results = db
+            .list_apps(DEFAULT_ORG_ID, Some("slack"), false)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Slack Bot");
 
         // Multi-word across name + description
         let results = db
-            .list_apps(DEFAULT_ORG_ID, Some("widget chat"))
+            .list_apps(DEFAULT_ORG_ID, Some("widget chat"), false)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);

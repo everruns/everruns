@@ -9,13 +9,13 @@
 // while preserving the different deployment models (in-process vs external).
 
 use anyhow::Result;
-use everruns_core::ActInput;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::events::{
-    EventContext, EventRequest, SessionActivatedData, SessionIdledData, TurnCompletedData,
-    TurnFailedData, TurnStartedData,
+    EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
+    TurnCompletedData, TurnFailedData, TurnStartedData,
 };
 use everruns_core::typed_id::{ExecId, TurnId};
+use everruns_core::{ActInput, AgentStatus, HarnessStatus, Message};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, WorkerInfo, WorkflowEvent, WorkflowEventStore, WorkflowStatus,
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
@@ -348,6 +348,118 @@ pub struct ShutdownHandle {
     tx: watch::Sender<bool>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum DependencyBlocker {
+    HarnessArchived,
+    HarnessDeleted,
+    AgentArchived,
+    AgentDeleted,
+}
+
+impl DependencyBlocker {
+    fn message(self) -> &'static str {
+        match self {
+            DependencyBlocker::HarnessArchived => {
+                "Execution stopped because the assigned harness was archived."
+            }
+            DependencyBlocker::HarnessDeleted => {
+                "Execution stopped because the assigned harness was deleted."
+            }
+            DependencyBlocker::AgentArchived => {
+                "Execution stopped because the assigned agent was archived."
+            }
+            DependencyBlocker::AgentDeleted => {
+                "Execution stopped because the assigned agent was deleted."
+            }
+        }
+    }
+}
+
+async fn detect_dependency_blocker<A: WorkerAdapters>(
+    adapters: &A,
+    org_id: i64,
+    harness_id: everruns_core::HarnessId,
+    agent_id: Option<everruns_core::AgentId>,
+) -> Result<Option<DependencyBlocker>> {
+    let harness = adapters.get_harness(org_id, harness_id.uuid()).await?;
+    match harness {
+        Some(harness) => match harness.status {
+            HarnessStatus::Active => {}
+            HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
+            HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),
+        },
+        None => return Ok(Some(DependencyBlocker::HarnessDeleted)),
+    }
+
+    if let Some(agent_id) = agent_id {
+        let agent = adapters.get_agent(org_id, agent_id.uuid()).await?;
+        match agent {
+            Some(agent) => match agent.status {
+                AgentStatus::Active => {}
+                AgentStatus::Archived => return Ok(Some(DependencyBlocker::AgentArchived)),
+                AgentStatus::Deleted => return Ok(Some(DependencyBlocker::AgentDeleted)),
+            },
+            None => return Ok(Some(DependencyBlocker::AgentDeleted)),
+        }
+    }
+
+    Ok(None)
+}
+
+async fn emit_dependency_blocked<A: WorkerAdapters>(
+    adapters: &A,
+    org_id: i64,
+    context: &AtomContext,
+    blocker: DependencyBlocker,
+) {
+    let session_id = context.session_id;
+    let turn_id = context.turn_id;
+    let input_message_id = context.input_message_id;
+    let message = blocker.message();
+
+    let output_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        OutputMessageCompletedData::new(Message::assistant(message)),
+    );
+    if let Err(e) = adapters.emit_event(output_event).await {
+        warn!(error = %e, "Failed to emit dependency blocked message");
+    }
+
+    if let Err(e) = adapters
+        .set_session_status(org_id, session_id.uuid(), "idle")
+        .await
+    {
+        warn!(error = %e, "Failed to set session status to idle");
+    }
+
+    let failed_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        TurnFailedData {
+            turn_id,
+            error: message.to_string(),
+            error_code: Some("dependency_unavailable".to_string()),
+        },
+    );
+    if let Err(e) = adapters.emit_event(failed_event).await {
+        warn!(error = %e, "Failed to emit dependency turn.failed");
+    }
+
+    let idled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        SessionIdledData {
+            turn_id,
+            iterations: None,
+            usage: None,
+        },
+    );
+    if let Err(e) = adapters.emit_event(idled_event).await {
+        warn!(error = %e, "Failed to emit dependency session.idled");
+    }
+}
+
 impl ShutdownHandle {
     /// Trigger shutdown of the worker
     pub fn shutdown(&self) {
@@ -678,6 +790,23 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let session_id = input.session_id;
     let input_message_id = input.input_message_id;
 
+    if let Some(blocker) =
+        detect_dependency_blocker(adapters, input.org_id, input.harness_id, input.agent_id).await?
+    {
+        emit_dependency_blocked(adapters, input.org_id, &context, blocker).await;
+        return Ok(serde_json::to_value(everruns_core::ReasonResult {
+            success: false,
+            text: blocker.message().to_string(),
+            tool_calls: vec![],
+            has_tool_calls: false,
+            tool_definitions: vec![],
+            max_iterations: 100,
+            error: Some("dependency_unavailable".to_string()),
+            usage: None,
+            response_id: None,
+        })?);
+    }
+
     // Load turn context (batch call for efficiency)
     let turn_context = adapters
         .load_turn_context(input.org_id, session_id.uuid())
@@ -841,6 +970,24 @@ async fn execute_act_activity<A: WorkerAdapters>(
     let org_id = input
         .org_id
         .expect("ActInput.org_id must be set for act activities");
+
+    if let Some(blocker) =
+        detect_dependency_blocker(adapters, org_id, input.harness_id, input.agent_id).await?
+    {
+        emit_dependency_blocked(adapters, org_id, &input.context, blocker).await;
+        let mut output = serde_json::to_value(everruns_core::ActResult {
+            results: vec![],
+            completed: true,
+            success_count: 0,
+            error_count: 1,
+            connection_required: vec![],
+            blocked: true,
+        })?;
+        if let serde_json::Value::Object(ref mut map) = output {
+            map.insert("blocked".to_string(), serde_json::Value::Bool(true));
+        }
+        return Ok(output);
+    }
 
     // Build tool registry with defaults and capability tools.
     // When agent_id is present, use agent capabilities.
@@ -1044,6 +1191,19 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             }
         }
         "act" => {
+            let blocked = output
+                .get("blocked")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            if blocked {
+                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
+                store
+                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+                info!(workflow_id = %workflow_id, "Workflow completed after dependency block");
+                return Ok(());
+            }
             // Check if any tools require a user connection setup.
             // If so, complete the workflow — the event emission and session status
             // change were already handled by the caller (process_claimed_task).

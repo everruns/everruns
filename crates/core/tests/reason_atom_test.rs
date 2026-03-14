@@ -64,6 +64,8 @@ async fn setup_test_environment() -> (
         status: HarnessStatus::Active,
         created_at: now,
         updated_at: now,
+        archived_at: None,
+        deleted_at: None,
     };
     harness_store.add_harness(harness).await;
 
@@ -83,6 +85,8 @@ async fn setup_test_environment() -> (
         status: AgentStatus::Active,
         created_at: now,
         updated_at: now,
+        archived_at: None,
+        deleted_at: None,
         usage: None,
     };
     agent_store.add_agent(agent).await;

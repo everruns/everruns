@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import {
   createApp,
   deleteApp,
+  destroyApp,
   getApp,
   getApps,
   publishApp,
@@ -22,19 +23,24 @@ function syncAppCache(queryClient: QueryClient, app: App) {
     () => app,
   );
   queryClient.setQueriesData<App[] | undefined>(
-    { queryKey: queryKeys.apps.list() },
+    { queryKey: queryKeys.apps.all },
     (existing) =>
       existing?.map((candidate) => (candidate.id === app.id ? app : candidate)) ?? existing,
   );
 }
 
-export function useApps() {
+interface UseAppsOptions {
+  includeArchived?: boolean;
+}
+
+export function useApps(options: UseAppsOptions = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    queryKey: [...queryKeys.apps.list(), org],
-    queryFn: () => getApps(),
+    queryKey: [...queryKeys.apps.list(includeArchived), org],
+    queryFn: () => getApps(includeArchived),
     enabled: !!org,
   });
 
@@ -92,6 +98,17 @@ export function useDeleteApp() {
 
   return useMutation({
     mutationFn: (appId: string) => deleteApp(appId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    },
+  });
+}
+
+export function useDestroyApp() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (appId: string) => destroyApp(appId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
     },

@@ -940,10 +940,13 @@ impl DirectWorkerAdapters {
             status: match r.status.as_str() {
                 "active" => HarnessStatus::Active,
                 "archived" => HarnessStatus::Archived,
+                "deleted" => HarnessStatus::Deleted,
                 _ => HarnessStatus::Active,
             },
             created_at: r.created_at,
             updated_at: r.updated_at,
+            archived_at: r.archived_at,
+            deleted_at: r.deleted_at,
         }))
     }
 
@@ -987,10 +990,13 @@ impl DirectWorkerAdapters {
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
                 "archived" => AgentStatus::Archived,
+                "deleted" => AgentStatus::Deleted,
                 _ => AgentStatus::Active,
             },
             created_at: r.created_at,
             updated_at: r.updated_at,
+            archived_at: r.archived_at,
+            deleted_at: r.deleted_at,
             usage: None,
         }))
     }
@@ -1204,6 +1210,8 @@ impl DirectPlatformStore {
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
         }
     }
 
@@ -1229,6 +1237,8 @@ impl DirectPlatformStore {
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
             usage: None,
         }
     }
@@ -1274,7 +1284,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_harnesses(&self) -> everruns_core::error::Result<Vec<Harness>> {
         let rows = self
             .db
-            .list_harnesses(self.org_id, None)
+            .list_harnesses(self.org_id, None, false)
             .await
             .map_err(|e| store_error(format!("Failed to list harnesses: {e}")))?;
 
@@ -1438,7 +1448,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
         let rows = self
             .db
-            .list_agents(self.org_id, None)
+            .list_agents(self.org_id, None, false)
             .await
             .map_err(|e| store_error(format!("Failed to list agents: {e}")))?;
 
@@ -1599,6 +1609,29 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         locale: Option<&str>,
     ) -> everruns_core::error::Result<Session> {
         use crate::storage::models::CreateSessionRow;
+
+        let harness = self
+            .db
+            .get_harness(self.org_id, harness_id)
+            .await
+            .map_err(|e| store_error(format!("Failed to get harness: {e}")))?
+            .ok_or_else(|| store_error("Harness not found"))?;
+        if harness.status != "active" {
+            return Err(store_error(
+                "Archived or deleted harnesses cannot be assigned",
+            ));
+        }
+        if let Some(agent_id) = agent_id {
+            let agent = self
+                .db
+                .get_agent(self.org_id, agent_id)
+                .await
+                .map_err(|e| store_error(format!("Failed to get agent: {e}")))?
+                .ok_or_else(|| store_error("Agent not found"))?;
+            if agent.status != "active" {
+                return Err(store_error("Archived or deleted agents cannot be assigned"));
+            }
+        }
 
         let input = CreateSessionRow {
             org_id: self.org_id,

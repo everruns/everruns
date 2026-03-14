@@ -5,12 +5,20 @@ const mockUseMcpServers = jest.fn();
 const mockUseCreateMcpServer = jest.fn();
 const mockUseUpdateMcpServer = jest.fn();
 const mockUseDeleteMcpServer = jest.fn();
+const mockUseDestroyMcpServer = jest.fn();
 
 jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServers: () => mockUseMcpServers(),
   useCreateMcpServer: () => mockUseCreateMcpServer(),
   useUpdateMcpServer: () => mockUseUpdateMcpServer(),
   useDeleteMcpServer: () => mockUseDeleteMcpServer(),
+  useDestroyMcpServer: () => mockUseDestroyMcpServer(),
+}));
+
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({
+    can: () => true,
+  }),
 }));
 
 describe("McpServersPage", () => {
@@ -45,6 +53,11 @@ describe("McpServersPage", () => {
     });
 
     mockUseDeleteMcpServer.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+    });
+
+    mockUseDestroyMcpServer.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });

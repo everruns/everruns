@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 interface AgentCardProps {
   agent: Agent;
@@ -35,14 +36,14 @@ export function AgentCard({
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg">
+          <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
             <Link href={`/agents/${agent.id}`} className="hover:underline">
               {agent.name}
             </Link>
           </CardTitle>
           <CopyButton value={agent.id} />
         </div>
-        <Badge variant={agent.status === "active" ? "default" : "secondary"}>{agent.status}</Badge>
+        <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
       </CardHeader>
       <CardContent>
         {agent.description ? (
@@ -95,7 +96,7 @@ export function AgentCard({
           <span className="text-xs text-muted-foreground">
             Created {new Date(agent.created_at).toLocaleDateString()}
           </span>
-          {showEditButton && (
+          {showEditButton && agent.status === "active" && (
             <Link href={`/agents/${agent.id}/edit`}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <Pencil className="icon-sharp h-4 w-4" />

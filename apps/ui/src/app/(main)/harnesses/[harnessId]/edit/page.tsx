@@ -3,7 +3,14 @@
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useHarness, useUpdateHarness, useDeleteHarness, useCapabilities } from "@/hooks";
+import {
+  useHarness,
+  useUpdateHarness,
+  useDeleteHarness,
+  useDestroyHarness,
+  useCapabilities,
+} from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,12 +19,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
+import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 interface FormData {
   name: string;
@@ -34,10 +50,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
   const updateHarness = useUpdateHarness();
   const deleteHarness = useDeleteHarness();
+  const destroyHarness = useDestroyHarness();
+  const { can: canPolicies } = usePolicies("harnesses");
 
   const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
 
   const [activeTab, setActiveTab] = useState<string>("edit");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
 
   const initialFormData = useMemo((): FormData => {
@@ -117,13 +136,17 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this harness? This action cannot be undone.")) {
-      return;
-    }
-
+  const handleArchive = async () => {
     try {
       await deleteHarness.mutateAsync(harnessId);
+    } catch (error) {
+      console.error("Failed to archive harness:", error);
+    }
+  };
+
+  const handleDestroy = async () => {
+    try {
+      await destroyHarness.mutateAsync(harnessId);
       router.push("/harnesses");
     } catch (error) {
       console.error("Failed to delete harness:", error);
@@ -132,6 +155,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   const isLoading = harnessLoading || capabilitiesLoading;
   const isSaving = updateHarness.isPending;
+  const isReadOnly = isReadOnlyStatus(harness?.status);
+  const canDangerousDelete = canPolicies("harness.dangerous");
 
   // Built-in harnesses cannot be edited — redirect to detail page
   if (harness?.is_built_in) {
@@ -211,6 +236,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         placeholder="My Harness"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                         required
                       />
                     </div>
@@ -222,6 +248,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         placeholder="Describe what this harness does..."
                         value={formData.description}
                         onChange={(e) => handleFormChange("description", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                         rows={2}
                       />
                     </div>
@@ -233,6 +260,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         placeholder="tag1, tag2, tag3"
                         value={formData.tags}
                         onChange={(e) => handleFormChange("tags", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                       />
                       <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
                     </div>
@@ -242,6 +270,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       <ModelPicker
                         value={formData.default_model_id || ""}
                         onChange={(value) => handleFormChange("default_model_id", value)}
+                        disabled={isSaving || isReadOnly}
                         placeholder="Use default model"
                       />
                       <p className="text-xs text-muted-foreground">
@@ -256,6 +285,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         placeholder="You are a helpful assistant..."
                         value={formData.system_prompt}
                         onChange={(value) => handleFormChange("system_prompt", value)}
+                        disabled={isSaving || isReadOnly}
                         required
                       />
                       <p className="text-xs text-muted-foreground">
@@ -266,7 +296,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                     <InitialFilesEditor
                       value={selectedInitialFiles}
                       onChange={setLocalInitialFiles}
-                      disabled={isSaving}
+                      disabled={isSaving || isReadOnly}
                       description="Files copied into each new session created from this harness."
                     />
                   </CardContent>
@@ -281,20 +311,39 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                   <CardContent>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium">Delete this harness</p>
+                        <p className="font-medium">
+                          {harness.status === "archived"
+                            ? "Delete this harness"
+                            : "Archive this harness"}
+                        </p>
                         <p className="text-sm text-muted-foreground">
-                          Once deleted, this harness will be permanently removed.
+                          {harness.status === "archived"
+                            ? "Permanently delete this archived harness. Existing references will render as deleted tombstones."
+                            : "Archive this harness. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={handleDelete}
-                        disabled={deleteHarness.isPending}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        {deleteHarness.isPending ? "Deleting..." : "Delete Harness"}
-                      </Button>
+                      {harness.status === "archived" ? (
+                        canDangerousDelete && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => setShowDeleteDialog(true)}
+                            disabled={destroyHarness.isPending}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {destroyHarness.isPending ? "Deleting..." : "Delete Harness"}
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleArchive}
+                          disabled={deleteHarness.isPending}
+                        >
+                          {deleteHarness.isPending ? "Archiving..." : "Archive Harness"}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -311,16 +360,20 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       capabilities={allCapabilities || []}
                       selected={selectedCapabilities}
                       onChange={handleCapabilitiesChange}
-                      disabled={isSaving}
+                      disabled={isSaving || isReadOnly}
                     />
                   </CardContent>
                 </Card>
 
                 {/* Save button */}
                 <div className="flex gap-4">
-                  <Button type="submit" disabled={isSaving} className="flex-1">
+                  <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
                     <Save className="w-4 h-4 mr-2" />
-                    {isSaving ? "Saving..." : "Save Changes"}
+                    {isReadOnly
+                      ? "Archived Harnesses Are Read-Only"
+                      : isSaving
+                        ? "Saving..."
+                        : "Save Changes"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => router.back()}>
                     Cancel
@@ -385,6 +438,29 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           </div>
         </TabsContent>
       </Tabs>
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Harness</DialogTitle>
+            <DialogDescription>
+              Permanently delete the archived harness &quot;{harness?.name}&quot;? Existing
+              references will render as deleted tombstones.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDestroy}
+              disabled={destroyHarness.isPending}
+            >
+              {destroyHarness.isPending ? "Deleting..." : "Delete Harness"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

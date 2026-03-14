@@ -1701,6 +1701,8 @@ mod tests {
             published_at: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
+            deleted_at: None,
         }
     }
 

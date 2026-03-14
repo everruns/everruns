@@ -5,9 +5,11 @@ import {
   useApp,
   useUpdateApp,
   useDeleteApp,
+  useDestroyApp,
   usePublishApp,
   useUnpublishApp,
 } from "@/hooks/use-apps";
+import { usePolicies } from "@/hooks/use-policies";
 import { useAgents } from "@/hooks";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { getSlackManifest } from "@/lib/api/apps";
@@ -41,17 +43,26 @@ import { ArrowLeft, Globe, GlobeLock, Copy, Trash2, Pencil, Check, X, Rocket } f
 import { CopyButton } from "@/components/ui/copy-button";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import type { SessionStrategy, SlackChannelConfig, UpdateAppRequest } from "@/lib/api/types";
+import {
+  getEntityNameClassName,
+  getEntityReferenceClassName,
+  getEntityReferenceLabel,
+  getEntityStatusBadgeVariant,
+  isReadOnlyStatus,
+} from "@/lib/entity-lifecycle";
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
   const router = useRouter();
   const { data: app, isLoading } = useApp(appId);
-  const { data: agents } = useAgents();
-  const { data: harnesses } = useHarnesses();
+  const { data: agents } = useAgents({ includeArchived: true });
+  const { data: harnesses } = useHarnesses({ includeArchived: true });
   const updateApp = useUpdateApp();
   const deleteAppMutation = useDeleteApp();
+  const destroyAppMutation = useDestroyApp();
   const publishApp = usePublishApp();
   const unpublishApp = useUnpublishApp();
+  const { can: canPolicies } = usePolicies("apps");
 
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingSlack, setEditingSlack] = useState(false);
@@ -73,6 +84,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
   const isPublished = app?.status === "published";
+  const isArchived = app?.status === "archived";
+  const isReadOnly = isReadOnlyStatus(app?.status);
+  const canDangerousDelete = canPolicies("app.dangerous");
   const slackConfig = app?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
   const webhookVerified = !!slackConfig?.webhook_verified_at;
@@ -150,12 +164,17 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const handleDelete = async () => {
     if (!app) return;
-    await deleteAppMutation.mutateAsync(app.id);
+    await destroyAppMutation.mutateAsync(app.id);
     router.push("/apps");
   };
 
-  const agentName = agents?.find((a) => a.id === app?.agent_id)?.name;
-  const harnessName = harnesses?.find((h) => h.id === app?.harness_id)?.name;
+  const handleArchive = async () => {
+    if (!app) return;
+    await deleteAppMutation.mutateAsync(app.id);
+  };
+
+  const agent = agents?.find((candidate) => candidate.id === app?.agent_id);
+  const harness = harnesses?.find((candidate) => candidate.id === app?.harness_id);
 
   if (isLoading) {
     return (
@@ -192,9 +211,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Rocket className="w-6 h-6" />
-            {app.name}
+            <span className={getEntityNameClassName(app.status)}>{app.name}</span>
             <CopyButton value={app.id} />
-            <Badge variant={isPublished ? "default" : "secondary"}>{app.status}</Badge>
+            <Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>
           </h1>
           {app.description && <p className="text-muted-foreground mt-1">{app.description}</p>}
         </div>
@@ -203,7 +222,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Button
               variant="outline"
               onClick={() => unpublishApp.mutate(app.id)}
-              disabled={unpublishApp.isPending}
+              disabled={unpublishApp.isPending || isReadOnly}
             >
               <GlobeLock className="w-4 h-4 mr-2" />
               {unpublishApp.isPending ? "Unpublishing..." : "Unpublish"}
@@ -212,19 +231,31 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Button
               variant="default"
               onClick={() => publishApp.mutate(app.id)}
-              disabled={publishApp.isPending || !hasSlackConfig}
+              disabled={publishApp.isPending || !hasSlackConfig || isReadOnly}
             >
               <Globe className="w-4 h-4 mr-2" />
               {publishApp.isPending ? "Publishing..." : "Publish"}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setShowDeleteDialog(true)}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
+          {!isArchived && (
+            <Button
+              variant="outline"
+              onClick={handleArchive}
+              disabled={deleteAppMutation.isPending || isReadOnly}
+            >
+              {deleteAppMutation.isPending ? "Archiving..." : "Archive"}
+            </Button>
+          )}
+          {isArchived && canDangerousDelete && (
+            <Button
+              variant="destructive"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 
@@ -234,7 +265,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Slack Integration</CardTitle>
-              {!editingSlack && (
+              {!editingSlack && !isReadOnly && (
                 <Button variant="outline" size="sm" onClick={startEditSlack}>
                   <Pencil className="w-3 h-3 mr-1" />
                   {hasSlackConfig ? "Edit" : "Configure"}
@@ -517,7 +548,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Configuration</CardTitle>
-              {!editingBasic && (
+              {!editingBasic && !isReadOnly && (
                 <Button variant="outline" size="sm" onClick={startEditBasic}>
                   <Pencil className="w-3 h-3 mr-1" />
                   Edit
@@ -575,12 +606,28 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm font-medium">Harness</p>
-                    <p className="text-sm text-muted-foreground">{harnessName ?? app.harness_id}</p>
+                    <p
+                      className={`text-sm ${getEntityReferenceClassName(harness?.status ?? "deleted")}`}
+                    >
+                      {getEntityReferenceLabel({
+                        kind: "Harness",
+                        name: harness?.name,
+                        status: harness?.status ?? "deleted",
+                      })}
+                    </p>
                   </div>
 
                   <div>
                     <p className="text-sm font-medium">Agent</p>
-                    <p className="text-sm text-muted-foreground">{agentName ?? app.agent_id}</p>
+                    <p
+                      className={`text-sm ${getEntityReferenceClassName(agent?.status ?? "deleted")}`}
+                    >
+                      {getEntityReferenceLabel({
+                        kind: "Agent",
+                        name: agent?.name,
+                        status: agent?.status ?? "deleted",
+                      })}
+                    </p>
                   </div>
 
                   <div>
@@ -623,8 +670,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           <DialogHeader>
             <DialogTitle>Delete App</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &quot;{app.name}&quot;? This will stop all incoming
-              Slack messages from being processed.
+              Permanently delete the archived app &quot;{app.name}&quot;? Existing references will
+              render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -634,9 +681,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Button
               variant="destructive"
               onClick={handleDelete}
-              disabled={deleteAppMutation.isPending}
+              disabled={destroyAppMutation.isPending}
             >
-              {deleteAppMutation.isPending ? "Deleting..." : "Delete"}
+              {destroyAppMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

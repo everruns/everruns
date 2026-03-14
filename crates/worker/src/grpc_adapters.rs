@@ -489,6 +489,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     let status = match proto_agent.status.to_lowercase().as_str() {
         "active" => everruns_core::AgentStatus::Active,
         "archived" => everruns_core::AgentStatus::Archived,
+        "deleted" => everruns_core::AgentStatus::Deleted,
         _ => everruns_core::AgentStatus::Active,
     };
 
@@ -510,6 +511,8 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
+        archived_at: None,
+        deleted_at: None,
         usage: None, // Usage not tracked in worker context
     })
 }
@@ -566,6 +569,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
     let status = match proto_harness.status.to_lowercase().as_str() {
         "active" => HarnessStatus::Active,
         "archived" => HarnessStatus::Archived,
+        "deleted" => HarnessStatus::Deleted,
         _ => HarnessStatus::Active,
     };
 
@@ -586,6 +590,8 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_harness.updated_at.as_ref()),
+        archived_at: None,
+        deleted_at: None,
     })
 }
 

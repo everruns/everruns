@@ -6,6 +6,7 @@ import {
   copyHarness,
   createHarness,
   deleteHarness,
+  destroyHarness,
   getHarness,
   listHarnesses,
   previewHarness,
@@ -19,13 +20,18 @@ import type {
 } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
-export function useHarnesses() {
+interface UseHarnessesOptions {
+  includeArchived?: boolean;
+}
+
+export function useHarnesses(options: UseHarnessesOptions = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    queryKey: [...queryKeys.harnesses.list(), org],
-    queryFn: () => listHarnesses(),
+    queryKey: [...queryKeys.harnesses.list(includeArchived), org],
+    queryFn: () => listHarnesses(includeArchived),
     enabled: !!org,
   });
 
@@ -93,6 +99,17 @@ export function useDeleteHarness() {
 
   return useMutation({
     mutationFn: (harnessId: string) => deleteHarness(harnessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
+    },
+  });
+}
+
+export function useDestroyHarness() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (harnessId: string) => destroyHarness(harnessId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
     },

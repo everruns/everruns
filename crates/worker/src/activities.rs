@@ -18,7 +18,8 @@ use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
 };
-use everruns_core::traits::AgentStore;
+use everruns_core::traits::{AgentStore, HarnessStore};
+use everruns_core::{AgentStatus, HarnessStatus, Message};
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
@@ -33,6 +34,124 @@ use crate::grpc_adapters::{
 pub use everruns_core::atoms::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
+
+#[derive(Debug, Clone, Copy)]
+enum DependencyBlocker {
+    HarnessArchived,
+    HarnessDeleted,
+    AgentArchived,
+    AgentDeleted,
+}
+
+impl DependencyBlocker {
+    fn message(self) -> &'static str {
+        match self {
+            DependencyBlocker::HarnessArchived => {
+                "Execution stopped because the assigned harness was archived."
+            }
+            DependencyBlocker::HarnessDeleted => {
+                "Execution stopped because the assigned harness was deleted."
+            }
+            DependencyBlocker::AgentArchived => {
+                "Execution stopped because the assigned agent was archived."
+            }
+            DependencyBlocker::AgentDeleted => {
+                "Execution stopped because the assigned agent was deleted."
+            }
+        }
+    }
+}
+
+async fn detect_dependency_blocker(
+    grpc_client: &GrpcClient,
+    org_id: i64,
+    harness_id: everruns_core::HarnessId,
+    agent_id: Option<everruns_core::AgentId>,
+) -> Result<Option<DependencyBlocker>> {
+    let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
+    match harness_store.get_harness(harness_id).await? {
+        Some(harness) => match harness.status {
+            HarnessStatus::Active => {}
+            HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
+            HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),
+        },
+        None => return Ok(Some(DependencyBlocker::HarnessDeleted)),
+    }
+
+    if let Some(agent_id) = agent_id {
+        let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+        match agent_store.get_agent(agent_id).await? {
+            Some(agent) => match agent.status {
+                AgentStatus::Active => {}
+                AgentStatus::Archived => return Ok(Some(DependencyBlocker::AgentArchived)),
+                AgentStatus::Deleted => return Ok(Some(DependencyBlocker::AgentDeleted)),
+            },
+            None => return Ok(Some(DependencyBlocker::AgentDeleted)),
+        }
+    }
+
+    Ok(None)
+}
+
+async fn emit_dependency_blocked_events(
+    grpc_client: &GrpcClient,
+    org_id: i64,
+    context: &everruns_core::atoms::AtomContext,
+    blocker: DependencyBlocker,
+) {
+    use everruns_core::events::{
+        EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnFailedData,
+    };
+    use everruns_core::traits::EventEmitter;
+
+    let session_id = context.session_id;
+    let turn_id = context.turn_id;
+    let input_message_id = context.input_message_id;
+    let message = blocker.message();
+    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+
+    let output_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        OutputMessageCompletedData::new(Message::assistant(message)),
+    );
+    if let Err(e) = event_emitter.emit(output_event).await {
+        tracing::warn!(error = %e, "Failed to emit dependency blocked message");
+    }
+
+    if let Err(e) = grpc_client
+        .set_session_status(org_id, session_id, "idle")
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to set session status to idle");
+    }
+
+    let failed_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        TurnFailedData {
+            turn_id,
+            error: message.to_string(),
+            error_code: Some("dependency_unavailable".to_string()),
+        },
+    );
+    if let Err(e) = event_emitter.emit(failed_event).await {
+        tracing::warn!(error = %e, "Failed to emit dependency turn.failed");
+    }
+
+    let idled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        SessionIdledData {
+            turn_id,
+            iterations: None,
+            usage: None,
+        },
+    );
+    if let Err(e) = event_emitter.emit(idled_event).await {
+        tracing::warn!(error = %e, "Failed to emit dependency session.idled");
+    }
+}
 
 // ============================================================================
 // Activity Implementations
@@ -161,6 +280,23 @@ pub async fn reason_activity(
     let session_id = input.context.session_id;
     let turn_id = input.context.turn_id;
     let input_message_id = input.context.input_message_id;
+
+    if let Some(blocker) =
+        detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
+    {
+        emit_dependency_blocked_events(&grpc_client, org_id, &input.context, blocker).await;
+        return Ok(ReasonResult {
+            success: false,
+            text: blocker.message().to_string(),
+            tool_calls: vec![],
+            has_tool_calls: false,
+            tool_definitions: vec![],
+            max_iterations: 100,
+            error: Some("dependency_unavailable".to_string()),
+            usage: None,
+            response_id: None,
+        });
+    }
 
     // Create atom dependencies using gRPC adapters
     let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
@@ -296,6 +432,20 @@ pub async fn act_activity(
         tool_count = %input.tool_calls.len(),
         "Executing act_activity"
     );
+
+    if let Some(blocker) =
+        detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
+    {
+        emit_dependency_blocked_events(&grpc_client, org_id, &input.context, blocker).await;
+        return Ok(ActResult {
+            results: vec![],
+            completed: true,
+            success_count: 0,
+            error_count: 1,
+            connection_required: vec![],
+            blocked: true,
+        });
+    }
 
     // Create tool registry with default built-in tools
     let mut builtin_executor = ToolRegistry::with_defaults();
@@ -534,6 +684,7 @@ mod tests {
             success_count: 1,
             error_count: 0,
             connection_required: vec![],
+            blocked: false,
         };
 
         let json = serde_json::to_string(&result).unwrap();

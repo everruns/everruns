@@ -15,7 +15,28 @@ See `crates/core/src/agent.rs` for full field definitions.
 Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md`.
 - `capabilities` field stores enabled capability references (resolved at runtime from registry)
-- `status`: `active` or `archived` (soft delete)
+- `status`: `active`, `archived`, or `deleted`
+- `archived_at` and `deleted_at` capture lifecycle timestamps
+
+### Building Block Lifecycle
+
+The default lifecycle for user-managed building blocks is:
+
+`active -> archived -> deleted`
+
+Applies to:
+- Agents
+- Harnesses (except built-ins)
+- Skills
+- MCP servers visible in the MCP tab
+- Apps
+
+Contract:
+- `archived` means read-only, not assignable, not executable, hidden from lists by default, visible when explicitly filtered in.
+- `deleted` is a tombstone state used only to preserve historical references. Normal detail APIs return `404`, normal lists exclude deleted items, and runtime execution must not use them.
+- Existing references are preserved by ID. UI/API reference surfaces render tombstones like `<Deleted Agent>` instead of resolving the deleted entity normally.
+- If a session or app references an archived or deleted dependency, execution must stop gracefully on the next atom with a user-visible explanation instead of crashing.
+- Built-in/system-managed entities do not participate in archive/delete flows.
 
 **Input Validation Limits:**
 

@@ -29,6 +29,7 @@ import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
+import { getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 
 const PAGE_SIZE = 20;
 
@@ -41,7 +42,7 @@ export default function SessionsPage() {
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
-  const { data: agents, isLoading: agentsLoading } = useAgents();
+  const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
   const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
     selectedAgentId || undefined, // Pass undefined to get all sessions
@@ -167,7 +168,16 @@ export default function SessionsPage() {
                   <SessionCard
                     key={session.id}
                     session={session}
-                    agentName={agent?.name}
+                    agentName={
+                      session.agent_id
+                        ? getEntityReferenceLabel({
+                            kind: "Agent",
+                            name: agent?.name,
+                            status: agent?.status ?? "deleted",
+                          })
+                        : undefined
+                    }
+                    agentStatus={session.agent_id ? (agent?.status ?? "deleted") : undefined}
                     model={session.model_id ? modelMap.get(session.model_id) : undefined}
                     onTogglePin={handleTogglePin}
                   />

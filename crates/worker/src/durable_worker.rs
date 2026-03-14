@@ -1112,6 +1112,19 @@ impl DurableWorker {
                 }
             }
             "act" => {
+                let blocked = output
+                    .get("blocked")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false);
+                if blocked {
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed after dependency block");
+                    return Ok(());
+                }
                 // After action, schedule another reason activity (continue the loop)
                 // Use chained_input which carries previous_response_id from last reason
                 let chained_json = serde_json::to_value(&chained_input)?;

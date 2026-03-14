@@ -16,8 +16,9 @@ export async function createHarness(request: CreateHarnessRequest): Promise<Harn
   return response.data;
 }
 
-export async function listHarnesses(): Promise<Harness[]> {
-  const response = await api.get<ListResponse<Harness>>("/v1/harnesses");
+export async function listHarnesses(includeArchived = false): Promise<Harness[]> {
+  const path = includeArchived ? "/v1/harnesses?include_archived=true" : "/v1/harnesses";
+  const response = await api.get<ListResponse<Harness>>(path);
   return response.data.data;
 }
 
@@ -36,6 +37,10 @@ export async function updateHarness(
 
 export async function deleteHarness(harnessId: string): Promise<void> {
   await api.delete(`/v1/harnesses/${harnessId}`);
+}
+
+export async function destroyHarness(harnessId: string): Promise<void> {
+  await api.post(`/v1/harnesses/${harnessId}/delete`);
 }
 
 export async function copyHarness(harnessId: string): Promise<Harness> {

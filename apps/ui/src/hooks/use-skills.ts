@@ -8,6 +8,7 @@ import {
   createSkill,
   updateSkill,
   deleteSkill,
+  destroySkill,
   uploadSkillArchive,
 } from "@/lib/api/skills";
 import { queryKeys } from "@/lib/query-keys";
@@ -16,13 +17,18 @@ import { useOrg } from "@/providers/org-provider";
 
 // Skill hooks
 
-export function useSkills() {
+interface UseSkillsOptions {
+  includeArchived?: boolean;
+}
+
+export function useSkills(options: UseSkillsOptions = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    queryKey: [...queryKeys.skills.list(), org],
-    queryFn: () => getSkills(),
+    queryKey: [...queryKeys.skills.list(includeArchived), org],
+    queryFn: () => getSkills(includeArchived),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -106,6 +112,17 @@ export function useDeleteSkill() {
 
   return useMutation({
     mutationFn: (skillId: string) => deleteSkill(skillId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
+    },
+  });
+}
+
+export function useDestroySkill() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (skillId: string) => destroySkill(skillId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
     },

@@ -46,6 +46,8 @@ impl From<&str> for McpServerTransportType {
 /// MCP Server lifecycle status.
 /// - `active`: Server is available for use
 /// - `disabled`: Server is disabled and not used
+/// - `archived`: Server is hidden from listings and cannot be modified or assigned
+/// - `deleted`: Server is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
@@ -54,6 +56,10 @@ pub enum McpServerStatus {
     Active,
     /// Server is disabled and not used.
     Disabled,
+    /// Server is hidden from listings and cannot be modified or assigned.
+    Archived,
+    /// Server is deleted and should only survive as a tombstone for references.
+    Deleted,
 }
 
 impl std::fmt::Display for McpServerStatus {
@@ -61,6 +67,8 @@ impl std::fmt::Display for McpServerStatus {
         match self {
             McpServerStatus::Active => write!(f, "active"),
             McpServerStatus::Disabled => write!(f, "disabled"),
+            McpServerStatus::Archived => write!(f, "archived"),
+            McpServerStatus::Deleted => write!(f, "deleted"),
         }
     }
 }
@@ -69,6 +77,8 @@ impl From<&str> for McpServerStatus {
     fn from(s: &str) -> Self {
         match s {
             "disabled" => McpServerStatus::Disabled,
+            "archived" => McpServerStatus::Archived,
+            "deleted" => McpServerStatus::Deleted,
             _ => McpServerStatus::Active,
         }
     }
@@ -112,6 +122,12 @@ pub struct McpServer {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the MCP server was last updated.
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the MCP server was archived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when the MCP server was deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 // ============================================================================

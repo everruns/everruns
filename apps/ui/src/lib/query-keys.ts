@@ -15,14 +15,14 @@ export const queryKeys = {
   // Agent queries
   agents: {
     all: ["agents"] as const,
-    list: () => ["agents"] as const,
+    list: (includeArchived = false) => ["agents", { includeArchived }] as const,
     detail: (agentId: string) => ["agent", agentId] as const,
   },
 
   // Harness queries
   harnesses: {
     all: ["harnesses"] as const,
-    list: () => ["harnesses"] as const,
+    list: (includeArchived = false) => ["harnesses", { includeArchived }] as const,
     detail: (harnessId: string) => ["harness", harnessId] as const,
   },
 
@@ -111,7 +111,7 @@ export const queryKeys = {
   // MCP Server queries
   mcpServers: {
     all: ["mcp-servers"] as const,
-    list: () => ["mcp-servers"] as const,
+    list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 
@@ -150,7 +150,7 @@ export const queryKeys = {
   // App queries
   apps: {
     all: ["apps"] as const,
-    list: () => ["apps"] as const,
+    list: (includeArchived = false) => ["apps", { includeArchived }] as const,
     detail: (appId: string) => ["app", appId] as const,
   },
 
@@ -162,7 +162,7 @@ export const queryKeys = {
   // Skill queries
   skills: {
     all: ["skills"] as const,
-    list: () => ["skills"] as const,
+    list: (includeArchived = false) => ["skills", { includeArchived }] as const,
     detail: (skillId: string) => ["skill", skillId] as const,
     content: (skillId: string) => ["skill", skillId, "content"] as const,
   },

@@ -126,6 +126,8 @@ async fn main() -> anyhow::Result<()> {
         status: HarnessStatus::Active,
         created_at: now,
         updated_at: now,
+        archived_at: None,
+        deleted_at: None,
     };
     harness_store.add_harness(harness).await;
 
@@ -144,6 +146,8 @@ async fn main() -> anyhow::Result<()> {
         status: AgentStatus::Active,
         created_at: now,
         updated_at: now,
+        archived_at: None,
+        deleted_at: None,
         usage: None,
     };
     agent_store.add_agent(agent).await;

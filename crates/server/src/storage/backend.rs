@@ -206,8 +206,13 @@ impl StorageBackend {
         dispatch!(self, get_agent_by_public_id, org_id, public_id)
     }
 
-    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
-        dispatch!(self, list_agents, org_id, search)
+    pub async fn list_agents(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentRow>> {
+        dispatch!(self, list_agents, org_id, search, include_archived)
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
@@ -225,6 +230,10 @@ impl StorageBackend {
 
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         dispatch!(self, delete_agent, org_id, id)
+    }
+
+    pub async fn destroy_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
+        dispatch!(self, destroy_agent, org_id, id)
     }
 
     pub async fn upsert_agent(
@@ -264,8 +273,9 @@ impl StorageBackend {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<HarnessRow>> {
-        dispatch!(self, list_harnesses, org_id, search)
+        dispatch!(self, list_harnesses, org_id, search, include_archived)
     }
 
     pub async fn update_harness(
@@ -279,6 +289,10 @@ impl StorageBackend {
 
     pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
         dispatch!(self, delete_harness, org_id, id)
+    }
+
+    pub async fn destroy_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        dispatch!(self, destroy_harness, org_id, id)
     }
 
     // ============================================
@@ -919,8 +933,9 @@ impl StorageBackend {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<McpServerRow>> {
-        dispatch!(self, list_mcp_servers, org_id, search)
+        dispatch!(self, list_mcp_servers, org_id, search, include_archived)
     }
 
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
@@ -949,6 +964,10 @@ impl StorageBackend {
         dispatch!(self, delete_mcp_server, org_id, id)
     }
 
+    pub async fn destroy_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, destroy_mcp_server, org_id, id)
+    }
+
     // ============================================
     // Skills
     // ============================================
@@ -965,8 +984,13 @@ impl StorageBackend {
         dispatch!(self, get_skill_by_name, org_id, name)
     }
 
-    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
-        dispatch!(self, list_skills, org_id, search)
+    pub async fn list_skills(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<SkillRow>> {
+        dispatch!(self, list_skills, org_id, search, include_archived)
     }
 
     pub async fn update_skill(
@@ -980,6 +1004,10 @@ impl StorageBackend {
 
     pub async fn delete_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_skill, org_id, id)
+    }
+
+    pub async fn destroy_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, destroy_skill, org_id, id)
     }
 
     // ============================================
@@ -1518,8 +1546,13 @@ impl StorageBackend {
         dispatch!(self, get_app_by_public_id_unscoped, public_id)
     }
 
-    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
-        dispatch!(self, list_apps, org_id, search)
+    pub async fn list_apps(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AppRow>> {
+        dispatch!(self, list_apps, org_id, search, include_archived)
     }
 
     pub async fn update_app(
@@ -1533,5 +1566,9 @@ impl StorageBackend {
 
     pub async fn delete_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_app, org_id, id)
+    }
+
+    pub async fn destroy_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, destroy_app, org_id, id)
     }
 }

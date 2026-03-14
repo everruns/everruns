@@ -16,15 +16,18 @@ use utoipa::ToSchema;
 
 /// Harness lifecycle status.
 /// - `active`: Harness is available for use
-/// - `archived`: Harness is soft-deleted and hidden from listings
+/// - `archived`: Harness is hidden from listings and cannot be modified or assigned
+/// - `deleted`: Harness is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum HarnessStatus {
     /// Harness is available for use.
     Active,
-    /// Harness is soft-deleted and hidden from listings.
+    /// Harness is hidden from listings and cannot be modified or assigned.
     Archived,
+    /// Harness is deleted and should only survive as a tombstone for references.
+    Deleted,
 }
 
 impl std::fmt::Display for HarnessStatus {
@@ -32,6 +35,7 @@ impl std::fmt::Display for HarnessStatus {
         match self {
             HarnessStatus::Active => write!(f, "active"),
             HarnessStatus::Archived => write!(f, "archived"),
+            HarnessStatus::Deleted => write!(f, "deleted"),
         }
     }
 }
@@ -40,6 +44,7 @@ impl From<&str> for HarnessStatus {
     fn from(s: &str) -> Self {
         match s {
             "archived" => HarnessStatus::Archived,
+            "deleted" => HarnessStatus::Deleted,
             _ => HarnessStatus::Active,
         }
     }
@@ -86,4 +91,10 @@ pub struct Harness {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the harness was last updated.
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the harness was archived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when the harness was deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }

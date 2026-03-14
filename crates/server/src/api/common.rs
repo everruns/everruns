@@ -46,6 +46,34 @@ impl ErrorResponse {
     }
 }
 
+fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorResponse>)> {
+    let lowered = message.to_ascii_lowercase();
+
+    if lowered.contains("duplicate key") || lowered.contains("already exists") {
+        return Some(ErrorResponse::conflict(message));
+    }
+
+    let is_bad_request = [
+        "cannot be assigned",
+        "cannot be edited",
+        "must be archived before deletion",
+        "cannot delete built-in",
+        "cannot modify built-in",
+        "cannot publish archived",
+        "cannot unpublish archived",
+        "cannot update archived",
+        "cannot archive built-in",
+    ]
+    .iter()
+    .any(|pattern| lowered.contains(pattern));
+
+    if is_bad_request {
+        return Some(ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST));
+    }
+
+    None
+}
+
 // ============================================================================
 // Error handling extension traits
 // ============================================================================
@@ -74,6 +102,8 @@ impl<T> ApiPolicyResultExt<T> for Result<T, anyhow::Error> {
                     StatusCode::FORBIDDEN,
                     Json(ErrorResponse::new(&policy_err.message)),
                 )
+            } else if let Some(response) = classify_anyhow_error(&e.to_string()) {
+                response
             } else {
                 tracing::error!("Failed to {}: {}", operation, e);
                 ErrorResponse::internal_error()

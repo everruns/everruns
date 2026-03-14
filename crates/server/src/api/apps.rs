@@ -80,6 +80,8 @@ pub struct UpdateAppRequest {
 pub struct ListAppsQuery {
     /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived apps. Deleted apps never appear in lists.
+    pub include_archived: Option<bool>,
 }
 
 /// App state for routes
@@ -113,6 +115,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/apps/{app_id}",
             get(get_app).patch(update_app).delete(delete_app),
         )
+        .route("/v1/apps/{app_id}/delete", post(destroy_app))
         .route("/v1/apps/{app_id}/publish", post(publish_app))
         .route("/v1/apps/{app_id}/unpublish", post(unpublish_app))
         .with_state(state)
@@ -179,7 +182,11 @@ pub async fn list_apps(
     let caller = Caller::from(&org);
     let apps = state
         .service
-        .list(&caller, query.search.as_deref())
+        .list(
+            &caller,
+            query.search.as_deref(),
+            query.include_archived.unwrap_or(false),
+        )
         .await
         .map_policy_or_internal("list apps")?;
 
@@ -282,6 +289,29 @@ pub async fn delete_app(
         .delete(&caller, &app_id.to_string())
         .await
         .map_policy_or_internal("delete app")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))
+    }
+}
+
+pub async fn destroy_app(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let app_id: AppId = app_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .destroy(&caller, &app_id.to_string())
+        .await
+        .map_policy_or_internal("destroy app")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

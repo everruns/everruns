@@ -22,15 +22,18 @@ use utoipa::ToSchema;
 
 /// Agent lifecycle status.
 /// - `active`: Agent is available for use
-/// - `archived`: Agent is soft-deleted and hidden from listings
+/// - `archived`: Agent is hidden from listings and cannot be modified or assigned
+/// - `deleted`: Agent is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum AgentStatus {
     /// Agent is available for use.
     Active,
-    /// Agent is soft-deleted and hidden from listings.
+    /// Agent is hidden from listings and cannot be modified or assigned.
     Archived,
+    /// Agent is deleted and should only survive as a tombstone for references.
+    Deleted,
 }
 
 impl std::fmt::Display for AgentStatus {
@@ -38,6 +41,7 @@ impl std::fmt::Display for AgentStatus {
         match self {
             AgentStatus::Active => write!(f, "active"),
             AgentStatus::Archived => write!(f, "archived"),
+            AgentStatus::Deleted => write!(f, "deleted"),
         }
     }
 }
@@ -46,6 +50,7 @@ impl From<&str> for AgentStatus {
     fn from(s: &str) -> Self {
         match s {
             "archived" => AgentStatus::Archived,
+            "deleted" => AgentStatus::Deleted,
             _ => AgentStatus::Active,
         }
     }
@@ -97,6 +102,12 @@ pub struct Agent {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the agent was last updated.
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the agent was archived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when the agent was deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
     /// Cumulative token usage across all sessions for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
@@ -164,6 +175,8 @@ mod tests {
             status: AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 

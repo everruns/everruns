@@ -5,7 +5,7 @@
 // Agent types (M2)
 // ============================================
 
-export type AgentStatus = "active" | "archived";
+export type AgentStatus = "active" | "archived" | "deleted";
 
 /** Capability ID - extensible string-based identifier */
 export type CapabilityId = string;
@@ -40,6 +40,8 @@ export interface Agent {
   status: AgentStatus;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+  deleted_at: string | null;
   /** Cumulative token usage across all sessions for this agent */
   usage?: TokenUsage;
 }
@@ -75,7 +77,7 @@ export interface UpdateAgentRequest {
 // Harness types
 // ============================================
 
-export type HarnessStatus = "active" | "archived";
+export type HarnessStatus = "active" | "archived" | "deleted";
 
 export interface Harness {
   id: string;
@@ -92,6 +94,8 @@ export interface Harness {
   status: HarnessStatus;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+  deleted_at: string | null;
 }
 
 export interface CreateHarnessRequest {
@@ -1451,7 +1455,7 @@ export interface MetricsTimeSeriesResponse {
 export type McpServerTransportType = "http";
 
 /** MCP Server status */
-export type McpServerStatus = "active" | "disabled";
+export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
 
 /** MCP Server configuration */
 export interface McpServer {
@@ -1465,6 +1469,8 @@ export interface McpServer {
   headers: Record<string, string>;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+  deleted_at: string | null;
 }
 
 /** Request to create an MCP server */
@@ -1496,7 +1502,7 @@ export interface UpdateMcpServerRequest {
 export type SkillSourceType = "markdown" | "archive";
 
 /** Skill status */
-export type SkillStatus = "active" | "disabled";
+export type SkillStatus = "active" | "disabled" | "archived" | "deleted";
 
 /** Skill entity */
 export interface Skill {
@@ -1512,6 +1518,8 @@ export interface Skill {
   version: string;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+  deleted_at: string | null;
 }
 
 /** Skill content (full instructions + files) */
@@ -1780,7 +1788,7 @@ export interface CommandsResponse {
 // App types (deployable agent+harness bundles)
 // ============================================
 
-export type AppStatus = "draft" | "published" | "archived";
+export type AppStatus = "draft" | "published" | "archived" | "deleted";
 export type ChannelType = "slack";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 
@@ -1806,6 +1814,8 @@ export interface App {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+  deleted_at: string | null;
 }
 
 export interface CreateAppRequest {

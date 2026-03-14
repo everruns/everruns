@@ -7,7 +7,7 @@
 use crate::api::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SkillService;
-use crate::services::skill::{SKILL_MANAGE, SKILL_VIEW};
+use crate::services::skill::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -73,6 +73,8 @@ pub struct ValidateSkillRequest {
 pub struct ListSkillsQuery {
     /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived skills. Deleted skills never appear in lists.
+    pub include_archived: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -111,7 +113,7 @@ impl FromRef<AppState> for AuthState {
 )]
 pub async fn skill_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&SKILL_VIEW, &SKILL_MANAGE]);
+    let policies = evaluate_policies(&caller, &[&SKILL_VIEW, &SKILL_MANAGE, &SKILL_DANGEROUS]);
     Json(ResourceConfigResponse { policies })
 }
 
@@ -132,6 +134,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/skills/{skill_id}",
             get(get_skill).patch(update_skill).delete(delete_skill),
         )
+        .route("/v1/skills/{skill_id}/delete", post(destroy_skill))
         .route("/v1/skills/{skill_id}/content", get(get_skill_content))
         .with_state(state)
 }
@@ -254,7 +257,11 @@ pub async fn list_skills(
     let caller = Caller::from(&org);
     let skills = state
         .service
-        .list(&caller, query.search.as_deref())
+        .list(
+            &caller,
+            query.search.as_deref(),
+            query.include_archived.unwrap_or(false),
+        )
         .await
         .map_policy_or_internal("list skills")?;
 
@@ -404,6 +411,29 @@ pub async fn delete_skill(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ErrorResponse::not_found("Skill"))
+    }
+}
+
+pub async fn destroy_skill(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(skill_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let skill_id: SkillId = skill_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .destroy(&caller, skill_id.uuid())
+        .await
+        .map_policy_or_internal("destroy skill")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("Skill not found").into_response(StatusCode::NOT_FOUND))
     }
 }
 

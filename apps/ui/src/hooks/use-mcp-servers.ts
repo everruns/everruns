@@ -7,6 +7,7 @@ import {
   createMcpServer,
   updateMcpServer,
   deleteMcpServer,
+  destroyMcpServer,
 } from "@/lib/api/mcp-servers";
 import { queryKeys } from "@/lib/query-keys";
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
@@ -14,13 +15,18 @@ import { useOrg } from "@/providers/org-provider";
 
 // MCP Server hooks
 
-export function useMcpServers() {
+interface UseMcpServersOptions {
+  includeArchived?: boolean;
+}
+
+export function useMcpServers(options: UseMcpServersOptions = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    queryKey: [...queryKeys.mcpServers.list(), org],
-    queryFn: () => getMcpServers(),
+    queryKey: [...queryKeys.mcpServers.list(includeArchived), org],
+    queryFn: () => getMcpServers(includeArchived),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -79,6 +85,17 @@ export function useDeleteMcpServer() {
 
   return useMutation({
     mutationFn: (serverId: string) => deleteMcpServer(serverId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
+    },
+  });
+}
+
+export function useDestroyMcpServer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (serverId: string) => destroyMcpServer(serverId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
     },

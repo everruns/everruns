@@ -35,6 +35,13 @@ pub const MCP_SERVER_MANAGE: Policy = Policy {
     id: "mcp_server.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
+pub const MCP_SERVER_DANGEROUS: Policy = Policy {
+    id: "mcp_server.dangerous",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgMcpServersDangerous),
+    ],
+};
 
 pub struct McpServerService {
     db: Arc<StorageBackend>,
@@ -78,7 +85,10 @@ impl McpServerService {
     #[policy(MCP_SERVER_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<McpServer>> {
         let row = self.db.get_mcp_server(caller.org_id, id).await?;
-        Ok(row.as_ref().map(Self::row_to_mcp_server))
+        Ok(row
+            .as_ref()
+            .filter(|row| row.status != "deleted")
+            .map(Self::row_to_mcp_server))
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
@@ -102,8 +112,16 @@ impl McpServerService {
     }
 
     #[policy(MCP_SERVER_VIEW)]
-    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<McpServer>> {
-        let rows = self.db.list_mcp_servers(caller.org_id, search).await?;
+    pub async fn list(
+        &self,
+        caller: &Caller,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<McpServer>> {
+        let rows = self
+            .db
+            .list_mcp_servers(caller.org_id, search, include_archived)
+            .await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
@@ -114,6 +132,11 @@ impl McpServerService {
         id: Uuid,
         req: UpdateMcpServerRequest,
     ) -> Result<Option<McpServer>> {
+        if let Some(existing) = self.db.get_mcp_server(caller.org_id, id).await?
+            && !matches!(existing.status.as_str(), "active" | "disabled")
+        {
+            anyhow::bail!("Archived or deleted MCP servers cannot be edited");
+        }
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -145,6 +168,17 @@ impl McpServerService {
     #[policy(MCP_SERVER_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         self.db.delete_mcp_server(caller.org_id, id).await
+    }
+
+    #[policy(MCP_SERVER_DANGEROUS)]
+    pub async fn destroy(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        let Some(existing) = self.db.get_mcp_server(caller.org_id, id).await? else {
+            return Ok(false);
+        };
+        if existing.status != "archived" {
+            anyhow::bail!("MCP server must be archived before deletion");
+        }
+        self.db.destroy_mcp_server(caller.org_id, id).await
     }
 
     /// List active MCP servers (for capability listing)
@@ -290,7 +324,7 @@ impl McpServerService {
         caller: &Caller,
         server_prefix: &str,
     ) -> Result<Option<McpServerResolved>> {
-        let servers = self.list(caller, None).await?;
+        let servers = self.list(caller, None, false).await?;
         let server_prefix_lower = server_prefix.to_lowercase();
 
         let server = servers.into_iter().find(|s| {
@@ -339,6 +373,8 @@ impl McpServerService {
             headers,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
         }
     }
 

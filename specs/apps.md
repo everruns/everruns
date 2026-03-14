@@ -14,6 +14,7 @@ Top-level deployment entity. Composes existing building blocks (Harness, Agent) 
 - Each App references exactly one Agent (required)
 - Each App has a channel type and channel-specific config (JSON)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
+- Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
 - Only published apps accept incoming requests
 
 ### Channel Types
@@ -42,7 +43,7 @@ Controls how incoming messages map to sessions:
 ### Lifecycle
 
 ```
-draft → published → draft
+draft → published → draft → archived → deleted
          ↕
     (accepting requests)
 ```
@@ -50,6 +51,8 @@ draft → published → draft
 - `draft`: App is configured but not accepting requests
 - `published`: App is live, incoming messages create/continue sessions
 - Unpublishing stops new message processing; existing sessions remain
+- `archived`: Read-only, hidden from lists by default, not assignable, not executable
+- `deleted`: Tombstone state for historical references only; normal detail API returns `404`
 
 ## Data Model
 
@@ -63,7 +66,8 @@ Key fields:
 - `agent_id`: Required FK to agent
 - `channel_type`: Enum string (`slack`, etc.)
 - `channel_config`: JSONB with channel-specific settings
-- `status`: `draft` | `published` | `archived`
+- `status`: `draft` | `published` | `archived` | `deleted`
+- `archived_at`, `deleted_at`: Lifecycle timestamps
 - `published_at`: Timestamp when last published
 - `created_at`, `updated_at`: Standard timestamps
 
@@ -74,10 +78,11 @@ All endpoints under `/v1/apps`. See `crates/server/src/api/apps.rs`.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/apps` | Create app |
-| GET | `/v1/apps` | List apps |
+| GET | `/v1/apps` | List non-archived apps by default (`include_archived=true` to include archived) |
 | GET | `/v1/apps/{app_id}` | Get app |
 | PATCH | `/v1/apps/{app_id}` | Update app |
 | DELETE | `/v1/apps/{app_id}` | Archive app |
+| POST | `/v1/apps/{app_id}/delete` | Dangerous delete of archived app |
 | POST | `/v1/apps/{app_id}/publish` | Publish app |
 | POST | `/v1/apps/{app_id}/unpublish` | Unpublish app |
 

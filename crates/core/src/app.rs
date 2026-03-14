@@ -23,7 +23,8 @@ use utoipa::ToSchema;
 /// App lifecycle status.
 /// - `draft`: App is configured but not accepting requests
 /// - `published`: App is live, accepting incoming requests
-/// - `archived`: App is soft-deleted and hidden from listings
+/// - `archived`: App is hidden from listings and cannot be modified or assigned
+/// - `deleted`: App is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
@@ -31,6 +32,7 @@ pub enum AppStatus {
     Draft,
     Published,
     Archived,
+    Deleted,
 }
 
 impl std::fmt::Display for AppStatus {
@@ -39,6 +41,7 @@ impl std::fmt::Display for AppStatus {
             AppStatus::Draft => write!(f, "draft"),
             AppStatus::Published => write!(f, "published"),
             AppStatus::Archived => write!(f, "archived"),
+            AppStatus::Deleted => write!(f, "deleted"),
         }
     }
 }
@@ -48,6 +51,7 @@ impl From<&str> for AppStatus {
         match s {
             "published" => AppStatus::Published,
             "archived" => AppStatus::Archived,
+            "deleted" => AppStatus::Deleted,
             _ => AppStatus::Draft,
         }
     }
@@ -118,6 +122,12 @@ pub struct App {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the app was last updated.
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the app was archived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when the app was deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Session strategy for incoming messages (how messages map to sessions).
@@ -180,6 +190,7 @@ mod tests {
         assert_eq!(AppStatus::Draft.to_string(), "draft");
         assert_eq!(AppStatus::Published.to_string(), "published");
         assert_eq!(AppStatus::Archived.to_string(), "archived");
+        assert_eq!(AppStatus::Deleted.to_string(), "deleted");
     }
 
     #[test]
@@ -187,6 +198,7 @@ mod tests {
         assert_eq!(AppStatus::from("draft"), AppStatus::Draft);
         assert_eq!(AppStatus::from("published"), AppStatus::Published);
         assert_eq!(AppStatus::from("archived"), AppStatus::Archived);
+        assert_eq!(AppStatus::from("deleted"), AppStatus::Deleted);
         assert_eq!(AppStatus::from("unknown"), AppStatus::Draft);
         assert_eq!(AppStatus::from(""), AppStatus::Draft);
     }
@@ -323,6 +335,8 @@ mod tests {
             published_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
         };
         let config = app.slack_config().unwrap();
         assert_eq!(config.signing_secret, "sec");
@@ -344,6 +358,8 @@ mod tests {
             published_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
         };
         assert!(app.slack_config().is_none());
     }
@@ -364,6 +380,8 @@ mod tests {
             published_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
         };
         let json = serde_json::to_value(&app).unwrap();
         assert!(json.get("id").is_some()); // public_id serialized as "id"

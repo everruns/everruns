@@ -32,6 +32,7 @@ import { Plus } from "lucide-react";
 export default function DashboardPage() {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
+  const { data: agentsForReferences = [] } = useAgents({ includeArchived: true });
   const { data: allCapabilities } = useCapabilities();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, {
     limit: 5,
@@ -125,7 +126,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <RecentSessions sessions={sessions} agents={agents} models={llmModels} />
+          <RecentSessions sessions={sessions} agents={agentsForReferences} models={llmModels} />
         </div>
       </div>
 

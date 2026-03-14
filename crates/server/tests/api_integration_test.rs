@@ -267,6 +267,104 @@ async fn test_delete_agent() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(archived_agent.status, everruns_core::AgentStatus::Archived);
+
+    let default_list: Value = server
+        .get("/v1/agents")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let listed = default_list["data"]
+        .as_array()
+        .expect("Expected agents array")
+        .iter()
+        .any(|candidate| candidate["id"] == agent.public_id.to_string());
+    assert!(!listed, "Archived agent should be hidden from default list");
+
+    let archived_list: Value = server
+        .get("/v1/agents?include_archived=true")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let listed = archived_list["data"]
+        .as_array()
+        .expect("Expected agents array")
+        .iter()
+        .any(|candidate| candidate["id"] == agent.public_id.to_string());
+    assert!(
+        listed,
+        "Archived agent should appear when include_archived=true"
+    );
+}
+
+#[tokio::test]
+async fn test_destroy_agent_requires_archive_and_hides_detail_api() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Destroy Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(&format!("/v1/agents/{}/delete", agent.public_id), json!({}))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    server
+        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    server
+        .post(&format!("/v1/agents/{}/delete", agent.public_id), json!({}))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    server
+        .get(&format!("/v1/agents/{}", agent.public_id))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_create_session_rejects_archived_agent() {
+    let server = TestServer::new().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Archived Session Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+                "title": "Should Fail"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
 }
 
 // ============================================

@@ -84,24 +84,38 @@ impl SessionService {
         let harness_id = HarnessId::from_uuid(harness_id);
         let agent_id = agent_internal_id.map(AgentId::from_uuid);
 
+        let harness = self
+            .db
+            .get_harness(org_id, harness_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+        if harness.status != "active" {
+            anyhow::bail!("Archived or deleted harnesses cannot be assigned");
+        }
+        let agent = if let Some(aid) = agent_id {
+            let agent = self
+                .db
+                .get_agent(org_id, aid)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+            if agent.status != "active" {
+                anyhow::bail!("Archived or deleted agents cannot be assigned");
+            }
+            Some(agent)
+        } else {
+            None
+        };
+
         // Resolve model_id: session > agent > harness
         let model_id: Option<ModelId> = match req.model_id {
             Some(id) => Some(id),
             None => {
                 // Try agent's default_model_id first
-                let agent_model = if let Some(aid) = agent_id {
-                    let agent = self.db.get_agent(org_id, aid).await?;
-                    agent.and_then(|a| a.default_model_id)
-                } else {
-                    None
-                };
+                let agent_model = agent.as_ref().and_then(|a| a.default_model_id);
                 // Fall back to harness's default_model_id
                 match agent_model {
                     Some(id) => Some(id),
-                    None => {
-                        let harness = self.db.get_harness(org_id, harness_id).await?;
-                        harness.and_then(|h| h.default_model_id)
-                    }
+                    None => harness.default_model_id,
                 }
             }
         };
@@ -759,5 +773,123 @@ mod tests {
         assert!(binary.is_readonly);
         assert_eq!(binary.encoding, "base64");
         assert_eq!(binary.content.as_deref(), Some("AAE="));
+    }
+
+    #[tokio::test]
+    async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let agent_service = AgentService::new(db.clone());
+        let session_service = SessionService::new(db);
+        let caller = Caller::internal(1);
+
+        let harness = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Harness".to_string(),
+                    description: None,
+                    system_prompt: "Harness prompt".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let agent = agent_service
+            .create(
+                &caller,
+                None,
+                CreateAgentRequest {
+                    id: None,
+                    name: "Agent".to_string(),
+                    description: None,
+                    system_prompt: "Agent prompt".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        harness_service
+            .delete(&caller, harness.id.uuid())
+            .await
+            .unwrap();
+        let error = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                CreateSessionRequest {
+                    harness_id: harness.id,
+                    agent_id: Some(agent.public_id),
+                    title: Some("Archived harness".to_string()),
+                    locale: None,
+                    tags: vec![],
+                    model_id: None,
+                    capabilities: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Archived or deleted harnesses cannot be assigned")
+        );
+
+        let harness = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Harness 2".to_string(),
+                    description: None,
+                    system_prompt: "Harness prompt".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        agent_service
+            .delete(&caller, &agent.public_id.to_string())
+            .await
+            .unwrap();
+
+        let error = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                CreateSessionRequest {
+                    harness_id: harness.id,
+                    agent_id: Some(agent.public_id),
+                    title: Some("Archived agent".to_string()),
+                    locale: None,
+                    tags: vec![],
+                    model_id: None,
+                    capabilities: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Archived or deleted agents cannot be assigned")
+        );
     }
 }

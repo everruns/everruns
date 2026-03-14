@@ -48,11 +48,13 @@ CREATE TABLE apps (
     -- Channel configuration
     channel_type VARCHAR(50) NOT NULL CHECK (channel_type IN ('slack')),
     channel_config JSONB NOT NULL DEFAULT '{}'::jsonb,
-    -- Lifecycle: draft -> published -> draft (or archived)
-    status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+    -- Lifecycle: draft -> published -> archived -> deleted
+    status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived', 'deleted')),
     published_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
     -- Unique public_id per org
     CONSTRAINT apps_public_id_format CHECK (public_id ~ '^app_[0-9a-f]{32}$')
 );

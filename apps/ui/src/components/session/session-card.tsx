@@ -9,6 +9,7 @@ import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 
 /**
  * Format total tokens from usage
@@ -23,6 +24,8 @@ export interface SessionCardProps {
   session: Session;
   /** Optional agent name to display (for org-level session lists) */
   agentName?: string;
+  /** Optional agent lifecycle status for reference rendering */
+  agentStatus?: string | null;
   /** Optional LLM model for display */
   model?: LlmModelWithProvider;
   /** Optional custom summary text (overrides default title display) */
@@ -123,7 +126,14 @@ function SessionInfoIcon({ session }: { session: Session }) {
  * SessionCard displays a session with status, summary, and metadata.
  * Designed for use in session lists and overview pages.
  */
-export function SessionCard({ session, agentName, model, summary, onTogglePin }: SessionCardProps) {
+export function SessionCard({
+  session,
+  agentName,
+  agentStatus,
+  model,
+  summary,
+  onTogglePin,
+}: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
@@ -156,7 +166,13 @@ export function SessionCard({ session, agentName, model, summary, onTogglePin }:
             </Badge>
             {agentName && (
               <Badge variant="outline" className="flex-shrink-0 text-xs">
-                {agentName}
+                <span className={getEntityReferenceClassName(agentStatus)}>
+                  {getEntityReferenceLabel({
+                    kind: "Agent",
+                    name: agentName,
+                    status: agentStatus,
+                  })}
+                </span>
               </Badge>
             )}
           </div>

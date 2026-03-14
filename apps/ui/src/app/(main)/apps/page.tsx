@@ -1,18 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useApps, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { App } from "@/lib/api/types";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 export default function AppsPage() {
-  const { data: apps, isLoading, error } = useApps();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: apps, isLoading, error } = useApps({ includeArchived: showArchived });
 
   if (error) {
     return (
@@ -25,10 +29,16 @@ export default function AppsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-3">
-          Apps
-          <ExperimentalPageBadge />
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-3">
+            Apps
+            <ExperimentalPageBadge />
+          </h1>
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
+            Show archived apps
+          </label>
+        </div>
         <Link href="/apps/new">
           <Button variant="accent">
             <Plus className="w-4 h-4 mr-2" />
@@ -68,6 +78,7 @@ function AppCard({ app }: { app: App }) {
   const publishApp = usePublishApp();
   const unpublishApp = useUnpublishApp();
   const isPublished = app.status === "published";
+  const isArchived = app.status === "archived";
   const webhookUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/apps/${app.id}/slack/events`
@@ -80,10 +91,12 @@ function AppCard({ app }: { app: App }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Rocket className="w-5 h-5 text-muted-foreground" />
-              <h3 className="font-semibold text-lg">{app.name}</h3>
+              <h3 className={`font-semibold text-lg ${getEntityNameClassName(app.status)}`}>
+                {app.name}
+              </h3>
               <CopyButton value={app.id} />
             </div>
-            <Badge variant={isPublished ? "default" : "secondary"}>{app.status}</Badge>
+            <Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -125,7 +138,7 @@ function AppCard({ app }: { app: App }) {
                 variant="outline"
                 size="sm"
                 onClick={() => unpublishApp.mutate(app.id)}
-                disabled={unpublishApp.isPending}
+                disabled={unpublishApp.isPending || isArchived}
               >
                 <GlobeLock className="w-3 h-3 mr-1" />
                 Unpublish
@@ -135,7 +148,7 @@ function AppCard({ app }: { app: App }) {
                 variant="default"
                 size="sm"
                 onClick={() => publishApp.mutate(app.id)}
-                disabled={publishApp.isPending}
+                disabled={publishApp.isPending || isArchived}
               >
                 <Globe className="w-3 h-3 mr-1" />
                 Publish

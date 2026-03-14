@@ -16,8 +16,9 @@ export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
   return response.data;
 }
 
-export async function listAgents(): Promise<Agent[]> {
-  const response = await api.get<ListResponse<Agent>>("/v1/agents");
+export async function listAgents(includeArchived = false): Promise<Agent[]> {
+  const path = includeArchived ? "/v1/agents?include_archived=true" : "/v1/agents";
+  const response = await api.get<ListResponse<Agent>>(path);
   return response.data.data;
 }
 
@@ -33,6 +34,10 @@ export async function updateAgent(agentId: string, request: UpdateAgentRequest):
 
 export async function deleteAgent(agentId: string): Promise<void> {
   await api.delete(`/v1/agents/${agentId}`);
+}
+
+export async function destroyAgent(agentId: string): Promise<void> {
+  await api.post(`/v1/agents/${agentId}/delete`);
 }
 
 export async function exportAgent(agentId: string): Promise<string> {
