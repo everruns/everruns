@@ -1,6 +1,6 @@
 // Permissions model for fine-grained access control
 //
-// Decision: Permissions are hardcoded per OrgRole (no DB storage in phase 1).
+// Decision: Default permissions are hardcoded per OrgRole; custom resolvers can override evaluation.
 // Decision: Policies are const values evaluated at service method entry via #[policy] macro.
 // Decision: Permission format is `org:<resource>:<action>`.
 // See specs/permissions.md for full design.
@@ -149,6 +149,80 @@ pub fn role_permissions(role: OrgRole) -> &'static [Permission] {
     }
 }
 
+/// Contract for resolving which permissions a caller has.
+///
+/// `DefaultPermissionResolver` preserves the OSS role-based mapping, while downstream
+/// consumers can implement this trait to inject billing-tier rules, database-backed
+/// grants, or external RBAC systems without patching policy evaluation itself.
+///
+/// # Contract
+///
+/// Implementations must:
+///
+/// - Fail closed. Return `true` from `has_permission()` only when the caller is
+///   actually authorized.
+/// - Be consistent. If `has_permission(caller, permission)` returns `true`, then
+///   `caller_permissions(caller)` must include that same permission.
+/// - Be safe to call from async request paths (`Send + Sync`).
+///
+/// # Example
+///
+/// ```no_run
+/// use everruns_core::{Caller, Permission, PermissionResolver};
+///
+/// struct TierAwareResolver;
+///
+/// impl PermissionResolver for TierAwareResolver {
+///     fn has_permission(&self, caller: &Caller, permission: &Permission) -> bool {
+///         caller.role == everruns_core::organization::OrgRole::Owner
+///             && permission == &Permission::OrgHarnessesDangerous
+///     }
+///
+///     fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+///         Permission::ALL
+///             .iter()
+///             .copied()
+///             .filter(|permission| self.has_permission(caller, permission))
+///             .collect()
+///     }
+/// }
+/// ```
+pub trait PermissionResolver: Send + Sync {
+    /// Return whether the caller currently has `permission`.
+    ///
+    /// This method is used by `Policy::evaluate_with()` for
+    /// `Rule::UserHasPermission` checks.
+    fn has_permission(&self, caller: &Caller, permission: &Permission) -> bool;
+
+    /// Return the full set of permissions currently granted to `caller`.
+    ///
+    /// Config endpoints and downstream policy-reporting code use this to expose
+    /// evaluated capabilities to a UI. Prefer deterministic ordering so callers
+    /// can compare results reliably.
+    fn caller_permissions(&self, caller: &Caller) -> Vec<Permission>;
+}
+
+/// Default `PermissionResolver` backed by the built-in role-to-permission map.
+///
+/// This preserves the existing OSS behavior by delegating to
+/// `role_has_permission()` and `role_permissions()`.
+///
+/// # Safety
+///
+/// This resolver is stateless and can be shared freely across threads.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DefaultPermissionResolver;
+
+impl PermissionResolver for DefaultPermissionResolver {
+    fn has_permission(&self, caller: &Caller, permission: &Permission) -> bool {
+        role_has_permission(caller.role, permission)
+    }
+
+    fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+        role_permissions(caller.role).to_vec()
+    }
+}
+
 // ============================================================================
 // Rule
 // ============================================================================
@@ -195,10 +269,23 @@ impl Policy {
     /// Evaluate all rules against the caller. Returns `Ok(())` if all pass,
     /// or `Err(PolicyError)` on the first failing rule.
     pub fn evaluate(&self, caller: &Caller) -> Result<(), PolicyError> {
+        let resolver = DefaultPermissionResolver;
+        self.evaluate_with(&resolver, caller)
+    }
+
+    /// Evaluate all rules against the caller using a custom permission resolver.
+    ///
+    /// `Rule::UserHasPermission` checks are delegated to `resolver`, while other
+    /// rule types keep their current built-in behavior.
+    pub fn evaluate_with(
+        &self,
+        resolver: &dyn PermissionResolver,
+        caller: &Caller,
+    ) -> Result<(), PolicyError> {
         for rule in self.rules {
             match rule {
                 Rule::UserHasPermission(perm) => {
-                    if !role_has_permission(caller.role, perm) {
+                    if !resolver.has_permission(caller, perm) {
                         return Err(PolicyError::denied(self.id, perm.as_str()));
                     }
                 }
@@ -297,9 +384,26 @@ impl std::error::Error for PolicyError {}
 /// Evaluate multiple policies against a caller and return a map of results.
 /// Used by `/config` endpoints to expose policy results to the UI.
 pub fn evaluate_policies(caller: &Caller, policies: &[&Policy]) -> HashMap<String, bool> {
+    let resolver = DefaultPermissionResolver;
+    evaluate_policies_with(&resolver, caller, policies)
+}
+
+/// Evaluate multiple policies using a custom permission resolver.
+///
+/// This is the config-endpoint companion to `Policy::evaluate_with()`.
+pub fn evaluate_policies_with(
+    resolver: &dyn PermissionResolver,
+    caller: &Caller,
+    policies: &[&Policy],
+) -> HashMap<String, bool> {
     policies
         .iter()
-        .map(|p| (p.id.to_string(), p.evaluate(caller).is_ok()))
+        .map(|policy| {
+            (
+                policy.id.to_string(),
+                policy.evaluate_with(resolver, caller).is_ok(),
+            )
+        })
         .collect()
 }
 
@@ -490,6 +594,61 @@ mod tests {
         let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]);
 
         assert!(result.values().all(|&v| !v));
+    }
+
+    #[test]
+    fn default_permission_resolver_matches_hardcoded_role_mapping() {
+        let resolver = DefaultPermissionResolver;
+
+        for caller in [owner_caller(), admin_caller(), member_caller()] {
+            for permission in Permission::ALL {
+                assert_eq!(
+                    resolver.has_permission(&caller, permission),
+                    role_has_permission(caller.role, permission)
+                );
+            }
+
+            assert_eq!(
+                resolver.caller_permissions(&caller),
+                role_permissions(caller.role).to_vec()
+            );
+        }
+    }
+
+    struct DenyManageResolver;
+
+    impl PermissionResolver for DenyManageResolver {
+        fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+            permission != &Permission::OrgHarnessesManage
+        }
+
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+            Permission::ALL
+                .iter()
+                .copied()
+                .filter(|permission| permission != &Permission::OrgHarnessesManage)
+                .collect()
+        }
+    }
+
+    #[test]
+    fn evaluate_with_uses_custom_permission_resolver() {
+        let caller = owner_caller();
+        let resolver = DenyManageResolver;
+
+        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
+        assert!(TEST_MANAGE.evaluate_with(&resolver, &caller).is_err());
+    }
+
+    #[test]
+    fn evaluate_policies_with_uses_custom_permission_resolver() {
+        let caller = owner_caller();
+        let resolver = DenyManageResolver;
+
+        let result = evaluate_policies_with(&resolver, &caller, &[&TEST_MANAGE, &TEST_DANGEROUS]);
+
+        assert_eq!(result.get("harness.manage"), Some(&false));
+        assert_eq!(result.get("harness.dangerous"), Some(&false));
     }
 
     // -- Permission display --
