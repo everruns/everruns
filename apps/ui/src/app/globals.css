@@ -136,7 +136,7 @@
 
 /* Experimental page badge — hand-drawn stamp with Caveat font */
 .experimental-page-badge {
-  font-family: "Caveat", cursive;
+  font-family: var(--font-caveat), "Caveat", cursive;
   font-size: 1.05rem;
   font-weight: 600;
   color: #d97706;
