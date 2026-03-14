@@ -100,17 +100,17 @@ function ScheduleRow({
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <Clock className={`h-4 w-4 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`} />
-          <div>
+        <div className="flex items-center gap-2 min-w-0">
+          <Clock className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`} />
+          <div className="min-w-0">
             <Link
               href={`/durable/schedules/${schedule.id}`}
-              className="font-medium hover:underline"
+              className="font-medium hover:underline truncate block"
             >
               {schedule.name}
             </Link>
             {schedule.description && (
-              <p className="text-xs text-muted-foreground">{schedule.description}</p>
+              <p className="text-xs text-muted-foreground truncate">{schedule.description}</p>
             )}
           </div>
           <CopyButton value={schedule.id} />
@@ -125,8 +125,10 @@ function ScheduleRow({
         <code className="text-sm bg-muted px-2 py-0.5 rounded">{schedule.cron_expression}</code>
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{schedule.target.type}</Badge>
-        <span className="ml-2 text-sm">{schedule.target.name}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge variant="outline" className="shrink-0">{schedule.target.type}</Badge>
+          <span className="text-sm truncate">{schedule.target.name}</span>
+        </div>
       </TableCell>
       <TableCell>
         {schedule.last_triggered_at ? (
@@ -442,7 +444,7 @@ export default function SchedulesPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 overflow-hidden">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Schedules</h1>
       </div>
@@ -498,17 +500,17 @@ export default function SchedulesPage() {
           </CardHeader>
           <CardContent>
             {filteredSchedules.length > 0 ? (
-              <div className="rounded-md border">
+              <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Schedule</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Cron</TableHead>
-                      <TableHead>Target</TableHead>
-                      <TableHead>Last Triggered</TableHead>
-                      <TableHead>Next Trigger</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="min-w-[200px]">Schedule</TableHead>
+                      <TableHead className="w-[80px]">Status</TableHead>
+                      <TableHead className="w-[140px]">Cron</TableHead>
+                      <TableHead className="min-w-[150px]">Target</TableHead>
+                      <TableHead className="w-[140px] whitespace-nowrap">Last Triggered</TableHead>
+                      <TableHead className="w-[140px] whitespace-nowrap">Next Trigger</TableHead>
+                      <TableHead className="w-[130px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
