@@ -851,4 +851,26 @@ mod tests {
             "tool_search should not be auto-enabled for gpt-5.2 (unsupported)"
         );
     }
+
+    #[test]
+    fn test_build_preserves_explicit_tool_search_config_for_supported_model() {
+        // Simulates Generic harness setting openai_tool_search with custom threshold.
+        // Auto-enable must NOT overwrite the explicit config.
+        let agent = RuntimeAgentBuilder::new()
+            .model("gpt-5.4")
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 5, // custom threshold from capability
+            })
+            .build();
+
+        let ts = agent
+            .tool_search
+            .expect("explicit tool_search should be preserved");
+        assert!(ts.enabled);
+        assert_eq!(
+            ts.threshold, 5,
+            "custom threshold from capability must not be overwritten by auto-enable default"
+        );
+    }
 }
