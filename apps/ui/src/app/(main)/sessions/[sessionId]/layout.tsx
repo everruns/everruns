@@ -161,7 +161,7 @@ function EditableSessionTitle({
       {title || fallback}
       <button
         onClick={() => setEditing(true)}
-        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground opacity-0 group-hover/title:opacity-100 transition-opacity"
+        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
         aria-label="Edit session title"
       >
         <Pencil className="w-3.5 h-3.5" />
