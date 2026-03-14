@@ -644,9 +644,17 @@ export interface LlmGenerationMetadata {
   error?: string;
 }
 
+/** Summary of a tool definition available to the LLM */
+export interface ToolDefinitionSummary {
+  name: string;
+  display_name?: string;
+  description: string;
+}
+
 /** Data for llm.generation event */
 export interface LlmGenerationData {
   messages: Message[];
+  tools?: ToolDefinitionSummary[];
   output: LlmGenerationOutput;
   metadata: LlmGenerationMetadata;
 }
