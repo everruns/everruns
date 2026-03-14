@@ -55,13 +55,13 @@ git fetch origin main && git checkout -b {issue-id}-{short-description} origin/m
 
 #### 3d. Implement and Ship
 
-Run `/ship` to implement, test, validate, create PR, and merge. Pass the Linear issue context:
+Run `/ship` to implement, test, validate, create PR, and merge. `/ship` is provided by the invokable [`ship` skill](../skills/ship/SKILL.md). Pass the Linear issue context:
 
 - **What to implement**: the issue description and acceptance criteria
 - **PR "Why" section**: link to Linear issue (e.g., `Fixes ENG-123`)
 - **Write failing test first** for bugs; validate acceptance criteria for features
 
-`/ship` handles the required shipping outcomes: evidence for correctness, code simplification, security review, artifact updates, smoke testing, quality gates (including rebase on main), PR creation, CI wait, and merge.
+The `ship` skill handles the required shipping outcomes: evidence for correctness, code simplification, security review, artifact updates, smoke testing, quality gates (including rebase on main), PR creation, CI wait, and merge.
 
 #### 3e. Merge PRs Sequentially
 

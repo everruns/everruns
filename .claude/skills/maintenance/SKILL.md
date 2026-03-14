@@ -123,4 +123,4 @@ Report:
 - what evidence was gathered
 - what was intentionally skipped and why
 
-If the user asks to ship after maintenance, hand off to [`/ship`](../../commands/ship.md).
+If the user asks to ship after maintenance, hand off to [`/ship`](../ship/SKILL.md).
