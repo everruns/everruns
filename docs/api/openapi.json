@@ -1951,6 +1951,9 @@
           "400": {
             "description": "Invalid provider ID"
           },
+          "404": {
+            "description": "Provider not found"
+          },
           "500": {
             "description": "Internal error"
           }
