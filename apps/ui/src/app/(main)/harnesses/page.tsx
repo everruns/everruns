@@ -3,11 +3,20 @@
 import { useState } from "react";
 import { useHarnesses, useCapabilities } from "@/hooks";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuPositioner,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus } from "lucide-react";
+import { Filter, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { HarnessCard } from "@/components/harnesses";
 
 export default function HarnessesPage() {
@@ -26,19 +35,41 @@ export default function HarnessesPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Harnesses</h1>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived harnesses
-          </label>
+        <h1 className="text-2xl font-bold">Harnesses</h1>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+            >
+              <Filter className="size-3.5" />
+              Filter
+              {showArchived && (
+                <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">
+                  1
+                </span>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuPositioner align="end">
+              <DropdownMenuContent className="w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Filters</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={showArchived}
+                    onCheckedChange={setShowArchived}
+                  >
+                    Show archived harnesses
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenuPositioner>
+          </DropdownMenu>
+          <Link href="/harnesses/new">
+            <Button variant="accent">
+              <Plus className="w-4 h-4 mr-2" />
+              New Harness
+            </Button>
+          </Link>
         </div>
-        <Link href="/harnesses/new">
-          <Button variant="accent">
-            <Plus className="w-4 h-4 mr-2" />
-            New Harness
-          </Button>
-        </Link>
       </div>
 
       {isLoading ? (
