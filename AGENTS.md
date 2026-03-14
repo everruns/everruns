@@ -58,6 +58,14 @@ Telegraph. Drop filler/grammar. Min tokens.
 
 Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecognized changes: assume other agent; keep going. If causes issues, stop + ask.
 
+### Branch Base
+
+Always make sure you are working on top of latest main from remote.
+
+- Start by syncing: `git fetch origin main`
+- Branch or rebase onto `origin/main` before edits, especially before shipping
+- In worktrees, do not assume `HEAD` tracks a branch; verify with `git status --branch` or `git worktree list`
+
 ### Principles
 
 - Important decisions as comments on top of file
@@ -145,6 +153,22 @@ just --list             # All commands
 ```
 
 #### Worktrees
+
+Always make sure you are working on top of latest main from remote.
+
+Worktrees are often detached or stale. Before making changes, start from the latest remote base:
+
+```bash
+git fetch origin main
+git switch -c <branch-name> origin/main
+```
+
+If the worktree already has a branch, rebase it before continuing:
+
+```bash
+git fetch origin main
+git rebase origin/main
+```
 
 Use a port prefix per worktree/session. Convention:
 
