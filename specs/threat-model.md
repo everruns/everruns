@@ -209,8 +209,14 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 
 **TM-TENANT-009 — Foreign Reference Ownership Must Be Resolved Before Persist (OPEN):**
 - Global foreign keys are insufficient for tenant isolation because tables such as `llm_models`, `agents`, `harnesses`, and `sessions` reference rows by UUID only.
-- Current affected code paths include `crates/server/src/services/llm_model.rs` + `crates/server/src/storage/repositories.rs` for provider-scoped model creation, `crates/server/src/services/agent.rs` / `crates/server/src/services/harness.rs` for `default_model_id`, and `crates/server/src/api/sessions.rs` + `crates/server/src/services/session.rs` for session `harness_id` / `model_id`.
-- Required invariant: every caller-supplied org-scoped foreign ID must be looked up with `WHERE org_id = $caller_org` before insert/update, and write-side joins should enforce same-org ownership where possible.
+- Direct write-side gaps:
+  - `crates/server/src/services/llm_model.rs` + `crates/server/src/storage/repositories.rs` for provider-scoped model creation
+  - `crates/server/src/services/agent.rs` / `crates/server/src/services/harness.rs` for `default_model_id`
+  - `crates/server/src/api/sessions.rs` + `crates/server/src/services/session.rs` for session `harness_id` / `model_id`
+- Indirect read-side and dereference gaps amplify the risk once a bad reference exists:
+  - `crates/server/src/storage/repositories.rs` joins `llm_models` to `llm_providers` by UUID without asserting same-org ownership on every read path
+  - `crates/server/src/services/session.rs` loads harness and agent capabilities by raw UUID during feature derivation
+- Required invariant: every caller-supplied org-scoped foreign ID must be looked up with `WHERE org_id = $caller_org` before insert/update, and later dereference paths must either re-assert ownership or fail closed.
 
 ## 3b. Permissions / Authorization (TM-AUTHZ)
 
