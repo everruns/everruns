@@ -524,13 +524,16 @@ mod tests {
                     result: Some(json!({"temp": 72})),
                     images: None,
                     error: None,
+                    connection_required: None,
                 },
                 success: true,
                 status: "success".to_string(),
+                connection_required: None,
             }],
             completed: true,
             success_count: 1,
             error_count: 0,
+            connection_required: vec![],
         };
 
         let json = serde_json::to_string(&result).unwrap();

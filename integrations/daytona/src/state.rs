@@ -71,12 +71,9 @@ pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionR
     }
 
     // THREAT[TM-AGENT-016]: Asking secrets in chat stores them plaintext in events.
-    // Prefer Settings UI for credential entry.
-    Err(ToolExecutionResult::tool_error(
-        "Daytona API key not configured.\n\n\
-         Set up your API key in **Settings > Connections > Daytona**.\n\n\
-         Get your key at https://app.daytona.io/ under API Keys.",
-    ))
+    // Return ConnectionRequired so the UI renders an inline connection dialog
+    // instead of a plain error message.
+    Err(ToolExecutionResult::connection_required("daytona"))
 }
 
 pub async fn get_sandbox_state(

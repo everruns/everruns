@@ -338,6 +338,7 @@ fn test_tool_call_and_result_correlation() {
         result: Some(json!({"output": "total 42\n..."})),
         images: None,
         error: None,
+        connection_required: None,
     };
 
     // IDs correlate

@@ -78,6 +78,9 @@ pub struct ToolCallResult {
     pub success: bool,
     /// Status: "success", "error", "timeout", or "cancelled"
     pub status: String,
+    /// If set, the tool requires a user connection for this provider before it can execute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_required: Option<String>,
 }
 
 /// Result of the ActAtom
@@ -91,6 +94,11 @@ pub struct ActResult {
     pub success_count: u32,
     /// Number of failed tool calls
     pub error_count: u32,
+    /// Providers that require user connection setup before the tool can run.
+    /// When non-empty, the worker should pause and emit a client-side tool call
+    /// to prompt the user to configure the connection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connection_required: Vec<String>,
 }
 
 // ============================================================================
@@ -279,6 +287,7 @@ where
                 completed: true,
                 success_count: 0,
                 error_count: 0,
+                connection_required: vec![],
             });
         }
 
@@ -358,6 +367,12 @@ where
         let success_count = results.iter().filter(|r| r.success).count() as u32;
         let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
+        // Collect providers that need connection setup
+        let connection_required: Vec<String> = results
+            .iter()
+            .filter_map(|r| r.connection_required.clone())
+            .collect();
+
         // Calculate act phase duration
         let act_duration_ms = act_start.elapsed().as_millis() as u64;
 
@@ -419,6 +434,7 @@ where
             completed: true,
             success_count,
             error_count,
+            connection_required,
         })
     }
 }
@@ -532,9 +548,11 @@ where
                     result: None,
                     images: None,
                     error: Some(error_msg),
+                    connection_required: None,
                 },
                 success: false,
                 status: "error".to_string(),
+                connection_required: None,
             };
         };
 
@@ -667,11 +685,13 @@ where
                     "ActAtom: tool execution completed"
                 );
 
+                let conn_req = tool_result.connection_required.clone();
                 ToolCallResult {
                     tool_call,
                     result: tool_result,
                     success,
                     status: status.to_string(),
+                    connection_required: conn_req,
                 }
             }
             Err(e) => {
@@ -723,9 +743,11 @@ where
                         result: None,
                         images: None,
                         error: Some(error_msg),
+                        connection_required: None,
                     },
                     success: false,
                     status: "error".to_string(),
+                    connection_required: None,
                 }
             }
         }
@@ -907,5 +929,55 @@ mod tests {
             err_msg.contains("requires context"),
             "Expected 'requires context' error, got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn test_act_result_connection_required_serialization() {
+        let result = ActResult {
+            results: vec![ToolCallResult {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "daytona_create_sandbox".to_string(),
+                    arguments: json!({}),
+                },
+                result: ToolResult {
+                    tool_call_id: "call_1".to_string(),
+                    result: Some(json!({"connection_required": "daytona"})),
+                    images: None,
+                    error: None,
+                    connection_required: Some("daytona".to_string()),
+                },
+                success: false,
+                status: "success".to_string(),
+                connection_required: Some("daytona".to_string()),
+            }],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            connection_required: vec!["daytona".to_string()],
+        };
+
+        let json_str = serde_json::to_string(&result).unwrap();
+        let parsed: ActResult = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(parsed.connection_required, vec!["daytona".to_string()]);
+        assert_eq!(
+            parsed.results[0].connection_required,
+            Some("daytona".to_string())
+        );
+    }
+
+    #[test]
+    fn test_act_result_without_connection_required_backward_compat() {
+        // Old JSON without connection_required fields still deserializes
+        let json_str = r#"{
+            "results": [],
+            "completed": true,
+            "success_count": 0,
+            "error_count": 0
+        }"#;
+        let parsed: ActResult = serde_json::from_str(json_str).unwrap();
+
+        assert!(parsed.connection_required.is_empty());
     }
 }

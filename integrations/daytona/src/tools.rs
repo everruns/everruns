@@ -1754,13 +1754,10 @@ mod tests {
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
         match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(
-                    msg.contains("not configured") || msg.contains("Settings > Connections"),
-                    "Expected API key error, got: {msg}"
-                );
+            ToolExecutionResult::ConnectionRequired { provider } => {
+                assert_eq!(provider, "daytona");
             }
-            _ => panic!("Expected ToolError for missing API key"),
+            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
         }
     }
 
@@ -1912,19 +1909,16 @@ mod tests {
     async fn test_git_credentials_no_storage_store() {
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
-        // No storage store at all
+        // No storage store at all — get_api_key() returns ConnectionRequired
         let context = ToolContext::new(session_id);
         let result = tool
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
         match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(
-                    msg.contains("not available") || msg.contains("not configured"),
-                    "Expected storage/config error, got: {msg}"
-                );
+            ToolExecutionResult::ConnectionRequired { provider } => {
+                assert_eq!(provider, "daytona");
             }
-            _ => panic!("Expected ToolError for missing storage store"),
+            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
         }
     }
 
@@ -1966,13 +1960,10 @@ mod tests {
             )
             .await;
         match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(
-                    msg.contains("not configured") || msg.contains("Settings > Connections"),
-                    "Expected API key error, got: {msg}"
-                );
+            ToolExecutionResult::ConnectionRequired { provider } => {
+                assert_eq!(provider, "daytona");
             }
-            _ => panic!("Expected ToolError for missing API key"),
+            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
         }
     }
 

@@ -73,6 +73,7 @@ impl McpToolExecutor {
                 Some(images)
             },
             error: None,
+            connection_required: None,
         })
     }
 
