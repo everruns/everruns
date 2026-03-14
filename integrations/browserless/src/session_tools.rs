@@ -19,6 +19,7 @@ use crate::state::{
     BrowserSessionState, browser_session_external_id, delete_browser_session, get_api_token,
     get_browser_session, save_browser_session,
 };
+use crate::validation::validate_browserless_url;
 
 const BROWSER_SESSION_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 
@@ -198,11 +199,17 @@ impl Tool for BrowserlessOpenBrowserTool {
         };
 
         // Navigate to initial URL if provided
-        if let Some(url) = arguments.get("url").and_then(|v| v.as_str())
-            && let Err(e) = session.navigate(url).await
-        {
-            session.disconnect().await;
-            return ToolExecutionResult::tool_error(format!("Failed to navigate to {url}: {e}"));
+        if let Some(url) = arguments.get("url").and_then(|v| v.as_str()) {
+            if let Err(e) = validate_browserless_url(url) {
+                session.disconnect().await;
+                return e;
+            }
+            if let Err(e) = session.navigate(url).await {
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to navigate to {url}: {e}"
+                ));
+            }
         }
 
         let title = session.get_title().await.unwrap_or_default();

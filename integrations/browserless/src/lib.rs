@@ -21,6 +21,7 @@ pub mod connection;
 pub mod session_tools;
 pub mod state;
 mod tools;
+mod validation;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
