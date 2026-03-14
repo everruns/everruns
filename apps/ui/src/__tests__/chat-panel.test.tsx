@@ -171,4 +171,16 @@ describe("ChatPanel placeholder", () => {
       screen.getByPlaceholderText("Type a message or / for commands... (Enter to send)"),
     ).toBeInTheDocument();
   });
+
+  it("does not render a top border between messages and composer", () => {
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+
+    render(<ChatPanel />);
+
+    const composer = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    const composerShell = composer.closest("form")?.parentElement;
+
+    expect(composerShell).not.toBeNull();
+    expect(composerShell).not.toHaveClass("border-t");
+  });
 });

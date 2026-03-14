@@ -780,7 +780,7 @@ export function ChatPanel() {
         )}
       </div>
 
-      <div className="border-t border-border bg-muted/30 p-4 sm:p-5">
+      <div className="bg-muted/30 p-4 sm:p-5">
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             ref={fileInputRef}
