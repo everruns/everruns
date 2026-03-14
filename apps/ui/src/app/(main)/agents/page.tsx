@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Upload } from "lucide-react";
 import { AgentCard } from "@/components/agents";
+import { ArchiveFilter } from "@/components/archive-filter";
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -59,14 +59,13 @@ export default function AgentsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Agents</h1>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived agents
-          </label>
-        </div>
-        <div className="flex gap-2">
+        <h1 className="text-2xl font-bold">Agents</h1>
+        <div className="flex items-center gap-2">
+          <ArchiveFilter
+            showArchived={showArchived}
+            onShowArchivedChange={setShowArchived}
+            label="Show archived agents"
+          />
           <input
             type="file"
             ref={fileInputRef}

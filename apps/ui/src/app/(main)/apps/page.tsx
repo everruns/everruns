@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
+import { ArchiveFilter } from "@/components/archive-filter";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { App } from "@/lib/api/types";
@@ -29,22 +29,23 @@ export default function AppsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-3">
-            Apps
-            <ExperimentalPageBadge />
-          </h1>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived apps
-          </label>
+        <h1 className="text-2xl font-bold flex items-center gap-3">
+          Apps
+          <ExperimentalPageBadge />
+        </h1>
+        <div className="flex items-center gap-2">
+          <ArchiveFilter
+            showArchived={showArchived}
+            onShowArchivedChange={setShowArchived}
+            label="Show archived apps"
+          />
+          <Link href="/apps/new">
+            <Button variant="accent">
+              <Plus className="w-4 h-4 mr-2" />
+              New App
+            </Button>
+          </Link>
         </div>
-        <Link href="/apps/new">
-          <Button variant="accent">
-            <Plus className="w-4 h-4 mr-2" />
-            New App
-          </Button>
-        </Link>
       </div>
 
       {isLoading ? (

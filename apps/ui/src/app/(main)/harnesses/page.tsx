@@ -5,10 +5,10 @@ import { useHarnesses, useCapabilities } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
 import { HarnessCard } from "@/components/harnesses";
+import { ArchiveFilter } from "@/components/archive-filter";
 
 export default function HarnessesPage() {
   const [showArchived, setShowArchived] = useState(false);
@@ -26,19 +26,20 @@ export default function HarnessesPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Harnesses</h1>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived harnesses
-          </label>
+        <h1 className="text-2xl font-bold">Harnesses</h1>
+        <div className="flex items-center gap-2">
+          <ArchiveFilter
+            showArchived={showArchived}
+            onShowArchivedChange={setShowArchived}
+            label="Show archived harnesses"
+          />
+          <Link href="/harnesses/new">
+            <Button variant="accent">
+              <Plus className="w-4 h-4 mr-2" />
+              New Harness
+            </Button>
+          </Link>
         </div>
-        <Link href="/harnesses/new">
-          <Button variant="accent">
-            <Plus className="w-4 h-4 mr-2" />
-            New Harness
-          </Button>
-        </Link>
       </div>
 
       {isLoading ? (
