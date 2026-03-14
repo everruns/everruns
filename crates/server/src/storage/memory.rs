@@ -5802,7 +5802,12 @@ mod tests {
         create_test_agent(&db, "Code Reviewer", None).await;
 
         let (results, _total) = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer"), false, default_pagination())
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("customer"),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5815,7 +5820,12 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
 
         let (results, _total) = db
-            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"), false, default_pagination())
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("CUSTOMER"),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5828,7 +5838,12 @@ mod tests {
         create_test_agent(&db, "Customer Feedback Analyzer", None).await;
 
         let (results, _total) = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer bot"), false, default_pagination())
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("customer bot"),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5912,7 +5927,12 @@ mod tests {
         // Query with >MAX_SEARCH_TOKENS words — only first 8 tokens used
         let long_query = "roses are red violets are blue sugar is sweet and so are you forever";
         let (results, _total) = db
-            .list_agents(DEFAULT_ORG_ID, Some(long_query), false, default_pagination())
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some(long_query),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         // First 8 tokens: "roses are red violets are blue sugar is"
