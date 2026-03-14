@@ -39,7 +39,11 @@ export default function OrganisationPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
 
-  const syncHasChanges = (nextName: string, nextDefaultHarnessId: string, nextBaseHarnessId: string) => {
+  const syncHasChanges = (
+    nextName: string,
+    nextDefaultHarnessId: string,
+    nextBaseHarnessId: string,
+  ) => {
     setHasChanges(
       nextName !== (organization?.name || "") ||
         nextDefaultHarnessId !== (organization?.default_harness_id || "") ||
@@ -205,7 +209,9 @@ export default function OrganisationPage() {
                   {updateOrganization.isPending ? "Saving..." : "Save"}
                 </Button>
                 {harnesses.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Harnesses will appear after org init.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Harnesses will appear after org init.
+                  </p>
                 )}
               </div>
 
