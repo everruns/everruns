@@ -17,6 +17,9 @@ pub mod api;
 pub mod auth;
 pub use auth::{AuthBackend, BuiltinAuthBackend};
 
+// Shared application errors
+pub mod errors;
+
 // Services layer
 pub mod services;
 pub use services::CapabilityService;

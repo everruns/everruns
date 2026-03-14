@@ -194,6 +194,50 @@ async fn test_update_agent() {
 }
 
 #[tokio::test]
+async fn test_create_agent_missing_default_model_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Missing Model Agent",
+                "system_prompt": "Test",
+                "default_model_id": "model_019563a3000070008000000000000001"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_update_agent_missing_default_model_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Update Missing Model Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/agents/{}", agent.public_id),
+            json!({
+                "default_model_id": "model_019563a3000070008000000000000002"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_delete_agent() {
     let server = TestServer::new().await;
 
@@ -1141,6 +1185,50 @@ async fn test_copy_harness() {
     assert_eq!(copied.capabilities[0].capability_id(), "current_time");
     // New ID
     assert_ne!(copied.id, harness.id);
+}
+
+#[tokio::test]
+async fn test_create_harness_missing_default_model_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "Missing Model Harness",
+                "system_prompt": "Test",
+                "default_model_id": "model_019563a3000070008000000000000003"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_update_harness_missing_default_model_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "Update Missing Model Harness",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/harnesses/{}", harness.id),
+            json!({
+                "default_model_id": "model_019563a3000070008000000000000004"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
