@@ -3,6 +3,7 @@
 // On create/update/delete, the LLM resolver cache is invalidated so that
 // subsequent model resolutions pick up the new model config.
 
+use crate::errors::ResourceNotFoundError;
 use crate::services::LlmResolverService;
 use crate::storage::{
     StorageBackend,
@@ -62,6 +63,10 @@ impl LlmModelService {
         provider_id: Uuid,
         req: CreateLlmModelRequest,
     ) -> Result<LlmModel> {
+        let provider_id = self
+            .validate_provider_id(caller.org_id, provider_id)
+            .await?;
+
         let input = CreateLlmModelRow {
             provider_id: provider_id.into(),
             model_id: req.model_id,
@@ -273,6 +278,15 @@ impl LlmModelService {
         Ok(())
     }
 
+    async fn validate_provider_id(&self, org_id: i64, provider_id: Uuid) -> Result<Uuid> {
+        self.db
+            .get_llm_provider(org_id, provider_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Provider"))?;
+
+        Ok(provider_id)
+    }
+
     fn row_to_model(row: &LlmModelRow) -> LlmModel {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
@@ -322,5 +336,69 @@ impl LlmModelService {
             provider_type,
             profile,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{CreateLlmProviderRow, CreateOrganizationRow};
+    use everruns_core::DEFAULT_ORG_ID;
+
+    fn build_create_request() -> CreateLlmModelRequest {
+        CreateLlmModelRequest {
+            model_id: "test-model".to_string(),
+            display_name: "Test Model".to_string(),
+            capabilities: vec!["chat".to_string()],
+            installed: true,
+            is_favorite: false,
+        }
+    }
+
+    async fn create_second_org(db: &StorageBackend) -> i64 {
+        db.create_organization_with_id(
+            2,
+            CreateOrganizationRow {
+                public_id: "org_2".to_string(),
+                name: "Org 2".to_string(),
+                created_by: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .org_id
+    }
+
+    async fn create_provider(db: &StorageBackend, org_id: i64) -> everruns_core::ProviderId {
+        db.create_llm_provider(
+            org_id,
+            CreateLlmProviderRow {
+                name: format!("Provider {org_id}"),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn create_rejects_provider_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = LlmModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+        let other_provider_id = create_provider(&db, other_org_id).await;
+
+        let err = service
+            .create(&caller, other_provider_id.uuid(), build_create_request())
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Provider not found");
     }
 }
