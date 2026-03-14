@@ -7,6 +7,7 @@
 // (additive behavior).
 
 use crate::api::common::Pagination;
+use crate::errors::ResourceNotFoundError;
 use crate::org_init::BASE_HARNESS_ID;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::storage::{
@@ -89,7 +90,7 @@ impl SessionService {
             .db
             .get_harness(org_id, harness_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
         if harness.status != "active" {
             anyhow::bail!("Archived or deleted harnesses cannot be assigned");
         }
@@ -98,7 +99,7 @@ impl SessionService {
                 .db
                 .get_agent(org_id, aid)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+                .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
             if agent.status != "active" {
                 anyhow::bail!("Archived or deleted agents cannot be assigned");
             }
@@ -108,18 +109,16 @@ impl SessionService {
         };
 
         // Resolve model_id: session > agent > harness
-        let model_id: Option<ModelId> = match req.model_id {
-            Some(id) => Some(id),
-            None => {
-                // Try agent's default_model_id first
-                let agent_model = agent.as_ref().and_then(|a| a.default_model_id);
-                // Fall back to harness's default_model_id
-                match agent_model {
-                    Some(id) => Some(id),
-                    None => harness.default_model_id,
-                }
-            }
-        };
+        let model_id = self
+            .validate_model_id(org_id, req.model_id)
+            .await?
+            .or_else(|| {
+                // Try agent's default_model_id first, then fall back to harness's default_model_id.
+                agent
+                    .as_ref()
+                    .and_then(|a| a.default_model_id)
+                    .or(harness.default_model_id)
+            });
 
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -284,6 +283,23 @@ impl SessionService {
         }
 
         Ok(files)
+    }
+
+    async fn validate_model_id(
+        &self,
+        org_id: i64,
+        model_id: Option<ModelId>,
+    ) -> Result<Option<ModelId>> {
+        let Some(model_id) = model_id else {
+            return Ok(None);
+        };
+
+        self.db
+            .get_llm_model(org_id, model_id.uuid())
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
+
+        Ok(Some(model_id))
     }
 
     #[policy(SESSION_VIEW)]
@@ -660,8 +676,75 @@ mod tests {
     use super::*;
     use crate::api::{agents::CreateAgentRequest, harnesses::CreateHarnessRequest};
     use crate::services::{AgentService, HarnessService};
-    use crate::storage::StorageBackend;
-    use everruns_core::{Caller, InitialFile};
+    use crate::storage::{
+        CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow, StorageBackend,
+    };
+    use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile};
+
+    fn build_create_request(
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
+        model_id: Option<ModelId>,
+    ) -> CreateSessionRequest {
+        CreateSessionRequest {
+            harness_id: Some(harness_id),
+            agent_id,
+            title: Some("Test Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id,
+            capabilities: vec![],
+            tools: vec![],
+        }
+    }
+
+    async fn create_second_org(db: &StorageBackend) -> i64 {
+        db.create_organization_with_id(
+            2,
+            CreateOrganizationRow {
+                public_id: "org_2".to_string(),
+                name: "Org 2".to_string(),
+                created_by: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .org_id
+    }
+
+    async fn create_model(db: &StorageBackend, org_id: i64, model_id: &str) -> ModelId {
+        let provider = db
+            .create_llm_provider(
+                org_id,
+                CreateLlmProviderRow {
+                    name: format!("Provider {org_id}"),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.create_llm_model(
+            org_id,
+            CreateLlmModelRow {
+                provider_id: provider.id,
+                model_id: model_id.to_string(),
+                display_name: model_id.to_string(),
+                capabilities: vec![],
+                installed: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
 
     #[tokio::test]
     async fn starter_files_are_copied_into_new_sessions() {
@@ -738,16 +821,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
-                CreateSessionRequest {
-                    harness_id: Some(harness.id),
-                    agent_id: Some(agent.public_id),
-                    title: Some("Starter files".to_string()),
-                    locale: None,
-                    tags: vec![],
-                    model_id: None,
-                    capabilities: vec![],
-                    tools: vec![],
-                },
+                build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
             .unwrap();
@@ -831,16 +905,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
-                CreateSessionRequest {
-                    harness_id: Some(harness.id),
-                    agent_id: Some(agent.public_id),
-                    title: Some("Archived harness".to_string()),
-                    locale: None,
-                    tags: vec![],
-                    model_id: None,
-                    capabilities: vec![],
-                    tools: vec![],
-                },
+                build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
             .unwrap_err();
@@ -876,16 +941,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
-                CreateSessionRequest {
-                    harness_id: Some(harness.id),
-                    agent_id: Some(agent.public_id),
-                    title: Some("Archived agent".to_string()),
-                    locale: None,
-                    tags: vec![],
-                    model_id: None,
-                    capabilities: vec![],
-                    tools: vec![],
-                },
+                build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
             .unwrap_err();
@@ -894,5 +950,84 @@ mod tests {
                 .to_string()
                 .contains("Archived or deleted agents cannot be assigned")
         );
+    }
+
+    #[tokio::test]
+    async fn create_rejects_harness_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+
+        let other_harness = harness_service
+            .create(
+                &Caller::internal(other_org_id),
+                CreateHarnessRequest {
+                    name: "Other Harness".to_string(),
+                    description: None,
+                    system_prompt: "Other".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let err = session_service
+            .create(
+                &caller,
+                other_harness.id.uuid(),
+                None,
+                None,
+                build_create_request(other_harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        let not_found = err.downcast_ref::<ResourceNotFoundError>().unwrap();
+        assert_eq!(not_found.resource(), "Harness");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_model_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+        let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
+
+        let harness = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Harness".to_string(),
+                    description: None,
+                    system_prompt: "Harness".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let err = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, Some(other_model_id)),
+            )
+            .await
+            .unwrap_err();
+
+        let not_found = err.downcast_ref::<ResourceNotFoundError>().unwrap();
+        assert_eq!(not_found.resource(), "Model");
     }
 }
