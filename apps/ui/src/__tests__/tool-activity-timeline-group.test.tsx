@@ -2,6 +2,20 @@ import { render, screen } from "@testing-library/react";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 
 describe("ToolActivityTimelineGroup", () => {
+  it("renders single row inline without duplicate headline", () => {
+    render(
+      <ToolActivityTimelineGroup
+        headline="Ran List Capabilities"
+        completedHeadline="Ran List Capabilities"
+        rows={[{ id: "tool-1", label: "List Capabilities", state: "completed" }]}
+      />,
+    );
+
+    // Headline should appear exactly once (as the row label)
+    const matches = screen.getAllByText("Ran List Capabilities");
+    expect(matches).toHaveLength(1);
+  });
+
   it("renders narrated group headline and child rows", () => {
     render(
       <ToolActivityTimelineGroup
