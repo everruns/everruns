@@ -688,7 +688,7 @@ impl Database {
         } else {
             " AND status = 'active'"
         };
-        let param_idx = 2 + patterns.len();
+        let param_idx = 1 + patterns.len();
 
         // Count query
         let count_sql = format!(
