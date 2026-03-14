@@ -108,6 +108,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/events-contract.md` - SSE event format contract
 - `specs/maintenance.md` - Goal-oriented maintenance and release-readiness guidance
+- `specs/shipping.md` - Goal-oriented shipping and merge-readiness guidance
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
@@ -186,46 +187,31 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
 "Ship" means: achieve the requested goal, produce enough evidence that it works, create a mergeable PR, and merge only after CI is green.
 
-Expected outcomes:
+Use [`/ship`](.claude/skills/ship/SKILL.md) for the canonical shipping workflow. It is an invokable skill and intentionally goal-oriented: start from the goal and changed risk surface, choose the smallest evidence that proves the change, and expand only when risk demands it.
 
-- the requested behavior or fix is complete
-- validation matches the risk: tests, smoke tests, manual checks, or build/lint proof as appropriate
-- relevant artifacts stay in sync: specs, docs, test cases, threat model, OpenAPI, AGENTS.md
-- the PR explains what changed, why, risk, and validation
-- all review comments are resolved before merge
-
-How to achieve it:
-
-- start from the goal and changed risk surface, not a rigid sequence of steps
-- prefer a failing test first for bugs, but choose the validation strategy that best proves the change
-- run deeper checks when touching APIs, auth, persistence, migrations, or end-to-end UI flows
-- use the smallest set of steps that gives high confidence, then expand if signals are weak
-
-Use the [`/ship`](.claude/commands/ship.md) command to execute the canonical shipping workflow. It is outcome-oriented: it defines the required results and common hints, while leaving flexibility in ordering and tactics. When asked to "fix and ship", implement the fix first, then run `/ship`.
+See [`specs/shipping.md`](specs/shipping.md) for the shipping success bar and constraints. When asked to "fix and ship", implement the fix first, then run `/ship`.
 
 ### Maintenance
 
 Use [`/maintenance`](.claude/skills/maintenance/SKILL.md) for repo maintenance and release-readiness work. It is an invokable skill and intentionally goal-oriented: start from the risk surface, fix the highest-value issues first, and gather evidence instead of walking a rigid checklist.
 
-### Pre-PR Checklist
+### Common Deep Checks
 
-1. `just pre-push` (fast: fmt, lint, lockfile)
-2. `just pre-pr` (full: runs 3-8 automatically)
-3. `cargo fmt --check`
-4. `cargo clippy --all-targets --all-features -- -D warnings`
-5. `cargo test --all-features`
-6. `npm run lint` + `npm run build` in `apps/ui/`
-7. OpenAPI spec fresh: `./scripts/export-openapi.sh`
-8. Docs build: `npm run build` in `apps/docs/`
-9. Rebase on main: `git fetch origin main && git rebase origin/main`
-10. Smoke test impacted functionality in both dev mode (`just start-dev`) and full mode (`just start-all`)
-11. Performance impact: no unindexed queries, no full table scans, no N+1 queries, no unbounded result sets; add pagination/limits where needed
-12. UI screenshots for UI changes (validation/PR comments only; do not commit screenshot artifacts)
-13. Test coverage: extensive positive and negative tests; reproduce issue + verify fix, cover touched code paths
-14. Update relevant specs in `specs/`
-15. Update docs in `apps/docs/` if applicable
-16. CI green before merge
-17. Resolve all PR comments
+Use the smallest set that gives high confidence. `/ship` should pick from this menu based on the changed surface, not run every item mechanically.
+
+1. `just pre-push` before `git push`
+2. `just pre-pr` for a full local quality pass
+3. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-features` for Rust changes
+4. `npm run lint` and `npm run build` in `apps/ui/` for UI changes
+5. `./scripts/export-openapi.sh` when API surface changes
+6. `npm run build` in `apps/docs/` when docs change
+7. `git fetch origin main && git rebase origin/main` before merge
+8. Smoke test impacted flows in `just start-dev` or `just start-all` as risk dictates
+9. Review performance impact: indexes, scans, N+1 patterns, pagination, and bounded result sets
+10. Capture UI screenshots for UI changes in validation or PR comments only
+11. Ensure test coverage proves the fix or acceptance criteria, including important negative paths
+12. Update relevant specs, docs, test cases, threat model, OpenAPI, and `AGENTS.md`
+13. Merge only with green CI and resolved PR comments
 
 ### CI
 
