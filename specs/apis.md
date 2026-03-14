@@ -105,6 +105,8 @@ Harnesses define the base environment and capabilities for sessions. See [harnes
 
 Sessions are top-level entities under organizations. Each session has an agent assigned to work in it.
 
+See `specs/localization.md` for locale/timezone precedence and execution-context rules.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/sessions` | Create session |
@@ -123,6 +125,7 @@ POST /v1/sessions
 {
   "agent_id": "agent_01234567-...",
   "title": "Optional title",
+  "locale": "uk-UA",
   "tags": ["optional", "tags"],
   "model_id": "optional-model-override",
   "capabilities": [
@@ -133,6 +136,9 @@ POST /v1/sessions
 ```
 
 The `agent_id` field is required and specifies which agent will work in this session.
+
+The optional `locale` field sets the session's default locale for agent responses and regional formatting. It is persisted on the session and reused across worker turns.
+The session API should also support an optional `timezone` field with an IANA timezone value. This is the durable fallback for unattended execution and scheduled/background turns.
 
 **Session Capabilities:**
 
@@ -184,6 +190,8 @@ Messages store all conversation content (user, agent, tool calls, tool results).
 |--------|------|-------------|
 | POST | `/v1/sessions/{session_id}/messages` | Create message (triggers workflow) |
 | GET | `/v1/sessions/{session_id}/messages` | List messages |
+
+`CreateMessageRequest.metadata.locale` and `CreateMessageRequest.metadata.timezone` are reserved for per-turn execution-context overrides. They take precedence over session and user defaults for the triggered turn only.
 
 ### Images
 
@@ -360,8 +368,15 @@ User-scoped external service accounts (e.g., GitHub) for repo access. See [user-
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/users` | List users in current organization (supports `?search=` query) |
-| PATCH | `/v1/users/me` | Update current user's profile (name). Max 255 chars. |
+| PATCH | `/v1/users/me` | Update current user's profile (`name`, `locale`, `timezone`). |
 | POST | `/v1/users/me/switch-org` | Switch current organization context |
+
+`PATCH /v1/users/me` should use patch semantics:
+- `name`: optional display name
+- `locale`: optional BCP 47 locale
+- `timezone`: optional IANA timezone
+
+These values are durable user defaults. They do not override explicit per-message or per-request execution context.
 
 ### Agent Capabilities
 

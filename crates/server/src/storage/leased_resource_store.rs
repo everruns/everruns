@@ -160,6 +160,7 @@ mod tests {
             harness_id: None,
             agent_id: None,
             title: Some("Lease test session".to_string()),
+            locale: None,
             tags: Vec::new(),
             model_id: None,
             capabilities: json!([]),

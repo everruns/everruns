@@ -155,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),
         title: Some("Weather Query".to_string()),
+        locale: None,
         preview: None,
         output_preview: None,
         tags: vec![],

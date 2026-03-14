@@ -222,6 +222,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 title: r.title,
+                locale: r.locale,
                 preview: None,
                 output_preview: None,
                 tags: r.tags,
@@ -1240,6 +1241,7 @@ impl DirectPlatformStore {
             harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
             agent_id: row.agent_id,
             title: row.title,
+            locale: row.locale,
             preview: None,
             output_preview: None,
             tags: row.tags,
@@ -1594,6 +1596,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         title: Option<&str>,
+        locale: Option<&str>,
     ) -> everruns_core::error::Result<Session> {
         use crate::storage::models::CreateSessionRow;
 
@@ -1602,6 +1605,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             harness_id: Some(harness_id),
             agent_id,
             title: title.map(|s| s.to_string()),
+            locale: locale.map(|value| value.to_string()),
             tags: vec!["managed".to_string()],
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
@@ -2602,6 +2606,7 @@ mod tests {
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 harness_id: Some(HarnessId::from_seed(1)),
                 title: None,
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: serde_json::Value::Array(vec![]),

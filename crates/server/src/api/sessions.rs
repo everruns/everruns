@@ -23,6 +23,7 @@ use everruns_worker::AgentRunner;
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination,
 };
+use super::validation::normalize_locale;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -43,6 +44,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(example = "Debug login issue")]
     pub title: Option<String>,
+    /// Session locale (BCP 47, e.g. `uk-UA`).
+    #[serde(default)]
+    #[schema(example = "uk-UA")]
+    pub locale: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     #[schema(example = json!(["debugging", "urgent"]))]
@@ -95,6 +100,10 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Session locale (BCP 47, e.g. `uk-UA`).
+    #[serde(default)]
+    #[schema(example = "uk-UA")]
+    pub locale: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     #[schema(example = json!(["resolved"]))]
@@ -214,8 +223,11 @@ pub async fn session_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
 pub async fn create_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Json(req): Json<CreateSessionRequest>,
+    Json(mut req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
+    req.locale = normalize_locale(req.locale)
+        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+
     // Validate harness exists and belongs to this org
     state
         .db
@@ -445,8 +457,11 @@ pub async fn update_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-    Json(req): Json<UpdateSessionRequest>,
+    Json(mut req): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+    req.locale = normalize_locale(req.locale)
+        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -730,6 +745,7 @@ mod tests {
         assert_eq!(req.harness_id.to_string(), TEST_HARNESS_ID);
         assert_eq!(req.agent_id, None);
         assert_eq!(req.title, None);
+        assert_eq!(req.locale, None);
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
         assert!(req.capabilities.is_empty());
@@ -759,11 +775,12 @@ mod tests {
     #[test]
     fn test_create_session_request_with_title() {
         let json = format!(
-            r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Test Session"}}"#,
+            r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Test Session", "locale": "uk-UA"}}"#,
             TEST_HARNESS_ID, TEST_AGENT_ID
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Test Session".to_string()));
+        assert_eq!(req.locale.as_deref(), Some("uk-UA"));
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
     }
@@ -816,14 +833,16 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, None);
+        assert_eq!(req.locale, None);
         assert_eq!(req.tags, None);
     }
 
     #[test]
     fn test_update_session_request_with_title() {
-        let json = r#"{"title": "Updated Title"}"#;
+        let json = r#"{"title": "Updated Title", "locale": "en-US"}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, Some("Updated Title".to_string()));
+        assert_eq!(req.locale.as_deref(), Some("en-US"));
         assert_eq!(req.tags, None);
     }
 

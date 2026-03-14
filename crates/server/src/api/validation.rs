@@ -33,6 +33,8 @@ pub const MAX_AGENT_CAPABILITIES: usize = 250;
 /// Maximum size for agent import file.
 /// 3 MB accommodates large system prompts with metadata.
 pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
+/// Maximum size for locale tags.
+pub const MAX_LOCALE_BYTES: usize = 64;
 
 /// Maximum number of starter files on an agent or harness.
 pub const MAX_INITIAL_FILES: usize = 100;
@@ -49,6 +51,7 @@ pub const VALIDATION_ERROR_MESSAGE: &str = "Input exceeds allowed limits";
 // =============================================================================
 
 /// Validation error - returns generic message to avoid leaking details
+#[derive(Debug)]
 pub struct ValidationError;
 
 impl From<ValidationError> for StatusCode {
@@ -140,6 +143,34 @@ pub fn validate_import_file_size(size: usize) -> Result<(), ValidationError> {
         return Err(ValidationError);
     }
     Ok(())
+}
+
+/// Validate and normalize a locale tag.
+///
+/// Accepts simple BCP 47-style tags with ASCII alphanumeric subtags separated by `-`.
+/// Also normalizes `_` separators to `-`.
+pub fn normalize_locale(locale: Option<String>) -> Result<Option<String>, ValidationError> {
+    let Some(locale) = locale else {
+        return Ok(None);
+    };
+
+    let normalized = locale.trim().replace('_', "-");
+    if normalized.is_empty() || normalized.len() > MAX_LOCALE_BYTES {
+        tracing::warn!("Locale exceeds limit or is empty: {:?}", locale);
+        return Err(ValidationError);
+    }
+
+    if normalized.starts_with('-')
+        || normalized.ends_with('-')
+        || normalized.split('-').any(|segment| {
+            segment.is_empty() || !segment.chars().all(|ch| ch.is_ascii_alphanumeric())
+        })
+    {
+        tracing::warn!("Locale failed validation: {:?}", locale);
+        return Err(ValidationError);
+    }
+
+    Ok(Some(normalized))
 }
 
 /// Validate starter files collection and per-file shape.
@@ -298,6 +329,25 @@ mod tests {
         assert!(
             validate_agent_system_prompt(&"x".repeat(MAX_AGENT_SYSTEM_PROMPT_BYTES + 1)).is_err()
         );
+    }
+
+    #[test]
+    fn test_normalize_locale_accepts_bcp47_style_tags() {
+        assert_eq!(
+            normalize_locale(Some("uk-UA".to_string())).unwrap(),
+            Some("uk-UA".to_string())
+        );
+        assert_eq!(
+            normalize_locale(Some("uk_UA".to_string())).unwrap(),
+            Some("uk-UA".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_locale_rejects_invalid_tags() {
+        assert!(normalize_locale(Some("".to_string())).is_err());
+        assert!(normalize_locale(Some("uk UA".to_string())).is_err());
+        assert!(normalize_locale(Some("-uk".to_string())).is_err());
     }
 
     #[test]

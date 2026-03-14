@@ -118,6 +118,9 @@ pub struct Session {
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
     /// Preview text from the first user message (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,

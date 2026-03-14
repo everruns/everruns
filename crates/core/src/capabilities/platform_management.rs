@@ -683,6 +683,10 @@ impl Tool for ManageSessionsTool {
                     "type": "string",
                     "description": "Session title (optional for create)"
                 },
+                "locale": {
+                    "type": "string",
+                    "description": "Session locale (optional for create, e.g. uk-UA)"
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max number of sessions to return (default 20)"
@@ -767,10 +771,15 @@ impl Tool for ManageSessionsTool {
                 let agent_id = get_str(&arguments, "agent_id")
                     .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
                 let title = get_str(&arguments, "title");
-                match store.create_session(harness_id, agent_id, title).await {
+                let locale = get_str(&arguments, "locale");
+                match store
+                    .create_session(harness_id, agent_id, title, locale)
+                    .await
+                {
                     Ok(s) => ToolExecutionResult::success(json!({
                         "id": s.id.to_string(),
                         "title": s.title,
+                        "locale": s.locale,
                         "status": format!("{:?}", s.status),
                         "harness_id": s.harness_id.to_string(),
                         "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),

@@ -265,6 +265,7 @@ mod tests {
                 harness_id: None,
                 agent_id: None,
                 title: Some("Inbox".to_string()),
+                locale: None,
                 tags: vec![],
                 model_id: None,
                 capabilities: json!([]),

@@ -371,6 +371,7 @@ impl InMemoryAgenticLoopBuilder {
             harness_id,
             agent_id: Some(agent_id),
             title: Some("In-Memory Session".to_string()),
+            locale: None,
             preview: None,
             output_preview: None,
             tags: vec![],

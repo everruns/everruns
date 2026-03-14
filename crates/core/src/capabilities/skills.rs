@@ -1223,6 +1223,7 @@ mod tests {
 
         let ctx = SystemPromptContext {
             session_id,
+            locale: None,
             file_store: Some(store),
         };
 
@@ -1252,6 +1253,7 @@ mod tests {
 
         let ctx = SystemPromptContext {
             session_id: SessionId::new(),
+            locale: None,
             file_store: Some(store),
         };
 
@@ -1316,6 +1318,7 @@ mod tests {
 
         let ctx = SystemPromptContext {
             session_id,
+            locale: None,
             file_store: Some(store),
         };
 
@@ -1354,6 +1357,7 @@ mod tests {
 
         let ctx = SystemPromptContext {
             session_id,
+            locale: None,
             file_store: Some(store),
         };
 
@@ -1601,6 +1605,7 @@ mod tests {
         let skills_cap = SkillsCapability;
         let ctx = SystemPromptContext {
             session_id,
+            locale: None,
             file_store: Some(store),
         };
         let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1664,6 +1669,7 @@ mod tests {
 
         let ctx = SystemPromptContext {
             session_id,
+            locale: None,
             file_store: Some(store),
         };
 

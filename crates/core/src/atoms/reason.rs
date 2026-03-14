@@ -90,6 +90,19 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     result
 }
 
+fn extract_locale_override(messages: &[Message]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message.role == MessageRole::User)
+        .and_then(|message| message.metadata.as_ref())
+        .and_then(|metadata| metadata.get("locale"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 fn should_retry_stream_error(
     err: &str,
     retry_attempts: u32,
@@ -615,6 +628,7 @@ where
 
         let prompt_ctx = crate::capabilities::SystemPromptContext {
             session_id,
+            locale: extract_locale_override(&messages).or_else(|| session.locale.clone()),
             file_store: self.file_store.clone(),
         };
 
@@ -633,6 +647,7 @@ where
                 &prompt_ctx,
             )
             .await
+            .with_locale(prompt_ctx.locale.as_deref())
             .tools(mcp_tool_definitions.iter().cloned())
             .model(&model_with_provider.model);
 

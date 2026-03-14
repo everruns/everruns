@@ -114,6 +114,7 @@ impl SessionService {
             harness_id: Some(harness_id),
             agent_id,
             title: req.title,
+            locale: req.locale.clone(),
             tags: req.tags,
             model_id,
             capabilities: capabilities_json,
@@ -389,6 +390,7 @@ impl SessionService {
     ) -> Result<Option<Session>> {
         let input = UpdateSession {
             title: req.title,
+            locale: req.locale,
             tags: req.tags,
             ..Default::default()
         };
@@ -464,6 +466,7 @@ impl SessionService {
             harness_id: Some(harness_id_typed),
             agent_id: None,
             title: Some("Platform Chat".to_string()),
+            locale: None,
             tags: vec!["global-chat".to_string(), user_tag],
             model_id: None,
             capabilities: serde_json::json!([]),
@@ -597,6 +600,7 @@ impl SessionService {
             harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
             agent_id: row.agent_id,
             title: row.title,
+            locale: row.locale,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
             tags: row.tags,
@@ -721,6 +725,7 @@ mod tests {
                     harness_id: harness.id,
                     agent_id: Some(agent.public_id),
                     title: Some("Starter files".to_string()),
+                    locale: None,
                     tags: vec![],
                     model_id: None,
                     capabilities: vec![],

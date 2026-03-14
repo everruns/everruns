@@ -159,6 +159,7 @@ export interface Session {
   harness_id: string;
   agent_id: string | null;
   title: string | null;
+  locale?: string | null;
   /** Preview text from the first user message (truncated) */
   preview?: string | null;
   /** Preview text from the last assistant response (truncated) */
@@ -197,12 +198,14 @@ export interface CreateSessionRequest {
   /** Agent ID to work in this session (optional) */
   agent_id?: string;
   title?: string;
+  locale?: string;
   tags?: string[];
   model_id?: string;
 }
 
 export interface UpdateSessionRequest {
   title?: string;
+  locale?: string;
   tags?: string[];
   model_id?: string;
 }
