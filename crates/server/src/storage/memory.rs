@@ -564,7 +564,8 @@ impl InMemoryDatabase {
         org_id: i64,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<AgentRow>> {
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<AgentRow>, u32)> {
         let agents = self.agents.read();
         let mut result: Vec<_> = agents
             .values()
@@ -582,7 +583,13 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        Ok(result)
+
+        let total = result.len() as u32;
+        let offset = pagination.offset as usize;
+        let limit = pagination.limit as usize;
+        let paginated = result.into_iter().skip(offset).take(limit).collect();
+
+        Ok((paginated, total))
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
@@ -4635,7 +4642,13 @@ impl InMemoryDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::common::Pagination;
     use everruns_core::DEFAULT_ORG_ID;
+
+    /// Default pagination for tests (large enough to not truncate).
+    fn default_pagination() -> Pagination {
+        Pagination::new(0, 1000)
+    }
 
     #[tokio::test]
     async fn test_create_and_get_agent() {
@@ -5763,7 +5776,10 @@ mod tests {
         create_test_agent(&db, "Alpha", None).await;
         create_test_agent(&db, "Beta", None).await;
 
-        let results = db.list_agents(DEFAULT_ORG_ID, None, false).await.unwrap();
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, None, false, default_pagination())
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -5772,8 +5788,8 @@ mod tests {
         let db = InMemoryDatabase::new();
         create_test_agent(&db, "Alpha", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some(""), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some(""), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5785,8 +5801,8 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
         create_test_agent(&db, "Code Reviewer", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("customer"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5798,8 +5814,8 @@ mod tests {
         let db = InMemoryDatabase::new();
         create_test_agent(&db, "Customer Support Bot", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("CUSTOMER"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5811,8 +5827,8 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
         create_test_agent(&db, "Customer Feedback Analyzer", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("customer bot"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("customer bot"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5824,8 +5840,8 @@ mod tests {
         let db = InMemoryDatabase::new();
         create_test_agent(&db, "Helper", Some("Handles billing inquiries")).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("billing"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("billing"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5838,8 +5854,13 @@ mod tests {
         create_test_agent(&db, "Daytona Coder", Some("cloud sandbox agent")).await;
 
         // "daytona" in name, "sandbox" in description → both must match
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("daytona sandbox"), false)
+        let (results, _total) = db
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("daytona sandbox"),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5850,8 +5871,13 @@ mod tests {
         let db = InMemoryDatabase::new();
         create_test_agent(&db, "Customer Support Bot", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("zzz_nonexistent"), false)
+        let (results, _total) = db
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("zzz_nonexistent"),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert!(results.is_empty());
@@ -5869,8 +5895,8 @@ mod tests {
                     these memories I shall forever keep. \
                     Through winding roads and starlit nights, \
                     we chase our dreams to greater heights.";
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some(poem), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some(poem), false, default_pagination())
             .await
             .unwrap();
         // No agent should match a poem
@@ -5885,8 +5911,8 @@ mod tests {
 
         // Query with >MAX_SEARCH_TOKENS words — only first 8 tokens used
         let long_query = "roses are red violets are blue sugar is sweet and so are you forever";
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some(long_query), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some(long_query), false, default_pagination())
             .await
             .unwrap();
         // First 8 tokens: "roses are red violets are blue sugar is"
@@ -5900,8 +5926,8 @@ mod tests {
         create_test_agent(&db, "Agent v2.0 (beta)", None).await;
         create_test_agent(&db, "my-agent_v1", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("v2.0"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("v2.0"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5914,8 +5940,8 @@ mod tests {
         create_test_agent(&db, "日本語エージェント", Some("テスト用")).await;
         create_test_agent(&db, "English Agent", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("日本語"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("日本語"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5928,8 +5954,8 @@ mod tests {
         create_test_agent(&db, "🤖 Robot Helper", None).await;
         create_test_agent(&db, "Normal Agent", None).await;
 
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("🤖"), false)
+        let (results, _total) = db
+            .list_agents(DEFAULT_ORG_ID, Some("🤖"), false, default_pagination())
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -5941,8 +5967,13 @@ mod tests {
         create_test_agent(&db, "Customer Support Bot", None).await;
 
         // Extra spaces, tabs, etc.
-        let results = db
-            .list_agents(DEFAULT_ORG_ID, Some("  customer   bot  "), false)
+        let (results, _total) = db
+            .list_agents(
+                DEFAULT_ORG_ID,
+                Some("  customer   bot  "),
+                false,
+                default_pagination(),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);

@@ -21,30 +21,24 @@ everruns-sdk = "=$version"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 TOML
 
-# The SDK session API changed:
+# The SDK session API changed across versions:
 #   v0.1.0-v0.1.2: sessions().create(agent_id)
 #   v0.1.3:        sessions().create(harness_id)
-#   v0.1.4+:       sessions().create(), with CreateSessionRequest for options
+#   v0.1.4+:       sessions().create() (no args), use create_with_options() builder
 
-version_gte_014() {
-  IFS='.' read -r major minor patch <<< "$1"
-  [ "$major" -gt 0 ] && return 0
-  [ "$minor" -gt 1 ] && return 0
-  [ "$minor" -eq 1 ] && [ "$patch" -ge 4 ] && return 0
-  return 1
+# Compare versions using semver tuple comparison
+version_cmp() {
+  IFS='.' read -r maj1 min1 pat1 <<< "$1"
+  IFS='.' read -r maj2 min2 pat2 <<< "$2"
+  if [ "$maj1" -ne "$maj2" ]; then [ "$maj1" -gt "$maj2" ] && return 0 || return 1; fi
+  if [ "$min1" -ne "$min2" ]; then [ "$min1" -gt "$min2" ] && return 0 || return 1; fi
+  [ "$pat1" -ge "$pat2" ] && return 0 || return 1
 }
 
-version_gte_013() {
-  IFS='.' read -r major minor patch <<< "$1"
-  [ "$major" -gt 0 ] && return 0
-  [ "$minor" -gt 1 ] && return 0
-  [ "$minor" -eq 1 ] && [ "$patch" -ge 3 ] && return 0
-  return 1
-}
-
-if version_gte_014 "$version"; then
+if version_cmp "$version" "0.1.4"; then
+# v0.1.4+: create() takes no args; use create_with_options() with builder
 cat > "$workdir/smoke/src/main.rs" <<'RS'
-use everruns_sdk::Everruns;
+use everruns_sdk::{Everruns, CreateSessionRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,8 +57,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fetched.id, agent.id, "agent id mismatch");
     println!("  agent fetch verified");
 
-    // 3. Create session with server defaults
-    let session = client.sessions().create().await?;
+    // 3. Create session with builder (harness_id optional in v0.1.4+)
+    let harness_id = "harness_01933b5a000070008000000000000602";
+    let req = CreateSessionRequest::new()
+        .harness_id(harness_id)
+        .agent_id(&agent.id);
+    let session = client.sessions().create_with_options(req).await?;
     println!("  session created: {}", session.id);
 
     // 4. Fetch session and verify
@@ -76,7 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 RS
-elif version_gte_013 "$version"; then
+elif version_cmp "$version" "0.1.3"; then
+# v0.1.3: create(harness_id)
 cat > "$workdir/smoke/src/main.rs" <<'RS'
 use everruns_sdk::Everruns;
 
@@ -112,6 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 RS
 else
+# v0.1.0-v0.1.2: create(agent_id)
 cat > "$workdir/smoke/src/main.rs" <<'RS'
 use everruns_sdk::Everruns;
 

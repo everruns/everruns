@@ -136,8 +136,19 @@ else
   exit 1
 fi
 
-# List agents (skip - SDK/server pagination compatibility issue)
-log_test "agents list (SKIPPED - SDK pagination compatibility)"
+# List agents
+log_test "agents list"
+LIST_OUTPUT=$($CLI --api-url "$API_URL" agents list --output json 2>&1) || {
+  log_fail "agents list failed"
+  echo "$LIST_OUTPUT"
+}
+AGENT_COUNT=$(echo "$LIST_OUTPUT" | jq -e '.data | length' 2>/dev/null)
+if [ -n "$AGENT_COUNT" ] && [ "$AGENT_COUNT" -ge 1 ]; then
+  log_pass "agents list returned $AGENT_COUNT agent(s)"
+else
+  log_fail "agents list did not return valid data"
+  echo "$LIST_OUTPUT"
+fi
 
 # Get agent (uses prefixed ID directly)
 log_test "agents get"
@@ -196,8 +207,19 @@ else
   exit 1
 fi
 
-# List sessions (skip - SDK/server pagination compatibility issue)
-log_test "sessions list (SKIPPED - SDK pagination compatibility)"
+# List sessions
+log_test "sessions list"
+LIST_SESSIONS_OUTPUT=$($CLI --api-url "$API_URL" sessions list --output json 2>&1) || {
+  log_fail "sessions list failed"
+  echo "$LIST_SESSIONS_OUTPUT"
+}
+SESSION_COUNT=$(echo "$LIST_SESSIONS_OUTPUT" | jq -e '.data | length' 2>/dev/null)
+if [ -n "$SESSION_COUNT" ] && [ "$SESSION_COUNT" -ge 1 ]; then
+  log_pass "sessions list returned $SESSION_COUNT session(s)"
+else
+  log_fail "sessions list did not return valid data"
+  echo "$LIST_SESSIONS_OUTPUT"
+fi
 
 # Get session (uses prefixed session ID directly)
 log_test "sessions get"

@@ -95,8 +95,9 @@ async fn test_agent_crud() {
     assert_eq!(updated.name, "Updated Agent");
 
     // List agents
-    let agents = backend
-        .list_agents(TEST_ORG_ID, None, false)
+    let pagination = everruns_server::api::common::Pagination::new(0, 1000);
+    let (agents, _total) = backend
+        .list_agents(TEST_ORG_ID, None, false, pagination)
         .await
         .expect("Failed to list agents");
     assert!(agents.iter().any(|a| a.id == agent.id));

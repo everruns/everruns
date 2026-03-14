@@ -181,10 +181,11 @@ impl AgentService {
         caller: &Caller,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<Agent>> {
-        let rows = self
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<Agent>, u32)> {
+        let (rows, total) = self
             .db
-            .list_agents(caller.org_id, search, include_archived)
+            .list_agents(caller.org_id, search, include_archived, pagination)
             .await?;
 
         // Fetch capabilities for each agent
@@ -194,7 +195,7 @@ impl AgentService {
             agents.push(Self::row_to_agent(row, capabilities));
         }
 
-        Ok(agents)
+        Ok((agents, total))
     }
 
     #[policy(AGENT_MANAGE)]
