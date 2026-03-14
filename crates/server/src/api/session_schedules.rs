@@ -113,14 +113,11 @@ pub async fn list_schedules(
 pub async fn get_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
+    Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
-    let schedule = state
-        .schedule_service
-        .get(org.org_id, schedule_id)
-        .await
-        .log_internal_error_json("get schedule")?
-        .ok_or_not_found_json("Schedule")?;
+    let schedule =
+        get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
+            .await?;
 
     Ok(Json(schedule))
 }
@@ -139,10 +136,18 @@ pub async fn get_schedule(
 pub async fn update_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
+    Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
     Json(req): Json<UpdateScheduleRequest>,
 ) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
     let enabled = req.enabled.unwrap_or(true);
+    get_schedule_in_session(
+        &state,
+        org.org_id,
+        session_id,
+        schedule_id,
+        "update schedule parent",
+    )
+    .await?;
 
     let schedule = state
         .schedule_service
@@ -167,8 +172,17 @@ pub async fn update_schedule(
 pub async fn delete_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
+    Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    get_schedule_in_session(
+        &state,
+        org.org_id,
+        session_id,
+        schedule_id,
+        "delete schedule parent",
+    )
+    .await?;
+
     let deleted = state
         .schedule_service
         .delete(org.org_id, schedule_id)
@@ -200,8 +214,17 @@ pub async fn delete_schedule(
 pub async fn trigger_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((_session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
+    Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
+    get_schedule_in_session(
+        &state,
+        org.org_id,
+        session_id,
+        schedule_id,
+        "trigger schedule parent",
+    )
+    .await?;
+
     let schedule = state
         .schedule_service
         .mark_triggered(org.org_id, schedule_id)
@@ -210,4 +233,20 @@ pub async fn trigger_schedule(
         .ok_or_not_found_json("Schedule")?;
 
     Ok(Json(schedule))
+}
+
+async fn get_schedule_in_session(
+    state: &AppState,
+    org_id: i64,
+    session_id: SessionId,
+    schedule_id: ScheduleId,
+    log_context: &'static str,
+) -> Result<SessionSchedule, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .schedule_service
+        .get(org_id, schedule_id)
+        .await
+        .log_internal_error_json(log_context)?
+        .filter(|schedule| schedule.session_id == session_id)
+        .ok_or_not_found_json("Schedule")
 }
