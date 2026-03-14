@@ -563,14 +563,14 @@ impl Database {
 
     /// Standard agent column list for SELECT queries
     #[allow(dead_code)]
-    const AGENT_COLUMNS: &str = "id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens";
+    const AGENT_COLUMNS: &str = "id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens";
 
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -581,6 +581,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(&input.tools)
         .fetch_one(&self.pool)
         .await?;
@@ -598,13 +599,14 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 tags = EXCLUDED.tags,
+                initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
                 updated_at = NOW()
             WHERE
@@ -612,8 +614,9 @@ impl Database {
                 OR agents.description IS DISTINCT FROM EXCLUDED.description
                 OR agents.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
                 OR agents.tags IS DISTINCT FROM EXCLUDED.tags
+                OR agents.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR agents.tools IS DISTINCT FROM EXCLUDED.tools
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -625,6 +628,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(&input.tools)
         .fetch_optional(&self.pool)
         .await?;
@@ -635,7 +639,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -656,7 +660,7 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND public_id = $2
@@ -674,7 +678,7 @@ impl Database {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
                 WHERE org_id = $1 AND status = 'active'{search_sql}
@@ -690,7 +694,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status = 'active'
@@ -720,10 +724,11 @@ impl Database {
                 default_model_id = COALESCE($6, default_model_id),
                 tags = COALESCE($7, tags),
                 status = COALESCE($8, status),
-                tools = COALESCE($9, tools),
+                initial_files = COALESCE($9, initial_files),
+                tools = COALESCE($10, tools),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -735,6 +740,7 @@ impl Database {
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .bind(&input.status)
+        .bind(&input.initial_files)
         .bind(&input.tools)
         .fetch_optional(&self.pool)
         .await?;
@@ -821,9 +827,9 @@ impl Database {
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
+            INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -832,6 +838,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(input.is_built_in)
         .fetch_one(&self.pool)
         .await?;
@@ -851,13 +858,14 @@ impl Database {
     ) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+            INSERT INTO harnesses (id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 tags = EXCLUDED.tags,
+                initial_files = EXCLUDED.initial_files,
                 is_built_in = EXCLUDED.is_built_in,
                 updated_at = NOW()
             WHERE
@@ -865,8 +873,9 @@ impl Database {
                 OR harnesses.description IS DISTINCT FROM EXCLUDED.description
                 OR harnesses.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
                 OR harnesses.tags IS DISTINCT FROM EXCLUDED.tags
+                OR harnesses.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR harnesses.is_built_in IS DISTINCT FROM EXCLUDED.is_built_in
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(id.uuid())
@@ -876,6 +885,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(input.is_built_in)
         .fetch_optional(&self.pool)
         .await?;
@@ -886,7 +896,7 @@ impl Database {
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
             FROM harnesses
             WHERE org_id = $1 AND id = $2
             "#,
@@ -907,7 +917,7 @@ impl Database {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
         let sql = format!(
-            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
+            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
                 FROM harnesses
                 WHERE org_id = $1 AND status = 'active'{search_sql}
                 ORDER BY created_at DESC"#
@@ -934,10 +944,11 @@ impl Database {
                 system_prompt = COALESCE($5, system_prompt),
                 default_model_id = COALESCE($6, default_model_id),
                 tags = COALESCE($7, tags),
-                status = COALESCE($8, status),
+                initial_files = COALESCE($8, initial_files),
+                status = COALESCE($9, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, is_built_in, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -947,6 +958,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(&input.status)
         .fetch_optional(&self.pool)
         .await?;

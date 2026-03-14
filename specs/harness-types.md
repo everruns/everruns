@@ -4,6 +4,8 @@
 
 Harnesses define the base environment and capabilities for sessions. Everruns ships built-in harness types that cover common use cases. Users can also create custom harnesses via the API.
 
+Harnesses may also define starter files. Starter files are copied into each new session created from the harness and can be marked editable or read-only per file.
+
 ## Built-in Harness Types
 
 ### Base
@@ -105,6 +107,7 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
 | Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
 | How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |
+| How do starter files interact with capabilities? | Starter files are first-class harness or agent data, not capability config. If starter files exist, `session_file_system` is automatically retained so the session has a visible workspace and file tools. |
 
 ## Built-in Harness Lifecycle
 

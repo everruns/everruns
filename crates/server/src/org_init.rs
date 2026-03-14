@@ -133,6 +133,7 @@ pub async fn initialize_org_harnesses(db: &StorageBackend, org_id: i64) -> Resul
             system_prompt: harness.system_prompt.to_string(),
             default_model_id: None,
             tags: harness.tags.iter().map(|s| s.to_string()).collect(),
+            initial_files: serde_json::json!([]),
             is_built_in: true,
         };
 

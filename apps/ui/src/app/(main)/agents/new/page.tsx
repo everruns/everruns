@@ -20,7 +20,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
-import type { AgentCapabilityConfig } from "@/lib/api/types";
+import { InitialFilesEditor } from "@/components/initial-files-editor";
+import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function NewAgentPage() {
   });
 
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
+  const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
 
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
     setSelectedCapabilities(capabilities);
@@ -51,6 +53,7 @@ export default function NewAgentPage() {
         system_prompt: formData.system_prompt,
         default_model_id: formData.default_model_id || undefined,
         capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
+        initial_files: initialFiles.length > 0 ? initialFiles : undefined,
       });
 
       router.push(`/agents/${agent.id}`);
@@ -175,6 +178,13 @@ export default function NewAgentPage() {
                 Instructions for the AI model (supports Markdown)
               </p>
             </div>
+
+            <InitialFilesEditor
+              value={initialFiles}
+              onChange={setInitialFiles}
+              disabled={createAgent.isPending}
+              description="Seed skill files, helper scripts, configs, or binaries into each new session."
+            />
 
             <div className="flex gap-4">
               <Button type="submit" disabled={createAgent.isPending}>

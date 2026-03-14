@@ -307,6 +307,7 @@ mod tests {
             default_model_id: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("session")],
+            initial_files: vec![],
             tools: vec![],
             status: AgentStatus::Active,
             created_at: Utc::now(),

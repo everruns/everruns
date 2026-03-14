@@ -68,6 +68,22 @@ pub struct SessionFile {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Starter file copied into a new session from an agent or harness.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct InitialFile {
+    /// Absolute path within the session workspace. `/workspace` prefix is accepted.
+    pub path: String,
+    /// File content: plain text or base64-encoded binary.
+    pub content: String,
+    /// Content encoding: `text` or `base64`.
+    #[serde(default = "default_encoding")]
+    pub encoding: String,
+    /// Prevent session-side edits or deletes when true.
+    #[serde(default)]
+    pub is_readonly: bool,
+}
+
 fn default_encoding() -> String {
     "text".to_string()
 }

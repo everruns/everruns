@@ -7,15 +7,15 @@
 // (additive behavior).
 
 use crate::api::common::Pagination;
-use crate::services::session_file::SessionFileService;
+use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, ModelId, Permission,
-    Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
+    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
+    Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
 };
 use everruns_macros::policy;
@@ -137,6 +137,14 @@ impl SessionService {
         )
         .await?;
 
+        self.apply_initial_files(
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|a| a.uuid()),
+            session.id.uuid(),
+        )
+        .await?;
+
         Ok(session)
     }
 
@@ -194,6 +202,72 @@ impl SessionService {
         }
 
         Ok(())
+    }
+
+    /// Copy harness/agent starter files into the session filesystem.
+    async fn apply_initial_files(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_id: Uuid,
+    ) -> Result<()> {
+        for file in self
+            .collect_initial_files(org_id, harness_id, agent_id)
+            .await?
+        {
+            self.session_file_service
+                .create_file(
+                    session_id,
+                    CreateFileInput {
+                        path: normalize_initial_file_path(&file.path),
+                        content: Some(file.content),
+                        encoding: Some(file.encoding),
+                        is_readonly: Some(file.is_readonly),
+                    },
+                )
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn collect_initial_files(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+    ) -> Result<Vec<InitialFile>> {
+        let mut files = self
+            .db
+            .get_harness(org_id, HarnessId::from_uuid(harness_id))
+            .await?
+            .map(|row| {
+                serde_json::from_value::<Vec<InitialFile>>(row.initial_files).unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        if let Some(agent_id) = agent_id
+            && let Some(row) = self
+                .db
+                .get_agent(org_id, AgentId::from_uuid(agent_id))
+                .await?
+        {
+            for file in
+                serde_json::from_value::<Vec<InitialFile>>(row.initial_files).unwrap_or_default()
+            {
+                let normalized = normalize_initial_file_path(&file.path);
+                if let Some(existing) = files
+                    .iter_mut()
+                    .find(|existing| normalize_initial_file_path(&existing.path) == normalized)
+                {
+                    *existing = file;
+                } else {
+                    files.push(file);
+                }
+            }
+        }
+
+        Ok(files)
     }
 
     #[policy(SESSION_VIEW)]
@@ -545,5 +619,140 @@ impl SessionService {
                 .subagent_status
                 .map(|s| SubagentStatus::from(s.as_str())),
         }
+    }
+}
+
+fn normalize_initial_file_path(path: &str) -> String {
+    if path == "/workspace" {
+        "/".to_string()
+    } else if let Some(stripped) = path.strip_prefix("/workspace/") {
+        format!("/{}", stripped.trim_start_matches('/'))
+    } else if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{agents::CreateAgentRequest, harnesses::CreateHarnessRequest};
+    use crate::services::{AgentService, HarnessService};
+    use crate::storage::StorageBackend;
+    use everruns_core::{Caller, InitialFile};
+
+    #[tokio::test]
+    async fn starter_files_are_copied_into_new_sessions() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let agent_service = AgentService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(1);
+
+        let harness = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Harness".to_string(),
+                    description: None,
+                    system_prompt: "Harness prompt".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![
+                        InitialFile {
+                            path: "/workspace/config.txt".to_string(),
+                            content: "from harness".to_string(),
+                            encoding: "text".to_string(),
+                            is_readonly: false,
+                        },
+                        InitialFile {
+                            path: "/only-harness.txt".to_string(),
+                            content: "h-only".to_string(),
+                            encoding: "text".to_string(),
+                            is_readonly: true,
+                        },
+                    ],
+                },
+            )
+            .await
+            .unwrap();
+
+        let agent = agent_service
+            .create(
+                &caller,
+                None,
+                CreateAgentRequest {
+                    id: None,
+                    name: "Agent".to_string(),
+                    description: None,
+                    system_prompt: "Agent prompt".to_string(),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![
+                        InitialFile {
+                            path: "/config.txt".to_string(),
+                            content: "from agent".to_string(),
+                            encoding: "text".to_string(),
+                            is_readonly: false,
+                        },
+                        InitialFile {
+                            path: "/binary.bin".to_string(),
+                            content: "AAE=".to_string(),
+                            encoding: "base64".to_string(),
+                            is_readonly: true,
+                        },
+                    ],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                CreateSessionRequest {
+                    harness_id: harness.id,
+                    agent_id: Some(agent.public_id),
+                    title: Some("Starter files".to_string()),
+                    tags: vec![],
+                    model_id: None,
+                    capabilities: vec![],
+                    tools: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let file_service = SessionFileService::new(db);
+        let config = file_service
+            .read_file(session.id.uuid(), "/config.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(config.content.as_deref(), Some("from agent"));
+
+        let harness_only = file_service
+            .read_file(session.id.uuid(), "/only-harness.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(harness_only.is_readonly);
+        assert_eq!(harness_only.content.as_deref(), Some("h-only"));
+
+        let binary = file_service
+            .read_file(session.id.uuid(), "/binary.bin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(binary.is_readonly);
+        assert_eq!(binary.encoding, "base64");
+        assert_eq!(binary.content.as_deref(), Some("AAE="));
     }
 }

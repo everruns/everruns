@@ -980,6 +980,7 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
             system_prompt: seed.system_prompt.to_string(),
             default_model_id: None,
             tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+            initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),
         };
 

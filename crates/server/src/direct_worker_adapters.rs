@@ -934,6 +934,7 @@ impl DirectWorkerAdapters {
                 .into_iter()
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
+            initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
             is_built_in: r.is_built_in,
             status: match r.status.as_str() {
                 "active" => HarnessStatus::Active,
@@ -980,6 +981,7 @@ impl DirectWorkerAdapters {
                 .into_iter()
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
+            initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
             tools: vec![],
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
@@ -1196,6 +1198,7 @@ impl DirectPlatformStore {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1220,6 +1223,7 @@ impl DirectPlatformStore {
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
+            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1329,6 +1333,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
             tags: vec!["managed".to_string()],
+            initial_files: serde_json::json!([]),
             is_built_in: false,
         };
         let row = self
@@ -1494,6 +1499,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
             tags: vec!["managed".to_string()],
+            initial_files: serde_json::json!([]),
             tools: serde_json::Value::Array(vec![]),
         };
         let row = self
@@ -2074,6 +2080,7 @@ mod tests {
             system_prompt: String::new(),
             default_model_id: None,
             tags: vec![],
+            initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
         };
         let row = db

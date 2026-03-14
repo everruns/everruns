@@ -215,6 +215,9 @@ pub struct AgentRow {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Starter files copied into new sessions (JSONB in DB)
+    #[sqlx(default)]
+    pub initial_files: serde_json::Value,
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
@@ -240,6 +243,8 @@ pub struct CreateAgentRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    /// Starter files copied into new sessions (JSONB in DB)
+    pub initial_files: serde_json::Value,
     /// Client-side tools (JSONB in DB)
     pub tools: serde_json::Value,
 }
@@ -252,6 +257,7 @@ pub struct UpdateAgent {
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
+    pub initial_files: Option<serde_json::Value>,
     pub tools: Option<serde_json::Value>,
 }
 
@@ -268,6 +274,9 @@ pub struct HarnessRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    /// Starter files copied into new sessions (JSONB in DB)
+    #[sqlx(default)]
+    pub initial_files: serde_json::Value,
     pub is_built_in: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -281,6 +290,8 @@ pub struct CreateHarnessRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
+    /// Starter files copied into new sessions (JSONB in DB)
+    pub initial_files: serde_json::Value,
     pub is_built_in: bool,
 }
 
@@ -291,6 +302,7 @@ pub struct UpdateHarness {
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
+    pub initial_files: Option<serde_json::Value>,
     pub status: Option<String>,
 }
 

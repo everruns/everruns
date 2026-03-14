@@ -20,7 +20,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
-import type { AgentCapabilityConfig } from "@/lib/api/types";
+import { InitialFilesEditor } from "@/components/initial-files-editor";
+import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
 export default function NewHarnessPage() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function NewHarnessPage() {
   });
 
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
+  const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
 
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
     setSelectedCapabilities(capabilities);
@@ -58,6 +60,7 @@ export default function NewHarnessPage() {
         default_model_id: formData.default_model_id || undefined,
         tags: tags.length > 0 ? tags : undefined,
         capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
+        initial_files: initialFiles.length > 0 ? initialFiles : undefined,
       });
 
       router.push(`/harnesses/${harness.id}`);
@@ -196,6 +199,13 @@ export default function NewHarnessPage() {
                 Instructions for the AI model (supports Markdown)
               </p>
             </div>
+
+            <InitialFilesEditor
+              value={initialFiles}
+              onChange={setInitialFiles}
+              disabled={createHarness.isPending}
+              description="Seed starter files into every session created from this harness."
+            />
 
             <div className="flex gap-4">
               <Button type="submit" disabled={createHarness.isPending}>

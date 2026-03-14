@@ -7,6 +7,8 @@
 use super::common::ErrorResponse;
 use axum::Json;
 use axum::http::StatusCode;
+use everruns_core::{InitialFile, SessionFile};
+use std::collections::HashSet;
 
 // =============================================================================
 // Input Size Limits
@@ -31,6 +33,12 @@ pub const MAX_AGENT_CAPABILITIES: usize = 250;
 /// Maximum size for agent import file.
 /// 3 MB accommodates large system prompts with metadata.
 pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
+
+/// Maximum number of starter files on an agent or harness.
+pub const MAX_INITIAL_FILES: usize = 100;
+
+/// Maximum total decoded bytes across all starter files.
+pub const MAX_INITIAL_FILES_TOTAL_BYTES: usize = 5 * 1024 * 1024; // 5 MB
 
 /// Generic validation error message returned to clients.
 /// Intentionally vague to avoid leaking which field exceeded limits.
@@ -134,17 +142,62 @@ pub fn validate_import_file_size(size: usize) -> Result<(), ValidationError> {
     Ok(())
 }
 
+/// Validate starter files collection and per-file shape.
+pub fn validate_initial_files(initial_files: &[InitialFile]) -> Result<(), ValidationError> {
+    if initial_files.len() > MAX_INITIAL_FILES {
+        tracing::warn!(
+            "Initial files count exceeds limit: {} (max: {})",
+            initial_files.len(),
+            MAX_INITIAL_FILES
+        );
+        return Err(ValidationError);
+    }
+
+    let mut total_bytes = 0usize;
+    let mut seen_paths = HashSet::new();
+
+    for file in initial_files {
+        let normalized = normalize_initial_file_path(&file.path).ok_or(ValidationError)?;
+
+        if !seen_paths.insert(normalized) {
+            tracing::warn!("Duplicate initial file path");
+            return Err(ValidationError);
+        }
+
+        if file.encoding != "text" && file.encoding != "base64" {
+            tracing::warn!("Invalid initial file encoding");
+            return Err(ValidationError);
+        }
+
+        let decoded = SessionFile::decode_content(&file.content, &file.encoding)
+            .map_err(|_| ValidationError)?;
+        total_bytes = total_bytes.saturating_add(decoded.len());
+        if total_bytes > MAX_INITIAL_FILES_TOTAL_BYTES {
+            tracing::warn!(
+                "Initial files total exceeds limit: {} bytes (max: {})",
+                total_bytes,
+                MAX_INITIAL_FILES_TOTAL_BYTES
+            );
+            return Err(ValidationError);
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate all fields for CreateAgentRequest
 pub fn validate_create_agent_input(
     name: &str,
     description: Option<&str>,
     system_prompt: &str,
     capabilities_count: usize,
+    initial_files: &[InitialFile],
 ) -> Result<(), ValidationError> {
     validate_agent_name(name)?;
     validate_agent_description(description)?;
     validate_agent_system_prompt(system_prompt)?;
     validate_agent_capabilities_count(capabilities_count)?;
+    validate_initial_files(initial_files)?;
     Ok(())
 }
 
@@ -154,6 +207,7 @@ pub fn validate_update_agent_input(
     description: Option<&str>,
     system_prompt: Option<&str>,
     capabilities_count: Option<usize>,
+    initial_files: Option<&[InitialFile]>,
 ) -> Result<(), ValidationError> {
     if let Some(name) = name {
         validate_agent_name(name)?;
@@ -176,7 +230,32 @@ pub fn validate_update_agent_input(
     if let Some(count) = capabilities_count {
         validate_agent_capabilities_count(count)?;
     }
+    if let Some(initial_files) = initial_files {
+        validate_initial_files(initial_files)?;
+    }
     Ok(())
+}
+
+fn normalize_initial_file_path(path: &str) -> Option<String> {
+    let normalized = if path == "/workspace" {
+        return None;
+    } else if let Some(stripped) = path.strip_prefix("/workspace/") {
+        format!("/{}", stripped.trim_start_matches('/'))
+    } else if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    };
+
+    if normalized == "/"
+        || normalized.contains('\0')
+        || normalized.split('/').any(|segment| segment == "..")
+        || normalized.contains("//")
+    {
+        return None;
+    }
+
+    Some(normalized)
 }
 
 #[cfg(test)]

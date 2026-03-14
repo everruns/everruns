@@ -237,7 +237,7 @@ pub use organization::{
     org_public_id_from_internal, validate_org_public_id,
 };
 pub use session::{Session, SessionStatus, SubagentStatus};
-pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
 pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
