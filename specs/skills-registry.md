@@ -28,7 +28,7 @@ description: What this skill does and when to use it.  # 1-1024 chars
 ---
 ```
 
-Optional frontmatter: `license`, `compatibility`, `metadata` (key-value map), `allowed-tools` (experimental).
+Optional frontmatter: `license`, `compatibility`, `metadata` (key-value map), `allowed-tools` (experimental), `user-invocable` (Everruns command visibility extension; see [`specs/commands.md`](./commands.md)).
 
 **Progressive disclosure** is core to the design:
 1. **Discovery** (~100 tokens): Only name + description loaded at startup
