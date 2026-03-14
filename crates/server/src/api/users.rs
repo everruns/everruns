@@ -219,6 +219,7 @@ pub async fn update_profile(
     tag = "users"
 )]
 pub async fn switch_org(
+    State(state): State<UsersState>,
     auth: AuthUser,
     jar: CookieJar,
     Json(req): Json<SwitchOrgRequest>,
@@ -229,11 +230,19 @@ pub async fn switch_org(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Verify user is a member of this org
-    let is_member = auth
-        .organizations
-        .iter()
-        .any(|org| org.public_id == req.org_id);
+    // Verify user is a member of this org by querying the database.
+    // Previously this checked auth.organizations (populated at auth time),
+    // which meant newly created orgs couldn't be switched to until re-login.
+    let user_orgs = state
+        .db
+        .list_user_organizations(auth.id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list user organizations: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let is_member = user_orgs.iter().any(|org| org.public_id == req.org_id);
 
     if !is_member {
         tracing::warn!(

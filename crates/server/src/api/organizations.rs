@@ -118,23 +118,30 @@ pub fn routes(state: AppState) -> Router {
     )
 )]
 pub async fn list_organizations(
+    State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<ListResponse<OrganizationResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    // Return the organizations from the user's auth context
-    // This avoids an extra database query since we already have the memberships
-    let orgs: Vec<OrganizationResponse> = user
-        .organizations
-        .iter()
-        .map(|m| OrganizationResponse {
-            id: m.public_id.clone(),
-            name: m.name.clone(),
-            default_harness_id: None,
-            base_harness_id: None,
-            // These timestamps are not available in OrgMembership, use placeholder
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        })
-        .collect();
+    // Query the database for fresh membership data.
+    // Previously this read from user.organizations (populated at auth time),
+    // which meant newly created orgs were invisible until re-login.
+    let org_rows = state
+        .db
+        .list_user_organizations(user.id)
+        .await
+        .log_internal_error_json("list user organizations")?;
+
+    let mut orgs = Vec::with_capacity(org_rows.len());
+    for row in &org_rows {
+        // Fetch full org details (including settings, timestamps) per org
+        if let Some(org_row) = state
+            .db
+            .get_organization(row.org_id)
+            .await
+            .log_internal_error_json("get organization")?
+        {
+            orgs.push(build_organization_response(&state.db, row.org_id, org_row).await?);
+        }
+    }
 
     Ok(Json(ListResponse::new(orgs)))
 }
@@ -239,8 +246,8 @@ pub async fn get_organization(
         return Err(ErrorResponse::not_found("Organization"));
     }
 
-    // Check user membership (return 404 for non-members to prevent enumeration)
-    if !user.is_member_of_public(&org_public_id) {
+    // Check user membership from DB (return 404 for non-members to prevent enumeration)
+    if !is_member_of_public_db(&state.db, user.id, &org_public_id).await? {
         return Err(ErrorResponse::not_found("Organization"));
     }
 
@@ -288,8 +295,8 @@ pub async fn update_organization(
         return Err(ErrorResponse::not_found("Organization"));
     }
 
-    // Check user membership
-    if !user.is_member_of_public(&org_public_id) {
+    // Check user membership from DB
+    if !is_member_of_public_db(&state.db, user.id, &org_public_id).await? {
         return Err(ErrorResponse::not_found("Organization"));
     }
 
@@ -378,6 +385,19 @@ pub async fn update_organization(
     Ok(Json(
         build_organization_response(&state.db, row.org_id, row).await?,
     ))
+}
+
+/// Check membership by querying the DB (avoids stale auth context).
+async fn is_member_of_public_db(
+    db: &StorageBackend,
+    user_id: uuid::Uuid,
+    org_public_id: &str,
+) -> Result<bool, (StatusCode, Json<ErrorResponse>)> {
+    let orgs = db
+        .list_user_organizations(user_id)
+        .await
+        .log_internal_error_json("list user organizations")?;
+    Ok(orgs.iter().any(|o| o.public_id == org_public_id))
 }
 
 async fn build_organization_response(
