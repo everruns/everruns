@@ -371,6 +371,7 @@ fn durable_to_local_status(s: everruns_durable::WorkflowStatus) -> WorkflowStatu
         everruns_durable::WorkflowStatus::Completed => WorkflowStatus::Completed,
         everruns_durable::WorkflowStatus::Failed => WorkflowStatus::Failed,
         everruns_durable::WorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
+        everruns_durable::WorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
     }
 }
 
@@ -381,6 +382,7 @@ fn local_to_durable_status(s: WorkflowStatus) -> everruns_durable::WorkflowStatu
         WorkflowStatus::Completed => everruns_durable::WorkflowStatus::Completed,
         WorkflowStatus::Failed => everruns_durable::WorkflowStatus::Failed,
         WorkflowStatus::Cancelled => everruns_durable::WorkflowStatus::Cancelled,
+        WorkflowStatus::ContinuedAsNew => everruns_durable::WorkflowStatus::ContinuedAsNew,
     }
 }
 

@@ -123,7 +123,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     async fn get_workflow_info(&self, workflow_id: Uuid) -> Result<WorkflowInfo, StoreError> {
         let row = sqlx::query(
             r#"
-            SELECT id, workflow_type, status, input, result, error
+            SELECT id, workflow_type, status, input, result, error, continued_as_new_id
             FROM durable_workflow_instances
             WHERE id = $1
             "#,
@@ -147,6 +147,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             input: row.get("input"),
             result: row.get("result"),
             error: error_json.and_then(|v| serde_json::from_value(v).ok()),
+            continued_as_new_id: row.try_get("continued_as_new_id").ok().flatten(),
         })
     }
 
@@ -299,6 +300,38 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn count_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<usize, StoreError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM durable_workflow_events
+            WHERE workflow_id = $1 AND sequence_num > $2
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(after_sequence)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to count events after sequence {}: {}",
+                after_sequence, e
+            );
+            StoreError::Database(e.to_string())
+        })?;
+
+        usize::try_from(count).map_err(|_| {
+            StoreError::Database(format!(
+                "event count overflow for workflow {workflow_id}: {count}"
+            ))
+        })
+    }
+
+    #[instrument(skip(self))]
     async fn load_events_after(
         &self,
         workflow_id: Uuid,
@@ -436,9 +469,10 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let (started_at, completed_at): (Option<DateTime<Utc>>, Option<DateTime<Utc>>) =
             match status {
                 WorkflowStatus::Running => (Some(Utc::now()), None),
-                WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled => {
-                    (None, Some(Utc::now()))
-                }
+                WorkflowStatus::Completed
+                | WorkflowStatus::Failed
+                | WorkflowStatus::Cancelled
+                | WorkflowStatus::ContinuedAsNew => (None, Some(Utc::now())),
                 WorkflowStatus::Pending => (None, None),
             };
 
@@ -1595,7 +1629,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let rows = sqlx::query(
             r#"
             SELECT id, workflow_type, status, input, result, error,
-                   created_at, started_at, completed_at
+                   created_at, started_at, completed_at, continued_as_new_id
             FROM durable_workflow_instances
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::text IS NULL OR workflow_type = $2)
@@ -1630,6 +1664,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 created_at: row.get("created_at"),
                 started_at: row.get("started_at"),
                 completed_at: row.get("completed_at"),
+                continued_as_new_id: row.try_get("continued_as_new_id").ok().flatten(),
             });
         }
 
@@ -1987,6 +2022,133 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         debug!(%workflow_id, "cancelled workflow");
         Ok(())
+    }
+
+    #[instrument(skip(self, snapshot_data))]
+    async fn continue_as_new(
+        &self,
+        old_workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        snapshot_data: Vec<u8>,
+    ) -> Result<Uuid, StoreError> {
+        let new_workflow_id = Uuid::now_v7();
+        let start_event = WorkflowEvent::WorkflowStarted {
+            input: input.clone(),
+        };
+        let event_data = serde_json::to_value(&start_event)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            error!("Failed to begin transaction: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        // 1. Mark old workflow as continued_as_new
+        let result = sqlx::query(
+            r#"
+            UPDATE durable_workflow_instances
+            SET status = 'continued_as_new',
+                completed_at = NOW(),
+                continued_as_new_id = $2
+            WHERE id = $1 AND status IN ('pending', 'running')
+            RETURNING id
+            "#,
+        )
+        .bind(old_workflow_id)
+        .bind(new_workflow_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to mark workflow as continued: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if result.is_none() {
+            return Err(StoreError::WorkflowNotFound(old_workflow_id));
+        }
+
+        // 2. Delete old workflow events (archive)
+        sqlx::query(r#"DELETE FROM durable_workflow_events WHERE workflow_id = $1"#)
+            .bind(old_workflow_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                error!("Failed to delete old events: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+
+        // 3. Delete old snapshots
+        sqlx::query(r#"DELETE FROM durable_workflow_snapshots WHERE workflow_id = $1"#)
+            .bind(old_workflow_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                error!("Failed to delete old snapshots: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+
+        // 4. Create new workflow
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_instances (id, workflow_type, status, input, started_at)
+            VALUES ($1, $2, 'running', $3, NOW())
+            "#,
+        )
+        .bind(new_workflow_id)
+        .bind(workflow_type)
+        .bind(&input)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to create new workflow: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        // 5. Write WorkflowStarted event on new workflow
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data)
+            VALUES ($1, 0, 'workflow_started', $2)
+            "#,
+        )
+        .bind(new_workflow_id)
+        .bind(&event_data)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to write start event: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        // 6. Save snapshot on new workflow at sequence 0
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_snapshots (workflow_id, sequence_num, snapshot_data)
+            VALUES ($1, 0, $2)
+            "#,
+        )
+        .bind(new_workflow_id)
+        .bind(&snapshot_data)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to save snapshot: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        tx.commit().await.map_err(|e| {
+            error!("Failed to commit continue_as_new: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        info!(
+            %old_workflow_id,
+            %new_workflow_id,
+            "continued workflow as new"
+        );
+
+        Ok(new_workflow_id)
     }
 
     #[instrument(skip(self))]
@@ -2848,6 +3010,7 @@ fn parse_workflow_status(status: &str) -> Result<WorkflowStatus, StoreError> {
         "completed" => Ok(WorkflowStatus::Completed),
         "failed" => Ok(WorkflowStatus::Failed),
         "cancelled" => Ok(WorkflowStatus::Cancelled),
+        "continued_as_new" => Ok(WorkflowStatus::ContinuedAsNew),
         _ => Err(StoreError::Database(format!(
             "Unknown workflow status: {}",
             status

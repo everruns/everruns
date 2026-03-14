@@ -85,6 +85,17 @@ All tables prefixed with `durable_` to avoid conflicts:
 | `durable_circuit_breaker_state` | Shared circuit breaker state |
 | `durable_workers` | Worker registry for monitoring |
 | `durable_signals` | Signal queue for workflows |
+| `durable_workflow_snapshots` | Checkpoint snapshots for replay optimization |
+
+Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
+
+### Replay Safety
+
+- **Pre-load count check (full path):** `count_events()` before `load_events()` rejects oversized histories without allocating.
+- **Pre-load count check (snapshot path):** `count_events_after()` before `load_events_after()` rejects stale snapshots. Deletes the stale snapshot on rejection.
+- **Continue-as-new:** When a workflow exceeds `max_events_per_workflow`, it can roll over via `continue_as_new()`. This snapshots current state, creates a new workflow from the snapshot, archives old events, and marks the old workflow `continued_as_new` with a reference to the new workflow ID (`continued_as_new_id` column).
+
+See `crates/durable/src/engine/executor.rs` for `load_workflow_state()` and `continue_as_new()`.
 
 ### Task Claiming
 

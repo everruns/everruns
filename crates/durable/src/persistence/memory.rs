@@ -27,6 +27,7 @@ struct WorkflowState {
     created_at: chrono::DateTime<chrono::Utc>,
     started_at: Option<chrono::DateTime<chrono::Utc>>,
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    continued_as_new_id: Option<Uuid>,
 }
 
 /// Internal task state
@@ -195,6 +196,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 created_at: Utc::now(),
                 started_at: None,
                 completed_at: None,
+                continued_as_new_id: None,
             },
         );
         Ok(())
@@ -221,6 +223,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             input: workflow.input.clone(),
             result: workflow.result.clone(),
             error: workflow.error.clone(),
+            continued_as_new_id: workflow.continued_as_new_id,
         })
     }
 
@@ -277,6 +280,24 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
         Ok(workflow.events.len())
+    }
+
+    async fn count_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<usize, StoreError> {
+        let workflows = self.workflows.read();
+        let workflow = workflows
+            .get(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        Ok(workflow
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| (*i as i32) > after_sequence)
+            .count())
     }
 
     async fn load_events_after(
@@ -373,7 +394,10 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                         workflow.started_at = Some(Utc::now());
                     }
                 }
-                WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled => {
+                WorkflowStatus::Completed
+                | WorkflowStatus::Failed
+                | WorkflowStatus::Cancelled
+                | WorkflowStatus::ContinuedAsNew => {
                     if workflow.completed_at.is_none() {
                         workflow.completed_at = Some(Utc::now());
                     }
@@ -382,6 +406,74 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             }
         }
         Ok(())
+    }
+
+    async fn continue_as_new(
+        &self,
+        old_workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        snapshot_data: Vec<u8>,
+    ) -> Result<Uuid, StoreError> {
+        let new_workflow_id = Uuid::now_v7();
+        let mut workflows = self.workflows.write();
+
+        // Verify old workflow exists and is running
+        let old_workflow = workflows
+            .get_mut(&old_workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(old_workflow_id))?;
+
+        if old_workflow.status.is_terminal() {
+            return Err(StoreError::Database(format!(
+                "workflow {old_workflow_id} is already terminal"
+            )));
+        }
+
+        // Mark old workflow as continued
+        old_workflow.status = WorkflowStatus::ContinuedAsNew;
+        old_workflow.completed_at = Some(Utc::now());
+        old_workflow.continued_as_new_id = Some(new_workflow_id);
+
+        // Clear old events (archive)
+        old_workflow.events.clear();
+
+        // Create new workflow with a WorkflowStarted event
+        let now = Utc::now();
+        workflows.insert(
+            new_workflow_id,
+            WorkflowState {
+                workflow_type: workflow_type.to_string(),
+                status: WorkflowStatus::Running,
+                input: input.clone(),
+                result: None,
+                error: None,
+                events: vec![WorkflowEvent::WorkflowStarted {
+                    input: input.clone(),
+                }],
+                signals: vec![],
+                created_at: now,
+                started_at: Some(now),
+                completed_at: None,
+                continued_as_new_id: None,
+            },
+        );
+
+        // Save snapshot on the new workflow at sequence 0 (before the start event)
+        drop(workflows);
+        let mut snapshots = self.snapshots.write();
+        // Delete old workflow snapshots
+        snapshots.remove(&old_workflow_id);
+        // Save snapshot on new workflow
+        snapshots
+            .entry(new_workflow_id)
+            .or_default()
+            .push(SnapshotMemState {
+                sequence_num: 0,
+                snapshot_data,
+                created_at: now,
+            });
+
+        Ok(new_workflow_id)
     }
 
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
@@ -1063,6 +1155,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 created_at: w.created_at,
                 started_at: w.started_at,
                 completed_at: w.completed_at,
+                continued_as_new_id: w.continued_as_new_id,
             })
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));

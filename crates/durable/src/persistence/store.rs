@@ -125,12 +125,18 @@ pub enum WorkflowStatus {
 
     /// Workflow was cancelled
     Cancelled,
+
+    /// Workflow continued as a new workflow (history rolled over)
+    ContinuedAsNew,
 }
 
 impl WorkflowStatus {
     /// Check if this status is terminal (workflow has ended)
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+        matches!(
+            self,
+            Self::Completed | Self::Failed | Self::Cancelled | Self::ContinuedAsNew
+        )
     }
 }
 
@@ -142,6 +148,7 @@ impl std::fmt::Display for WorkflowStatus {
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
             Self::Cancelled => write!(f, "cancelled"),
+            Self::ContinuedAsNew => write!(f, "continued_as_new"),
         }
     }
 }
@@ -268,6 +275,8 @@ pub struct WorkflowInfoExtended {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// If this workflow continued as a new workflow, the ID of the new workflow
+    pub continued_as_new_id: Option<Uuid>,
 }
 
 /// System health summary
@@ -415,6 +424,8 @@ pub struct WorkflowInfo {
     pub input: serde_json::Value,
     pub result: Option<serde_json::Value>,
     pub error: Option<crate::workflow::WorkflowError>,
+    /// If this workflow continued as a new workflow, the ID of the new workflow
+    pub continued_as_new_id: Option<Uuid>,
 }
 
 /// A snapshot of serialized workflow state at a specific event sequence.
@@ -481,6 +492,20 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Used to reject oversized full-history replays before fetching event data.
     async fn count_events(&self, workflow_id: Uuid) -> Result<usize, StoreError> {
         Ok(self.load_events(workflow_id).await?.len())
+    }
+
+    /// Count events after a given sequence number without materializing them.
+    ///
+    /// Used to reject oversized snapshot-based replays before fetching event data.
+    async fn count_events_after(
+        &self,
+        workflow_id: Uuid,
+        after_sequence: i32,
+    ) -> Result<usize, StoreError> {
+        Ok(self
+            .load_events_after(workflow_id, after_sequence)
+            .await?
+            .len())
     }
 
     /// Load events for a workflow starting after a given sequence number.
@@ -788,6 +813,25 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Cancel a workflow
     async fn cancel_workflow(&self, _workflow_id: Uuid) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    /// Continue a workflow as a new workflow (history rollover).
+    ///
+    /// Creates a new workflow from the given snapshot state, marks the old
+    /// workflow as `ContinuedAsNew` with a reference to the new workflow,
+    /// and archives (deletes) old event history and snapshots.
+    ///
+    /// Returns the new workflow ID.
+    async fn continue_as_new(
+        &self,
+        _old_workflow_id: Uuid,
+        _workflow_type: &str,
+        _input: serde_json::Value,
+        _snapshot_data: Vec<u8>,
+    ) -> Result<Uuid, StoreError> {
+        Err(StoreError::Database(
+            "continue_as_new not supported by this store".to_string(),
+        ))
     }
 
     /// Get workflow events

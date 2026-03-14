@@ -3891,6 +3891,7 @@ fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflowStatus {
         WorkflowStatus::Completed => DurableWorkflowStatus::Completed,
         WorkflowStatus::Failed => DurableWorkflowStatus::Failed,
         WorkflowStatus::Cancelled => DurableWorkflowStatus::Cancelled,
+        WorkflowStatus::ContinuedAsNew => DurableWorkflowStatus::ContinuedAsNew,
     }
 }
 
@@ -3901,6 +3902,7 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
         DurableWorkflowStatus::Completed => WorkflowStatus::Completed,
         DurableWorkflowStatus::Failed => WorkflowStatus::Failed,
         DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
+        DurableWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
         DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
     }
 }

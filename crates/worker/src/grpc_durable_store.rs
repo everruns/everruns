@@ -612,12 +612,16 @@ pub enum WorkflowStatus {
     Completed,
     Failed,
     Cancelled,
+    ContinuedAsNew,
 }
 
 impl WorkflowStatus {
     /// Check if this status is terminal
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+        matches!(
+            self,
+            Self::Completed | Self::Failed | Self::Cancelled | Self::ContinuedAsNew
+        )
     }
 }
 
@@ -636,6 +640,7 @@ fn workflow_status_to_proto(status: WorkflowStatus) -> proto::DurableWorkflowSta
         WorkflowStatus::Completed => proto::DurableWorkflowStatus::Completed,
         WorkflowStatus::Failed => proto::DurableWorkflowStatus::Failed,
         WorkflowStatus::Cancelled => proto::DurableWorkflowStatus::Cancelled,
+        WorkflowStatus::ContinuedAsNew => proto::DurableWorkflowStatus::ContinuedAsNew,
     }
 }
 
@@ -646,6 +651,7 @@ fn proto_status_to_workflow(status: proto::DurableWorkflowStatus) -> WorkflowSta
         proto::DurableWorkflowStatus::Completed => WorkflowStatus::Completed,
         proto::DurableWorkflowStatus::Failed => WorkflowStatus::Failed,
         proto::DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
+        proto::DurableWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
         proto::DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
     }
 }
