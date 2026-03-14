@@ -113,17 +113,26 @@ impl HarnessService {
             .get_harness(caller.org_id, HarnessId::from_uuid(id))
             .await?;
         match row {
-            Some(row) => {
+            Some(row) if row.status != "deleted" => {
                 let capabilities = self.get_capabilities(id).await?;
                 Ok(Some(Self::row_to_harness(row, capabilities)))
             }
             None => Ok(None),
+            Some(_) => Ok(None),
         }
     }
 
     #[policy(HARNESS_VIEW)]
-    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Harness>> {
-        let rows = self.db.list_harnesses(caller.org_id, search).await?;
+    pub async fn list(
+        &self,
+        caller: &Caller,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<Harness>> {
+        let rows = self
+            .db
+            .list_harnesses(caller.org_id, search, include_archived)
+            .await?;
 
         let mut harnesses = Vec::with_capacity(rows.len());
         for row in rows {
@@ -152,6 +161,9 @@ impl HarnessService {
             .get_harness(caller.org_id, HarnessId::from_uuid(id))
             .await?
             .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+        if existing.status != "active" {
+            anyhow::bail!("Archived or deleted harnesses cannot be edited");
+        }
         let existing_initial_files: Vec<InitialFile> =
             serde_json::from_value(existing.initial_files.clone()).unwrap_or_default();
         let final_has_initial_files = req
@@ -249,6 +261,24 @@ impl HarnessService {
             .await
     }
 
+    #[policy(HARNESS_DANGEROUS)]
+    pub async fn destroy(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        if self.is_built_in(caller.org_id, id).await? {
+            anyhow::bail!("Cannot delete built-in harness.");
+        }
+        let existing = self
+            .db
+            .get_harness(caller.org_id, HarnessId::from_uuid(id))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+        if existing.status != "archived" {
+            anyhow::bail!("Harness must be archived before deletion");
+        }
+        self.db
+            .destroy_harness(caller.org_id, HarnessId::from_uuid(id))
+            .await
+    }
+
     /// Check if a harness is built-in (system-managed, readonly).
     async fn is_built_in(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let row = self
@@ -298,6 +328,8 @@ impl HarnessService {
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
         }
     }
 }

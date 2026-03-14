@@ -314,6 +314,8 @@ mod tests {
             status: AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 

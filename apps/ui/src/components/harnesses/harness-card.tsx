@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 interface HarnessCardProps {
   harness: Harness;
@@ -33,7 +34,7 @@ export function HarnessCard({
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg">
+          <CardTitle className={`text-lg ${getEntityNameClassName(harness.status)}`}>
             <Link href={`/harnesses/${harness.id}`} className="hover:underline">
               {harness.name}
             </Link>
@@ -46,9 +47,7 @@ export function HarnessCard({
               Built-in
             </Badge>
           )}
-          <Badge variant={harness.status === "active" ? "default" : "secondary"}>
-            {harness.status}
-          </Badge>
+          <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -102,7 +101,7 @@ export function HarnessCard({
           <span className="text-xs text-muted-foreground">
             Created {new Date(harness.created_at).toLocaleDateString()}
           </span>
-          {showEditButton && !harness.is_built_in && (
+          {showEditButton && !harness.is_built_in && harness.status === "active" && (
             <Link href={`/harnesses/${harness.id}/edit`}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <Pencil className="icon-sharp h-4 w-4" />

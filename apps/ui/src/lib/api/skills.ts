@@ -14,8 +14,9 @@ import type {
 
 // Skill CRUD
 
-export async function getSkills(): Promise<Skill[]> {
-  const response = await api.get<ListResponse<Skill>>("/v1/skills");
+export async function getSkills(includeArchived = false): Promise<Skill[]> {
+  const path = includeArchived ? "/v1/skills?include_archived=true" : "/v1/skills";
+  const response = await api.get<ListResponse<Skill>>(path);
   return response.data.data;
 }
 
@@ -41,6 +42,10 @@ export async function updateSkill(skillId: string, data: UpdateSkillRequest): Pr
 
 export async function deleteSkill(skillId: string): Promise<void> {
   await api.delete(`/v1/skills/${skillId}`);
+}
+
+export async function destroySkill(skillId: string): Promise<void> {
+  await api.post(`/v1/skills/${skillId}/delete`);
 }
 
 export async function validateSkill(data: ValidateSkillRequest): Promise<SkillValidationResult> {

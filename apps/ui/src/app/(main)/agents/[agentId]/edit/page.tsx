@@ -3,7 +3,14 @@
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAgent, useUpdateAgent, useDeleteAgent, useCapabilities } from "@/hooks";
+import {
+  useAgent,
+  useUpdateAgent,
+  useDeleteAgent,
+  useDestroyAgent,
+  useCapabilities,
+} from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,12 +19,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
+import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 interface FormData {
   name: string;
@@ -35,12 +51,15 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
+  const destroyAgent = useDestroyAgent();
+  const { can: canPolicies } = usePolicies("agents");
 
   // Capabilities data
   const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("edit");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
@@ -127,13 +146,17 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   };
 
   // Delete handler
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this agent? This action cannot be undone.")) {
-      return;
-    }
-
+  const handleArchive = async () => {
     try {
       await deleteAgent.mutateAsync(agentId);
+    } catch (error) {
+      console.error("Failed to archive agent:", error);
+    }
+  };
+
+  const handleDestroy = async () => {
+    try {
+      await destroyAgent.mutateAsync(agentId);
       router.push("/agents");
     } catch (error) {
       console.error("Failed to delete agent:", error);
@@ -142,6 +165,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   const isLoading = agentLoading || capabilitiesLoading;
   const isSaving = updateAgent.isPending;
+  const isReadOnly = isReadOnlyStatus(agent?.status);
+  const canDangerousDelete = canPolicies("agent.dangerous");
 
   if (isLoading) {
     return (
@@ -215,6 +240,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         placeholder="My Agent"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                         required
                       />
                     </div>
@@ -226,6 +252,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         placeholder="Describe what this agent does..."
                         value={formData.description}
                         onChange={(e) => handleFormChange("description", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                         rows={2}
                       />
                     </div>
@@ -237,6 +264,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         placeholder="tag1, tag2, tag3"
                         value={formData.tags}
                         onChange={(e) => handleFormChange("tags", e.target.value)}
+                        disabled={isSaving || isReadOnly}
                       />
                       <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
                     </div>
@@ -246,6 +274,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       <ModelPicker
                         value={formData.default_model_id || ""}
                         onChange={(value) => handleFormChange("default_model_id", value)}
+                        disabled={isSaving || isReadOnly}
                         placeholder="Use default model"
                       />
                       <p className="text-xs text-muted-foreground">
@@ -260,6 +289,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         placeholder="You are a helpful assistant..."
                         value={formData.system_prompt}
                         onChange={(value) => handleFormChange("system_prompt", value)}
+                        disabled={isSaving || isReadOnly}
                         required
                       />
                       <p className="text-xs text-muted-foreground">
@@ -270,7 +300,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                     <InitialFilesEditor
                       value={selectedInitialFiles}
                       onChange={setLocalInitialFiles}
-                      disabled={isSaving}
+                      disabled={isSaving || isReadOnly}
                       description="Files copied into each new session for this agent."
                     />
                   </CardContent>
@@ -285,20 +315,37 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   <CardContent>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium">Delete this agent</p>
+                        <p className="font-medium">
+                          {agent.status === "archived" ? "Delete this agent" : "Archive this agent"}
+                        </p>
                         <p className="text-sm text-muted-foreground">
-                          Once deleted, this agent and all its sessions will be permanently removed.
+                          {agent.status === "archived"
+                            ? "Permanently delete this archived agent. Existing references will render as deleted tombstones."
+                            : "Archive this agent. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={handleDelete}
-                        disabled={deleteAgent.isPending}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        {deleteAgent.isPending ? "Deleting..." : "Delete Agent"}
-                      </Button>
+                      {agent.status === "archived" ? (
+                        canDangerousDelete && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => setShowDeleteDialog(true)}
+                            disabled={destroyAgent.isPending}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleArchive}
+                          disabled={deleteAgent.isPending}
+                        >
+                          {deleteAgent.isPending ? "Archiving..." : "Archive Agent"}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -315,16 +362,20 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       capabilities={allCapabilities || []}
                       selected={selectedCapabilities}
                       onChange={handleCapabilitiesChange}
-                      disabled={isSaving}
+                      disabled={isSaving || isReadOnly}
                     />
                   </CardContent>
                 </Card>
 
                 {/* Save button */}
                 <div className="flex gap-4">
-                  <Button type="submit" disabled={isSaving} className="flex-1">
+                  <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
                     <Save className="w-4 h-4 mr-2" />
-                    {isSaving ? "Saving..." : "Save Changes"}
+                    {isReadOnly
+                      ? "Archived Agents Are Read-Only"
+                      : isSaving
+                        ? "Saving..."
+                        : "Save Changes"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => router.back()}>
                     Cancel
@@ -389,6 +440,25 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           </div>
         </TabsContent>
       </Tabs>
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Agent</DialogTitle>
+            <DialogDescription>
+              Permanently delete the archived agent &quot;{agent?.name}&quot;? Existing references
+              will render as deleted tombstones.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDestroy} disabled={destroyAgent.isPending}>
+              {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

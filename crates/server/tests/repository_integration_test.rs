@@ -96,7 +96,7 @@ async fn test_agent_crud() {
 
     // List agents
     let agents = backend
-        .list_agents(TEST_ORG_ID, None)
+        .list_agents(TEST_ORG_ID, None, false)
         .await
         .expect("Failed to list agents");
     assert!(agents.iter().any(|a| a.id == agent.id));
@@ -849,7 +849,7 @@ async fn test_mcp_server_crud() {
 
     // List MCP servers
     let servers = backend
-        .list_mcp_servers(TEST_ORG_ID, None)
+        .list_mcp_servers(TEST_ORG_ID, None, false)
         .await
         .expect("Failed to list MCP servers");
     assert!(servers.iter().any(|s| s.id == server.id));
@@ -1316,7 +1316,7 @@ async fn test_mcp_server_org_isolation_postgres() {
     );
     assert!(
         backend
-            .list_mcp_servers(TEST_ORG_ID, None)
+            .list_mcp_servers(TEST_ORG_ID, None, false)
             .await
             .unwrap()
             .iter()
@@ -1340,7 +1340,7 @@ async fn test_mcp_server_org_isolation_postgres() {
     );
     assert!(
         !backend
-            .list_mcp_servers(org2, None)
+            .list_mcp_servers(org2, None, false)
             .await
             .unwrap()
             .iter()

@@ -39,11 +39,12 @@ See [authentication.md](authentication.md) for full authentication specification
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/agents` | Create agent (optional client-supplied `id`) |
-| GET | `/v1/agents` | List agents (paginated) |
+| GET | `/v1/agents` | List active agents by default (`include_archived=true` to include archived) |
 | GET | `/v1/agents/{id}` | Get agent by ID |
 | PUT | `/v1/agents/{id}` | Upsert agent (create 201, update 200) |
 | PATCH | `/v1/agents/{id}` | Update agent |
 | DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
+| POST | `/v1/agents/{id}/delete` | Dangerous delete of archived agent |
 | POST | `/v1/agents/import` | Import agent from file content |
 | GET | `/v1/agents/{id}/export` | Export agent as Markdown |
 | POST | `/v1/agents/preview` | Preview final agent shape |
@@ -94,12 +95,26 @@ Harnesses define the base environment and capabilities for sessions. See [harnes
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/harnesses` | Create harness |
-| GET | `/v1/harnesses` | List harnesses |
+| GET | `/v1/harnesses` | List active harnesses by default (`include_archived=true` to include archived) |
 | GET | `/v1/harnesses/{id}` | Get harness |
 | PATCH | `/v1/harnesses/{id}` | Update harness |
-| DELETE | `/v1/harnesses/{id}` | Delete harness |
+| DELETE | `/v1/harnesses/{id}` | Archive harness |
+| POST | `/v1/harnesses/{id}/delete` | Dangerous delete of archived harness |
 | POST | `/v1/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
 | POST | `/v1/harnesses/preview` | Preview merged system prompt + tools |
+
+### Building Block Lifecycle API Rules
+
+Applies to agents, harnesses, skills, MCP servers, and apps unless an entity-specific spec overrides it.
+
+- `DELETE /v1/{resource}/{id}` archives the entity. Archive is the default destructive-looking action in UI, but it is not permanent.
+- Dangerous delete is a separate explicit endpoint (`POST /v1/{resource}/{id}/delete`) and requires the dangerous permission for that resource.
+- Dangerous delete only succeeds from `archived`.
+- Detail APIs return archived entities, but return `404` for deleted entities.
+- List APIs exclude archived and deleted items by default. `include_archived=true` includes archived items, but deleted items stay hidden.
+- Archived or deleted entities cannot be assigned in create/update APIs.
+- Archived or deleted entities cannot be edited.
+- Historical reference surfaces may still expose the foreign-key ID for a deleted entity so callers can render tombstones such as `<Deleted Harness>`.
 
 ### Sessions
 
@@ -147,6 +162,8 @@ The optional `capabilities` field allows setting session-level capabilities that
 2. Session capabilities are applied after (additive)
 
 This enables temporarily extending an agent's capabilities for specific sessions without modifying the agent configuration.
+
+Session creation and any other assignment flow must reject archived or deleted harnesses/agents with a client error. Existing sessions are preserved when dependencies are archived or deleted, but the next execution atom must fail gracefully with a user-visible explanation.
 
 #### Get or Create Chat Session
 

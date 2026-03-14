@@ -11,8 +11,9 @@ import type {
 
 // MCP Server CRUD
 
-export async function getMcpServers(): Promise<McpServer[]> {
-  const response = await api.get<ListResponse<McpServer>>("/v1/mcp-servers");
+export async function getMcpServers(includeArchived = false): Promise<McpServer[]> {
+  const path = includeArchived ? "/v1/mcp-servers?include_archived=true" : "/v1/mcp-servers";
+  const response = await api.get<ListResponse<McpServer>>(path);
   return response.data.data;
 }
 
@@ -36,4 +37,8 @@ export async function updateMcpServer(
 
 export async function deleteMcpServer(serverId: string): Promise<void> {
   await api.delete(`/v1/mcp-servers/${serverId}`);
+}
+
+export async function destroyMcpServer(serverId: string): Promise<void> {
+  await api.post(`/v1/mcp-servers/${serverId}/delete`);
 }

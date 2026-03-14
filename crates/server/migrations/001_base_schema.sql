@@ -281,7 +281,7 @@ CREATE TABLE agents (
     -- Client-side tool definitions
     tools JSONB NOT NULL DEFAULT '[]'::jsonb,
     tags TEXT[] NOT NULL DEFAULT '{}',
-    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'deleted')),
     -- Denormalized usage totals
     total_input_tokens BIGINT NOT NULL DEFAULT 0,
     total_output_tokens BIGINT NOT NULL DEFAULT 0,
@@ -289,6 +289,8 @@ CREATE TABLE agents (
     total_cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
 
     -- Format validation: agent_ prefix + 32 lowercase hex chars
     CONSTRAINT agents_public_id_format
@@ -345,9 +347,11 @@ CREATE TABLE harnesses (
     system_prompt TEXT NOT NULL,
     default_model_id UUID REFERENCES llm_models(id),
     tags TEXT[] NOT NULL DEFAULT '{}',
-    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'deleted')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_harnesses_org_id ON harnesses(org_id);
@@ -646,7 +650,7 @@ CREATE TABLE mcp_servers (
     -- Transport type: currently only 'http' is supported
     transport_type VARCHAR(50) NOT NULL DEFAULT 'http' CHECK (transport_type IN ('http')),
     -- Status for lifecycle management
-    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled', 'archived', 'deleted')),
     -- Optional API key for authentication (encrypted)
     api_key_encrypted BYTEA,
     api_key_set BOOLEAN NOT NULL DEFAULT FALSE,
@@ -658,7 +662,9 @@ CREATE TABLE mcp_servers (
     cached_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
     tools_cached_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 
 -- Unique constraint on name to prevent duplicates
@@ -802,10 +808,12 @@ CREATE TABLE skills (
         CHECK (source_type IN ('markdown', 'archive')),
     archive_data BYTEA,
     status VARCHAR(50) NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active', 'disabled')),
+        CHECK (status IN ('active', 'disabled', 'archived', 'deleted')),
     version VARCHAR(50) NOT NULL DEFAULT '1.0',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
     CONSTRAINT skills_public_id_format CHECK (public_id ~ '^skill_[0-9a-f]{32}$')
 );
 

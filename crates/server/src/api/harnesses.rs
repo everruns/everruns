@@ -101,6 +101,8 @@ pub struct HarnessPreviewResponse {
 pub struct ListHarnessesQuery {
     /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived harnesses. Deleted harnesses never appear in lists.
+    pub include_archived: Option<bool>,
 }
 
 /// App state for harness routes
@@ -143,6 +145,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_harness)
                 .delete(delete_harness),
         )
+        .route("/v1/harnesses/{harness_id}/delete", post(destroy_harness))
         .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
         .with_state(state)
 }
@@ -225,7 +228,11 @@ pub async fn list_harnesses(
     let caller = Caller::from(&org);
     let harnesses = state
         .service
-        .list(&caller, query.search.as_deref())
+        .list(
+            &caller,
+            query.search.as_deref(),
+            query.include_archived.unwrap_or(false),
+        )
         .await
         .map_policy_or_internal("list harnesses")?;
 
@@ -361,6 +368,39 @@ pub async fn delete_harness(
         .delete(&caller, harness_id.uuid())
         .await
         .map_policy_or_internal("delete harness")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Harness not found".to_string(),
+            }),
+        ))
+    }
+}
+
+pub async fn destroy_harness(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(harness_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid harness ID: {}", e),
+            }),
+        )
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .destroy(&caller, harness_id.uuid())
+        .await
+        .map_policy_or_internal("destroy harness")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

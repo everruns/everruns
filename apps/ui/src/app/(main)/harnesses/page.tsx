@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { useHarnesses, useCapabilities } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
 import { HarnessCard } from "@/components/harnesses";
 
 export default function HarnessesPage() {
-  const { data: harnesses, isLoading, error } = useHarnesses();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: harnesses, isLoading, error } = useHarnesses({ includeArchived: showArchived });
   const { data: allCapabilities } = useCapabilities();
 
   if (error) {
@@ -23,7 +26,13 @@ export default function HarnessesPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Harnesses</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Harnesses</h1>
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
+            Show archived harnesses
+          </label>
+        </div>
         <Link href="/harnesses/new">
           <Button variant="accent">
             <Plus className="w-4 h-4 mr-2" />

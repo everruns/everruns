@@ -209,6 +209,8 @@ pub mod tests {
                     status: HarnessStatus::Active,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
+                    archived_at: None,
+                    deleted_at: None,
                 },
                 agent: Agent {
                     public_id: crate::typed_id::AgentId::new(),
@@ -224,6 +226,8 @@ pub mod tests {
                     status: AgentStatus::Active,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
+                    archived_at: None,
+                    deleted_at: None,
                     usage: None,
                 },
                 session: Session {

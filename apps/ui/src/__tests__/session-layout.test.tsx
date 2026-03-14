@@ -127,7 +127,7 @@ jest.mock("@/hooks/use-sessions", () => ({
 
 // Mock the SessionProvider to skip data fetching
 const mockSessionContext = {
-  agent: { name: "Test Agent", id: "agent-123" } as Record<string, unknown>,
+  agent: { name: "Test Agent", id: "agent-123", status: "active" } as Record<string, unknown>,
   session: {
     id: "ses-abc12345",
     title: "Test Session",
@@ -160,7 +160,7 @@ describe("SessionLayout", () => {
     mockSessionContext.effectiveStatus = "idle";
     mockSessionContext.liveUsage = null;
     mockSessionContext.llmModel = { display_name: "GPT-4" };
-    mockSessionContext.agent = { name: "Test Agent", id: "agent-123" };
+    mockSessionContext.agent = { name: "Test Agent", id: "agent-123", status: "active" };
     mockSessionContext.session = {
       id: "ses-abc12345",
       title: "Test Session",

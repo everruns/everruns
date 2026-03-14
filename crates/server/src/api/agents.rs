@@ -180,7 +180,7 @@ struct AgentFile {
     pub initial_files: Vec<InitialFile>,
 }
 
-use crate::services::agent::{AGENT_MANAGE, AGENT_VIEW};
+use crate::services::agent::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::services::{AgentService, CapabilityService};
 
 /// Query parameters for listing agents.
@@ -188,6 +188,8 @@ use crate::services::{AgentService, CapabilityService};
 pub struct ListAgentsQuery {
     /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived agents. Deleted agents never appear in lists.
+    pub include_archived: Option<bool>,
 }
 
 /// App state for agents routes
@@ -229,7 +231,7 @@ impl FromRef<AppState> for AuthState {
 )]
 pub async fn agent_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&AGENT_VIEW, &AGENT_MANAGE]);
+    let policies = evaluate_policies(&caller, &[&AGENT_VIEW, &AGENT_MANAGE, &AGENT_DANGEROUS]);
     Json(ResourceConfigResponse { policies })
 }
 
@@ -247,6 +249,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_agent)
                 .delete(delete_agent),
         )
+        .route("/v1/agents/{agent_id}/delete", post(destroy_agent))
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .with_state(state)
@@ -346,7 +349,11 @@ pub async fn list_agents(
     let caller = Caller::from(&org);
     let agents = state
         .service
-        .list(&caller, query.search.as_deref())
+        .list(
+            &caller,
+            query.search.as_deref(),
+            query.include_archived.unwrap_or(false),
+        )
         .await
         .map_policy_or_internal("list agents")?;
 
@@ -484,6 +491,39 @@ pub async fn delete_agent(
         .delete(&caller, &agent_id.to_string())
         .await
         .map_policy_or_internal("delete agent")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Agent not found".to_string(),
+            }),
+        ))
+    }
+}
+
+pub async fn destroy_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .destroy(&caller, &agent_id.to_string())
+        .await
+        .map_policy_or_internal("destroy agent")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

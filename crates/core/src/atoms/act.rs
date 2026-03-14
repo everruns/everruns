@@ -99,6 +99,13 @@ pub struct ActResult {
     /// to prompt the user to configure the connection.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connection_required: Vec<String>,
+    /// True when execution stopped before tool execution because a dependency was archived or deleted.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub blocked: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 // ============================================================================
@@ -288,6 +295,7 @@ where
                 success_count: 0,
                 error_count: 0,
                 connection_required: vec![],
+                blocked: false,
             });
         }
 
@@ -435,6 +443,7 @@ where
             success_count,
             error_count,
             connection_required,
+            blocked: false,
         })
     }
 }
@@ -955,6 +964,7 @@ mod tests {
             success_count: 0,
             error_count: 0,
             connection_required: vec!["daytona".to_string()],
+            blocked: false,
         };
 
         let json_str = serde_json::to_string(&result).unwrap();

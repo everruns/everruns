@@ -27,6 +27,7 @@ import { ArrowLeft, Plus, Pencil, Download, Copy, Zap, Eye, LayoutDashboard } fr
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 // Helper function to format token counts in a compact way
 function formatTokens(tokens: number): string {
@@ -153,11 +154,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            {agent.name}
+            <span className={getEntityNameClassName(agent.status)}>{agent.name}</span>
             <CopyButton value={agent.id} />
-            <Badge variant={agent.status === "active" ? "default" : "secondary"}>
-              {agent.status}
-            </Badge>
+            <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
           </h1>
         </div>
         <div className="flex gap-2">
@@ -169,13 +168,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             <Download className="w-4 h-4 mr-2" />
             {exportAgent.isPending ? "Exporting..." : "Export"}
           </Button>
-          <Link href={`/agents/${agentId}/edit`}>
-            <Button variant="outline">
-              <Pencil className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-          </Link>
-          <Button variant="accent" onClick={handleNewSession} disabled={createSession.isPending}>
+          {agent.status === "active" && (
+            <Link href={`/agents/${agentId}/edit`}>
+              <Button variant="outline">
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit
+              </Button>
+            </Link>
+          )}
+          <Button
+            variant="accent"
+            onClick={handleNewSession}
+            disabled={createSession.isPending || agent.status !== "active"}
+          >
             <Plus className="w-4 h-4 mr-2" />
             {createSession.isPending ? "Creating..." : "New Session"}
           </Button>

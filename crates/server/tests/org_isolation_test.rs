@@ -72,7 +72,10 @@ async fn test_mcp_server_positive_own_org() {
             .unwrap()
             .is_some()
     );
-    assert_eq!(db.list_mcp_servers(ORG1, None).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_mcp_servers(ORG1, None, false).await.unwrap().len(),
+        1
+    );
     assert_eq!(db.list_active_mcp_servers(ORG1).await.unwrap().len(), 1);
 
     let updated = db
@@ -126,7 +129,12 @@ async fn test_mcp_server_negative_cross_org() {
             .unwrap()
             .is_none()
     );
-    assert!(db.list_mcp_servers(org2, None).await.unwrap().is_empty());
+    assert!(
+        db.list_mcp_servers(org2, None, false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(db.list_active_mcp_servers(org2).await.unwrap().is_empty());
     assert!(
         db.update_mcp_server(
@@ -630,7 +638,7 @@ async fn test_multi_org_full_isolation() {
     assert_eq!(org1_models.len(), 1);
     assert_eq!(org1_models[0].model_id, "gpt-4");
 
-    let org1_servers = db.list_mcp_servers(ORG1, None).await.unwrap();
+    let org1_servers = db.list_mcp_servers(ORG1, None, false).await.unwrap();
     assert_eq!(org1_servers.len(), 1);
     assert_eq!(org1_servers[0].name, "Org1 MCP");
 
@@ -647,7 +655,7 @@ async fn test_multi_org_full_isolation() {
     assert_eq!(org2_models.len(), 1);
     assert_eq!(org2_models[0].model_id, "claude-3");
 
-    let org2_servers = db.list_mcp_servers(org2, None).await.unwrap();
+    let org2_servers = db.list_mcp_servers(org2, None, false).await.unwrap();
     assert_eq!(org2_servers.len(), 1);
     assert_eq!(org2_servers[0].name, "Org2 MCP");
 

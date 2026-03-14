@@ -39,6 +39,7 @@ import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { SessionProvider, useSessionContext } from "./session-context";
+import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 
 // Helper function to format token counts in a compact way
 function formatTokens(tokens: number): string {
@@ -175,6 +176,15 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   const router = useRouter();
   const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
     useSessionContext();
+  const agentReferenceLabel =
+    session?.agent_id != null
+      ? getEntityReferenceLabel({
+          kind: "Agent",
+          name: agent?.name,
+          status: agent?.status ?? "deleted",
+        })
+      : null;
+  const agentReferenceStatus = session?.agent_id != null ? (agent?.status ?? "deleted") : null;
 
   // Determine active tab from pathname
   const getActiveTab = (): SessionNavKey => {
@@ -307,15 +317,25 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
               fallback={`Session ${shortenId(session.id)}`}
             />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {agent && (
-                <Link
-                  href={`/agents/${agentId}`}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <Bot className="icon-sharp h-3 w-3" />
-                  {agent.name}
-                </Link>
-              )}
+              {agentReferenceLabel &&
+                (agent ? (
+                  <Link
+                    href={`/agents/${agentId}`}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    <Bot className="icon-sharp h-3 w-3" />
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
+                      {agentReferenceLabel}
+                    </span>
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Bot className="icon-sharp h-3 w-3" />
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
+                      {agentReferenceLabel}
+                    </span>
+                  </span>
+                ))}
               <span>•</span>
               <span>
                 {activeTab === "files"

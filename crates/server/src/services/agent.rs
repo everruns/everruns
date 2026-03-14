@@ -32,6 +32,14 @@ pub const AGENT_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
+pub const AGENT_DANGEROUS: Policy = Policy {
+    id: "agent.dangerous",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgAgentsDangerous),
+    ],
+};
+
 pub struct AgentService {
     db: Arc<StorageBackend>,
 }
@@ -138,11 +146,12 @@ impl AgentService {
             .get_agent(caller.org_id, AgentId::from_uuid(id))
             .await?;
         match row {
-            Some(row) => {
+            Some(row) if row.status != "deleted" => {
                 let capabilities = self.get_capabilities(id).await?;
                 Ok(Some(Self::row_to_agent(row, capabilities)))
             }
             None => Ok(None),
+            Some(_) => Ok(None),
         }
     }
 
@@ -157,17 +166,26 @@ impl AgentService {
             .get_agent_by_public_id(caller.org_id, public_id)
             .await?;
         match row {
-            Some(row) => {
+            Some(row) if row.status != "deleted" => {
                 let capabilities = self.get_capabilities(row.id.uuid()).await?;
                 Ok(Some(Self::row_to_agent(row, capabilities)))
             }
             None => Ok(None),
+            Some(_) => Ok(None),
         }
     }
 
     #[policy(AGENT_VIEW)]
-    pub async fn list(&self, caller: &Caller, search: Option<&str>) -> Result<Vec<Agent>> {
-        let rows = self.db.list_agents(caller.org_id, search).await?;
+    pub async fn list(
+        &self,
+        caller: &Caller,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<Agent>> {
+        let rows = self
+            .db
+            .list_agents(caller.org_id, search, include_archived)
+            .await?;
 
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());
@@ -194,6 +212,9 @@ impl AgentService {
         let Some(existing) = row else {
             return Ok(None);
         };
+        if existing.status != "active" {
+            anyhow::bail!("Archived or deleted agents cannot be edited");
+        }
         let internal_id = existing.id;
         let existing_initial_files: Vec<InitialFile> =
             serde_json::from_value(existing.initial_files.clone()).unwrap_or_default();
@@ -299,6 +320,21 @@ impl AgentService {
             return Ok(false);
         };
         self.db.delete_agent(caller.org_id, existing.id).await
+    }
+
+    #[policy(AGENT_DANGEROUS)]
+    pub async fn destroy(&self, caller: &Caller, public_id: &str) -> Result<bool> {
+        let row = self
+            .db
+            .get_agent_by_public_id(caller.org_id, public_id)
+            .await?;
+        let Some(existing) = row else {
+            return Ok(false);
+        };
+        if existing.status != "archived" {
+            anyhow::bail!("Agent must be archived before deletion");
+        }
+        self.db.destroy_agent(caller.org_id, existing.id).await
     }
 
     /// Upsert agent by public_id. Returns (agent, was_created).
@@ -419,6 +455,8 @@ impl AgentService {
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
+            deleted_at: row.deleted_at,
             usage,
         }
     }

@@ -24,6 +24,14 @@ pub enum Permission {
     OrgHarnessesDangerous,
     /// CRUD on agents
     OrgAgentsManage,
+    /// Delete and other dangerous agent operations
+    OrgAgentsDangerous,
+    /// Dangerous skill operations
+    OrgSkillsDangerous,
+    /// Dangerous MCP server operations
+    OrgMcpServersDangerous,
+    /// Dangerous app operations
+    OrgAppsDangerous,
     /// CRUD on sessions
     OrgSessionsManage,
     /// View LLM providers (read-only)
@@ -50,6 +58,10 @@ impl Permission {
             Permission::OrgHarnessesManage => "org:harnesses:manage",
             Permission::OrgHarnessesDangerous => "org:harnesses:dangerous",
             Permission::OrgAgentsManage => "org:agents:manage",
+            Permission::OrgAgentsDangerous => "org:agents:dangerous",
+            Permission::OrgSkillsDangerous => "org:skills:dangerous",
+            Permission::OrgMcpServersDangerous => "org:mcp-servers:dangerous",
+            Permission::OrgAppsDangerous => "org:apps:dangerous",
             Permission::OrgSessionsManage => "org:sessions:manage",
             Permission::OrgLlmProvidersView => "org:llm-providers:view",
             Permission::OrgLlmProvidersManage => "org:llm-providers:manage",
@@ -67,6 +79,10 @@ impl Permission {
         Permission::OrgHarnessesManage,
         Permission::OrgHarnessesDangerous,
         Permission::OrgAgentsManage,
+        Permission::OrgAgentsDangerous,
+        Permission::OrgSkillsDangerous,
+        Permission::OrgMcpServersDangerous,
+        Permission::OrgAppsDangerous,
         Permission::OrgSessionsManage,
         Permission::OrgLlmProvidersView,
         Permission::OrgLlmProvidersManage,
@@ -94,6 +110,10 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesManage,
     Permission::OrgHarnessesDangerous,
     Permission::OrgAgentsManage,
+    Permission::OrgAgentsDangerous,
+    Permission::OrgSkillsDangerous,
+    Permission::OrgMcpServersDangerous,
+    Permission::OrgAppsDangerous,
     Permission::OrgSessionsManage,
     Permission::OrgLlmProvidersView,
     Permission::OrgLlmProvidersManage,
@@ -670,7 +690,7 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 12);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 16);
         assert_eq!(role_permissions(OrgRole::Admin).len(), 11);
         assert_eq!(role_permissions(OrgRole::Member).len(), 6);
     }

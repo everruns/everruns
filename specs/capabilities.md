@@ -659,6 +659,7 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **ID**: `platform_management`
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
 - **System Prompt**: Describes available management tools and common workflows
+- **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
 - **Tools**:
   - `list_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
     - Parameters:
@@ -667,8 +668,8 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
     - Policy: Auto
   - `manage_harnesses` - Harness CRUD operations
     - Parameters:
-      - `operation`: enum (list, get, create, update, delete, copy) - The operation to perform
-      - `harness_id`: string - Required for get, update, delete, copy
+      - `operation`: enum (list, get, create, update, delete, destroy, copy) - The operation to perform
+      - `harness_id`: string - Required for get, update, delete, destroy, copy
       - `name`: string - Required for create, optional for update/copy
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
@@ -677,8 +678,8 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
     - Policy: Auto
   - `manage_agents` - Agent CRUD operations
     - Parameters:
-      - `operation`: enum (list, get, create, update, delete) - The operation to perform
-      - `agent_id`: string - Required for get, update, delete
+      - `operation`: enum (list, get, create, update, delete, destroy) - The operation to perform
+      - `agent_id`: string - Required for get, update, delete, destroy
       - `name`: string - Required for create, optional for update
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
@@ -706,6 +707,12 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
     - Policy: Auto
 - **Icon**: "settings"
 - **Category**: "Management"
+
+Lifecycle rules for platform management:
+- `delete` archives.
+- `destroy` is the dangerous delete path and must require the matching dangerous permission.
+- Archived entities can be read but not updated or assigned.
+- Deleted entities should behave as missing except where historical references are intentionally rendered as tombstones.
 
 ##### Design Decision: Context-Aware Tools
 

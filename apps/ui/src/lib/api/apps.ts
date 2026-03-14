@@ -4,8 +4,9 @@
 import { api } from "./client";
 import type { App, CreateAppRequest, UpdateAppRequest, ListResponse } from "./types";
 
-export async function getApps(): Promise<App[]> {
-  const response = await api.get<ListResponse<App>>("/v1/apps");
+export async function getApps(includeArchived = false): Promise<App[]> {
+  const path = includeArchived ? "/v1/apps?include_archived=true" : "/v1/apps";
+  const response = await api.get<ListResponse<App>>(path);
   return response.data.data;
 }
 
@@ -26,6 +27,10 @@ export async function updateApp(appId: string, data: UpdateAppRequest): Promise<
 
 export async function deleteApp(appId: string): Promise<void> {
   await api.delete(`/v1/apps/${appId}`);
+}
+
+export async function destroyApp(appId: string): Promise<void> {
+  await api.post(`/v1/apps/${appId}/delete`);
 }
 
 export async function publishApp(appId: string): Promise<App> {

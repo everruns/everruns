@@ -2767,6 +2767,14 @@ async fn test_mcp_server_crud() {
         .await
         .expect("Failed to delete MCP server");
     client
+        .post(format!(
+            "{}/v1/mcp-servers/{}/delete",
+            API_BASE_URL, server.id
+        ))
+        .send()
+        .await
+        .expect("Failed to permanently delete MCP server");
+    client
         .delete(format!(
             "{}/v1/mcp-servers/{}",
             API_BASE_URL, server_with_key.id
@@ -2775,6 +2783,14 @@ async fn test_mcp_server_crud() {
         .await
         .expect("Failed to delete MCP server with key");
     client
+        .post(format!(
+            "{}/v1/mcp-servers/{}/delete",
+            API_BASE_URL, server_with_key.id
+        ))
+        .send()
+        .await
+        .expect("Failed to permanently delete MCP server with key");
+    client
         .delete(format!(
             "{}/v1/mcp-servers/{}",
             API_BASE_URL, server_with_headers.id
@@ -2782,6 +2798,14 @@ async fn test_mcp_server_crud() {
         .send()
         .await
         .expect("Failed to delete MCP server with headers");
+    client
+        .post(format!(
+            "{}/v1/mcp-servers/{}/delete",
+            API_BASE_URL, server_with_headers.id
+        ))
+        .send()
+        .await
+        .expect("Failed to permanently delete MCP server with headers");
 
     // Verify deletion
     let verify_deleted = client

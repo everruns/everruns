@@ -3,7 +3,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::McpServerService;
-use crate::services::mcp_server::{MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
+use crate::services::mcp_server::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
 use axum::{
@@ -29,6 +29,8 @@ use utoipa::{IntoParams, ToSchema};
 pub struct ListMcpServersQuery {
     /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived MCP servers. Deleted MCP servers never appear in lists.
+    pub include_archived: Option<bool>,
 }
 
 /// Request to create a new MCP server
@@ -138,6 +140,10 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),
         )
+        .route(
+            "/v1/mcp-servers/{server_id}/delete",
+            post(destroy_mcp_server),
+        )
         .with_state(state)
 }
 
@@ -154,7 +160,10 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn mcp_server_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&MCP_SERVER_VIEW, &MCP_SERVER_MANAGE]);
+    let policies = evaluate_policies(
+        &caller,
+        &[&MCP_SERVER_VIEW, &MCP_SERVER_MANAGE, &MCP_SERVER_DANGEROUS],
+    );
     Json(ResourceConfigResponse { policies })
 }
 
@@ -222,7 +231,11 @@ pub async fn list_mcp_servers(
     let caller = Caller::from(&org);
     let servers = state
         .service
-        .list(&caller, query.search.as_deref())
+        .list(
+            &caller,
+            query.search.as_deref(),
+            query.include_archived.unwrap_or(false),
+        )
         .await
         .map_policy_or_internal("list MCP servers")?;
 
@@ -378,6 +391,34 @@ pub async fn delete_mcp_server(
                 error: "MCP server not found".to_string(),
             }),
         ))
+    }
+}
+
+pub async fn destroy_mcp_server(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(server_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let server_id: McpServerId = server_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid server ID: {}", e),
+            }),
+        )
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .destroy(&caller, server_id.uuid())
+        .await
+        .map_policy_or_internal("destroy MCP server")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("MCP server not found").into_response(StatusCode::NOT_FOUND))
     }
 }
 

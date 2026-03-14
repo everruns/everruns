@@ -35,6 +35,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived agents. Deleted agents never appear in lists.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1930,6 +1942,18 @@
             "schema": {
               "type": [
                 "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived MCP servers. Deleted MCP servers never appear in lists.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
                 "null"
               ]
             }
@@ -3857,6 +3881,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived skills. Deleted skills never appear in lists.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4323,6 +4359,14 @@
           "updated_at"
         ],
         "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the agent was archived."
+          },
           "capabilities": {
             "type": "array",
             "items": {
@@ -4342,6 +4386,14 @@
             ],
             "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the agent was deleted."
           },
           "description": {
             "type": [
@@ -4445,10 +4497,11 @@
       },
       "AgentStatus": {
         "type": "string",
-        "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is soft-deleted and hidden from listings",
+        "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is hidden from listings and cannot be modified or assigned\n- `deleted`: Agent is a tombstone kept only for historical references",
         "enum": [
           "active",
-          "archived"
+          "archived",
+          "deleted"
         ]
       },
       "BuiltinTool": {
@@ -6249,6 +6302,14 @@
                 "updated_at"
               ],
               "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was archived."
+                },
                 "capabilities": {
                   "type": "array",
                   "items": {
@@ -6268,6 +6329,14 @@
                   ],
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                   "example": "model_01933b5a00007000800000000000001"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was deleted."
                 },
                 "description": {
                   "type": [
@@ -6945,10 +7014,26 @@
                   "type": "boolean",
                   "description": "Whether an API key has been configured."
                 },
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the MCP server was archived."
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
                   "description": "Timestamp when the MCP server was created."
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the MCP server was deleted."
                 },
                 "description": {
                   "type": [
@@ -7198,6 +7283,13 @@
                     "null"
                   ]
                 },
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
                 "compatibility": {
                   "type": [
                     "string",
@@ -7206,6 +7298,13 @@
                 },
                 "created_at": {
                   "type": "string",
+                  "format": "date-time"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "format": "date-time"
                 },
                 "description": {
@@ -8028,10 +8127,26 @@
             "type": "boolean",
             "description": "Whether an API key has been configured."
           },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the MCP server was archived."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the MCP server was created."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the MCP server was deleted."
           },
           "description": {
             "type": [
@@ -8083,10 +8198,12 @@
       },
       "McpServerStatus": {
         "type": "string",
-        "description": "MCP Server lifecycle status.\n- `active`: Server is available for use\n- `disabled`: Server is disabled and not used",
+        "description": "MCP Server lifecycle status.\n- `active`: Server is available for use\n- `disabled`: Server is disabled and not used\n- `archived`: Server is hidden from listings and cannot be modified or assigned\n- `deleted`: Server is a tombstone kept only for historical references",
         "enum": [
           "active",
-          "disabled"
+          "disabled",
+          "archived",
+          "deleted"
         ]
       },
       "McpServerTransportType": {
@@ -9540,6 +9657,13 @@
               "null"
             ]
           },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "compatibility": {
             "type": [
               "string",
@@ -9548,6 +9672,13 @@
           },
           "created_at": {
             "type": "string",
+            "format": "date-time"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "description": {
@@ -9642,7 +9773,9 @@
         "description": "Skill lifecycle status",
         "enum": [
           "active",
-          "disabled"
+          "disabled",
+          "archived",
+          "deleted"
         ]
       },
       "SkillValidationResult": {

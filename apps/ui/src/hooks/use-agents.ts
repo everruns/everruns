@@ -6,6 +6,7 @@ import {
   copyAgent,
   createAgent,
   deleteAgent,
+  destroyAgent,
   exportAgent,
   getAgent,
   importAgent,
@@ -17,13 +18,18 @@ import { queryKeys } from "@/lib/query-keys";
 import type { CreateAgentRequest, PreviewAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
-export function useAgents() {
+interface UseAgentsOptions {
+  includeArchived?: boolean;
+}
+
+export function useAgents(options: UseAgentsOptions = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    queryKey: [...queryKeys.agents.list(), org],
-    queryFn: () => listAgents(),
+    queryKey: [...queryKeys.agents.list(includeArchived), org],
+    queryFn: () => listAgents(includeArchived),
     enabled: !!org,
   });
 
@@ -82,6 +88,17 @@ export function useDeleteAgent() {
 
   return useMutation({
     mutationFn: (agentId: string) => deleteAgent(agentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+    },
+  });
+}
+
+export function useDestroyAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) => destroyAgent(agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },

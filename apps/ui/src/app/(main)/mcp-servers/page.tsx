@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,20 +21,28 @@ import {
   useMcpServers,
   useCreateMcpServer,
   useUpdateMcpServer,
-  useDeleteMcpServer,
+  useDestroyMcpServer,
 } from "@/hooks/use-mcp-servers";
+import { usePolicies } from "@/hooks/use-policies";
 import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest } from "@/lib/api/types";
+import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 function McpServerCard({
   server,
+  canDestroy,
   onDelete,
   onSetApiKey,
 }: {
   server: McpServer;
-  onDelete: (id: string) => void;
+  canDestroy: boolean;
+  onDelete: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
 }) {
+  const updateServer = useUpdateMcpServer(server.id);
+  const isArchived = server.status === "archived";
+  const isDeleted = server.status === "deleted";
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -42,20 +51,15 @@ function McpServerCard({
             <Plug className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-lg">{server.name}</CardTitle>
+            <CardTitle className={`text-lg ${getEntityNameClassName(server.status)}`}>
+              {server.name}
+            </CardTitle>
             <CardDescription className="text-sm">
               {server.description || "No description"}
             </CardDescription>
           </div>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            server.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-          }
-        >
-          {server.status}
-        </Badge>
+        <Badge variant={getEntityStatusBadgeVariant(server.status)}>{server.status}</Badge>
       </CardHeader>
       <CardContent>
         <div className="space-y-2 text-sm">
@@ -80,14 +84,22 @@ function McpServerCard({
             <Key className="h-4 w-4 mr-1" />
             {server.api_key_set ? "Update Key" : "Set Key"}
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => onDelete(server.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {!isArchived && !isDeleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateServer.mutate({ status: "archived" })}
+              disabled={updateServer.isPending}
+            >
+              {updateServer.isPending ? "Archiving..." : "Archive"}
+            </Button>
+          )}
+          {isArchived && canDestroy && (
+            <Button variant="destructive" size="sm" onClick={() => onDelete(server)}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -271,16 +283,20 @@ function McpServerCardSkeleton() {
 }
 
 export default function McpServersPage() {
-  const { data: servers = [], isLoading, error } = useMcpServers();
-  const deleteServer = useDeleteMcpServer();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: servers = [], isLoading, error } = useMcpServers({ includeArchived: showArchived });
+  const destroyServer = useDestroyMcpServer();
+  const { can: canPolicies } = usePolicies("mcp-servers");
+  const canDestroy = canPolicies("mcp_server.dangerous");
 
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
+  const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
 
-  const handleDeleteServer = async (id: string) => {
-    if (confirm("Are you sure you want to delete this MCP server?")) {
-      await deleteServer.mutateAsync(id);
-    }
+  const handleDeleteServer = async () => {
+    if (!pendingDeleteServer) return;
+    await destroyServer.mutateAsync(pendingDeleteServer.id);
+    setPendingDeleteServer(null);
   };
 
   return (
@@ -292,6 +308,10 @@ export default function McpServersPage() {
             Configure Model Context Protocol (MCP) servers to extend agent capabilities with
             external tools and resources.
           </p>
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
+            Show archived MCP servers
+          </label>
         </div>
         <Button onClick={() => setAddServerOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
@@ -329,7 +349,8 @@ export default function McpServersPage() {
             <McpServerCard
               key={server.id}
               server={server}
-              onDelete={handleDeleteServer}
+              canDestroy={canDestroy}
+              onDelete={setPendingDeleteServer}
               onSetApiKey={setApiKeyServer}
             />
           ))}
@@ -343,6 +364,33 @@ export default function McpServersPage() {
         open={apiKeyServer !== null}
         onOpenChange={(open) => !open && setApiKeyServer(null)}
       />
+      <Dialog
+        open={pendingDeleteServer !== null}
+        onOpenChange={(open) => !open && setPendingDeleteServer(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete MCP Server</DialogTitle>
+            <DialogDescription>
+              Permanently delete the archived MCP server{" "}
+              <span className="font-medium">{pendingDeleteServer?.name}</span>? Existing references
+              will render as deleted tombstones.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDeleteServer(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteServer}
+              disabled={destroyServer.isPending}
+            >
+              {destroyServer.isPending ? "Deleting..." : "Delete MCP Server"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

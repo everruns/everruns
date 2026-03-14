@@ -570,7 +570,7 @@ impl Database {
             r#"
             INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -616,7 +616,7 @@ impl Database {
                 OR agents.tags IS DISTINCT FROM EXCLUDED.tags
                 OR agents.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR agents.tools IS DISTINCT FROM EXCLUDED.tools
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -639,7 +639,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -660,7 +660,7 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND public_id = $2
@@ -674,14 +674,24 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_agents(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentRow>> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status = 'active'"
+        };
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
-                WHERE org_id = $1 AND status = 'active'{search_sql}
+                WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query = sqlx::query_as::<_, AgentRow>(&sql).bind(org_id);
@@ -694,7 +704,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status = 'active'
@@ -728,7 +738,7 @@ impl Database {
                 tools = COALESCE($10, tools),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -753,8 +763,24 @@ impl Database {
         let result = sqlx::query(
             r#"
             UPDATE agents
-            SET status = 'archived', updated_at = NOW()
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE agents
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'archived'
             "#,
         )
         .bind(org_id)
@@ -788,7 +814,7 @@ impl Database {
                 tools = EXCLUDED.tools,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -829,7 +855,7 @@ impl Database {
             r#"
             INSERT INTO harnesses (org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -875,7 +901,7 @@ impl Database {
                 OR harnesses.tags IS DISTINCT FROM EXCLUDED.tags
                 OR harnesses.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR harnesses.is_built_in IS DISTINCT FROM EXCLUDED.is_built_in
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(id.uuid())
@@ -896,7 +922,7 @@ impl Database {
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND id = $2
             "#,
@@ -913,13 +939,19 @@ impl Database {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<HarnessRow>> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status = 'active'"
+        };
         let sql = format!(
-            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
+            r#"SELECT id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at, archived_at, deleted_at
                 FROM harnesses
-                WHERE org_id = $1 AND status = 'active'{search_sql}
+                WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query = sqlx::query_as::<_, HarnessRow>(&sql).bind(org_id);
@@ -948,7 +980,7 @@ impl Database {
                 status = COALESCE($9, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, initial_files, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -971,8 +1003,24 @@ impl Database {
         let result = sqlx::query(
             r#"
             UPDATE harnesses
-            SET status = 'archived', updated_at = NOW()
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE harnesses
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'archived'
             "#,
         )
         .bind(org_id)
@@ -3109,7 +3157,7 @@ impl Database {
             r#"
             INSERT INTO mcp_servers (org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -3156,7 +3204,7 @@ impl Database {
                 OR mcp_servers.description IS DISTINCT FROM EXCLUDED.description
                 OR mcp_servers.url IS DISTINCT FROM EXCLUDED.url
                 OR mcp_servers.transport_type IS DISTINCT FROM EXCLUDED.transport_type
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(id)
@@ -3178,7 +3226,7 @@ impl Database {
     pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             FROM mcp_servers
             WHERE org_id = $1 AND id = $2
             "#,
@@ -3202,7 +3250,7 @@ impl Database {
         }
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             FROM mcp_servers
             WHERE org_id = $1 AND id = ANY($2)
             "#,
@@ -3222,7 +3270,7 @@ impl Database {
     ) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             FROM mcp_servers
             WHERE org_id = $1 AND name = $2
             "#,
@@ -3239,13 +3287,19 @@ impl Database {
         &self,
         org_id: i64,
         search: Option<&str>,
+        include_archived: bool,
     ) -> Result<Vec<McpServerRow>> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status NOT IN ('archived', 'deleted')"
+        };
         let sql = format!(
-            r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
                 FROM mcp_servers
-                WHERE org_id = $1{search_sql}
+                WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query = sqlx::query_as::<_, McpServerRow>(&sql).bind(org_id);
@@ -3259,7 +3313,7 @@ impl Database {
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             FROM mcp_servers
             WHERE org_id = $1 AND status = 'active'
             ORDER BY name ASC
@@ -3295,7 +3349,7 @@ impl Database {
                 headers = COALESCE($10, headers),
                 settings = COALESCE($11, settings)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -3329,7 +3383,7 @@ impl Database {
                 cached_tools = $3,
                 tools_cached_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -3342,11 +3396,33 @@ impl Database {
     }
 
     pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM mcp_servers WHERE org_id = $1 AND id = $2")
-            .bind(org_id)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            r#"
+            UPDATE mcp_servers
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status IN ('active', 'disabled')
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE mcp_servers
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'archived'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -3360,7 +3436,7 @@ impl Database {
             r#"
             INSERT INTO skills (org_id, public_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, version)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -3384,7 +3460,7 @@ impl Database {
     pub async fn get_skill(&self, org_id: i64, id: Uuid) -> Result<Option<SkillRow>> {
         let row = sqlx::query_as::<_, SkillRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             FROM skills
             WHERE id = $1 AND org_id = $2
             "#,
@@ -3400,7 +3476,7 @@ impl Database {
     pub async fn get_skill_by_name(&self, org_id: i64, name: &str) -> Result<Option<SkillRow>> {
         let row = sqlx::query_as::<_, SkillRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             FROM skills
             WHERE org_id = $1 AND name = $2
             "#,
@@ -3413,13 +3489,23 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_skills(&self, org_id: i64, search: Option<&str>) -> Result<Vec<SkillRow>> {
+    pub async fn list_skills(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<SkillRow>> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status NOT IN ('archived', 'deleted')"
+        };
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+            r#"SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
                 FROM skills
-                WHERE org_id = $1{search_sql}
+                WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query = sqlx::query_as::<_, SkillRow>(&sql).bind(org_id);
@@ -3451,7 +3537,7 @@ impl Database {
                 archive_data = COALESCE($12, archive_data),
                 source_type = COALESCE($13, source_type)
             WHERE id = $1 AND org_id = $2
-            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at
+            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(id)
@@ -3474,11 +3560,33 @@ impl Database {
     }
 
     pub async fn delete_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM skills WHERE id = $1 AND org_id = $2")
-            .bind(id)
-            .bind(org_id)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            r#"
+            UPDATE skills
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
+            WHERE id = $1 AND org_id = $2 AND status IN ('active', 'disabled')
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_skill(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE skills
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE id = $1 AND org_id = $2 AND status = 'archived'
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -4988,7 +5096,7 @@ impl Database {
             r#"
             INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -5012,7 +5120,7 @@ impl Database {
     ) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -5029,7 +5137,7 @@ impl Database {
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE public_id = $1
             "#,
@@ -5041,13 +5149,23 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_apps(&self, org_id: i64, search: Option<&str>) -> Result<Vec<AppRow>> {
+    pub async fn list_apps(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AppRow>> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status NOT IN ('archived', 'deleted')"
+        };
         let sql = format!(
-            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at, archived_at, deleted_at
                 FROM apps
-                WHERE org_id = $1 AND status != 'archived'{search_sql}
+                WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query = sqlx::query_as::<_, AppRow>(&sql).bind(org_id);
@@ -5077,7 +5195,7 @@ impl Database {
                 published_at = CASE WHEN $10 THEN $11 ELSE published_at END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -5101,8 +5219,24 @@ impl Database {
         let result = sqlx::query(
             r#"
             UPDATE apps
-            SET status = 'archived', updated_at = NOW()
-            WHERE org_id = $1 AND id = $2 AND status != 'archived'
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status IN ('draft', 'published')
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE apps
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'archived'
             "#,
         )
         .bind(org_id)

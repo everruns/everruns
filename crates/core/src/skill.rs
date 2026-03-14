@@ -49,6 +49,8 @@ impl From<&str> for SkillSourceType {
 pub enum SkillStatus {
     Active,
     Disabled,
+    Archived,
+    Deleted,
 }
 
 impl std::fmt::Display for SkillStatus {
@@ -56,6 +58,8 @@ impl std::fmt::Display for SkillStatus {
         match self {
             SkillStatus::Active => write!(f, "active"),
             SkillStatus::Disabled => write!(f, "disabled"),
+            SkillStatus::Archived => write!(f, "archived"),
+            SkillStatus::Deleted => write!(f, "deleted"),
         }
     }
 }
@@ -64,6 +68,8 @@ impl From<&str> for SkillStatus {
     fn from(s: &str) -> Self {
         match s {
             "disabled" => SkillStatus::Disabled,
+            "archived" => SkillStatus::Archived,
+            "deleted" => SkillStatus::Deleted,
             _ => SkillStatus::Active,
         }
     }
@@ -98,6 +104,10 @@ pub struct Skill {
     pub user_invocable: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Parsed SKILL.md content

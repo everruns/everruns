@@ -486,6 +486,8 @@ mod tests {
             tags: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 
@@ -618,6 +620,8 @@ mod tests {
             tags: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 
@@ -667,6 +671,8 @@ mod tests {
             tags: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 
@@ -714,6 +720,8 @@ mod tests {
             tags: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
+            deleted_at: None,
             usage: None,
         };
 
