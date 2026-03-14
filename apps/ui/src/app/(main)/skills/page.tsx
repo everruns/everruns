@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +26,7 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
 import type { Skill } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { ArchiveFilter } from "@/components/archive-filter";
 
 function SkillCard({
   skill,
@@ -252,14 +252,13 @@ export default function SkillsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Skills</h1>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived skills
-          </label>
-        </div>
-        <div className="flex gap-2">
+        <h1 className="text-2xl font-bold">Skills</h1>
+        <div className="flex items-center gap-2">
+          <ArchiveFilter
+            showArchived={showArchived}
+            onShowArchivedChange={setShowArchived}
+            label="Show archived skills"
+          />
           <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Upload ZIP

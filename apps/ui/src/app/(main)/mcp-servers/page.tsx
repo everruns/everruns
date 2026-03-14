@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +26,7 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { ArchiveFilter } from "@/components/archive-filter";
 
 function McpServerCard({
   server,
@@ -308,15 +308,18 @@ export default function McpServersPage() {
             Configure Model Context Protocol (MCP) servers to extend agent capabilities with
             external tools and resources.
           </p>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived MCP servers
-          </label>
         </div>
-        <Button onClick={() => setAddServerOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Server
-        </Button>
+        <div className="flex items-center gap-2">
+          <ArchiveFilter
+            showArchived={showArchived}
+            onShowArchivedChange={setShowArchived}
+            label="Show archived MCP servers"
+          />
+          <Button onClick={() => setAddServerOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Server
+          </Button>
+        </div>
       </div>
 
       {error && (
