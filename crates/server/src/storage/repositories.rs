@@ -2329,8 +2329,8 @@ impl Database {
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.installed, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM organization_settings os
-            JOIN llm_models m ON m.id = os.default_model_id
-            JOIN llm_providers p ON m.provider_id = p.id
+            JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
+            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE os.org_id = $1 AND m.status = 'active' AND p.status = 'active'
             "#,
         )
@@ -2550,7 +2550,7 @@ impl Database {
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.installed, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id
+            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.org_id = $1 AND m.id = $2
             "#,
         )
@@ -2589,7 +2589,7 @@ impl Database {
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.installed, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id
+            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.status = 'active' AND p.status = 'active' AND m.org_id = $1
             ORDER BY m.installed DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
@@ -2666,7 +2666,7 @@ impl Database {
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.installed, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id
+            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.model_id = $1 AND m.status = 'active' AND p.status = 'active' AND m.org_id = $2
             "#,
         )

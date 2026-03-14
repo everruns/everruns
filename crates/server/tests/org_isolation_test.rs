@@ -433,6 +433,63 @@ async fn test_llm_model_negative_cross_org() {
     assert_eq!(original.display_name, "GPT-4");
 }
 
+#[tokio::test]
+async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_reference() {
+    let db = InMemoryDatabase::default();
+    let org2 = create_second_org(&db).await;
+
+    let foreign_provider = db
+        .create_llm_provider(
+            org2,
+            CreateLlmProviderRow {
+                name: "Org2 Provider".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let corrupt_model = db
+        .create_llm_model(
+            ORG1,
+            CreateLlmModelRow {
+                provider_id: foreign_provider.id,
+                model_id: "cross-org-provider-model".to_string(),
+                display_name: "Corrupt Model".to_string(),
+                capabilities: vec![],
+                installed: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        db.get_llm_model(ORG1, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        db.get_llm_model_with_provider(ORG1, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.get_llm_model_by_model_id(ORG1, "cross-org-provider-model")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(db.list_all_llm_models(ORG1).await.unwrap().is_empty());
+}
+
 // ============================================
 // Image Isolation Tests
 // ============================================
@@ -751,6 +808,49 @@ async fn test_default_model_org_isolation() {
 
     // Negative: org2 does not see org1's default model
     assert!(db.get_default_llm_model(org2).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() {
+    let db = InMemoryDatabase::default();
+    let org2 = create_second_org(&db).await;
+
+    let foreign_provider = db
+        .create_llm_provider(
+            org2,
+            CreateLlmProviderRow {
+                name: "Org2 Provider".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let corrupt_model = db
+        .create_llm_model(
+            ORG1,
+            CreateLlmModelRow {
+                provider_id: foreign_provider.id,
+                model_id: "cross-org-default-model".to_string(),
+                display_name: "Corrupt Default".to_string(),
+                capabilities: vec![],
+                installed: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    db.upsert_organization_settings(ORG1, Some(corrupt_model.id.uuid()))
+        .await
+        .unwrap();
+
+    assert!(db.get_default_llm_model(ORG1).await.unwrap().is_none());
 }
 
 // ============================================
