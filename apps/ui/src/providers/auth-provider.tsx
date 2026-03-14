@@ -8,6 +8,7 @@
 
 import { createContext, useContext, useCallback, type ReactNode } from "react";
 import { useAuthConfig, useCurrentUser, useLogout as useLogoutMutation } from "@/hooks/use-auth";
+import { ApiError } from "@/lib/api/client";
 import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
 export interface AuthContextValue {
@@ -25,6 +26,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   requiresAuth: boolean;
   isLoading: boolean;
+  authUnavailable: boolean;
 
   // Pluggable actions — defaults call OSS endpoints; SaaS can override at provider level
   logout: () => Promise<void>;
@@ -33,6 +35,10 @@ export interface AuthContextValue {
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+function isUnauthenticatedError(error: Error | null): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -61,11 +67,12 @@ export function AuthProvider({
 
   // Determine if authentication is required based on mode
   const requiresAuth = config ? config.mode !== "none" : false;
+  const authUnavailable = !!configError || (!!userError && !isUnauthenticatedError(userError));
 
   // User is authenticated if:
   // 1. Auth is not required (mode=none), OR
   // 2. User data exists
-  const isAuthenticated = !requiresAuth || !!user;
+  const isAuthenticated = !authUnavailable && (!requiresAuth || !!user);
 
   // Overall loading state - always wait for user fetch (sets org cookie)
   const isLoading = configLoading || userLoading;
@@ -80,6 +87,7 @@ export function AuthProvider({
     isAuthenticated,
     requiresAuth,
     isLoading,
+    authUnavailable,
     logout: logoutOverride ?? defaultLogout,
     logoutPending: logoutOverride ? false : logoutMutation.isPending,
     createOrganization,
