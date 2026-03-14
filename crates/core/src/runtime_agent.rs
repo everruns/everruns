@@ -293,22 +293,39 @@ impl RuntimeAgentBuilder {
 
     /// Build the runtime agent.
     ///
-    /// Validates that tool_search is only enabled for models that support it
-    /// (currently GPT-5.4+). Clears tool_search for unsupported models to
-    /// prevent 400 errors from the OpenAI API.
+    /// Validates and auto-enables tool_search based on model support.
+    ///
+    /// - If tool_search is explicitly configured but the model doesn't support it,
+    ///   clears it to prevent 400 errors from the OpenAI API.
+    /// - If tool_search is NOT configured but the model supports it natively
+    ///   (GPT-5.4+), auto-enables it with the default threshold. This ensures
+    ///   agents using GPT-5.4 benefit from deferred tool loading without
+    ///   requiring the explicit `openai_tool_search` capability.
     pub fn build(mut self) -> RuntimeAgent {
-        if self.runtime_agent.tool_search.is_some() {
-            let model_supports =
-                get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
-                    .is_some_and(|p| p.tool_search);
-            if !model_supports {
+        let model_supports = get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
+            .is_some_and(|p| p.tool_search);
+
+        match self.runtime_agent.tool_search {
+            Some(_) if !model_supports => {
                 tracing::debug!(
                     model = %self.runtime_agent.model,
                     "tool_search capability configured but model does not support it; disabling"
                 );
                 self.runtime_agent.tool_search = None;
             }
+            None if model_supports => {
+                tracing::debug!(
+                    model = %self.runtime_agent.model,
+                    "model supports tool_search natively; auto-enabling"
+                );
+                self.runtime_agent.tool_search = Some(ToolSearchConfig {
+                    enabled: true,
+                    threshold: crate::capabilities::DEFAULT_TOOL_SEARCH_THRESHOLD,
+                });
+            }
+            _ => {} // Already configured and model supports it, or not configured and model doesn't support it
         }
+
         self.runtime_agent
     }
 }
@@ -806,6 +823,32 @@ mod tests {
         assert!(
             agent.tool_search.is_none(),
             "tool_search should be cleared for non-OpenAI models"
+        );
+    }
+
+    #[test]
+    fn test_build_auto_enables_tool_search_for_gpt54() {
+        let agent = RuntimeAgentBuilder::new().model("gpt-5.4").build();
+
+        assert!(
+            agent.tool_search.is_some(),
+            "tool_search should be auto-enabled for gpt-5.4 (native support)"
+        );
+        let ts = agent.tool_search.unwrap();
+        assert!(ts.enabled);
+        assert_eq!(
+            ts.threshold,
+            crate::capabilities::DEFAULT_TOOL_SEARCH_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn test_build_does_not_auto_enable_tool_search_for_unsupported_model() {
+        let agent = RuntimeAgentBuilder::new().model("gpt-5.2").build();
+
+        assert!(
+            agent.tool_search.is_none(),
+            "tool_search should not be auto-enabled for gpt-5.2 (unsupported)"
         );
     }
 }

@@ -99,6 +99,10 @@ impl Capability for DaytonaCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
+        // Tool names and descriptions are NOT listed here — they are already
+        // provided via the tools parameter in the API request.  Duplicating
+        // them in the system prompt wastes tokens and can confuse models
+        // (especially GPT-5.4+ with tool_search).
         Some(
             r#"## Daytona
 
@@ -106,16 +110,6 @@ Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with 
 
 Authentication: Daytona API key is resolved automatically from Settings > Connections > Daytona.
 If not configured, guide the user to set up their key in Settings > Connections.
-
-Tools:
-- `daytona_create_sandbox` - Create and start a new sandbox
-- `daytona_exec` - Run a shell command (synchronous, returns output)
-- `daytona_read_file` / `daytona_write_file` - Read/write files in sandbox
-- `daytona_download_workspace` - Download sandbox workspace to session storage
-- `daytona_list_sandboxes` - List session sandboxes
-- `daytona_manage_sandbox` - Stop or delete a sandbox
-- `daytona_git_clone` - Clone a git repository into a sandbox (auto-uses connected GitHub credentials)
-- `daytona_git_credentials` - Configure git credentials for push/pull/fetch via daytona_exec
 
 All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
 Sandboxes auto-stop after 5 minutes of inactivity.
@@ -198,11 +192,12 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = DaytonaCapability;
         let prompt = cap.system_prompt_addition().unwrap();
+        assert!(prompt.contains("Daytona"));
+        assert!(prompt.contains("Settings > Connections"));
+        // Tool names referenced in usage context (not as a tool list)
         assert!(prompt.contains("daytona_create_sandbox"));
         assert!(prompt.contains("daytona_git_clone"));
         assert!(prompt.contains("daytona_git_credentials"));
-        assert!(prompt.contains("Daytona"));
-        assert!(prompt.contains("Settings > Connections"));
     }
 
     #[test]
