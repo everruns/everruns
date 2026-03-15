@@ -28,9 +28,9 @@ export function ArchiveFilter({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+        className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
       >
-        <Filter className="size-3.5" />
+        <Filter className="size-4" />
         Filter
         {showArchived && (
           <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">1</span>
