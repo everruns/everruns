@@ -37,7 +37,7 @@ use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
 };
-use crate::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error_message};
+use crate::llm_retry::is_transient_error_message;
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
@@ -101,41 +101,6 @@ fn extract_locale_override(messages: &[Message]) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-}
-
-fn should_retry_stream_error(
-    err: &str,
-    retry_attempts: u32,
-    max_retries: u32,
-    text: &str,
-    thinking: &str,
-    thinking_signature: Option<&str>,
-    tool_calls: &[ToolCall],
-) -> bool {
-    retry_attempts < max_retries
-        && text.is_empty()
-        && thinking.is_empty()
-        && thinking_signature.is_none()
-        && tool_calls.is_empty()
-        && is_transient_error_message(err)
-}
-
-fn merge_retry_metadata(
-    existing: Option<RetryMetadata>,
-    additional: &RetryMetadata,
-) -> Option<RetryMetadata> {
-    if !additional.had_retries() {
-        return existing;
-    }
-
-    let mut merged = existing.unwrap_or_default();
-    merged.attempts += additional.attempts;
-    merged.total_retry_wait += additional.total_retry_wait;
-    if additional.last_rate_limit_info.is_some() {
-        merged.last_rate_limit_info = additional.last_rate_limit_info.clone();
-    }
-
-    Some(merged)
 }
 
 // ============================================================================
@@ -457,23 +422,8 @@ where
 
                 let error_msg = e.to_string();
 
-                // User-facing error message
-                // Provide specific guidance based on error type
-                let user_error_text = if let Some(model_id) = e.model_not_available_id() {
-                    format!(
-                        "The model `{}` is not available. It may have been removed, \
-                         renamed, or your API key may not have access to it. \
-                         Please select a different model.",
-                        model_id
-                    )
-                } else if e.is_request_too_large() {
-                    "The conversation has become too long for the model to process. \
-                     Please start a new session or reduce the context size."
-                        .to_string()
-                } else {
-                    "I encountered an error while processing your request. Please try again later."
-                        .to_string()
-                };
+                // User-facing error message based on error classification
+                let user_error_text = e.user_facing_message();
 
                 // Only emit user-facing error events for non-transient errors.
                 // Transient errors (server errors, rate limits, timeouts) will be
@@ -865,10 +815,8 @@ where
         let llm_start = Instant::now();
 
         // Try LLM call with automatic compaction on RequestTooLarge.
-        // Stream-level provider errors can still arrive inside a 200/SSE response, so
-        // we also allow a bounded retry before any output is emitted.
-        let retry_config = LlmRetryConfig::default();
-        let mut stream_retry_metadata = RetryMetadata::default();
+        // Transient errors (429, 5xx) are retried at the driver level.
+        // Stream-level errors are not retried here to avoid duplicate user-visible messages.
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
 
@@ -880,9 +828,9 @@ where
             thinking,
             thinking_signature,
             tool_calls,
-            mut completion_metadata,
+            completion_metadata,
             time_to_first_token_ms,
-        ) = 'stream_attempt: loop {
+        ) = {
             let mut stream = match llm_driver
                 .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                 .await
@@ -1180,31 +1128,6 @@ where
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
-                        if should_retry_stream_error(
-                            &err,
-                            stream_retry_metadata.attempts,
-                            retry_config.max_retries,
-                            &text,
-                            &thinking,
-                            thinking_signature.as_deref(),
-                            &tool_calls,
-                        ) {
-                            let wait_duration =
-                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
-                            tracing::warn!(
-                                session_id = %session_id,
-                                turn_id = %context.turn_id,
-                                attempt = stream_retry_metadata.attempts + 1,
-                                max_retries = retry_config.max_retries,
-                                wait_secs = wait_duration.as_secs_f64(),
-                                error = %err,
-                                "ReasonAtom: transient stream error before first token, retrying"
-                            );
-                            stream_retry_metadata.record_retry(wait_duration, None);
-                            tokio::time::sleep(wait_duration).await;
-                            continue 'stream_attempt;
-                        }
-
                         // Emit llm.generation failure event (child of reason span)
                         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
                         let event_context = EventContext::from_atom_context(context).with_span(
@@ -1214,7 +1137,7 @@ where
                         );
                         let tools_summary: Vec<ToolDefinitionSummary> =
                             runtime_agent.tools.iter().map(|t| t.into()).collect();
-                        let mut generation_data = LlmGenerationData::failure(
+                        let generation_data = LlmGenerationData::failure(
                             messages_for_event.clone(),
                             tools_summary,
                             runtime_agent.model.clone(),
@@ -1223,13 +1146,6 @@ where
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
                         );
-                        if stream_retry_metadata.had_retries() {
-                            generation_data = generation_data.with_retry(LlmRetryInfo {
-                                attempts: stream_retry_metadata.attempts,
-                                total_wait_ms: stream_retry_metadata.total_retry_wait.as_millis()
-                                    as u64,
-                            });
-                        }
                         let _ = self
                             .event_emitter
                             .emit(EventRequest::new(
@@ -1242,20 +1158,15 @@ where
                     }
                 }
             }
-            break 'stream_attempt (
+            (
                 text,
                 thinking,
                 thinking_signature,
                 tool_calls,
                 completion_metadata,
                 time_to_first_token_ms,
-            );
+            )
         };
-
-        if let Some(metadata) = completion_metadata.as_mut() {
-            metadata.retry_metadata =
-                merge_retry_metadata(metadata.retry_metadata.take(), &stream_retry_metadata);
-        }
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 

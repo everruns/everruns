@@ -945,7 +945,10 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
 }
 
 #[tokio::test]
-async fn test_reason_atom_retries_transient_stream_error_before_first_token() {
+async fn test_reason_atom_does_not_retry_transient_stream_error() {
+    // Stream-level errors are NOT retried at the atom level.
+    // Transient retries happen at the driver level (HTTP 429/5xx).
+    // The atom reports the error as a failure to avoid duplicate user-visible messages.
     use everruns_core::memory::InMemoryEventEmitter;
 
     let (
@@ -999,11 +1002,14 @@ async fn test_reason_atom_retries_transient_stream_error_before_first_token() {
     let result = atom
         .execute(input)
         .await
-        .expect("ReasonAtom should succeed after retry");
+        .expect("ReasonAtom should return Ok with failure result");
 
-    assert!(result.success, "Transient stream error should be retried");
-    assert_eq!(result.text, "Recovered after retry.");
-    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert!(
+        !result.success,
+        "Stream error should not be retried at atom level"
+    );
+    // Only one attempt — no retry
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
 
     let events = event_emitter.events().await;
     let llm_event = events
@@ -1012,13 +1018,7 @@ async fn test_reason_atom_retries_transient_stream_error_before_first_token() {
         .expect("llm.generation event should be emitted");
 
     if let everruns_core::EventData::LlmGeneration(data) = &llm_event.data {
-        let retry = data
-            .metadata
-            .retry
-            .as_ref()
-            .expect("retry metadata should be present");
-        assert_eq!(retry.attempts, 1);
-        assert!(data.metadata.success);
+        assert!(!data.metadata.success, "Should report failure");
     } else {
         panic!("Expected llm.generation event data");
     }

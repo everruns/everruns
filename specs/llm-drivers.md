@@ -245,11 +245,21 @@ sequenceDiagram
     alt Request Too Large
         D->>D: Detect via is_*_request_too_large()
         D-->>R: Err(RequestTooLarge(msg))
-        R->>R: is_request_too_large() = true
         R-->>User: "Conversation too long..."
+    else Rate Limited (429)
+        D-->>R: Err(Llm(msg))
+        R->>R: is_rate_limited() = true
+        R-->>User: "Rate limited by the AI provider..."
+    else Auth Error (401/403)
+        D-->>R: Err(Llm(msg))
+        R->>R: is_auth_error() = true
+        R-->>User: "Misconfiguration, contact support..."
+    else Server Error (5xx)
+        D-->>R: Err(Llm(msg))
+        R->>R: is_server_error() = true
+        R-->>User: "Provider experiencing issues..."
     else Other Error
         D-->>R: Err(Llm(msg))
-        R->>R: is_request_too_large() = false
         R-->>User: "Error processing request..."
     end
 
@@ -306,11 +316,7 @@ The following HTTP status codes trigger automatic retry:
 - `429` - Too Many Requests (Rate Limited)
 - `5xx` - Server Errors (except 501 Not Implemented)
 
-For streaming providers, Everruns also retries a narrow class of **in-band stream errors** when:
-- the provider emits a transient server/rate-limit style error event inside an accepted stream
-- no text, thinking content, tool calls, or completion metadata have been emitted yet
-
-Once any output has been surfaced to the user, the generation is not retried automatically. This avoids duplicated partial output and preserves deterministic event history.
+In-band stream errors (provider errors inside an accepted SSE stream) are **not** retried at the atom level to avoid duplicate user-visible error messages. The driver-level HTTP retry handles transient failures before the stream is established.
 
 ### Rate Limit Header Support
 
