@@ -633,6 +633,14 @@ export interface LlmGenerationOutput {
   tool_calls: ToolCall[];
 }
 
+/** Information about context compaction during LLM generation */
+export interface LlmCompactionInfo {
+  compacted: boolean;
+  input_tokens_before?: number;
+  input_tokens_after?: number;
+  duration_ms?: number;
+}
+
 /** LLM generation metadata */
 export interface LlmGenerationMetadata {
   model: string;
@@ -642,6 +650,7 @@ export interface LlmGenerationMetadata {
   time_to_first_token_ms?: number;
   success: boolean;
   error?: string;
+  compaction?: LlmCompactionInfo;
 }
 
 /** Summary of a tool definition available to the LLM */
@@ -701,6 +710,29 @@ export interface ReasonThinkingCompletedData {
   thinking: string;
 }
 
+/** A single step in a compaction cascade */
+export interface CompactionStepData {
+  strategy: string;
+  messages_after: number;
+  duration_ms: number;
+}
+
+/** Data for context.compacting event (compaction starting) */
+export interface ContextCompactingData {
+  reason: "proactive_budget" | "request_too_large" | "manual";
+  strategy: string;
+  messages_before: number;
+}
+
+/** Data for context.compacted event (compaction completed) */
+export interface ContextCompactedData {
+  strategy_used: string;
+  messages_before: number;
+  messages_after: number;
+  duration_ms: number;
+  steps: CompactionStepData[];
+}
+
 /** Union type for all event data types */
 export type EventData =
   | InputMessageData
@@ -724,6 +756,8 @@ export type EventData =
   | ReasonThinkingStartedData
   | ReasonThinkingDeltaData
   | ReasonThinkingCompletedData
+  | ContextCompactingData
+  | ContextCompactedData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

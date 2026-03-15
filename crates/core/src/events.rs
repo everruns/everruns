@@ -76,6 +76,10 @@ pub const SUBAGENT_COMPLETED: &str = "subagent.completed";
 pub const SUBAGENT_FAILED: &str = "subagent.failed";
 pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
 
+// Context compaction events
+pub const CONTEXT_COMPACTING: &str = "context.compacting";
+pub const CONTEXT_COMPACTED: &str = "context.compacted";
+
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
 /// and prevent unbounded arrays from reaching the database.
@@ -107,6 +111,8 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SUBAGENT_COMPLETED,
     SUBAGENT_FAILED,
     SUBAGENT_CANCELLED,
+    CONTEXT_COMPACTING,
+    CONTEXT_COMPACTED,
 ];
 
 // ============================================================================
@@ -1429,6 +1435,74 @@ impl From<SubagentEventData> for EventData {
 }
 
 // ============================================================================
+// Context compaction event data
+// ============================================================================
+
+/// Reason why compaction was triggered.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionReason {
+    /// Triggered proactively at budget threshold.
+    ProactiveBudget,
+    /// Triggered reactively on RequestTooLarge error.
+    RequestTooLarge,
+    /// Triggered manually by user command.
+    Manual,
+}
+
+impl std::fmt::Display for CompactionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ProactiveBudget => write!(f, "proactive_budget"),
+            Self::RequestTooLarge => write!(f, "request_too_large"),
+            Self::Manual => write!(f, "manual"),
+        }
+    }
+}
+
+/// Data for context.compacting event (compaction starting).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ContextCompactingData {
+    /// Why compaction was triggered.
+    pub reason: CompactionReason,
+    /// Strategy requested (may differ from strategy_used in the completed event).
+    pub strategy: String,
+    /// Number of messages before compaction.
+    pub messages_before: usize,
+}
+
+/// A single step in a compaction cascade.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CompactionStepData {
+    /// Strategy used in this step.
+    pub strategy: String,
+    /// Number of messages after this step.
+    pub messages_after: usize,
+    /// Duration of this step in milliseconds.
+    pub duration_ms: u64,
+}
+
+/// Data for context.compacted event (compaction completed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ContextCompactedData {
+    /// Combined strategy description (e.g., "observation_masking+native").
+    pub strategy_used: String,
+    /// Number of messages before compaction.
+    pub messages_before: usize,
+    /// Number of messages after compaction.
+    pub messages_after: usize,
+    /// Total duration of all compaction steps in milliseconds.
+    pub duration_ms: u64,
+    /// Individual steps in the cascade.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<CompactionStepData>,
+}
+
+// ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================
 
@@ -1529,6 +1603,10 @@ pub enum EventData {
     SubagentFailed(SubagentEventData),
     SubagentCancelled(SubagentEventData),
 
+    // Context compaction events
+    ContextCompacting(ContextCompactingData),
+    ContextCompacted(ContextCompactedData),
+
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
     /// Logs a warning when created to alert developers of unknown types.
@@ -1572,6 +1650,8 @@ impl EventData {
             EventData::SubagentCompleted(_) => SUBAGENT_COMPLETED,
             EventData::SubagentFailed(_) => SUBAGENT_FAILED,
             EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
+            EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
+            EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
             EventData::Unsupported { .. } => "unsupported",
         }
     }
@@ -1667,6 +1747,10 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::SessionActivated),
             SESSION_IDLED => serde_json::from_value::<SessionIdledData>(data.clone())
                 .map(EventData::SessionIdled),
+            CONTEXT_COMPACTING => serde_json::from_value::<ContextCompactingData>(data.clone())
+                .map(EventData::ContextCompacting),
+            CONTEXT_COMPACTED => serde_json::from_value::<ContextCompactedData>(data.clone())
+                .map(EventData::ContextCompacted),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);
@@ -1726,6 +1810,8 @@ impl_from_event_data! {
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
+    ContextCompactingData => ContextCompacting,
+    ContextCompactedData => ContextCompacted,
 }
 
 // ============================================================================

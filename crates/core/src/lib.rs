@@ -214,6 +214,8 @@ pub use events::{
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
     TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
     TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
+    CONTEXT_COMPACTING, CONTEXT_COMPACTED, CompactionReason, CompactionStepData,
+    ContextCompactingData, ContextCompactedData,
 };
 pub use harness::{Harness, HarnessStatus};
 pub use leased_resource::{

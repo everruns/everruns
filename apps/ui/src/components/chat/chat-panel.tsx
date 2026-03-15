@@ -574,6 +574,20 @@ export function ChatPanel() {
                 return null;
               }
 
+              if (event.type === "context.compacted") {
+                const compactedData = event.data as import("@/lib/api/types").ContextCompactedData;
+                return (
+                  <div key={event.id} className="flex items-center gap-4 py-2 text-xs font-medium text-muted-foreground sm:text-sm">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="whitespace-nowrap">
+                      Context compacted · {compactedData.messages_before} → {compactedData.messages_after} messages
+                      {compactedData.strategy_used !== "none" && ` · ${compactedData.strategy_used}`}
+                    </span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                );
+              }
+
               if (event.type === "act.started") {
                 const group = actGroupsByStartEventId.get(event.id);
                 if (!group || group.rows.length === 0) return null;

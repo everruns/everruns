@@ -647,6 +647,32 @@ where
 
         let runtime_agent = builder.build();
 
+        // 6b. Extract compaction config from agent/harness/session capabilities
+        let compaction_config = {
+            use crate::capabilities::COMPACTION_CAPABILITY_ID;
+
+            // Search session caps first, then agent, then harness (last-wins)
+            let mut config_json = None;
+            for cap in &harness.capabilities {
+                if cap.capability_id() == COMPACTION_CAPABILITY_ID {
+                    config_json = Some(cap.config.clone());
+                }
+            }
+            if let Some(ref agent) = agent {
+                for cap in &agent.capabilities {
+                    if cap.capability_id() == COMPACTION_CAPABILITY_ID {
+                        config_json = Some(cap.config.clone());
+                    }
+                }
+            }
+            for cap in &session.capabilities {
+                if cap.capability_id() == COMPACTION_CAPABILITY_ID {
+                    config_json = Some(cap.config.clone());
+                }
+            }
+            config_json.map(|json| crate::capabilities::CompactionConfig::from_json(&json))
+        };
+
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
 
@@ -874,115 +900,331 @@ where
                 .await
             {
                 Ok(stream) => stream,
-                Err(e) if e.is_request_too_large() && llm_driver.supports_compact() => {
-                    // Context too large - try compacting
+                Err(e) if e.is_request_too_large() => {
+                    // Context too large — run compaction cascade
+                    use crate::capabilities::{
+                        CompactionStrategy, apply_observation_masking,
+                    };
+                    use crate::events::{
+                        CompactionReason, CompactionStepData, ContextCompactedData,
+                        ContextCompactingData,
+                    };
+
+                    let config = compaction_config
+                        .clone()
+                        .unwrap_or_default();
+                    let messages_before = llm_messages_for_call.len();
+
                     tracing::info!(
                         session_id = %session_id,
                         turn_id = %context.turn_id,
+                        strategy = %config.strategy,
+                        messages = messages_before,
                         "ReasonAtom: context too large, attempting compaction"
                     );
 
-                    let compact_start = Instant::now();
+                    // Emit context.compacting event
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            session_id,
+                            streaming_event_context.clone(),
+                            ContextCompactingData {
+                                reason: CompactionReason::RequestTooLarge,
+                                strategy: config.strategy.to_string(),
+                                messages_before,
+                            },
+                        ))
+                        .await;
 
-                    // Convert messages to compact input format
-                    // Skip the system message (index 0) as it's passed separately as instructions
-                    let messages_to_compact = if has_system_prompt {
-                        &llm_messages_for_call[1..]
-                    } else {
-                        &llm_messages_for_call[..]
-                    };
+                    let cascade_start = Instant::now();
+                    let mut steps: Vec<CompactionStepData> = Vec::new();
+                    let mut strategies_used: Vec<String> = Vec::new();
 
-                    let compact_input = messages_to_compact_input(messages_to_compact);
-                    let input_count = compact_input.len();
-
-                    // Build compact request
-                    let compact_request = CompactRequest {
-                        model: runtime_agent.model.clone(),
-                        input: compact_input,
-                        previous_response_id: previous_response_id.clone(),
-                        instructions: if has_system_prompt {
-                            Some(runtime_agent.system_prompt.clone())
-                        } else {
-                            None
-                        },
-                    };
-
-                    // Call compact endpoint
-                    let compact_response =
-                        llm_driver.compact(compact_request).await?.ok_or_else(|| {
-                            AgentLoopError::llm(
-                                "Compaction failed: driver returned None".to_string(),
-                            )
-                        })?;
-
-                    let compact_duration_ms = compact_start.elapsed().as_millis() as u64;
-
-                    // Convert compacted output to messages
-                    let (compacted_messages, compaction_items) =
-                        compact_output_to_messages(&compact_response.output);
-
-                    // Track compaction token usage
-                    let input_tokens_after = compact_response
-                        .usage
-                        .as_ref()
-                        .and_then(|u| u.output_tokens);
-
-                    tracing::info!(
-                        session_id = %session_id,
-                        turn_id = %context.turn_id,
-                        input_items = input_count,
-                        output_items = compact_response.output.len(),
-                        compaction_items = compaction_items.len(),
-                        duration_ms = compact_duration_ms,
-                        "ReasonAtom: compaction completed"
+                    // Determine which strategies to run based on config
+                    let run_masking = matches!(
+                        config.strategy,
+                        CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
+                    );
+                    let run_native = matches!(
+                        config.strategy,
+                        CompactionStrategy::Auto | CompactionStrategy::Native
+                    ) && llm_driver.supports_compact();
+                    let run_summarization = matches!(
+                        config.strategy,
+                        CompactionStrategy::Auto | CompactionStrategy::Summarization
                     );
 
-                    // Record compaction info for event
-                    compaction_info = Some(LlmCompactionInfo::new(
-                        Some(input_count as u32),
-                        input_tokens_after,
-                        Some(compact_duration_ms),
-                    ));
+                    // Step 1: Observation masking (free, no LLM call)
+                    if run_masking {
+                        let step_start = Instant::now();
+                        let conversation_msgs = if has_system_prompt {
+                            &llm_messages_for_call[1..]
+                        } else {
+                            &llm_messages_for_call[..]
+                        };
 
-                    // Rebuild messages for retry
-                    // Start with system prompt if present
-                    let mut compacted_llm_messages = Vec::new();
-                    if has_system_prompt {
-                        compacted_llm_messages.push(llm_messages_for_call[0].clone());
-                    }
+                        let masking_result = apply_observation_masking(
+                            conversation_msgs,
+                            &config.observation_masking,
+                        );
 
-                    // Add compacted messages
-                    compacted_llm_messages.extend(compacted_messages);
+                        if masking_result.masked_count > 0 {
+                            let mut new_messages = Vec::new();
+                            if has_system_prompt {
+                                new_messages.push(llm_messages_for_call[0].clone());
+                            }
+                            new_messages.extend(masking_result.messages);
+                            llm_messages_for_call = new_messages;
 
-                    // Add compaction items as a special message if present
-                    // These contain encrypted context that the model needs
-                    for item in compaction_items {
-                        if let CompactInputItem::Compaction { encrypted_content } = item {
-                            // Add as a system message containing the encrypted context
-                            // This preserves the latent context for the model
-                            compacted_llm_messages.push(LlmMessage {
-                                role: LlmMessageRole::System,
-                                content: LlmMessageContent::Text(format!(
-                                    "[COMPACTED_CONTEXT:{}]",
-                                    encrypted_content
-                                )),
-                                tool_calls: None,
-                                tool_call_id: None,
-                                phase: None,
-                                thinking: None,
-                                thinking_signature: None,
+                            let step_duration = step_start.elapsed().as_millis() as u64;
+                            strategies_used.push("observation_masking".to_string());
+                            steps.push(CompactionStepData {
+                                strategy: "observation_masking".to_string(),
+                                messages_after: llm_messages_for_call.len(),
+                                duration_ms: step_duration,
                             });
+
+                            tracing::info!(
+                                session_id = %session_id,
+                                masked_count = masking_result.masked_count,
+                                duration_ms = step_duration,
+                                "ReasonAtom: observation masking applied"
+                            );
                         }
                     }
 
-                    llm_messages_for_call = compacted_llm_messages;
+                    // Step 2: Native provider compaction
+                    if run_native {
+                        let step_start = Instant::now();
+                        let messages_to_compact = if has_system_prompt {
+                            &llm_messages_for_call[1..]
+                        } else {
+                            &llm_messages_for_call[..]
+                        };
 
-                    // Retry with compacted messages
+                        let compact_input = messages_to_compact_input(messages_to_compact);
+                        let input_count = compact_input.len();
+
+                        let compact_request = CompactRequest {
+                            model: runtime_agent.model.clone(),
+                            input: compact_input,
+                            previous_response_id: previous_response_id.clone(),
+                            instructions: if has_system_prompt {
+                                Some(runtime_agent.system_prompt.clone())
+                            } else {
+                                None
+                            },
+                        };
+
+                        match llm_driver.compact(compact_request).await {
+                            Ok(Some(compact_response)) => {
+                                let (compacted_messages, compaction_items) =
+                                    compact_output_to_messages(&compact_response.output);
+
+                                let input_tokens_after = compact_response
+                                    .usage
+                                    .as_ref()
+                                    .and_then(|u| u.output_tokens);
+
+                                compaction_info = Some(LlmCompactionInfo::new(
+                                    Some(input_count as u32),
+                                    input_tokens_after,
+                                    Some(step_start.elapsed().as_millis() as u64),
+                                ));
+
+                                let mut compacted_llm_messages = Vec::new();
+                                if has_system_prompt {
+                                    compacted_llm_messages
+                                        .push(llm_messages_for_call[0].clone());
+                                }
+                                compacted_llm_messages.extend(compacted_messages);
+
+                                for item in compaction_items {
+                                    if let CompactInputItem::Compaction {
+                                        encrypted_content,
+                                    } = item
+                                    {
+                                        compacted_llm_messages.push(LlmMessage {
+                                            role: LlmMessageRole::System,
+                                            content: LlmMessageContent::Text(format!(
+                                                "[COMPACTED_CONTEXT:{encrypted_content}]"
+                                            )),
+                                            tool_calls: None,
+                                            tool_call_id: None,
+                                            phase: None,
+                                            thinking: None,
+                                            thinking_signature: None,
+                                        });
+                                    }
+                                }
+
+                                llm_messages_for_call = compacted_llm_messages;
+
+                                let step_duration = step_start.elapsed().as_millis() as u64;
+                                strategies_used.push("native".to_string());
+                                steps.push(CompactionStepData {
+                                    strategy: "native".to_string(),
+                                    messages_after: llm_messages_for_call.len(),
+                                    duration_ms: step_duration,
+                                });
+
+                                tracing::info!(
+                                    session_id = %session_id,
+                                    duration_ms = step_duration,
+                                    messages_after = llm_messages_for_call.len(),
+                                    "ReasonAtom: native compaction applied"
+                                );
+                            }
+                            Ok(None) | Err(_) => {
+                                tracing::warn!(
+                                    session_id = %session_id,
+                                    "ReasonAtom: native compaction unavailable, continuing cascade"
+                                );
+                            }
+                        }
+                    }
+
+                    // Step 3: Summarization (if configured, and native didn't run or isn't available)
+                    // Only run if we haven't done native compaction (which already compressed everything)
+                    if run_summarization && !strategies_used.contains(&"native".to_string()) {
+                        use crate::capabilities::{
+                            build_summarization_prompt, build_summary_message,
+                            format_messages_for_summarization,
+                        };
+
+                        let step_start = Instant::now();
+                        let conversation_msgs = if has_system_prompt {
+                            &llm_messages_for_call[1..]
+                        } else {
+                            &llm_messages_for_call[..]
+                        };
+
+                        // Keep the last few messages verbatim, summarize the rest
+                        let keep_recent = 10.min(conversation_msgs.len());
+                        let to_summarize =
+                            &conversation_msgs[..conversation_msgs.len() - keep_recent];
+                        let recent = &conversation_msgs[conversation_msgs.len() - keep_recent..];
+
+                        if !to_summarize.is_empty() {
+                            let summary_prompt =
+                                build_summarization_prompt(&config.summarization);
+                            let messages_text =
+                                format_messages_for_summarization(to_summarize);
+
+                            // Use the LLM to generate a summary
+                            let summary_messages = vec![
+                                LlmMessage {
+                                    role: LlmMessageRole::System,
+                                    content: LlmMessageContent::Text(summary_prompt),
+                                    tool_calls: None,
+                                    tool_call_id: None,
+                                    phase: None,
+                                    thinking: None,
+                                    thinking_signature: None,
+                                },
+                                LlmMessage {
+                                    role: LlmMessageRole::User,
+                                    content: LlmMessageContent::Text(messages_text),
+                                    tool_calls: None,
+                                    tool_call_id: None,
+                                    phase: None,
+                                    thinking: None,
+                                    thinking_signature: None,
+                                },
+                            ];
+
+                            let summary_config = crate::llm_driver_registry::LlmCallConfig {
+                                model: config
+                                    .summarization
+                                    .model
+                                    .clone()
+                                    .unwrap_or_else(|| runtime_agent.model.clone()),
+                                temperature: Some(0.0),
+                                max_tokens: Some(2000),
+                                tools: vec![],
+                                reasoning_effort: None,
+                                metadata: HashMap::new(),
+                                previous_response_id: None,
+                                tool_search: None,
+                            };
+
+                            match llm_driver
+                                .chat_completion(summary_messages, &summary_config)
+                                .await
+                            {
+                                Ok(response) => {
+                                    let summary_text = response.text;
+                                    let summary_msg = build_summary_message(&summary_text);
+
+                                    let mut new_messages = Vec::new();
+                                    if has_system_prompt {
+                                        new_messages
+                                            .push(llm_messages_for_call[0].clone());
+                                    }
+                                    new_messages.push(summary_msg);
+                                    new_messages.extend_from_slice(recent);
+                                    llm_messages_for_call = new_messages;
+
+                                    let step_duration =
+                                        step_start.elapsed().as_millis() as u64;
+                                    strategies_used.push("summarization".to_string());
+                                    steps.push(CompactionStepData {
+                                        strategy: "summarization".to_string(),
+                                        messages_after: llm_messages_for_call.len(),
+                                        duration_ms: step_duration,
+                                    });
+
+                                    tracing::info!(
+                                        session_id = %session_id,
+                                        duration_ms = step_duration,
+                                        messages_after = llm_messages_for_call.len(),
+                                        "ReasonAtom: summarization applied"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        session_id = %session_id,
+                                        error = %e,
+                                        "ReasonAtom: summarization failed, continuing"
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    let cascade_duration = cascade_start.elapsed().as_millis() as u64;
+                    let messages_after = llm_messages_for_call.len();
+
+                    // Emit context.compacted event
+                    let strategy_used = if strategies_used.is_empty() {
+                        "none".to_string()
+                    } else {
+                        strategies_used.join("+")
+                    };
+
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            session_id,
+                            streaming_event_context.clone(),
+                            ContextCompactedData {
+                                strategy_used: strategy_used.clone(),
+                                messages_before,
+                                messages_after,
+                                duration_ms: cascade_duration,
+                                steps,
+                            },
+                        ))
+                        .await;
+
                     tracing::info!(
                         session_id = %session_id,
-                        turn_id = %context.turn_id,
-                        message_count = llm_messages_for_call.len(),
-                        "ReasonAtom: retrying LLM call with compacted context"
+                        strategy = %strategy_used,
+                        messages_before,
+                        messages_after,
+                        duration_ms = cascade_duration,
+                        "ReasonAtom: compaction cascade completed, retrying LLM call"
                     );
 
                     llm_driver
