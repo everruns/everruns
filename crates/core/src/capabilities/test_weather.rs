@@ -33,12 +33,6 @@ impl Capability for TestWeatherCapability {
         Some("Testing")
     }
 
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            "You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.",
-        )
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(GetWeatherTool), Box::new(GetForecastTool)]
     }
@@ -264,10 +258,9 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_has_system_prompt() {
+    fn test_capability_no_system_prompt() {
         let cap = TestWeatherCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("weather tools"));
+        assert!(cap.system_prompt_addition().is_none());
     }
 
     #[test]

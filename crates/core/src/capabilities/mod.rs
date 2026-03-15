@@ -279,6 +279,20 @@ pub trait Capability: Send + Sync {
     /// This is the simple sync path for capabilities with static prompts.
     /// For dynamic content that requires filesystem access, override
     /// `system_prompt_contribution()` instead.
+    ///
+    /// **Contract: no duplication with tool definitions.** System prompt
+    /// additions must NOT repeat information already present in tool names,
+    /// descriptions, or parameter schemas. Only include content that cannot
+    /// be inferred from tool definitions alone:
+    ///
+    /// - High-level semantics (when to use which tool, behavioral guidance)
+    /// - Constraints the model cannot discover from schemas (row limits,
+    ///   naming rules, workspace root paths, scheduling limits)
+    /// - Data layout (filesystem paths for state files)
+    /// - Cross-tool relationships or ordering not evident from descriptions
+    ///
+    /// If every piece of information in the prompt is already covered by the
+    /// tool definitions, return `None` instead.
     fn system_prompt_addition(&self) -> Option<&str> {
         None
     }
@@ -1435,33 +1449,19 @@ mod tests {
         )
         .await;
 
-        // TestMath has system prompt addition and 4 tools
-        assert!(applied.runtime_agent.system_prompt.contains("math tools"));
-        // Capability prompt wrapped in XML tags
+        // TestMath has no system prompt addition (tool defs are sufficient)
         assert!(
-            applied
+            !applied
                 .runtime_agent
                 .system_prompt
                 .contains("<capability id=\"test_math\">")
         );
+        // No capability prompt prefix, so base prompt is used as-is (no XML wrapping)
         assert!(
             applied
                 .runtime_agent
                 .system_prompt
-                .contains("</capability>")
-        );
-        // Base prompt wrapped in <system-prompt> tags
-        assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains("<system-prompt>")
-        );
-        assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains("</system-prompt>")
+                .contains("You are a helpful assistant.")
         );
         assert!(applied.tool_registry.has("add"));
         assert!(applied.tool_registry.has("subtract"));
@@ -1483,15 +1483,9 @@ mod tests {
         )
         .await;
 
-        // TestWeather has system prompt addition and 2 tools
+        // TestWeather has no system prompt addition (tool defs are sufficient)
         assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains("weather tools")
-        );
-        assert!(
-            applied
+            !applied
                 .runtime_agent
                 .system_prompt
                 .contains("<capability id=\"test_weather\">")
@@ -1578,28 +1572,36 @@ mod tests {
     async fn test_xml_tags_wrap_capability_prompts() {
         let registry = CapabilityRegistry::with_builtins();
         let collected =
-            collect_capabilities(&["test_math".to_string()], &registry, &test_ctx()).await;
+            collect_capabilities(&["stateless_todo_list".to_string()], &registry, &test_ctx())
+                .await;
 
         assert_eq!(collected.system_prompt_parts.len(), 1);
         let part = &collected.system_prompt_parts[0];
-        assert!(part.starts_with("<capability id=\"test_math\">"));
+        assert!(part.starts_with("<capability id=\"stateless_todo_list\">"));
         assert!(part.ends_with("</capability>"));
-        assert!(part.contains("math tools"));
+        assert!(part.contains("Task Management"));
     }
 
     #[tokio::test]
     async fn test_xml_tags_multiple_capabilities() {
         let registry = CapabilityRegistry::with_builtins();
         let collected = collect_capabilities(
-            &["test_math".to_string(), "test_weather".to_string()],
+            &[
+                "stateless_todo_list".to_string(),
+                "session_schedule".to_string(),
+            ],
             &registry,
             &test_ctx(),
         )
         .await;
 
         assert_eq!(collected.system_prompt_parts.len(), 2);
-        assert!(collected.system_prompt_parts[0].starts_with("<capability id=\"test_math\">"));
-        assert!(collected.system_prompt_parts[1].starts_with("<capability id=\"test_weather\">"));
+        assert!(
+            collected.system_prompt_parts[0].starts_with("<capability id=\"stateless_todo_list\">")
+        );
+        assert!(
+            collected.system_prompt_parts[1].starts_with("<capability id=\"session_schedule\">")
+        );
 
         let prefix = collected.system_prompt_prefix().unwrap();
         // Both capability sections separated by double newline
@@ -1611,12 +1613,17 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
-        let applied =
-            apply_capabilities(base, &["test_math".to_string()], &registry, &test_ctx()).await;
+        let applied = apply_capabilities(
+            base,
+            &["stateless_todo_list".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
 
         let prompt = &applied.runtime_agent.system_prompt;
         // Capability wrapped
-        assert!(prompt.contains("<capability id=\"test_math\">"));
+        assert!(prompt.contains("<capability id=\"stateless_todo_list\">"));
         assert!(prompt.contains("</capability>"));
         // Base prompt wrapped
         assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));

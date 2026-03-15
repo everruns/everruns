@@ -38,15 +38,6 @@ impl Capability for SessionCapability {
         Some("Session")
     }
 
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"You can manage session metadata with these tools:
-
-- `write_session_title`: Set/update the current session title
-- `get_session_info`: Get session ID, title, and assigned agent name (if present)"#,
-        )
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(WriteSessionTitleTool),

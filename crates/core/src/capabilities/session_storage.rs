@@ -49,24 +49,7 @@ impl Capability for SessionStorageCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to session storage tools for persisting data within the session.
-
-`kv_store` - Key/value storage (plain text):
-- operation: "set" - Store a key/value pair (key, value required)
-- operation: "get" - Retrieve a value (key required)
-- operation: "delete" - Delete a key/value pair (key required)
-- operation: "list" - List all stored keys
-
-`secret_store` - Secret storage (encrypted at rest):
-- operation: "set" - Store a secret (name, value required)
-- operation: "get" - Retrieve a secret (name required)
-- operation: "delete" - Delete a secret (name required)
-- operation: "list" - List all secret names
-
-Best practices:
-- Use kv_store for general data like state, preferences, or intermediate results
-- Use secret_store for sensitive data like API keys, tokens, or credentials
-- Keys and names are unique per session - storing with the same key/name overwrites"#,
+            "Use `kv_store` for general data. Use `secret_store` for sensitive data (API keys, tokens, credentials) — secrets are encrypted at rest. Keys are unique per session; storing with the same key overwrites.",
         )
     }
 
@@ -495,7 +478,7 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("kv_store"));
         assert!(prompt.contains("secret_store"));
-        assert!(prompt.contains("encrypted at rest"));
+        assert!(prompt.contains("encrypted"));
     }
 
     #[test]

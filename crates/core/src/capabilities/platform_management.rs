@@ -45,48 +45,7 @@ impl Capability for PlatformManagementCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have platform management tools to manage Everruns entities:
-
-## Capabilities
-
-Capabilities are the primary way to extend agent and harness functionality. Each capability provides tools, system prompt additions, or both. There are three types:
-- **Built-in**: Core capabilities like file system, bash, web fetch, research, etc.
-- **MCP Servers**: External tool providers connected via the Model Context Protocol.
-- **Skills**: Reusable instruction sets that teach agents domain-specific workflows.
-
-When creating or updating agents/harnesses, use `list_capabilities` to discover available capability IDs, then pass them in the `capabilities` parameter.
-
-`list_capabilities` - Discover available capabilities:
-- search: Optional filter by name, description, category, or ID
-- Returns: capability ID, name, description, type, tools, dependencies
-
-`manage_harnesses` - Harness CRUD operations:
-- operation: "list" - List all harnesses
-- operation: "get" - Get a harness by ID (requires: harness_id)
-- operation: "create" - Create a harness (requires: name, system_prompt; optional: description, capabilities)
-- operation: "update" - Update a harness (requires: harness_id; optional: name, description, system_prompt)
-- operation: "delete" - Archive a harness (requires: harness_id)
-- operation: "copy" - Copy a harness (requires: harness_id; optional: new_name)
-
-`manage_agents` - Agent CRUD operations:
-- operation: "list" - List all agents
-- operation: "get" - Get an agent by ID (requires: agent_id)
-- operation: "create" - Create an agent (requires: name, system_prompt; optional: description, capabilities)
-- operation: "update" - Update an agent (requires: agent_id; optional: name, description, system_prompt)
-- operation: "delete" - Archive an agent (requires: agent_id)
-
-`manage_sessions` - Session operations:
-- operation: "list" - List sessions (optional: limit, agent_id)
-- operation: "create" - Create a session (requires: harness_id; optional: agent_id, title)
-- operation: "get" - Get a session by ID (requires: session_id)
-- operation: "delete" - Archive a session (requires: session_id)
-
-`session_interact` - Session messaging and turn management:
-- operation: "send_message" - Send a user message to a session (requires: session_id, content)
-- operation: "get_messages" - Get messages from a session (requires: session_id; optional: limit, default 10)
-- operation: "wait_for_idle" - Wait for turn to complete (requires: session_id; optional: timeout_secs, default 120)
-
-All results include UI links to view entities in the web interface."#,
+            r#"Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `list_capabilities` to discover IDs before creating agents/harnesses. All results include UI links."#,
         )
     }
 
@@ -1835,12 +1794,6 @@ mod tests {
         let cap = PlatformManagementCapability;
         let prompt = cap.system_prompt_addition().expect("should have prompt");
         assert!(prompt.contains("list_capabilities"));
-        assert!(prompt.contains("manage_harnesses"));
-        assert!(prompt.contains("manage_agents"));
-        assert!(prompt.contains("manage_sessions"));
-        assert!(prompt.contains("session_interact"));
-        // Capabilities section should be mentioned
         assert!(prompt.contains("Capabilities"));
-        assert!(prompt.contains("primary way to extend"));
     }
 }

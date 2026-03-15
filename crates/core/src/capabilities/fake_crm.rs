@@ -49,24 +49,7 @@ impl Capability for FakeCrmCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"You have access to CRM and customer support tools. All CRM data is stored in /crm/ directory.
-
-Available tools:
-- `crm_list_customers`: List all customers with pagination
-- `crm_get_customer`: Get detailed customer information by ID
-- `crm_create_customer`: Create a new customer record
-- `crm_list_tickets`: List support tickets (filter by status/priority)
-- `crm_create_ticket`: Create a new support ticket
-- `crm_update_ticket`: Update ticket status and assign to agents
-- `crm_add_interaction`: Add a customer interaction note (call, email, meeting)
-- `crm_search_customers`: Search customers by name, email, or company
-
-Data structure:
-- /crm/customers.json - Customer records
-- /crm/tickets.json - Support ticket records
-- /crm/interactions.json - Customer interaction history"#,
-        )
+        Some("CRM data is stored in /crm/ (customers.json, tickets.json, interactions.json).")
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

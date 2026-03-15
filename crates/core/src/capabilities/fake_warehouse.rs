@@ -52,26 +52,7 @@ impl Capability for FakeWarehouseCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to warehouse management tools. All warehouse data is stored in /warehouse/ directory.
-
-Available tools:
-- `warehouse_get_inventory`: Get current inventory levels for products
-- `warehouse_update_inventory`: Update inventory quantities (add/remove stock)
-- `warehouse_create_shipment`: Create a new shipment with products
-- `warehouse_list_shipments`: List all shipments with status tracking
-- `warehouse_update_shipment_status`: Update shipment status (pending/in_transit/delivered)
-- `warehouse_create_order`: Create a new customer order
-- `warehouse_list_orders`: List all customer orders
-- `warehouse_create_invoice`: Generate an invoice for an order
-- `warehouse_process_return`: Process a product return and update inventory
-- `warehouse_inventory_report`: Generate comprehensive inventory report
-
-Data structure:
-- /warehouse/inventory.json - Product inventory levels
-- /warehouse/shipments.json - Shipment records
-- /warehouse/orders.json - Customer orders
-- /warehouse/invoices.json - Generated invoices
-- /warehouse/returns.json - Return records"#,
+            "Warehouse data is stored in /warehouse/ (inventory.json, shipments.json, orders.json, invoices.json, returns.json).",
         )
     }
 

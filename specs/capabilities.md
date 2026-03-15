@@ -133,6 +133,17 @@ See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `Capabi
 - **`system_prompt_contribution(ctx)`** — Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
 - **`system_prompt_contribution_with_config(ctx, config)`** — Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
 
+##### System Prompt Content Contract
+
+System prompt additions must **not duplicate** information already present in tool definitions (names, descriptions, parameter schemas). Only include content that the model cannot infer from tool definitions alone:
+
+- **Behavioral semantics**: when to use which tool, ordering constraints, cross-tool relationships
+- **Non-schema constraints**: row limits, naming rules, workspace root paths, scheduling limits
+- **Data layout**: filesystem paths where state is persisted (e.g., `/crm/customers.json`)
+- **Execution semantics**: what happens when a schedule fires, nesting restrictions
+
+If every piece of information in the prompt is already covered by tool definitions, return `None`. Listing tool names and descriptions in the system prompt is redundant because the model receives tool definitions as structured metadata alongside the prompt.
+
 ##### Config-Aware Methods
 
 - **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
