@@ -562,6 +562,17 @@ impl DurableWorker {
                                         )
                                         .await;
                                 }
+
+                                // Emit a single user-facing error event now that all
+                                // retries are exhausted. Transient errors skip event
+                                // emission during each attempt to avoid duplicates;
+                                // this is the one place we surface the final failure.
+                                if matches!(
+                                    task.activity_type.as_str(),
+                                    "reason" | "process_input" | "act"
+                                ) {
+                                    worker.emit_dlq_error_event(&task).await;
+                                }
                             }
                         }
                         Err(fail_err) => {
@@ -836,6 +847,92 @@ impl DurableWorker {
         }
 
         Ok(())
+    }
+
+    /// Emit a single user-facing error event when a task exhausts all retries (DLQ).
+    ///
+    /// Transient LLM errors skip event emission during each retry attempt to
+    /// prevent duplicate "I encountered an error" messages in the UI. This method
+    /// emits one final error event so the user sees exactly one error message,
+    /// then emits session.idled + sets session status to idle so the UI unblocks.
+    async fn emit_dlq_error_event(&self, task: &ClaimedTask) {
+        // Try to extract session context from the task input.
+        // For "act" tasks the input is wrapped in ActTaskInput; try DurableTurnInput first,
+        // then fall back to extracting session_id/turn_id from the JSON directly.
+        let turn_input: Option<DurableTurnInput> = serde_json::from_value(task.input.clone()).ok();
+
+        let Some(turn_input) = turn_input else {
+            warn!(
+                task_id = %task.id,
+                "Cannot emit DLQ error event: failed to parse task input"
+            );
+            return;
+        };
+
+        let grpc_client = match GrpcClient::connect(&self.grpc_address).await {
+            Ok(client) => client,
+            Err(e) => {
+                warn!(
+                    task_id = %task.id,
+                    error = %e,
+                    "Cannot emit DLQ error event: failed to connect to gRPC"
+                );
+                return;
+            }
+        };
+
+        let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+        let session_id = turn_input.session_id;
+        let turn_id = turn_input.turn_id.unwrap_or_default();
+        let input_message_id = turn_input.input_message_id;
+        let error_message = Message::assistant(
+            "I encountered an error while processing your request. Please try again later.",
+        );
+        let context = EventContext::turn(turn_id, input_message_id);
+
+        if let Err(e) = event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                context,
+                OutputMessageCompletedData::new(error_message),
+            ))
+            .await
+        {
+            warn!(
+                task_id = %task.id,
+                session_id = %session_id,
+                error = %e,
+                "Failed to emit DLQ error event"
+            );
+        } else {
+            info!(
+                task_id = %task.id,
+                session_id = %session_id,
+                "Emitted DLQ error event for user"
+            );
+        }
+
+        // Emit session.idled so the UI unblocks
+        let idled_event = EventRequest::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            SessionIdledData {
+                turn_id,
+                iterations: None,
+                usage: None,
+            },
+        );
+        if let Err(e) = event_emitter.emit(idled_event).await {
+            warn!(session_id = %session_id, error = %e, "Failed to emit session.idled after DLQ");
+        }
+
+        // Set session status to idle
+        if let Err(e) = grpc_client
+            .set_session_status(turn_input.org_id, session_id, "idle")
+            .await
+        {
+            warn!(session_id = %session_id, error = %e, "Failed to set session idle after DLQ");
+        }
     }
 
     /// Execute input processing activity

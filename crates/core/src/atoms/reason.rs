@@ -475,29 +475,44 @@ where
                         .to_string()
                 };
 
-                // Create error message for the user to see
-                let error_message = Message::assistant(&user_error_text);
+                // Only emit user-facing error events for non-transient errors.
+                // Transient errors (server errors, rate limits, timeouts) will be
+                // retried by the durable task engine. Emitting error events on each
+                // retry attempt causes duplicate error messages in the UI.
+                // The durable worker emits a single error event when all retries
+                // are exhausted (DLQ).
+                let is_transient = is_transient_error_message(&error_msg);
 
-                // Emit output.message.completed event (stores message as event with proper turn context)
-                // output.message.completed is child of reason span
-                let error_msg_context = EventContext::from_atom_context(&context).with_span(
-                    trace_id.clone(),
-                    Uuid::now_v7().to_string(),   // Own span_id
-                    Some(reason_span_id.clone()), // Parent is reason span
-                );
-                if let Err(emit_err) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        error_msg_context,
-                        OutputMessageCompletedData::new(error_message),
-                    ))
-                    .await
-                {
-                    tracing::warn!(
+                if !is_transient {
+                    // Create error message for the user to see
+                    let error_message = Message::assistant(&user_error_text);
+
+                    // Emit output.message.completed event (stores message as event with proper turn context)
+                    // output.message.completed is child of reason span
+                    let error_msg_context = EventContext::from_atom_context(&context).with_span(
+                        trace_id.clone(),
+                        Uuid::now_v7().to_string(),   // Own span_id
+                        Some(reason_span_id.clone()), // Parent is reason span
+                    );
+                    if let Err(emit_err) = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            context.session_id,
+                            error_msg_context,
+                            OutputMessageCompletedData::new(error_message),
+                        ))
+                        .await
+                    {
+                        tracing::warn!(
+                            session_id = %context.session_id,
+                            error = %emit_err,
+                            "ReasonAtom: failed to emit output.message.completed event for error"
+                        );
+                    }
+                } else {
+                    tracing::info!(
                         session_id = %context.session_id,
-                        error = %emit_err,
-                        "ReasonAtom: failed to emit output.message.completed event for error"
+                        "ReasonAtom: skipping error event for transient LLM error (will be retried)"
                     );
                 }
 
