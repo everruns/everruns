@@ -120,6 +120,58 @@ async fn test_multiple_created_orgs_all_visible() {
 }
 
 // ============================================
+// Bug regression: /v1/auth/me must return newly created org (auth=none)
+// ============================================
+
+#[tokio::test]
+async fn test_auth_me_includes_newly_created_org() {
+    let server = TestServer::in_memory().await;
+
+    // Before creation, /v1/auth/me should show at least the default org
+    let me_before: Value = server
+        .get("/v1/auth/me")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let orgs_before = me_before["organizations"]
+        .as_array()
+        .expect("organizations array");
+    assert_eq!(orgs_before.len(), 1, "should start with one default org");
+
+    // Create a new org
+    let created: Value = server
+        .post("/v1/orgs", json!({"name": "AuthMe Corp"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let new_org_id = created["id"].as_str().expect("org id");
+
+    // After creation, /v1/auth/me must include the new org
+    let me_after: Value = server
+        .get("/v1/auth/me")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let orgs_after = me_after["organizations"]
+        .as_array()
+        .expect("organizations array");
+    assert_eq!(
+        orgs_after.len(),
+        2,
+        "auth/me should now show two orgs (default + new)"
+    );
+
+    let org_ids: Vec<&str> = orgs_after
+        .iter()
+        .map(|o| o["public_id"].as_str().unwrap())
+        .collect();
+    assert!(
+        org_ids.contains(&new_org_id),
+        "newly created org must appear in /v1/auth/me organizations"
+    );
+}
+
+// ============================================
 // Validation: empty name rejected
 // ============================================
 
