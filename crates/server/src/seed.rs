@@ -6,6 +6,7 @@
 // Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
 
+use crate::auth::config::{AdminConfig, AuthMode};
 use crate::org_init;
 use crate::storage::{
     StorageBackend,
@@ -13,6 +14,7 @@ use crate::storage::{
         CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
         CreateOrganizationRow, CreateUserRow,
     },
+    password::hash_password,
 };
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
@@ -251,6 +253,65 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
 
     // Ensure anonymous user is owner of default org
     db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID, "owner")
+        .await?;
+
+    Ok(result)
+}
+
+// ============================================
+// Admin User Seeder
+// ============================================
+
+/// Seed admin user for auth=admin mode.
+/// Creates the admin user at startup so they have an org membership
+/// before first login. Uses a well-known UUID for idempotency.
+const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000002);
+
+async fn seed_admin_user(
+    db: &StorageBackend,
+    admin_config: &AdminConfig,
+) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    let password_hash = hash_password(&admin_config.password)
+        .map_err(|e| anyhow::anyhow!("Failed to hash admin password: {}", e))?;
+
+    let input = CreateUserRow {
+        email: admin_config.email.clone(),
+        name: "Admin".to_string(),
+        avatar_url: None,
+        roles: vec!["admin".to_string()],
+        password_hash: Some(password_hash),
+        email_verified: true,
+        auth_provider: Some("local".to_string()),
+        auth_provider_id: None,
+        external_id: None,
+    };
+
+    // Try creating with well-known ID; if user already exists by email,
+    // look them up instead (admin may have been created via login before
+    // this seeder existed).
+    match db.create_user_with_id(ADMIN_USER_ID, input).await? {
+        Some(_) => {
+            tracing::info!("Created admin user");
+            result.created += 1;
+        }
+        None => {
+            tracing::debug!("Admin user up to date");
+            result.unchanged += 1;
+        }
+    }
+
+    // Resolve the actual user id — may differ from ADMIN_USER_ID if the
+    // admin was created via login (which assigns a random UUID).
+    let user_id = db
+        .get_user_by_email(&admin_config.email)
+        .await?
+        .map(|u| u.id)
+        .unwrap_or(ADMIN_USER_ID);
+
+    // Ensure admin user is owner of default org
+    db.ensure_membership(user_id, DEFAULT_ORG_ID, "owner")
         .await?;
 
     Ok(result)
@@ -1647,12 +1708,20 @@ const MAX_RETRIES: u32 = 5;
 /// Initial retry delay (increases exponentially)
 const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(2);
 
+/// Optional auth-mode context passed into the seed task so it can
+/// pre-create the admin user when `AUTH_MODE=admin`.
+#[derive(Clone, Default)]
+pub struct SeedAuthContext {
+    pub mode: AuthMode,
+    pub admin: Option<AdminConfig>,
+}
+
 /// Spawn seeding as a background task (non-blocking)
 /// This allows the HTTP server to start immediately while seeding runs in background.
 /// Seeding failures are non-fatal - logged as warnings but don't crash the server.
 ///
 /// Uses `DeploymentGrade::from_env()` to determine which agents to seed.
-pub fn spawn_seed_task(db: Arc<StorageBackend>) {
+pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
     let grade = DeploymentGrade::from_env();
     tracing::info!(deployment_grade = %grade, "Starting seeding task");
 
@@ -1660,7 +1729,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
         // Small delay to let the server start first
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        match run_seed_with_retry(&db, grade).await {
+        match run_seed_with_retry(&db, grade, &auth_ctx).await {
             Ok(result) => {
                 if result.has_changes() {
                     tracing::info!(
@@ -1692,12 +1761,13 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
 async fn run_seed_with_retry(
     db: &StorageBackend,
     grade: DeploymentGrade,
+    auth_ctx: &SeedAuthContext,
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_all(db, grade).await {
+        match seed_all(db, grade, auth_ctx).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let error_str = e.to_string();
@@ -1739,9 +1809,13 @@ async fn run_seed_with_retry(
 }
 
 /// Run all seeders in order
-/// Order: organization → providers → models → mcp_servers → agents
+/// Order: organization → users → providers → models → mcp_servers → agents
 /// Organization must be seeded first (all resources have org_id FK)
-pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
+pub async fn seed_all(
+    db: &StorageBackend,
+    grade: DeploymentGrade,
+    auth_ctx: &SeedAuthContext,
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     // Seed default organization first (all other resources depend on it)
@@ -1763,6 +1837,19 @@ pub async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Re
         "Anonymous user seeded"
     );
     result.merge(anon_result);
+
+    // Seed admin user when in admin mode (depends on default org)
+    if auth_ctx.mode == AuthMode::Admin
+        && let Some(admin_config) = &auth_ctx.admin {
+            let admin_result = seed_admin_user(db, admin_config).await?;
+            tracing::debug!(
+                created = admin_result.created,
+                updated = admin_result.updated,
+                unchanged = admin_result.unchanged,
+                "Admin user seeded"
+            );
+            result.merge(admin_result);
+        }
 
     // Seed providers (models depend on them)
     let provider_result = seed_providers(db).await?;
@@ -2066,7 +2153,9 @@ mod tests {
     #[tokio::test]
     async fn test_seed_all_first_run_creates_everything() {
         let db = make_db();
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         assert!(result.created > 0, "first run should create items");
         assert_eq!(result.updated, 0, "first run should not update anything");
@@ -2089,9 +2178,13 @@ mod tests {
     #[tokio::test]
     async fn test_seed_all_second_run_all_unchanged() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert_eq!(result.created, 0, "second run should create nothing");
         assert_eq!(result.updated, 0, "second run should update nothing");
         assert!(result.unchanged > 0, "everything should be unchanged");
@@ -2100,10 +2193,14 @@ mod tests {
     #[tokio::test]
     async fn test_seed_all_has_changes() {
         let db = make_db();
-        let first = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let first = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(first.has_changes());
 
-        let second = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let second = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(!second.has_changes());
     }
 
@@ -2112,7 +2209,9 @@ mod tests {
     #[tokio::test]
     async fn test_agent_seed_detects_name_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Mutate agent name via public API to simulate DB drift
         let agent_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
@@ -2127,21 +2226,27 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(result.updated >= 1, "should detect agent name change");
     }
 
     #[tokio::test]
     async fn test_agent_seed_detects_capability_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Remove capabilities to simulate drift
         db.set_agent_capabilities(seed_ids::DAD_JOKES_AGENT, vec![])
             .await
             .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(result.updated >= 1, "should detect capability change");
     }
 
@@ -2150,7 +2255,9 @@ mod tests {
     #[tokio::test]
     async fn test_model_seed_detects_display_name_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Mutate model display_name via public API
         db.update_llm_model(
@@ -2164,7 +2271,9 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(
             result.updated >= 1,
             "should detect model display_name change"
@@ -2176,7 +2285,9 @@ mod tests {
     #[tokio::test]
     async fn test_provider_seed_detects_name_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Mutate provider name via public API
         db.update_llm_provider(
@@ -2194,7 +2305,9 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(result.updated >= 1, "should detect provider name change");
     }
 
@@ -2203,7 +2316,9 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_server_seed_detects_url_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Mutate MCP server URL via public API
         db.update_mcp_server(
@@ -2217,7 +2332,9 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(result.updated >= 1, "should detect MCP server URL change");
     }
 
@@ -2226,7 +2343,9 @@ mod tests {
     #[tokio::test]
     async fn test_harness_seed_detects_description_change() {
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Mutate harness description via public API
         let harness_id = everruns_core::HarnessId::from_uuid(
@@ -2247,7 +2366,9 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
         assert!(
             result.updated >= 1,
             "should detect harness description change"
@@ -2259,7 +2380,9 @@ mod tests {
     #[tokio::test]
     async fn test_seed_prod_skips_dev_only_agents() {
         let db = make_db();
-        let result = seed_all(&db, DeploymentGrade::Prod).await.unwrap();
+        let result = seed_all(&db, DeploymentGrade::Prod, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         // Python Coder is dev_only — should not be created in prod
         let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
@@ -2277,7 +2400,9 @@ mod tests {
     #[tokio::test]
     async fn test_seed_dev_includes_dev_only_agents() {
         let db = make_db();
-        seed_all(&db, DeploymentGrade::Dev).await.unwrap();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
 
         let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
         let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
