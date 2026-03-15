@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -126,7 +126,6 @@ function SelectContent({ className, children, ...props }: SelectPrimitive.Popup.
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner data-slot="select-positioner" sideOffset={5} className="z-50">
-        <SelectScrollUpButton />
         <SelectPrimitive.Popup
           data-slot="select-content"
           className={cn(
@@ -137,7 +136,6 @@ function SelectContent({ className, children, ...props }: SelectPrimitive.Popup.
         >
           {children}
         </SelectPrimitive.Popup>
-        <SelectScrollDownButton />
       </SelectPrimitive.Positioner>
     </SelectPrimitive.Portal>
   );
@@ -180,37 +178,6 @@ function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Prop
       className={cn("bg-border pointer-events-none -mx-1 my-1 h-px", className)}
       {...props}
     />
-  );
-}
-
-function SelectScrollUpButton({ className, ...props }: SelectPrimitive.ScrollUpArrow.Props) {
-  return (
-    <SelectPrimitive.ScrollUpArrow
-      data-slot="select-scroll-up-button"
-      className={cn(
-        "w-full bg-popover z-51 text-center cursor-default h-6 flex items-center justify-center text-md border data-[direction=up]:border-b-0 data-[direction=down]:border-t-0",
-        "before:content-[''] before:absolute before:w-full before:h-full before:left-0 data-[direction=up]:before:top-full data-[direction=down]:bottom-0 data-[direction=down]:before:-bottom-full",
-        className,
-      )}
-      {...props}
-    >
-      <ChevronUpIcon className="size-4" />
-    </SelectPrimitive.ScrollUpArrow>
-  );
-}
-function SelectScrollDownButton({ className, ...props }: SelectPrimitive.ScrollDownArrow.Props) {
-  return (
-    <SelectPrimitive.ScrollDownArrow
-      data-slot="select-scroll-down-button"
-      className={cn(
-        "w-full bg-popover z-51 text-center cursor-default h-6 flex items-center justify-center text-md border data-[direction=up]:border-b-0 data-[direction=down]:border-t-0",
-        "before:content-[''] before:absolute before:w-full before:h-full before:left-0 data-[direction=up]:before:top-full data-[direction=down]:bottom-0 data-[direction=down]:before:-bottom-full",
-        className,
-      )}
-      {...props}
-    >
-      <ChevronDownIcon className="size-4" />
-    </SelectPrimitive.ScrollDownArrow>
   );
 }
 
