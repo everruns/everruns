@@ -202,10 +202,12 @@ pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_pub
 pub use app::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
-    ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventBuilder,
-    EventContext, EventData, EventRequest, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
-    LlmCompactionInfo, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo,
-    ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
+    ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,
+    CONTEXT_COMPACTING, CompactionReason, CompactionStepData, ContextCompactedData,
+    ContextCompactingData, Event, EventBuilder, EventContext, EventData, EventRequest,
+    INPUT_MESSAGE, InputMessageData, LLM_GENERATION, LlmCompactionInfo, LlmGenerationData,
+    LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo, ModelMetadata,
+    OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData, REASON_COMPLETED,
     REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
     ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
@@ -214,8 +216,6 @@ pub use events::{
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
     TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
     TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
-    CONTEXT_COMPACTING, CONTEXT_COMPACTED, CompactionReason, CompactionStepData,
-    ContextCompactingData, ContextCompactedData,
 };
 pub use harness::{Harness, HarnessStatus};
 pub use leased_resource::{

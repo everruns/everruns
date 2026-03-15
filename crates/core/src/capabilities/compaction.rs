@@ -248,9 +248,7 @@ pub fn apply_observation_masking(
         if indices_to_mask.contains(&i) {
             let tool_name = find_tool_call_name(messages, msg);
             let summary = match config.summary_format {
-                MaskingSummaryFormat::OneLine => {
-                    format_one_line_summary(&tool_name, &msg.content)
-                }
+                MaskingSummaryFormat::OneLine => format_one_line_summary(&tool_name, &msg.content),
                 MaskingSummaryFormat::HeadTail => format_head_tail_summary(&msg.content),
             };
             result.push(LlmMessage {
@@ -258,7 +256,7 @@ pub fn apply_observation_masking(
                 content: LlmMessageContent::Text(summary),
                 tool_calls: msg.tool_calls.clone(),
                 tool_call_id: msg.tool_call_id.clone(),
-                phase: msg.phase.clone(),
+                phase: msg.phase,
                 thinking: None,
                 thinking_signature: None,
             });
@@ -281,12 +279,12 @@ fn find_tool_call_name(messages: &[LlmMessage], tool_msg: &LlmMessage) -> String
     };
 
     for msg in messages.iter().rev() {
-        if msg.role == LlmMessageRole::Assistant {
-            if let Some(ref tool_calls) = msg.tool_calls {
-                for tc in tool_calls {
-                    if tc.id == *call_id {
-                        return tc.name.clone();
-                    }
+        if msg.role == LlmMessageRole::Assistant
+            && let Some(ref tool_calls) = msg.tool_calls
+        {
+            for tc in tool_calls {
+                if tc.id == *call_id {
+                    return tc.name.clone();
                 }
             }
         }
@@ -650,7 +648,10 @@ mod tests {
 
     #[test]
     fn test_masking_format_serialization_roundtrip() {
-        for format in [MaskingSummaryFormat::OneLine, MaskingSummaryFormat::HeadTail] {
+        for format in [
+            MaskingSummaryFormat::OneLine,
+            MaskingSummaryFormat::HeadTail,
+        ] {
             let json = serde_json::to_value(format).unwrap();
             let deserialized: MaskingSummaryFormat = serde_json::from_value(json).unwrap();
             assert_eq!(format, deserialized);
@@ -734,7 +735,10 @@ mod tests {
         let masked = &result.messages[2];
         assert_eq!(masked.role, LlmMessageRole::Tool);
         let text = extract_text(&masked.content);
-        assert!(text.starts_with('['), "Expected masked summary, got: {text}");
+        assert!(
+            text.starts_with('['),
+            "Expected masked summary, got: {text}"
+        );
         assert!(text.contains("read_file"), "Expected tool name: {text}");
 
         // Last 2 tool results should be verbatim

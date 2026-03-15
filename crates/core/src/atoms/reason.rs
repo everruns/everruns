@@ -902,17 +902,13 @@ where
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
                     // Context too large — run compaction cascade
-                    use crate::capabilities::{
-                        CompactionStrategy, apply_observation_masking,
-                    };
+                    use crate::capabilities::{CompactionStrategy, apply_observation_masking};
                     use crate::events::{
                         CompactionReason, CompactionStepData, ContextCompactedData,
                         ContextCompactingData,
                     };
 
-                    let config = compaction_config
-                        .clone()
-                        .unwrap_or_default();
+                    let config = compaction_config.clone().unwrap_or_default();
                     let messages_before = llm_messages_for_call.len();
 
                     tracing::info!(
@@ -1035,15 +1031,12 @@ where
 
                                 let mut compacted_llm_messages = Vec::new();
                                 if has_system_prompt {
-                                    compacted_llm_messages
-                                        .push(llm_messages_for_call[0].clone());
+                                    compacted_llm_messages.push(llm_messages_for_call[0].clone());
                                 }
                                 compacted_llm_messages.extend(compacted_messages);
 
                                 for item in compaction_items {
-                                    if let CompactInputItem::Compaction {
-                                        encrypted_content,
-                                    } = item
+                                    if let CompactInputItem::Compaction { encrypted_content } = item
                                     {
                                         compacted_llm_messages.push(LlmMessage {
                                             role: LlmMessageRole::System,
@@ -1107,10 +1100,8 @@ where
                         let recent = &conversation_msgs[conversation_msgs.len() - keep_recent..];
 
                         if !to_summarize.is_empty() {
-                            let summary_prompt =
-                                build_summarization_prompt(&config.summarization);
-                            let messages_text =
-                                format_messages_for_summarization(to_summarize);
+                            let summary_prompt = build_summarization_prompt(&config.summarization);
+                            let messages_text = format_messages_for_summarization(to_summarize);
 
                             // Use the LLM to generate a summary
                             let summary_messages = vec![
@@ -1159,15 +1150,13 @@ where
 
                                     let mut new_messages = Vec::new();
                                     if has_system_prompt {
-                                        new_messages
-                                            .push(llm_messages_for_call[0].clone());
+                                        new_messages.push(llm_messages_for_call[0].clone());
                                     }
                                     new_messages.push(summary_msg);
                                     new_messages.extend_from_slice(recent);
                                     llm_messages_for_call = new_messages;
 
-                                    let step_duration =
-                                        step_start.elapsed().as_millis() as u64;
+                                    let step_duration = step_start.elapsed().as_millis() as u64;
                                     strategies_used.push("summarization".to_string());
                                     steps.push(CompactionStepData {
                                         strategy: "summarization".to_string(),

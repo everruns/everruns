@@ -113,9 +113,9 @@ pub use attach_skill::{
 };
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
-    CompactionStrategy, MaskingSummaryFormat, ObservationMaskingConfig,
-    ObservationMaskingResult, SummarizationConfig, apply_observation_masking,
-    build_summarization_prompt, build_summary_message, format_messages_for_summarization,
+    CompactionStrategy, MaskingSummaryFormat, ObservationMaskingConfig, ObservationMaskingResult,
+    SummarizationConfig, apply_observation_masking, build_summarization_prompt,
+    build_summary_message, format_messages_for_summarization,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use fake_aws::{
