@@ -735,6 +735,7 @@ impl Tool for ManageSessionsTool {
                             .map(|s| {
                                 json!({
                                     "id": s.id.to_string(),
+                                    "organization_id": s.organization_id,
                                     "title": s.title,
                                     "status": format!("{:?}", s.status),
                                     "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
@@ -778,6 +779,7 @@ impl Tool for ManageSessionsTool {
                 {
                     Ok(s) => ToolExecutionResult::success(json!({
                         "id": s.id.to_string(),
+                        "organization_id": s.organization_id,
                         "title": s.title,
                         "locale": s.locale,
                         "status": format!("{:?}", s.status),
@@ -808,6 +810,7 @@ impl Tool for ManageSessionsTool {
                 match store.get_session_by_id(id).await {
                     Ok(Some(s)) => ToolExecutionResult::success(json!({
                         "id": s.id.to_string(),
+                        "organization_id": s.organization_id,
                         "title": s.title,
                         "status": format!("{:?}", s.status),
                         "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
