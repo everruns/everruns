@@ -388,16 +388,25 @@ pub fn proto_session_to_schema(
         .as_ref()
         .map(|u| format!("model_{}", u.value.replace("-", "")));
 
+    let capabilities: Vec<serde_json::Value> = value
+        .capabilities
+        .iter()
+        .filter_map(|c| serde_json::from_str(c).ok())
+        .collect();
+
     let json = serde_json::json!({
         "id": id_str,
+        "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
         "locale": if value.locale.is_empty() { None } else { Some(&value.locale) },
         "tags": tags,
         "model_id": model_id_str,
+        "capabilities": capabilities,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
+        "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "started_at": started_at,
         "finished_at": finished_at,
     });
@@ -1291,5 +1300,59 @@ mod tests {
 
         let schema_message = proto_message_to_schema(proto_message).unwrap();
         assert!(schema_message.external_actor.is_none());
+    }
+
+    #[test]
+    fn test_proto_session_roundtrip_includes_organization_id() {
+        use chrono::Utc;
+        use everruns_core::AgentCapabilityConfig;
+
+        let now = Utc::now();
+        let session = everruns_core::Session {
+            id: everruns_core::SessionId::new(),
+            organization_id: "org_00000000000000000000000000000001".to_string(),
+            harness_id: everruns_core::HarnessId::new(),
+            agent_id: None,
+            title: Some("Test Session".to_string()),
+            locale: None,
+            preview: None,
+            output_preview: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![AgentCapabilityConfig::new("session")],
+            tools: vec![],
+            status: everruns_core::SessionStatus::Idle,
+            created_at: now,
+            updated_at: now,
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: None,
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
+        };
+
+        // Convert to proto
+        let proto_session = schema_session_to_proto(&session);
+        assert_eq!(
+            proto_session.organization_id,
+            "org_00000000000000000000000000000001"
+        );
+        assert_eq!(proto_session.capabilities.len(), 1);
+
+        // Convert back to schema
+        let schema_session = proto_session_to_schema(proto_session).unwrap();
+        assert_eq!(
+            schema_session.organization_id,
+            "org_00000000000000000000000000000001"
+        );
+        assert_eq!(schema_session.id, session.id);
+        assert_eq!(schema_session.harness_id, session.harness_id);
+        assert_eq!(schema_session.capabilities.len(), 1);
+        assert_eq!(schema_session.capabilities[0].capability_id(), "session");
     }
 }
