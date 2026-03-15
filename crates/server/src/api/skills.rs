@@ -19,7 +19,7 @@ use axum::{
 use axum_extra::extract::Multipart;
 use everruns_core::{
     Caller, ResourceConfigResponse, Skill, SkillContent, SkillId, SkillStatus,
-    SkillValidationResult, evaluate_policies,
+    SkillValidationResult, evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -111,9 +111,16 @@ impl FromRef<AppState> for AuthState {
     ),
     tag = "skills"
 )]
-pub async fn skill_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn skill_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&SKILL_VIEW, &SKILL_MANAGE, &SKILL_DANGEROUS]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&SKILL_VIEW, &SKILL_MANAGE, &SKILL_DANGEROUS],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

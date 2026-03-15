@@ -15,7 +15,7 @@ use axum::{
 use everruns_core::typed_id::McpServerId;
 use everruns_core::{
     Caller, McpServer, McpServerStatus, McpServerTransportType, ResourceConfigResponse,
-    evaluate_policies, validate_safe_url,
+    evaluate_policies_with, validate_safe_url,
 };
 
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
@@ -158,9 +158,13 @@ pub fn routes(state: AppState) -> Router {
     ),
     tag = "mcp-servers"
 )]
-pub async fn mcp_server_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn mcp_server_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
         &caller,
         &[&MCP_SERVER_VIEW, &MCP_SERVER_MANAGE, &MCP_SERVER_DANGEROUS],
     );

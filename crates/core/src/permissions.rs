@@ -448,6 +448,7 @@ pub type PolicyConfigResponse = ResourceConfigResponse;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn owner_caller() -> Caller {
         Caller {
@@ -669,6 +670,29 @@ mod tests {
 
         assert_eq!(result.get("harness.manage"), Some(&false));
         assert_eq!(result.get("harness.dangerous"), Some(&false));
+    }
+
+    #[test]
+    fn arc_resolver_works_as_trait_object() {
+        // Validates the pattern used in AuthState: Arc<dyn PermissionResolver>
+        let resolver: Arc<dyn PermissionResolver> = Arc::new(DenyManageResolver);
+        let caller = owner_caller();
+
+        // Policy::evaluate_with accepts &dyn PermissionResolver
+        assert!(
+            TEST_MANAGE
+                .evaluate_with(resolver.as_ref(), &caller)
+                .is_err()
+        );
+
+        // evaluate_policies_with accepts &dyn PermissionResolver
+        let result =
+            evaluate_policies_with(resolver.as_ref(), &caller, &[&TEST_MANAGE, &TEST_DANGEROUS]);
+        assert_eq!(result.get("harness.manage"), Some(&false));
+
+        // Default resolver works the same way
+        let default: Arc<dyn PermissionResolver> = Arc::new(DefaultPermissionResolver);
+        assert!(TEST_MANAGE.evaluate_with(default.as_ref(), &caller).is_ok());
     }
 
     // -- Permission display --
