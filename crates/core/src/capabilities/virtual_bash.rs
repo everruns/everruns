@@ -55,10 +55,12 @@ static BASHKIT_TOOL: LazyLock<BashkitTool> = LazyLock::new(|| {
 });
 
 /// Tool description from bashkit library.
-static TOOL_DESCRIPTION: LazyLock<String> = LazyLock::new(|| BASHKIT_TOOL.description());
+static TOOL_DESCRIPTION: LazyLock<String> =
+    LazyLock::new(|| BASHKIT_TOOL.description().to_string());
 
 /// System prompt addition from bashkit library.
-static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| BASHKIT_TOOL.system_prompt());
+static TOOL_SYSTEM_PROMPT: LazyLock<String> =
+    LazyLock::new(|| BASHKIT_TOOL.system_prompt().to_string());
 
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
@@ -2054,5 +2056,92 @@ mod tests {
         } else {
             panic!("Expected success on read");
         }
+    }
+
+    // ========================================================================
+    // bashkit API smoke tests (v0.1.10 surface)
+    // ========================================================================
+
+    #[test]
+    fn test_bashkit_tool_description_is_nonempty() {
+        let desc = BASHKIT_TOOL.description();
+        assert!(
+            !desc.is_empty(),
+            "bashkit tool description should not be empty"
+        );
+        // Should mention bash or command execution
+        assert!(
+            desc.to_lowercase().contains("bash") || desc.to_lowercase().contains("command"),
+            "description should mention bash or command, got: {}",
+            desc
+        );
+    }
+
+    #[test]
+    fn test_bashkit_tool_system_prompt_is_nonempty() {
+        let prompt = BASHKIT_TOOL.system_prompt();
+        assert!(
+            !prompt.is_empty(),
+            "bashkit system prompt should not be empty"
+        );
+        assert!(
+            prompt.contains("everruns"),
+            "system prompt should contain configured identity 'everruns', got: {}",
+            prompt
+        );
+    }
+
+    #[test]
+    fn test_bashkit_static_description_matches_tool() {
+        // Verify the LazyLock statics produce the same values as direct calls
+        let direct_desc = BASHKIT_TOOL.description();
+        let static_desc: &str = &TOOL_DESCRIPTION;
+        assert_eq!(static_desc, direct_desc);
+
+        let direct_prompt = BASHKIT_TOOL.system_prompt();
+        let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
+        assert_eq!(static_prompt, direct_prompt);
+    }
+
+    #[test]
+    fn test_bashkit_tool_builder_configuration() {
+        // Verify the static BASHKIT_TOOL was built with our custom settings
+        // by checking that description/system_prompt are accessible (non-panicking)
+        let _desc = BASHKIT_TOOL.description();
+        let _prompt = BASHKIT_TOOL.system_prompt();
+        // If we got here without panic, the builder configuration is valid
+    }
+
+    #[test]
+    fn test_bash_tool_display_name() {
+        let tool = BashTool;
+        assert_eq!(tool.display_name(), Some("Bash"));
+    }
+
+    #[test]
+    fn test_bash_tool_parameters_schema_structure() {
+        let tool = BashTool;
+        let schema = tool.parameters_schema();
+
+        // Verify required fields
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["command"].is_object());
+        assert_eq!(schema["properties"]["command"]["type"], "string");
+
+        // Verify optional fields
+        assert!(schema["properties"]["working_dir"].is_object());
+        assert!(schema["properties"]["timeout_ms"].is_object());
+
+        // Verify "command" is required
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&json!("command")));
+    }
+
+    #[test]
+    fn test_execution_limits_configuration() {
+        let limits = execution_limits();
+        // Just verify it doesn't panic and returns a valid object
+        // The limits are used by both BASHKIT_TOOL and per-execution Bash instances
+        let _ = limits;
     }
 }
