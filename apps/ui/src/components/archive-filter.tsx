@@ -27,9 +27,7 @@ export function ArchiveFilter({
 }: ArchiveFilterProps) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
-      >
+      <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}>
         <Filter className="size-4" />
         Filter
         {showArchived && (
