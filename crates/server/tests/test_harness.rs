@@ -102,7 +102,7 @@ impl TestServer {
 
         // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
-        seed::seed_all(&db, grade)
+        seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
 

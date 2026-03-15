@@ -284,7 +284,14 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 2: Seed & infrastructure services
         // =====================================================================
-        seed::spawn_seed_task(db.clone());
+        let auth_config = auth::AuthConfig::from_env();
+        seed::spawn_seed_task(
+            db.clone(),
+            seed::SeedAuthContext {
+                mode: auth_config.mode.clone(),
+                admin: auth_config.admin.clone(),
+            },
+        );
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
@@ -313,7 +320,6 @@ impl ServerAppBuilder {
             .await
             .context("Failed to initialize Valkey client")?;
 
-        let auth_config = auth::AuthConfig::from_env();
         tracing::info!(
             mode = ?auth_config.mode,
             password_auth = auth_config.password_auth_enabled(),

@@ -24,7 +24,9 @@ use everruns_server::storage::StorageBackend;
 async fn auth_router() -> (Router, Arc<StorageBackend>) {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::from_env();
-    seed::seed_all(&db, grade).await.expect("seed failed");
+    seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
+        .await
+        .expect("seed failed");
 
     let config = AuthConfig {
         mode: AuthMode::Full,
