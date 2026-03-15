@@ -90,6 +90,30 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     result
 }
 
+/// Known error placeholder texts emitted by the DLQ handler and user_facing_message().
+/// These add no conversational value and inflate subsequent LLM requests.
+const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
+    "I encountered an error while processing your request. Please try again later.",
+    "The AI provider is experiencing issues. Please try again shortly.",
+    "Rate limited by the AI provider. Please wait a moment.",
+    "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
+    "There is a misconfiguration with the AI provider. Please contact support.",
+];
+
+/// Returns true if the message is an error placeholder that should be stripped
+/// from the conversation history before sending to the LLM.
+fn is_error_placeholder_message(msg: &Message) -> bool {
+    if msg.role != MessageRole::Agent {
+        return false;
+    }
+    // Must have no tool calls (pure text-only error message)
+    if msg.has_tool_calls() {
+        return false;
+    }
+    let text = msg.text().unwrap_or("");
+    ERROR_PLACEHOLDER_MESSAGES.contains(&text)
+}
+
 fn extract_locale_override(messages: &[Message]) -> Option<String> {
     messages
         .iter()
@@ -699,7 +723,14 @@ where
         // Add conversation messages with resolved images.
         // For user messages with an external_actor, prefix the first text part
         // with the actor's display label so the LLM knows who is speaking.
+        // Skip error placeholder messages from prior failed turns — they add
+        // no conversational value and inflate the request.
+        let mut stripped_error_count = 0u32;
         for msg in &patched_messages {
+            if is_error_placeholder_message(msg) {
+                stripped_error_count += 1;
+                continue;
+            }
             let mut llm_msg = LlmMessage::from_message_with_images(msg, &resolved_images);
             if msg.role == MessageRole::User
                 && let Some(ref actor) = msg.external_actor
@@ -707,6 +738,13 @@ where
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
             }
             llm_messages.push(llm_msg);
+        }
+        if stripped_error_count > 0 {
+            tracing::info!(
+                session_id = %session_id,
+                stripped_error_count,
+                "ReasonAtom: stripped error placeholder messages from LLM input"
+            );
         }
 
         // 12. Build LLM call config with reasoning effort and metadata
@@ -1128,7 +1166,27 @@ where
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
-                        // Emit llm.generation failure event (child of reason span)
+                        // If we already collected valid tool calls or text before
+                        // the error arrived, treat it as a partial success. This
+                        // handles OpenAI Responses API behaviour where a trailing
+                        // server_error can follow fully-streamed function calls.
+                        let has_partial_output = !tool_calls.is_empty() || !text.is_empty();
+
+                        if has_partial_output {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %err,
+                                tool_call_count = tool_calls.len(),
+                                text_len = text.len(),
+                                "ReasonAtom: trailing stream error after valid output — treating as partial success"
+                            );
+                            // Break out of the stream loop and use the output
+                            // we already collected. completion_metadata will be
+                            // None since we never got a Done event.
+                            break;
+                        }
+
+                        // No useful output collected — treat as a real failure.
                         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
                         let event_context = EventContext::from_atom_context(context).with_span(
                             trace_id.to_string(),

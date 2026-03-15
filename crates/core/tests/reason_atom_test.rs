@@ -1369,3 +1369,354 @@ async fn test_llm_call_config_previous_response_id() {
     let config_default = LlmCallConfigBuilder::from(&agent).build();
     assert_eq!(config_default.previous_response_id, None);
 }
+
+// ============================================================================
+// Trailing stream error with partial output (OpenAI server_error after tool calls)
+// ============================================================================
+
+/// Driver that emits tool calls followed by a trailing error event.
+/// Simulates OpenAI Responses API behaviour where a server_error can
+/// follow fully-streamed function calls.
+#[derive(Clone, Debug)]
+struct ToolCallsThenErrorDriver;
+
+#[async_trait]
+impl everruns_core::LlmDriver for ToolCallsThenErrorDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        _config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        Ok(Box::pin(stream::iter(vec![
+            // Tool calls arrive first (fully streamed)
+            Ok(everruns_core::LlmStreamEvent::ToolCalls(vec![ToolCall {
+                id: "call_session_1".to_string(),
+                name: "manage_sessions".to_string(),
+                arguments: json!({"operation": "create", "agent_id": "agent_123"}),
+            }])),
+            // Trailing server error after valid output
+            Ok(everruns_core::LlmStreamEvent::Error(
+                "server_error: An error occurred while processing your request.".to_string(),
+            )),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Run builder agent")])
+        .await;
+
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(ProviderType::LlmSim, |_api_key, _base_url| {
+        Box::new(ToolCallsThenErrorDriver)
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should return Ok for partial success");
+
+    // Tool calls should be preserved despite the trailing error
+    assert!(
+        result.success,
+        "Partial success with tool calls should be treated as success"
+    );
+    assert!(result.has_tool_calls, "Tool calls should be present");
+    assert_eq!(result.tool_calls.len(), 1);
+    assert_eq!(result.tool_calls[0].name, "manage_sessions");
+    assert_eq!(result.tool_calls[0].id, "call_session_1");
+
+    // No response_id since we never got a Done event
+    assert!(result.response_id.is_none());
+}
+
+/// Driver that emits text content followed by a trailing error event.
+#[derive(Clone, Debug)]
+struct TextThenErrorDriver;
+
+#[async_trait]
+impl everruns_core::LlmDriver for TextThenErrorDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        _config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                "Here are the links:\n\n- Research Agent:".to_string(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Error(
+                "server_error: internal failure".to_string(),
+            )),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Give me links")])
+        .await;
+
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(ProviderType::LlmSim, |_api_key, _base_url| {
+        Box::new(TextThenErrorDriver)
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should return Ok for partial success");
+
+    // Text should be preserved despite the trailing error
+    assert!(
+        result.success,
+        "Partial success with text should be treated as success"
+    );
+    assert!(
+        result.text.contains("Research Agent"),
+        "Partial text should be preserved: got '{}'",
+        result.text
+    );
+    assert!(!result.has_tool_calls);
+}
+
+/// Driver that emits an error without any prior output (pure failure).
+/// This should still fail as before — no partial output to recover.
+#[derive(Clone, Debug)]
+struct PureErrorDriver;
+
+#[async_trait]
+impl everruns_core::LlmDriver for PureErrorDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        _config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        Ok(Box::pin(stream::iter(vec![Ok(
+            everruns_core::LlmStreamEvent::Error("server_error: total failure".to_string()),
+        )])))
+    }
+}
+
+#[tokio::test]
+async fn test_reason_atom_still_fails_on_pure_stream_error() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(ProviderType::LlmSim, |_api_key, _base_url| {
+        Box::new(PureErrorDriver)
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should handle pure error gracefully");
+
+    // Pure error (no partial output) should still fail
+    assert!(
+        !result.success,
+        "Pure stream error should still be a failure"
+    );
+    assert!(result.error.is_some());
+    assert!(!result.has_tool_calls);
+}
+
+// ============================================================================
+// Error placeholder message stripping
+// ============================================================================
+
+#[tokio::test]
+async fn test_reason_atom_strips_error_placeholder_messages() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    // Seed with a conversation that includes error placeholder messages
+    // (simulates accumulated DLQ errors from prior failed turns)
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![
+                Message::user("Create agents for me"),
+                Message::assistant(
+                    "I encountered an error while processing your request. Please try again later.",
+                ),
+                Message::assistant(
+                    "I encountered an error while processing your request. Please try again later.",
+                ),
+                Message::assistant(
+                    "I encountered an error while processing your request. Please try again later.",
+                ),
+                Message::user("Try again"),
+            ],
+        )
+        .await;
+
+    // Use echo driver to see what the LLM receives
+    let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+
+    // The echo driver echoes back the user messages it received.
+    // The error placeholder messages should NOT appear in the echo output
+    // because they were stripped before sending to the LLM.
+    assert!(
+        !result.text.contains("I encountered an error"),
+        "Error placeholder messages should be stripped from LLM input, got: '{}'",
+        result.text
+    );
+}
