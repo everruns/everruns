@@ -115,11 +115,7 @@ export function ToolActivityTimelineGroup({
   // Single row: render inline with headline as label, no nested wrapper
   if (rows.length === 1) {
     const row = rows[0];
-    return (
-      <TimelineRow
-        row={{ ...row, label: displayHeadline }}
-      />
-    );
+    return <TimelineRow row={{ ...row, label: displayHeadline }} />;
   }
 
   return (
