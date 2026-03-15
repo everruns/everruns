@@ -11,7 +11,8 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, Caller, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, validate_org_public_id,
+    DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgMembership, OrgRole, PermissionResolver,
+    validate_org_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -137,17 +138,42 @@ pub enum AuthMethod {
 pub struct AuthState {
     pub config: AuthConfig,
     pub backend: Arc<dyn AuthBackend>,
+    /// Permission resolver for policy evaluation. Defaults to `DefaultPermissionResolver`.
+    /// Downstream consumers can inject a custom resolver to enforce billing-tier rules,
+    /// database-backed grants, or external RBAC decisions.
+    pub permission_resolver: Arc<dyn PermissionResolver>,
 }
 
 impl AuthState {
     pub fn new(config: AuthConfig, backend: Arc<dyn AuthBackend>) -> Self {
-        Self { config, backend }
+        Self {
+            config,
+            backend,
+            permission_resolver: Arc::new(DefaultPermissionResolver),
+        }
+    }
+
+    /// Create with a custom permission resolver.
+    pub fn with_resolver(
+        config: AuthConfig,
+        backend: Arc<dyn AuthBackend>,
+        resolver: Arc<dyn PermissionResolver>,
+    ) -> Self {
+        Self {
+            config,
+            backend,
+            permission_resolver: resolver,
+        }
     }
 
     /// Convenience: create with built-in backend (OSS default)
     pub fn builtin(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
         let backend = Arc::new(super::builtin::BuiltinAuthBackend::new(config.clone(), db));
-        Self { config, backend }
+        Self {
+            config,
+            backend,
+            permission_resolver: Arc::new(DefaultPermissionResolver),
+        }
     }
 }
 

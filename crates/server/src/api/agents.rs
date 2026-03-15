@@ -17,7 +17,7 @@ use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, Caller, InitialFile, OrgRole,
-    ResourceConfigResponse, ToolDefinition, evaluate_policies,
+    ResourceConfigResponse, ToolDefinition, evaluate_policies_with,
 };
 
 use super::common::{
@@ -242,9 +242,16 @@ impl FromRef<AppState> for AuthState {
     ),
     tag = "agents"
 )]
-pub async fn agent_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn agent_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&AGENT_VIEW, &AGENT_MANAGE, &AGENT_DANGEROUS]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&AGENT_VIEW, &AGENT_MANAGE, &AGENT_DANGEROUS],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

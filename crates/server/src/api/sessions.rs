@@ -17,7 +17,7 @@ use axum::{
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
-use everruns_core::{Caller, Message, ResourceConfigResponse, Session, evaluate_policies};
+use everruns_core::{Caller, Message, ResourceConfigResponse, Session, evaluate_policies_with};
 use everruns_worker::AgentRunner;
 
 use super::common::{
@@ -197,9 +197,16 @@ pub fn routes(state: AppState) -> Router {
 }
 
 /// GET /v1/sessions/config
-pub async fn session_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn session_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&SESSION_VIEW, &SESSION_MANAGE]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&SESSION_VIEW, &SESSION_MANAGE],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

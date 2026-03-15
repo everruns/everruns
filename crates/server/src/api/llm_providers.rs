@@ -16,7 +16,7 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ProviderId;
 use everruns_core::{
     Caller, DriverRegistry, LlmProviderStatus, LlmProviderType, ResourceConfigResponse,
-    evaluate_policies,
+    evaluate_policies_with,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -379,9 +379,16 @@ pub async fn sync_models(
     ),
     tag = "llm-providers"
 )]
-pub async fn llm_provider_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn llm_provider_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&LLM_PROVIDER_VIEW, &LLM_PROVIDER_MANAGE]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&LLM_PROVIDER_VIEW, &LLM_PROVIDER_MANAGE],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

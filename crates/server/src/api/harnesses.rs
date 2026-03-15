@@ -15,7 +15,7 @@ use axum::{
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
     AgentCapabilityConfig, Caller, Harness, HarnessStatus, InitialFile, ResourceConfigResponse,
-    ToolDefinition, evaluate_policies,
+    ToolDefinition, evaluate_policies_with,
 };
 
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
@@ -162,9 +162,13 @@ pub fn routes(state: AppState) -> Router {
     ),
     tag = "harnesses"
 )]
-pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn harness_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
         &caller,
         &[&HARNESS_VIEW, &HARNESS_MANAGE, &HARNESS_DANGEROUS],
     );

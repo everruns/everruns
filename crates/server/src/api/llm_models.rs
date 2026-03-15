@@ -15,7 +15,7 @@ use axum::{
 use everruns_core::typed_id::{ModelId, ProviderId};
 use everruns_core::{
     Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, ResourceConfigResponse,
-    evaluate_policies,
+    evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -362,9 +362,16 @@ pub async fn delete_model(
     ),
     tag = "llm-models"
 )]
-pub async fn llm_model_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn llm_model_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&LLM_MODEL_VIEW, &LLM_MODEL_MANAGE]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&LLM_MODEL_VIEW, &LLM_MODEL_MANAGE],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

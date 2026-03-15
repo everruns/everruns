@@ -14,7 +14,7 @@ use axum::{
 };
 use everruns_core::typed_id::{AgentId, AppId, HarnessId};
 use everruns_core::{
-    App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies,
+    App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
@@ -130,9 +130,16 @@ pub fn routes(state: AppState) -> Router {
     ),
     tag = "apps"
 )]
-pub async fn app_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
+pub async fn app_config(
+    State(auth): State<AuthState>,
+    org: ResolvedOrg,
+) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
-    let policies = evaluate_policies(&caller, &[&APP_VIEW, &APP_MANAGE, &APP_DANGEROUS]);
+    let policies = evaluate_policies_with(
+        auth.permission_resolver.as_ref(),
+        &caller,
+        &[&APP_VIEW, &APP_MANAGE, &APP_DANGEROUS],
+    );
     Json(ResourceConfigResponse { policies })
 }
 

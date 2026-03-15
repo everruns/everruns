@@ -103,6 +103,20 @@ Example custom resolvers:
 - Resolver backed by a per-user grants table
 - Adapter that maps external RBAC roles into OSS `Permission` values
 
+### Server Integration
+
+`AuthState` carries the active `PermissionResolver` as `Arc<dyn PermissionResolver>`. All config endpoints (`GET /v1/{resource}/config`) use `evaluate_policies_with(auth.permission_resolver.as_ref(), ...)` so they automatically respect the injected resolver.
+
+```rust
+// OSS default (uses DefaultPermissionResolver)
+AuthState::new(config, backend)
+
+// Custom resolver
+AuthState::with_resolver(config, backend, Arc::new(MyResolver))
+```
+
+The `#[policy]` macro continues to call `Policy::evaluate()`, which uses `DefaultPermissionResolver`. Custom resolvers are opt-in at explicit call sites (config endpoints, or manual `evaluate_with()` calls); the macro behavior does not change.
+
 ## Enforcement
 
 ### Service Layer
