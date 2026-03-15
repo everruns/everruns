@@ -127,6 +127,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/harness-types.md` - Built-in harness types (Base, Generic)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/infinity-context.md` - Unlimited conversation length via context management
+- `specs/compaction-strategy.md` - Context compaction strategy, visibility, and state of the art
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
 - `specs/slack-integration.md` - Slack bot integration (app-scoped webhook, session routing)
