@@ -5,6 +5,7 @@
 // Decision: Default org ID used as fallback
 // Decision: Org selection via server-side cookie (everruns_org) for SSE compatibility
 // Decision: /v1/auth/me sets org cookie if missing, so we always have org context
+// Decision: On org switch, redirect entity detail pages to their list page to avoid 404s
 
 import {
   createContext,
@@ -15,6 +16,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
 import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
@@ -28,6 +30,29 @@ const ROLE_HIERARCHY: Record<OrgRole, number> = { owner: 3, admin: 2, member: 1 
 
 export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): boolean {
   return ROLE_HIERARCHY[currentRole] >= ROLE_HIERARCHY[requiredRole];
+}
+
+// Entity detail route prefixes — when on a detail page under one of these,
+// org switch redirects to the list page to avoid a 404.
+const ENTITY_PREFIXES = [
+  "/agents/",
+  "/apps/",
+  "/capabilities/",
+  "/harnesses/",
+  "/sessions/",
+  "/durable/schedules/",
+  "/durable/workflows/",
+];
+
+/** If pathname is an entity detail page, return the parent list path. */
+function getEntityListPath(pathname: string): string | null {
+  for (const prefix of ENTITY_PREFIXES) {
+    if (pathname.startsWith(prefix)) {
+      // Strip trailing slash from prefix to get list path
+      return prefix.slice(0, -1);
+    }
+  }
+  return null;
 }
 
 export interface OrgContextValue {
@@ -53,6 +78,8 @@ export function OrgProvider({ children }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
   const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Memoize organizations to prevent infinite re-renders
   // User is always fetched (even in none mode) and includes organizations
@@ -111,8 +138,13 @@ export function OrgProvider({ children }: OrgProviderProps) {
       localStorage.setItem(STORAGE_KEY, org.public_id);
       // Set server-side cookie via API
       void syncOrgCookie(org.public_id);
+      // Redirect entity detail pages to their list page to avoid 404
+      const listPath = getEntityListPath(pathname);
+      if (listPath) {
+        router.push(listPath);
+      }
     },
-    [syncOrgCookie],
+    [syncOrgCookie, pathname, router],
   );
 
   // Sync currentOrg to server cookie on mount/change
