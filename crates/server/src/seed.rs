@@ -1840,16 +1840,17 @@ pub async fn seed_all(
 
     // Seed admin user when in admin mode (depends on default org)
     if auth_ctx.mode == AuthMode::Admin
-        && let Some(admin_config) = &auth_ctx.admin {
-            let admin_result = seed_admin_user(db, admin_config).await?;
-            tracing::debug!(
-                created = admin_result.created,
-                updated = admin_result.updated,
-                unchanged = admin_result.unchanged,
-                "Admin user seeded"
-            );
-            result.merge(admin_result);
-        }
+        && let Some(admin_config) = &auth_ctx.admin
+    {
+        let admin_result = seed_admin_user(db, admin_config).await?;
+        tracing::debug!(
+            created = admin_result.created,
+            updated = admin_result.updated,
+            unchanged = admin_result.unchanged,
+            "Admin user seeded"
+        );
+        result.merge(admin_result);
+    }
 
     // Seed providers (models depend on them)
     let provider_result = seed_providers(db).await?;
