@@ -7250,6 +7250,13 @@
                   ],
                   "description": "Default harness to preselect in the UI."
                 },
+                "default_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default LLM model for the organization."
+                },
                 "id": {
                   "type": "string",
                   "description": "External identifier (org_<32-hex-chars>)"
@@ -8446,6 +8453,13 @@
               "null"
             ],
             "description": "Default harness to preselect in the UI."
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default LLM model for the organization."
           },
           "id": {
             "type": "string",
@@ -11050,6 +11064,14 @@
             ],
             "description": "Default harness to preselect in the UI for new sessions.",
             "example": "harness_01933b5a000070008000000000000602"
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default LLM model for this organization. Must be an installed model.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "name": {
             "type": [

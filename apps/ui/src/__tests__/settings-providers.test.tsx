@@ -62,6 +62,41 @@ jest.mock("@/hooks/use-llm-providers", () => ({
   useSyncProviderModels: () => mockUseSyncProviderModels(),
 }));
 
+jest.mock("@/hooks/use-organizations", () => ({
+  useOrganization: () => ({
+    data: {
+      id: "org_1",
+      name: "Test Org",
+      default_model_id: "model-1",
+      default_harness_id: null,
+      base_harness_id: null,
+      created_at: "2024-01-01",
+      updated_at: "2024-01-01",
+    },
+    isLoading: false,
+    error: null,
+  }),
+  useUpdateOrganization: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+  }),
+}));
+
+jest.mock("@/lib/api/llm-providers", () => ({
+  updateLlmModel: jest.fn(),
+}));
+
+jest.mock("@/lib/query-keys", () => ({
+  queryKeys: {
+    llmModels: {
+      all: ["llm-models"],
+      list: () => ["llm-models"],
+      detail: (id: string) => ["llm-models", id],
+    },
+    organizations: { all: ["organizations"], detail: (id: string) => ["organization", id] },
+  },
+}));
+
 describe("ProvidersPage", () => {
   let queryClient: QueryClient;
 
@@ -149,7 +184,8 @@ describe("ProvidersPage", () => {
   it("renders model rows with correct data", () => {
     render(<ProvidersPage />, { wrapper });
 
-    expect(screen.getByText("GPT-4")).toBeInTheDocument();
+    // Model name may appear in both the row and org settings selector
+    expect(screen.getAllByText("GPT-4").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("gpt-5.2 - OpenAI Production")).toBeInTheDocument();
   });
 
@@ -247,15 +283,18 @@ describe("ProvidersPage", () => {
     expect(headerButton).toBeDisabled();
   });
 
-  it("shows default star icon for default model", () => {
+  it("shows Installed badge for installed model", () => {
     render(<ProvidersPage />, { wrapper });
 
-    // GPT-4 is the default model
-    const modelRow = screen.getByText("GPT-4").closest("div");
-    expect(modelRow).toBeInTheDocument();
-    // Check for the star icon (it has fill-yellow-500 class)
-    const starIcons = document.querySelectorAll('[class*="fill-yellow-500"]');
-    expect(starIcons.length).toBeGreaterThan(0);
+    // GPT-4 is installed
+    expect(screen.getByText("Installed")).toBeInTheDocument();
+  });
+
+  it("shows Install/Uninstall button for models", () => {
+    render(<ProvidersPage />, { wrapper });
+
+    // Installed model should show Uninstall button
+    expect(screen.getByRole("button", { name: /Uninstall/i })).toBeInTheDocument();
   });
 
   it("shows API Key status correctly", () => {
