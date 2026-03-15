@@ -11,6 +11,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.6] - 2026-03-15
+
+### Highlights
+
+- **Multitenancy & Org Scoping** — Models, providers, capabilities, harnesses, and derived capabilities are now properly scoped to the owning organization with ownership validation on create ([#845](https://github.com/everruns/everruns/pull/845), [#850](https://github.com/everruns/everruns/pull/850), [#851](https://github.com/everruns/everruns/pull/851), [#852](https://github.com/everruns/everruns/pull/852))
+- **Permissions Groundwork** — New permission resolver contract wired into AuthState and config endpoints, laying the foundation for fine-grained access control ([#836](https://github.com/everruns/everruns/pull/836), [#862](https://github.com/everruns/everruns/pull/862))
+- **Durable Engine Improvements** — Pre-load count check, snapshot path limit, and continue-as-new for long-running workflows; partial output preserved on stream errors ([#839](https://github.com/everruns/everruns/pull/839), [#877](https://github.com/everruns/everruns/pull/877))
+- **UI Polish** — Archive/delete entity states, filter dropdowns, model install/uninstall, org setup page, inline connection setup, tools list in LLM details ([#843](https://github.com/everruns/everruns/pull/843), [#814](https://github.com/everruns/everruns/pull/814), [#855](https://github.com/everruns/everruns/pull/855), [#865](https://github.com/everruns/everruns/pull/865))
+- **Localization** — Started backend locale propagation support ([#830](https://github.com/everruns/everruns/pull/830))
+
+### What's Changed
+
+- feat(core): add permission resolver contract ([#836](https://github.com/everruns/everruns/pull/836)) by [@chaliy](https://github.com/chaliy)
+- feat(server): wire PermissionResolver into AuthState and config endpoints ([#862](https://github.com/everruns/everruns/pull/862)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): pre-load count check, snapshot path limit, continue-as-new ([#839](https://github.com/everruns/everruns/pull/839)) by [@chaliy](https://github.com/chaliy)
+- feat(session): add backend locale propagation ([#830](https://github.com/everruns/everruns/pull/830)) by [@chaliy](https://github.com/chaliy)
+- feat(session): add initial files for agents and harnesses ([#832](https://github.com/everruns/everruns/pull/832)) by [@chaliy](https://github.com/chaliy)
+- feat(connections): inline connection setup via client-side tool call ([#814](https://github.com/everruns/everruns/pull/814)) by [@chaliy](https://github.com/chaliy)
+- feat(lifecycle): add archive and delete entity states ([#843](https://github.com/everruns/everruns/pull/843)) by [@chaliy](https://github.com/chaliy)
+- feat(sdk): update SDK to v0.1.4 and add agents list pagination ([#846](https://github.com/everruns/everruns/pull/846)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add model install/uninstall toggle and org default model selector ([#868](https://github.com/everruns/everruns/pull/868)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): replace archive checkboxes with filter dropdown on all list pages ([#855](https://github.com/everruns/everruns/pull/855)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add tools list and copy button to LLM generation details ([#858](https://github.com/everruns/everruns/pull/858)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add org setup page after creation ([#865](https://github.com/everruns/everruns/pull/865)) by [@chaliy](https://github.com/chaliy)
+- fix(api): validate provider ownership for model create ([#845](https://github.com/everruns/everruns/pull/845)) by [@chaliy](https://github.com/chaliy)
+- fix(api): validate harness and model ownership on session create ([#850](https://github.com/everruns/everruns/pull/850)) by [@chaliy](https://github.com/chaliy)
+- fix(api): scope agent and harness default model ids ([#844](https://github.com/everruns/everruns/pull/844)) by [@chaliy](https://github.com/chaliy)
+- fix(api): query DB for org membership instead of stale auth context ([#857](https://github.com/everruns/everruns/pull/857)) by [@chaliy](https://github.com/chaliy)
+- fix(api): bind session schedule routes to parent session ([#848](https://github.com/everruns/everruns/pull/848)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): scope llm model provider joins to org ([#851](https://github.com/everruns/everruns/pull/851)) by [@chaliy](https://github.com/chaliy)
+- fix(session): scope derived capabilities to org-owned refs ([#852](https://github.com/everruns/everruns/pull/852)) by [@chaliy](https://github.com/chaliy)
+- fix(org): add default and base harness settings ([#849](https://github.com/everruns/everruns/pull/849)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): query DB for org memberships in /v1/auth/me (none mode) ([#863](https://github.com/everruns/everruns/pull/863)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): grant admin users owner role in default org ([#873](https://github.com/everruns/everruns/pull/873)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): record circuit breaker failure on LLM errors ([#853](https://github.com/everruns/everruns/pull/853)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): prevent duplicate error events on transient LLM failures ([#869](https://github.com/everruns/everruns/pull/869)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): add connection_required handling to durable worker ([#871](https://github.com/everruns/everruns/pull/871)) by [@chaliy](https://github.com/chaliy)
+- fix(core): revert tool_search auto-enable, keep capability-driven ([#860](https://github.com/everruns/everruns/pull/860)) by [@chaliy](https://github.com/chaliy)
+- fix(core): auto-enable tool_search for GPT-5.4 and remove Daytona prompt duplication ([#859](https://github.com/everruns/everruns/pull/859)) by [@chaliy](https://github.com/chaliy)
+- fix(reason): preserve partial output on trailing stream errors ([#877](https://github.com/everruns/everruns/pull/877)) by [@chaliy](https://github.com/chaliy)
+- fix(protocol): include missing fields in proto session conversion ([#875](https://github.com/everruns/everruns/pull/875)) by [@chaliy](https://github.com/chaliy)
+- fix(config): enforce real user git identity via SessionStart hook ([#861](https://github.com/everruns/everruns/pull/861)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): block internal network targets ([#838](https://github.com/everruns/everruns/pull/838)) by [@chaliy](https://github.com/chaliy)
+- fix(openui): add error boundary around Renderer for malformed ElementNode objects ([#835](https://github.com/everruns/everruns/pull/835)) by [@chaliy](https://github.com/chaliy)
+- fix(ui-security): fail closed on auth bootstrap errors ([#840](https://github.com/everruns/everruns/pull/840)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): self-host Caveat font to avoid Google Fonts CSP drift ([#847](https://github.com/everruns/everruns/pull/847)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): always show session title edit button ([#856](https://github.com/everruns/everruns/pull/856)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): deduplicate single-row tool activity timeline display ([#864](https://github.com/everruns/everruns/pull/864)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): redirect to entity list page on org switch ([#866](https://github.com/everruns/everruns/pull/866)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): simplify archive filter label to "Show archived" ([#870](https://github.com/everruns/everruns/pull/870)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): match filter button size with sibling buttons ([#867](https://github.com/everruns/everruns/pull/867)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): prevent horizontal scroll on schedules page ([#854](https://github.com/everruns/everruns/pull/854)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): remove chat composer divider ([#842](https://github.com/everruns/everruns/pull/842)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): remove always-visible scroll buttons from select dropdowns ([#878](https://github.com/everruns/everruns/pull/878)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): improve connection-required banner readability ([#880](https://github.com/everruns/everruns/pull/880)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): remove system prompt duplication with tool definitions ([#879](https://github.com/everruns/everruns/pull/879)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): remove stream-level retry from ReasonAtom, classify LLM errors ([#872](https://github.com/everruns/everruns/pull/872)) by [@chaliy](https://github.com/chaliy)
+- chore(core): bump bashkit v0.1.8 → v0.1.10 ([#876](https://github.com/everruns/everruns/pull/876)) by [@chaliy](https://github.com/chaliy)
+- chore(server): squash post-0.8.5 migrations into single 0.8.6 migration ([#874](https://github.com/everruns/everruns/pull/874)) by [@chaliy](https://github.com/chaliy)
+- chore(maintenance): add invokable maintenance skill ([#833](https://github.com/everruns/everruns/pull/833)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): move ship workflow into invokable skill ([#834](https://github.com/everruns/everruns/pull/834)) by [@chaliy](https://github.com/chaliy)
+- chore(agents): require latest remote main in worktrees ([#837](https://github.com/everruns/everruns/pull/837)) by [@chaliy](https://github.com/chaliy)
+
+### Migration Notes
+
+**0.8.5 → 0.8.6:** Requires fresh database. Run migrations with `just migrate` or start with `just start-all`.
+
 ## [0.8.5] - 2026-03-12
 
 ### Highlights
