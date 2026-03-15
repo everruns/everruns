@@ -854,6 +854,7 @@ export interface OrganizationMembership {
 export interface Organization {
   id: string;
   name: string;
+  default_model_id: string | null;
   default_harness_id: string | null;
   base_harness_id: string | null;
   created_at: string;
@@ -868,6 +869,7 @@ export interface CreateOrganizationRequest {
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   name?: string;
+  default_model_id?: string;
   default_harness_id?: string;
   base_harness_id?: string;
 }
