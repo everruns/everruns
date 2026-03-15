@@ -32,7 +32,7 @@ Applies to:
 - Apps
 
 Contract:
-- `archived` means read-only, not assignable, not executable, hidden from lists by default, visible when explicitly filtered in.
+- `archived` means read-only, not assignable, not executable, hidden from lists by default, visible when explicitly filtered in. The filter label is always "Show archived" (no entity suffix) — the page context already communicates what entity type is listed.
 - `deleted` is a tombstone state used only to preserve historical references. Normal detail APIs return `404`, normal lists exclude deleted items, and runtime execution must not use them.
 - Existing references are preserved by ID. UI/API reference surfaces render tombstones like `<Deleted Agent>` instead of resolving the deleted entity normally.
 - If a session or app references an archived or deleted dependency, execution must stop gracefully on the next atom with a user-visible explanation instead of crashing.

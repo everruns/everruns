@@ -257,7 +257,6 @@ export default function SkillsPage() {
           <ArchiveFilter
             showArchived={showArchived}
             onShowArchivedChange={setShowArchived}
-            label="Show archived skills"
           />
           <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />

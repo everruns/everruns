@@ -31,7 +31,6 @@ export default function HarnessesPage() {
           <ArchiveFilter
             showArchived={showArchived}
             onShowArchivedChange={setShowArchived}
-            label="Show archived harnesses"
           />
           <Link href="/harnesses/new">
             <Button variant="accent">

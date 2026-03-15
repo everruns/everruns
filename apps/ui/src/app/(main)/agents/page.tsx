@@ -64,7 +64,6 @@ export default function AgentsPage() {
           <ArchiveFilter
             showArchived={showArchived}
             onShowArchivedChange={setShowArchived}
-            label="Show archived agents"
           />
           <input
             type="file"

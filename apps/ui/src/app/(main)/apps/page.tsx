@@ -37,7 +37,6 @@ export default function AppsPage() {
           <ArchiveFilter
             showArchived={showArchived}
             onShowArchivedChange={setShowArchived}
-            label="Show archived apps"
           />
           <Link href="/apps/new">
             <Button variant="accent">

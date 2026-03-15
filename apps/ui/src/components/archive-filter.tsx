@@ -16,14 +16,11 @@ import { cn } from "@/lib/utils";
 interface ArchiveFilterProps {
   showArchived: boolean;
   onShowArchivedChange: (show: boolean) => void;
-  /** Label for the checkbox item, e.g. "Show archived agents" */
-  label?: string;
 }
 
 export function ArchiveFilter({
   showArchived,
   onShowArchivedChange,
-  label = "Show archived",
 }: ArchiveFilterProps) {
   return (
     <DropdownMenu>
@@ -39,7 +36,7 @@ export function ArchiveFilter({
           <DropdownMenuGroup>
             <DropdownMenuLabel>Filters</DropdownMenuLabel>
             <DropdownMenuCheckboxItem checked={showArchived} onCheckedChange={onShowArchivedChange}>
-              {label}
+              Show archived
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

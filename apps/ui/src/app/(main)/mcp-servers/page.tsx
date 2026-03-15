@@ -313,7 +313,6 @@ export default function McpServersPage() {
           <ArchiveFilter
             showArchived={showArchived}
             onShowArchivedChange={setShowArchived}
-            label="Show archived MCP servers"
           />
           <Button onClick={() => setAddServerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
