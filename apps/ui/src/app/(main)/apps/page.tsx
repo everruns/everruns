@@ -34,11 +34,7 @@ export default function AppsPage() {
           <ExperimentalPageBadge />
         </h1>
         <div className="flex items-center gap-2">
-          <ArchiveFilter
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-            label="Show archived apps"
-          />
+          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Link href="/apps/new">
             <Button variant="accent">
               <Plus className="w-4 h-4 mr-2" />

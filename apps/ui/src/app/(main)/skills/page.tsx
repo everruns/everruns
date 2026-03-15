@@ -254,11 +254,7 @@ export default function SkillsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Skills</h1>
         <div className="flex items-center gap-2">
-          <ArchiveFilter
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-            label="Show archived skills"
-          />
+          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Upload ZIP

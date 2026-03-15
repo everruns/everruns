@@ -310,11 +310,7 @@ export default function McpServersPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ArchiveFilter
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-            label="Show archived MCP servers"
-          />
+          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Button onClick={() => setAddServerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Server
