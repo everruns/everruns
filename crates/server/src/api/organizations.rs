@@ -55,6 +55,10 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]
     pub name: Option<String>,
+    /// Default LLM model for this organization. Must be an installed model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
+    pub default_model_id: Option<everruns_core::ModelId>,
     /// Default harness to preselect in the UI for new sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
@@ -72,6 +76,9 @@ pub struct OrganizationResponse {
     pub id: String,
     /// Display name
     pub name: String,
+    /// Default LLM model for the organization.
+    #[schema(value_type = Option<String>)]
+    pub default_model_id: Option<everruns_core::ModelId>,
     /// Default harness to preselect in the UI.
     #[schema(value_type = Option<String>)]
     pub default_harness_id: Option<everruns_core::HarnessId>,
@@ -336,10 +343,34 @@ pub async fn update_organization(
 
     let UpdateOrganizationRequest {
         name,
+        default_model_id,
         default_harness_id,
         base_harness_id,
     } = req;
 
+    // Validate referenced IDs exist
+    if let Some(ref model_id) = default_model_id {
+        // Verify the model exists and is installed
+        let model = state
+            .db
+            .get_llm_model_with_provider(org_row.org_id, model_id.uuid())
+            .await
+            .log_internal_error_json("resolve default model")?
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse::new("Model not found")),
+                )
+            })?;
+        if !model.installed {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "Default model must be an installed model",
+                )),
+            ));
+        }
+    }
     if let Some(default_harness_id) = default_harness_id {
         state
             .db
@@ -367,15 +398,15 @@ pub async fn update_organization(
         .log_internal_error_json("update organization")?
         .ok_or_not_found_json("Organization")?;
 
-    if default_harness_id.is_some() || base_harness_id.is_some() {
+    if default_model_id.is_some() || default_harness_id.is_some() || base_harness_id.is_some() {
         state
             .db
             .patch_organization_settings(
                 org_row.org_id,
                 UpdateOrganizationSettings {
+                    default_model_id: default_model_id.map(Some),
                     default_harness_id: default_harness_id.map(Some),
                     base_harness_id: base_harness_id.map(Some),
-                    ..Default::default()
                 },
             )
             .await
@@ -420,6 +451,7 @@ async fn build_organization_response(
     Ok(OrganizationResponse {
         id: org.public_id,
         name: org.name,
+        default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         created_at: org.created_at,
@@ -729,6 +761,7 @@ mod tests {
         let response = OrganizationResponse {
             id: "org_00000000000000000000000000000001".to_string(),
             name: "Test Org".to_string(),
+            default_model_id: None,
             default_harness_id: Some("harness_01933b5a000070008000000000000602".parse().unwrap()),
             base_harness_id: Some("harness_01933b5a000070008000000000000601".parse().unwrap()),
             created_at: chrono::Utc::now(),

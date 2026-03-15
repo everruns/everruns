@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useLlmProviders,
   useLlmModels,
@@ -26,12 +27,14 @@ import {
   useCreateLlmModel,
   useDeleteLlmModel,
 } from "@/hooks/use-llm-providers";
+import { updateLlmModel } from "@/lib/api/llm-providers";
+import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
+import { queryKeys } from "@/lib/query-keys";
 import {
   Plus,
   Server,
   Trash2,
   Key,
-  Star,
   Cpu,
   Brain,
   Wrench,
@@ -42,8 +45,9 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Download,
+  X,
 } from "lucide-react";
-// Note: Star is still used in ModelRow for default model indicator
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import type {
   LlmProvider,
@@ -178,9 +182,13 @@ function formatCost(cost: number): string {
 function ModelRow({
   model,
   onDelete,
+  onToggleInstalled,
+  isTogglingInstalled,
 }: {
   model: LlmModelWithProvider;
   onDelete: (id: string) => void;
+  onToggleInstalled: (id: string, installed: boolean) => void;
+  isTogglingInstalled: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const profile = model.profile;
@@ -198,7 +206,11 @@ function ModelRow({
           <div>
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
-              {model.installed && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+              {model.installed && (
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  Installed
+                </Badge>
+              )}
               {profile && (
                 <Badge
                   variant="outline"
@@ -262,6 +274,26 @@ function ModelRow({
           >
             {model.status}
           </Badge>
+          {/* Install / Uninstall toggle */}
+          <Button
+            variant={model.installed ? "outline" : "default"}
+            size="sm"
+            onClick={() => onToggleInstalled(model.id, !model.installed)}
+            disabled={isTogglingInstalled}
+            title={model.installed ? "Uninstall model (remove from UI pickers)" : "Install model (make available in UI pickers)"}
+          >
+            {model.installed ? (
+              <>
+                <X className="h-4 w-4 mr-1" />
+                Uninstall
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-1" />
+                Install
+              </>
+            )}
+          </Button>
           {profile && (
             <Button
               variant="ghost"
@@ -541,7 +573,7 @@ function AddModelDialog({
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
+  const [installed, setInstalled] = useState(true);
 
   const createModel = useCreateLlmModel(providerId);
 
@@ -550,14 +582,14 @@ function AddModelDialog({
     const data: CreateLlmModelRequest = {
       model_id: modelId,
       display_name: displayName,
-      installed: isDefault,
+      installed,
     };
     await createModel.mutateAsync(data);
     onOpenChange(false);
     setProviderId("");
     setModelId("");
     setDisplayName("");
-    setIsDefault(false);
+    setInstalled(true);
   };
 
   return (
@@ -610,12 +642,12 @@ function AddModelDialog({
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="model-is-default"
-              checked={isDefault}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIsDefault(e.target.checked)}
+              id="model-installed"
+              checked={installed}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInstalled(e.target.checked)}
               className="h-4 w-4"
             />
-            <Label htmlFor="model-is-default">Set as default model</Label>
+            <Label htmlFor="model-installed">Install model (available in UI model pickers)</Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -656,15 +688,19 @@ function ProviderCardSkeleton() {
 }
 
 export default function ProvidersPage() {
+  const queryClient = useQueryClient();
   const {
     data: providers = [],
     isLoading: providersLoading,
     error: providersError,
   } = useLlmProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();
+  const { data: org } = useOrganization();
+  const updateOrg = useUpdateOrganization();
   const deleteProvider = useDeleteLlmProvider();
   const deleteModel = useDeleteLlmModel();
   const syncModels = useSyncProviderModels();
+  const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
 
   const [addProviderOpen, setAddProviderOpen] = useState(false);
   const [addModelOpen, setAddModelOpen] = useState(false);
@@ -674,6 +710,8 @@ export default function ProvidersPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const installedModels = models.filter((m) => m.installed);
 
   const handleDeleteProvider = async (id: string) => {
     if (
@@ -689,6 +727,24 @@ export default function ProvidersPage() {
     if (confirm("Are you sure you want to delete this model?")) {
       await deleteModel.mutateAsync(id);
     }
+  };
+
+  const handleToggleInstalled = async (modelId: string, installed: boolean) => {
+    setTogglingModelId(modelId);
+    try {
+      await updateLlmModel(modelId, { installed });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      // If uninstalling, also refresh org in case it was the default
+      if (!installed) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+      }
+    } finally {
+      setTogglingModelId(null);
+    }
+  };
+
+  const handleSetDefaultModel = async (modelId: string) => {
+    await updateOrg.mutateAsync({ default_model_id: modelId || undefined });
   };
 
   const handleSyncModels = async (providerId: string) => {
@@ -834,11 +890,62 @@ export default function ProvidersPage() {
         ) : (
           <div className="space-y-2">
             {models.map((model) => (
-              <ModelRow key={model.id} model={model} onDelete={handleDeleteModel} />
+              <ModelRow
+                key={model.id}
+                model={model}
+                onDelete={handleDeleteModel}
+                onToggleInstalled={handleToggleInstalled}
+                isTogglingInstalled={togglingModelId === model.id}
+              />
             ))}
           </div>
         )}
       </section>
+
+      {/* Organization Default Model Section */}
+      {installedModels.length > 0 && (
+        <section>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">Organization Settings</h2>
+            <p className="text-sm text-muted-foreground">
+              Configure the default model for your organization. This is used when no model is specified at the agent or session level.
+            </p>
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
+                  Default Model
+                </Label>
+                <Select
+                  value={org?.default_model_id ?? "none"}
+                  onValueChange={(val) => handleSetDefaultModel(val === "none" ? "" : val)}
+                  disabled={updateOrg.isPending}
+                >
+                  <SelectTrigger className="w-full max-w-md" id="default-model">
+                    <span>
+                      {org?.default_model_id
+                        ? installedModels.find((m) => m.id === org.default_model_id)?.display_name ?? "Unknown model"
+                        : "No default model"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No default model</SelectItem>
+                    {installedModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        <div className="flex items-center gap-2">
+                          <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
+                          <span>{model.display_name} ({model.provider_name})</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* Dialogs */}
       <AddProviderDialog open={addProviderOpen} onOpenChange={setAddProviderOpen} />
