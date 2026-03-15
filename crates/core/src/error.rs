@@ -147,6 +147,66 @@ impl AgentLoopError {
             _ => None,
         }
     }
+
+    /// Check if this is a rate-limit error (HTTP 429 or rate-limit keywords)
+    pub fn is_rate_limited(&self) -> bool {
+        match self {
+            AgentLoopError::Llm(msg) => {
+                let msg_lower = msg.to_ascii_lowercase();
+                msg_lower.contains("(429)")
+                    || msg_lower.contains("rate limit")
+                    || msg_lower.contains("too many requests")
+            }
+            _ => false,
+        }
+    }
+
+    /// Check if this is an authentication/authorization error (HTTP 401/403)
+    pub fn is_auth_error(&self) -> bool {
+        match self {
+            AgentLoopError::Llm(msg) => msg.contains("(401)") || msg.contains("(403)"),
+            _ => false,
+        }
+    }
+
+    /// Check if this is a server error (HTTP 5xx or transient provider issue)
+    pub fn is_server_error(&self) -> bool {
+        match self {
+            AgentLoopError::Llm(msg) => {
+                msg.contains("(500)")
+                    || msg.contains("(502)")
+                    || msg.contains("(503)")
+                    || msg.contains("(504)")
+                    || msg.contains("(529)")
+            }
+            _ => false,
+        }
+    }
+
+    /// Get user-facing error message based on error classification
+    pub fn user_facing_message(&self) -> String {
+        if let Some(model_id) = self.model_not_available_id() {
+            format!(
+                "The model `{}` is not available. It may have been removed, \
+                 renamed, or your API key may not have access to it. \
+                 Please select a different model.",
+                model_id
+            )
+        } else if self.is_request_too_large() {
+            "The conversation has become too long for the model to process. \
+             Please start a new session or reduce the context size."
+                .to_string()
+        } else if self.is_rate_limited() {
+            "Rate limited by the AI provider. Please wait a moment.".to_string()
+        } else if self.is_auth_error() {
+            "There is a misconfiguration with the AI provider. Please contact support.".to_string()
+        } else if self.is_server_error() {
+            "The AI provider is experiencing issues. Please try again shortly.".to_string()
+        } else {
+            "I encountered an error while processing your request. Please try again later."
+                .to_string()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -205,5 +265,97 @@ mod tests {
     fn test_model_not_available_error_display() {
         let err = AgentLoopError::model_not_available("gpt-99");
         assert_eq!(err.to_string(), "Model not available: gpt-99");
+    }
+
+    #[test]
+    fn test_is_rate_limited_detects_429() {
+        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
+        assert!(err.is_rate_limited());
+    }
+
+    #[test]
+    fn test_is_rate_limited_detects_rate_limit_keyword() {
+        let err =
+            AgentLoopError::llm("Rate limit exceeded (after 2 retries, last error: too many)");
+        assert!(err.is_rate_limited());
+    }
+
+    #[test]
+    fn test_is_rate_limited_false_for_server_error() {
+        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
+        assert!(!err.is_rate_limited());
+    }
+
+    #[test]
+    fn test_is_auth_error_detects_401() {
+        let err = AgentLoopError::llm("Anthropic API error (401): invalid api key");
+        assert!(err.is_auth_error());
+    }
+
+    #[test]
+    fn test_is_auth_error_detects_403() {
+        let err = AgentLoopError::llm("OpenAI API error (403): forbidden");
+        assert!(err.is_auth_error());
+    }
+
+    #[test]
+    fn test_is_server_error_detects_500() {
+        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
+        assert!(err.is_server_error());
+    }
+
+    #[test]
+    fn test_is_server_error_detects_503() {
+        let err = AgentLoopError::llm("OpenAI API error (503): service unavailable");
+        assert!(err.is_server_error());
+    }
+
+    #[test]
+    fn test_user_facing_message_rate_limited() {
+        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
+        assert_eq!(
+            err.user_facing_message(),
+            "Rate limited by the AI provider. Please wait a moment."
+        );
+    }
+
+    #[test]
+    fn test_user_facing_message_auth_error() {
+        let err = AgentLoopError::llm("Anthropic API error (401): invalid api key");
+        assert_eq!(
+            err.user_facing_message(),
+            "There is a misconfiguration with the AI provider. Please contact support."
+        );
+    }
+
+    #[test]
+    fn test_user_facing_message_server_error() {
+        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
+        assert_eq!(
+            err.user_facing_message(),
+            "The AI provider is experiencing issues. Please try again shortly."
+        );
+    }
+
+    #[test]
+    fn test_user_facing_message_generic_fallback() {
+        let err = AgentLoopError::llm("Failed to send request: connection refused");
+        assert_eq!(
+            err.user_facing_message(),
+            "I encountered an error while processing your request. Please try again later."
+        );
+    }
+
+    #[test]
+    fn test_user_facing_message_model_not_available() {
+        let err = AgentLoopError::model_not_available("gpt-99");
+        assert!(err.user_facing_message().contains("gpt-99"));
+        assert!(err.user_facing_message().contains("not available"));
+    }
+
+    #[test]
+    fn test_user_facing_message_request_too_large() {
+        let err = AgentLoopError::request_too_large("context length exceeded");
+        assert!(err.user_facing_message().contains("too long"));
     }
 }
