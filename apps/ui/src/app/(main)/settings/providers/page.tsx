@@ -207,7 +207,10 @@ function ModelRow({
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
               {model.installed && (
-                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-green-50 text-green-700 border-green-200"
+                >
                   Installed
                 </Badge>
               )}
@@ -280,7 +283,11 @@ function ModelRow({
             size="sm"
             onClick={() => onToggleInstalled(model.id, !model.installed)}
             disabled={isTogglingInstalled}
-            title={model.installed ? "Uninstall model (remove from UI pickers)" : "Install model (make available in UI pickers)"}
+            title={
+              model.installed
+                ? "Uninstall model (remove from UI pickers)"
+                : "Install model (make available in UI pickers)"
+            }
           >
             {model.installed ? (
               <>
@@ -908,7 +915,8 @@ export default function ProvidersPage() {
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Organization Settings</h2>
             <p className="text-sm text-muted-foreground">
-              Configure the default model for your organization. This is used when no model is specified at the agent or session level.
+              Configure the default model for your organization. This is used when no model is
+              specified at the agent or session level.
             </p>
           </div>
           <Card>
@@ -925,7 +933,8 @@ export default function ProvidersPage() {
                   <SelectTrigger className="w-full max-w-md" id="default-model">
                     <span>
                       {org?.default_model_id
-                        ? installedModels.find((m) => m.id === org.default_model_id)?.display_name ?? "Unknown model"
+                        ? (installedModels.find((m) => m.id === org.default_model_id)
+                            ?.display_name ?? "Unknown model")
                         : "No default model"}
                     </span>
                   </SelectTrigger>
@@ -934,8 +943,14 @@ export default function ProvidersPage() {
                     {installedModels.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         <div className="flex items-center gap-2">
-                          <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
-                          <span>{model.display_name} ({model.provider_name})</span>
+                          <ProviderIcon
+                            providerType={model.provider_type}
+                            size="sm"
+                            showBackground={false}
+                          />
+                          <span>
+                            {model.display_name} ({model.provider_name})
+                          </span>
                         </div>
                       </SelectItem>
                     ))}
