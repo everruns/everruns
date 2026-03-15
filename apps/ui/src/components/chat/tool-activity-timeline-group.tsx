@@ -112,6 +112,12 @@ export function ToolActivityTimelineGroup({
   const [expanded, setExpanded] = useState(() => isActive);
   const displayHeadline = isActive ? headline : (completedHeadline ?? headline);
 
+  // Single row: render inline with headline as label, no nested wrapper
+  if (rows.length === 1) {
+    const row = rows[0];
+    return <TimelineRow row={{ ...row, label: displayHeadline }} />;
+  }
+
   return (
     <div className="space-y-2">
       <button
