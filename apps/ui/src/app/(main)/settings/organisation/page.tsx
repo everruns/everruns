@@ -23,9 +23,11 @@ import {
 } from "@/hooks/use-organizations";
 import { useHarnesses } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
+import { useRouter } from "next/navigation";
 import { Building2, Save, AlertCircle, Plus, Check } from "lucide-react";
 
 export default function OrganisationPage() {
+  const router = useRouter();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
   const { data: harnesses = [] } = useHarnesses();
@@ -96,6 +98,7 @@ export default function OrganisationPage() {
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setNewOrgName("");
     setCreateDialogOpen(false);
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   if (error) {
