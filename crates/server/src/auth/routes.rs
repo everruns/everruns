@@ -13,7 +13,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
-use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -1096,10 +1096,10 @@ async fn get_or_create_admin_user(
                 AuthError::unauthorized("Login failed")
             })?;
 
-        // Add admin user to default organization
+        // Add admin user to default organization as owner
         let _ = state
             .db
-            .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id, "owner")
             .await
             .map_err(|e| {
                 tracing::error!("Failed to add admin user to default org: {}", e);
@@ -1111,16 +1111,29 @@ async fn get_or_create_admin_user(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    let organizations = builtin::fetch_user_organizations(&state.db, user.id)
+    let mut organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
 
-    // For existing admin users not in any org, try to add them
     if organizations.is_empty() {
+        // Admin user not in any org — add them as owner
         let _ = state
             .db
-            .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+            .add_organization_member(DEFAULT_ORG_ID, user.id, "owner")
             .await;
+    } else {
+        // Ensure admin user has owner role in default org (fixes users created with member role)
+        if let Some(membership) = organizations
+            .iter_mut()
+            .find(|m| m.org_id == DEFAULT_ORG_ID)
+            && membership.role != OrgRole::Owner
+        {
+            let _ = state
+                .db
+                .update_organization_member_role(DEFAULT_ORG_ID, user.id, "owner")
+                .await;
+            membership.role = OrgRole::Owner;
+        }
     }
 
     Ok(AuthUser {
