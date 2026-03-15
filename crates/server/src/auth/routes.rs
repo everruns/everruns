@@ -556,26 +556,52 @@ pub async fn logout(jar: CookieJar) -> CookieJar {
 
 /// GET /v1/auth/me - Get current user info
 /// Also sets everruns_org cookie if missing (using user's first org)
+///
+/// Queries the database for the user's actual organization memberships so that
+/// newly created orgs appear immediately (the auth middleware may cache a stale
+/// or hardcoded list, e.g. AuthUser::anonymous() in none mode).
 pub async fn get_current_user(
+    State(state): State<BuiltinAuthBackend>,
     user: AuthUser,
     jar: CookieJar,
 ) -> (CookieJar, Json<UserInfoResponse>) {
-    // Always return organizations array (middleware ensures at least default org)
-    let organizations = Some(
-        user.organizations
-            .iter()
-            .map(|o| OrgMembershipResponse {
-                public_id: o.public_id.clone(),
-                name: o.name.clone(),
-                role: o.role.as_str().to_string(),
-            })
-            .collect(),
-    );
+    // Query DB for fresh organization memberships instead of using the
+    // potentially stale list from the auth middleware / anonymous() default.
+    let organizations = match state.db.list_user_organizations(user.id).await {
+        Ok(rows) => Some(
+            rows.iter()
+                .map(|o| OrgMembershipResponse {
+                    public_id: o.public_id.clone(),
+                    name: o.name.clone(),
+                    role: o.role.clone(),
+                })
+                .collect::<Vec<_>>(),
+        ),
+        Err(e) => {
+            tracing::warn!(user_id = %user.id, error = %e, "Failed to query user organizations, falling back to auth context");
+            Some(
+                user.organizations
+                    .iter()
+                    .map(|o| OrgMembershipResponse {
+                        public_id: o.public_id.clone(),
+                        name: o.name.clone(),
+                        role: o.role.as_str().to_string(),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+    };
+
+    // Determine first org for cookie (prefer DB result)
+    let first_org_public_id: Option<String> = organizations
+        .as_ref()
+        .and_then(|orgs| orgs.first().map(|o| o.public_id.clone()))
+        .or_else(|| user.organizations.first().map(|o| o.public_id.clone()));
 
     // Set org cookie if missing (ensures subsequent API calls have org context)
     let jar = if jar.get(ORG_COOKIE_NAME).is_none() {
-        if let Some(org) = user.organizations.first() {
-            let cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
+        if let Some(public_id) = &first_org_public_id {
+            let cookie = Cookie::build((ORG_COOKIE_NAME, public_id.clone()))
                 .path("/")
                 .http_only(false) // Allow JS to read for UI state
                 .secure(true)
