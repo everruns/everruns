@@ -6,8 +6,9 @@ use anyhow::Result;
 use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, ToolCallRequestedData,
 };
+use everruns_core::tool_types::ToolCall;
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use std::sync::Arc;
@@ -806,6 +807,62 @@ impl DurableWorker {
                             "Task completed successfully"
                         );
 
+                        // After act activity: if tools need a connection, emit
+                        // tool.call_requested and set session to waiting_for_tool_results.
+                        // This must happen before schedule_next_activity (which completes
+                        // the workflow) because we need gRPC access for events/status.
+                        if task.activity_type == "act"
+                            && let Some(ref ti) = turn_input_opt
+                        {
+                            let act_result: Option<everruns_core::ActResult> =
+                                serde_json::from_value(output.clone()).ok();
+                            let conn_providers: Vec<String> = act_result
+                                .as_ref()
+                                .map(|r| r.connection_required.clone())
+                                .unwrap_or_default();
+
+                            if !conn_providers.is_empty() {
+                                // Build synthetic setup_connection tool calls
+                                let synthetic_tool_calls: Vec<ToolCall> = conn_providers
+                                    .iter()
+                                    .map(|provider| ToolCall {
+                                        id: format!("setup_conn_{}", Uuid::now_v7()),
+                                        name: "setup_connection".to_string(),
+                                        arguments: serde_json::json!({ "provider": provider }),
+                                    })
+                                    .collect();
+
+                                let turn_id = ti.turn_id.unwrap_or_default();
+                                let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
+                                let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+
+                                let requested_event = EventRequest::new(
+                                    ti.session_id,
+                                    EventContext::turn(turn_id, ti.input_message_id),
+                                    ToolCallRequestedData {
+                                        tool_calls: synthetic_tool_calls,
+                                        tool_summaries: vec![],
+                                        headline: None,
+                                    },
+                                );
+                                if let Err(e) = event_emitter.emit(requested_event).await {
+                                    warn!(error = %e, "Failed to emit tool.call_requested event for connection setup");
+                                }
+
+                                // Set session status to waiting_for_tool_results
+                                if let Err(e) = grpc_client
+                                    .set_session_status(
+                                        ti.org_id,
+                                        ti.session_id,
+                                        "waiting_for_tool_results",
+                                    )
+                                    .await
+                                {
+                                    warn!(error = %e, "Failed to set session status to waiting_for_tool_results");
+                                }
+                            }
+                        }
+
                         // Only schedule next activity if we successfully completed the task
                         // and it has a parent workflow. Standalone tasks have no next activity.
                         if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id)
@@ -1268,6 +1325,30 @@ impl DurableWorker {
                     info!(workflow_id = %workflow_id, "Workflow completed after dependency block");
                     return Ok(());
                 }
+
+                // Check if any tools require a user connection setup.
+                // If so, complete the workflow — the event emission and session status
+                // change were already handled by the caller (process_claimed_task).
+                let act_result: Option<everruns_core::ActResult> =
+                    serde_json::from_value(output.clone()).ok();
+                let has_connection_required = act_result
+                    .as_ref()
+                    .is_some_and(|r| !r.connection_required.is_empty());
+
+                if has_connection_required {
+                    // Complete workflow — it will be resumed by tool-results endpoint
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    info!(
+                        workflow_id = %workflow_id,
+                        "Workflow completed — waiting for user to set up connection"
+                    );
+                    return Ok(());
+                }
+
                 // After action, schedule another reason activity (continue the loop)
                 // Use chained_input which carries previous_response_id from last reason
                 let chained_json = serde_json::to_value(&chained_input)?;
