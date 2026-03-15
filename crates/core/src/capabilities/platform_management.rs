@@ -132,7 +132,7 @@ impl Tool for ManageHarnessesTool {
                 },
                 "system_prompt": {
                     "type": "string",
-                    "description": "System prompt (required for create)"
+                    "description": "System prompt for the harness. Defaults to 'You are a helpful assistant.' if omitted."
                 },
                 "capabilities": {
                     "type": "array",
@@ -228,10 +228,8 @@ impl Tool for ManageHarnessesTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let system_prompt = match require_str(&arguments, "system_prompt") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
+                let system_prompt =
+                    get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
                 let capabilities: Vec<String> = arguments
                     .get("capabilities")
@@ -402,7 +400,7 @@ impl Tool for ManageAgentsTool {
                 },
                 "system_prompt": {
                     "type": "string",
-                    "description": "System prompt (required for create)"
+                    "description": "System prompt for the agent. Defaults to 'You are a helpful assistant.' if omitted."
                 },
                 "capabilities": {
                     "type": "array",
@@ -496,10 +494,8 @@ impl Tool for ManageAgentsTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let system_prompt = match require_str(&arguments, "system_prompt") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
+                let system_prompt =
+                    get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
                 let capabilities: Vec<String> = arguments
                     .get("capabilities")
